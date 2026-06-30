@@ -1,5 +1,31 @@
 # GC Heap Design Decisions
 
+## Chosen Implementation: MMTK
+
+**Decision**: Limelight uses [MMTK (Memory Management Toolkit)](https://www.mmtk.io) as the GC implementation.
+
+MMTK is a Rust-based framework that provides production-quality GC plans including exactly the algorithms chosen for Limelight: Immix, StickyImmix, ConcurrentImmix, and LXR.
+
+**Why MMTK:**
+- Written in Rust — natural fit for the Limelight stack
+- Implements all chosen algorithms out of the box
+- Used in production: OpenJDK, Ruby 3.4, Julia
+- Actively maintained by ANU + Shopify + Red Hat
+- Provides a C API via `cbindgen` — callable from LLVM IR and C++
+
+**Integration path**: implement the `VMBinding` Rust trait — describes how to scan Limelight objects, enumerate roots, and handle finalizers. Reference implementations: [mmtk-ruby](https://github.com/mmtk/mmtk-ruby), [mmtk-julia](https://github.com/mmtk/mmtk-julia).
+
+**Links:**
+- Homepage: https://www.mmtk.io
+- Core (Rust): https://github.com/mmtk/mmtk-core
+- Ruby binding (reference): https://github.com/mmtk/mmtk-ruby
+- Julia binding (reference): https://github.com/mmtk/mmtk-julia
+- Status / supported plans: https://www.mmtk.io/status
+
+---
+
+
+
 ## Heap Structure: Immix-style blocks (no global object list)
 
 **Decision**: Limelight does not maintain a global linked list of objects. The heap structure itself serves as the object enumeration mechanism.

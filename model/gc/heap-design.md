@@ -1,5 +1,23 @@
 # GC Heap Design Decisions
 
+## Object Movement: Non-Moving
+
+**Decision**: Limelight uses a non-moving GC. Objects are never relocated after allocation. Memory addresses are stable for the lifetime of an object.
+
+**Why:**
+- No statepoints, no `gc.relocate`, no stack maps required — significant reduction in LLVM IR complexity
+- No read barriers or write barriers for relocation
+- CPython, PHP (Zend), and Ruby all use non-moving GC successfully in production
+
+**Fragmentation:** handled by Immix's block/line structure:
+- Free lines within a block are recycled for new allocations (line-level reuse)
+- Fully empty blocks are returned to the pool and reused
+- Large objects (> 32KB) get dedicated blocks
+
+This makes Immix's non-moving mode significantly better than classic mark-sweep at managing fragmentation — no compaction needed.
+
+---
+
 ## Chosen Implementation: MMTK
 
 **Decision**: Limelight uses [MMTK (Memory Management Toolkit)](https://www.mmtk.io) as the GC implementation.

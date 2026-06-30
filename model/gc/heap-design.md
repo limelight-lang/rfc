@@ -50,3 +50,37 @@ This is faster than any stop-the-world approach. Compared to write-barrier + SAT
 ### What happens when GC wins but object becomes unreachable during scan
 
 The GC completes its scan of the object, then checks reachability. If the object is unreachable (refcount dropped to zero or no tracing paths reach it), the GC enqueues it for deferred reclamation. The mutator does not need to be involved — it already stepped back from the CAS.
+
+---
+
+## Deferred Free via GC Activity Bit
+
+**Decision**: The memory manager checks a single global bit set by the GC. When the bit is 1 (GC cycle active), physical memory is not released immediately — frees are queued. When the bit returns to 0 (cycle complete), the queue is flushed and memory is reclaimed.
+
+### Protocol
+
+```
+GC starts cycle:   bit → 1
+GC ends cycle:     bit → 0, flush deferred queue
+
+Memory manager on free:
+  if bit == 0 → release immediately
+  if bit == 1 → push to deferred queue
+```
+
+### Cost
+
+- One `load` + `branch` per free: ~1–3 cycles
+- Compared to per-object CAS (~10–40 cycles): an order of magnitude cheaper
+
+### Queue growth
+
+While the bit is 1, freed objects accumulate in the deferred queue and their memory is not reclaimed. Queue growth is bounded by limiting GC cycle length — short safepoints (as Immix does) keep cycles brief, so the queue never grows large.
+
+### Relationship to CAS handoff
+
+These two mechanisms are complementary:
+- **CAS** determines *who decides* the fate of an object (mutator or GC)
+- **Deferred free bit** determines *when physical memory is actually released*
+
+A mutator can win the CAS and mark an object `DEAD` during a GC cycle — but the memory manager will defer the actual release until the cycle ends. This keeps the GC's view of the heap consistent throughout the cycle without per-object coordination.

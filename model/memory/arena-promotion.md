@@ -1,5 +1,16 @@
 # Cross-Arena Object Promotion
 
+## Core Principle
+
+The fundamental division is binary: **does this object outlive the current request?**
+
+- **No** → request arena
+- **Yes** → everything else (long-lived arena, immortal, GC heap)
+
+All further subdivisions (long-lived vs immortal vs GC heap) are implementation details. The write barrier checks exactly this one bit. Arena tag in the pointer encodes this as the highest bit.
+
+---
+
 ## Problem
 
 An object allocated in the request arena may need to outlive the request — for example, when assigned to a long-lived slot (global variable, persistent cache, class-level property). The request arena will be reset at end of request, so the object must be promoted to the long-lived arena before that happens.

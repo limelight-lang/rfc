@@ -61,3 +61,7 @@ identity, refcount, and COW state are unaffected.
 - Elements are Values: Box slots in #2/#3, raw unboxed values in #1.
 - Nested arrays are pointers to child array entities; separation is
   shallow (children are shared until written, standard COW recursion).
+- Arrays created in the language are always managed RC/COW entities.
+  At the FFI boundary a foreign buffer may be viewed as an array
+  without copying; see
+  [zero-abstraction.md](memory/zero-abstraction.md).

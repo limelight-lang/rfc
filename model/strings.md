@@ -63,6 +63,11 @@ two modes:
 
 Both modes share the layout; they differ in one header bit.
 
+Both modes are managed entities: strings created in the language always
+carry RC/COW. The exception is the FFI boundary, where a foreign buffer
+may be viewed as a string without copying; see
+[zero-abstraction.md](memory/zero-abstraction.md).
+
 ---
 
 ## Interpolated String Class

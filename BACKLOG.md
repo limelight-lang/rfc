@@ -30,6 +30,10 @@ into proper RFCs when picked up.
   (aligned with Psalm/PHPStan), variance, reification vs erasure,
   interaction with the value model; no new syntax per
   [attributes.md](attributes.md).
+- **`#[FFI]` family beyond memory** — foreign function and library
+  declarations, calling conventions, marshalling; belongs with the
+  interop RFC
+  ([zero-abstraction.md](model/memory/zero-abstraction.md)).
 
 ## Deferred optimizations
 

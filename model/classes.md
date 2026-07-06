@@ -10,7 +10,7 @@ Value representation for scalars, strings, and arrays is covered separately. Mem
 
 ## Common Refcounted Header
 
-**Decision**: Every heap-managed entity (object, string, array, closure, reference) begins with the same 8-byte header at offset 0:
+**Decision**: Every heap-managed entity (object, string, array, closure, reference) begins with the same 8-byte header at offset 0. Zero-abstraction `#[FFI]` entities are outside this rule: they carry no header at all ([zero-abstraction.md](memory/zero-abstraction.md)).
 
 ```
 +0  refcount  u32

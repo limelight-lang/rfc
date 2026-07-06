@@ -25,6 +25,8 @@ The request arena is the degenerate case of an **actor-owned arena**:
 a request is an actor that receives one message and dies
 ([actors.md](../../runtime/actors.md)). Long-lived actors own arenas
 with the same mechanics but repeated collection at message boundaries.
+The same ownership machinery is available without the actor bundle as
+`#[Region]` ([regions.md](regions.md)).
 
 Most PHP objects are created and die within a single request. These objects are allocated in the request arena:
 

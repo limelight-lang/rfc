@@ -10,4 +10,5 @@ Covers memory regions, allocation strategies, arena/pool design, and the interfa
 - [arena-reset.md](arena-reset.md) — deferred promotion: remembered set, evacuation vs block retention at arena death
 - [static-lifetimes.md](static-lifetimes.md) — compiler-tracked ownership and moves: the tier ladder, drop-point policy, relationship analysis (acyclic classes, `#[Backedge]` cycle shapes)
 - [zero-abstraction.md](zero-abstraction.md) — `#[FFI]` entities: no header, no ARC; owner-bound lifetime or adapter wrapper, borrowed string/array views
+- [regions.md](regions.md) — `#[Region]`: instance-owned arenas with a per-region GC binding; the memory half of an actor
 - [arc-optimizations.md](arc-optimizations.md) — refcount elimination strategies (partly superseded by static-lifetimes.md)

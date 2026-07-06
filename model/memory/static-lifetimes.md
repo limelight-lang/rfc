@@ -187,7 +187,10 @@ backlog, not committed.
 ## Open Questions
 
 - Inference vs annotation balance for Level B: how much of the
-  parent/child pattern is detected without `#[Backedge]`.
+  parent/child pattern is detected without `#[Backedge]` — and the
+  detected part is **materialized back into source** as `#[Backedge]`
+  per the attributes principle ([../../attributes.md](../../attributes.md)),
+  making deep-analysis results a persistent, reviewable cache.
 - Signature ownership conventions across truly dynamic call sites
   (`$fn(...)`, `call_user_func`) — worst-case assumptions may eat
   tier-2 wins in callback-heavy code; measure.

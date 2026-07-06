@@ -26,6 +26,10 @@ into proper RFCs when picked up.
   the runtime design, likely lives in `runtime/`.
 - **Resources** — tag exists in [values.md](model/values.md), design and
   I/O coupling do not.
+- **Generics via attributes** — `#[Template]`-family vocabulary
+  (aligned with Psalm/PHPStan), variance, reification vs erasure,
+  interaction with the value model; no new syntax per
+  [attributes.md](attributes.md).
 
 ## Deferred optimizations
 

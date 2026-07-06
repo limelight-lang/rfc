@@ -70,11 +70,12 @@ into proper RFCs when picked up.
 
 ## Explicit pack/optimize operation for long-lived structures
 
-Structures that live long (caches, config trees, routing tables — 
+Structures that live long (caches, config trees, routing tables,
 typically long-lived-arena residents) should have an **explicit pack
-operation**: compact the storage in one pass — drop vector slack and
-hashtable tombstones, relayout for cache density, re-intern strings,
-possibly relocate into the long-lived arena and mark immortal/COW.
+operation**: compact the storage in one pass, dropping vector slack and
+hashtable tombstones, relayouting for cache density, re-interning
+strings, possibly relocating into the long-lived arena and marking
+immortal/COW.
 Long-lived data is written rarely and read constantly, so a one-time
 explicit optimization pays for itself; the runtime cannot always guess
 the right moment, hence an explicit operation. Needs a design pass:

@@ -17,7 +17,7 @@ Modeled after Swift's ARCOpt pass and clang's ObjC ARC optimizer.
 
 Local variables do not update refcounts continuously. Only heap→heap pointer writes update counts immediately. The stack is scanned at epoch boundaries (safepoints) to account for stack-held references.
 
-Eliminates the dominant source of refcount traffic — local variable scoping. Reduces refcount operations by up to 80%.
+Eliminates the dominant source of refcount traffic: local variable scoping. Reduces refcount operations by up to 80%.
 
 ## 3. Escape Analysis → Stack Allocation
 
@@ -43,7 +43,7 @@ Objects in the request arena or long-lived arena are not reference counted at al
 
 | Optimization | Impact | Complexity |
 |---|---|---|
-| Compiler ARC pairing | High | Low — LLVM pass |
+| Compiler ARC pairing | High | Low (LLVM pass) |
 | Arena scoping | Very high | Medium |
 | Deferred ARC | High | Medium |
 | Escape analysis → stack alloc | Very high | High |

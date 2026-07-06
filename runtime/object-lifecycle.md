@@ -3,7 +3,7 @@
 ## Scope
 
 The runtime implementation of object creation and destruction: the `new`
-path, and the three-phase teardown — pre-destructor (`__destruct`), real
+path, and the three-phase teardown of pre-destructor (`__destruct`), real
 destructor (drop), memory release. Reference implementation sketches in
 Rust per [implementation-language.md](implementation-language.md); object
 layout per [classes.md](../model/classes.md).
@@ -53,7 +53,7 @@ pub extern "C" fn ll_object_new(class: &Class, cat: MemCat) -> *mut Object {
     }
     obj
     // the __construct call is emitted by the compiler at the call
-    // site — the class is known there, so it is a direct call
+    // site: the class is known there, so it is a direct call
 }
 ```
 
@@ -73,7 +73,7 @@ The only phase visible to PHP code.
 - Called through the vtable slot (it is an ordinary virtual method).
 - **Resurrection check**: `__destruct` may store `$this` somewhere,
   raising the refcount. After the call, if `refcount > 0`, teardown is
-  aborted — the object lives on. When its count reaches zero again,
+  aborted: the object lives on. When its count reaches zero again,
   phase 1 is *skipped* (the bit is set) and teardown proceeds to phase 2.
 
 ### Phase 2 — Real destructor: drop
@@ -90,8 +90,8 @@ Decided entirely by the memory category bits:
 
 | Category | Action |
 |----------|--------|
-| GC heap | free — honoring the deferred-free GC activity bit ([heap-design.md](../model/gc/heap-design.md)) |
-| Request arena | nothing — arena reset reclaims the pages |
+| GC heap | free, honoring the deferred-free GC activity bit ([heap-design.md](../model/gc/heap-design.md)) |
+| Request arena | nothing; arena reset reclaims the pages |
 | Long-lived | per its lifecycle policy |
 
 ```rust
@@ -102,11 +102,11 @@ pub extern "C" fn ll_object_die(obj: *mut Object) {
     if class.has_php_destructor() && !flags_test_and_set(obj, DESTRUCTED) {
         call_vtbl_slot(obj, class.destruct_slot());
         if refcount(obj) > 0 {
-            return;                       // resurrected — abort teardown
+            return;                       // resurrected: abort teardown
         }
     }
 
-    // Phase 2: drop — release children and internal structures
+    // Phase 2: drop, release children and internal structures
     for slot in class.prop_layout.refcounted_slots() {
         ll_release(prop_ptr(obj, slot));
     }
@@ -124,14 +124,14 @@ pub extern "C" fn ll_object_die(obj: *mut Object) {
 ### Arena reset and destructors
 
 At end of request the arena runs only phase 1 for tracked objects (the
-`track_destructor` list), then resets the bump pointer — phases 2–3 are
-unnecessary: children living in the same arena die with it.
+`track_destructor` list), then resets the bump pointer; phases 2–3 are
+unnecessary, children living in the same arena die with it.
 
 ---
 
 ## Cross-arena references
 
-Resolved by the **category barrier** on reference stores — see
+Resolved by the **category barrier** on reference stores; see
 Cross-Arena References in [arenas.md](../model/memory/arenas.md): deepCopy
 or arena pinning for escaping references, and a release-at-reset list for
 heap entities referenced from arena objects.

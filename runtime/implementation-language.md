@@ -15,17 +15,17 @@ everything else.
 
 | Factor | Rust | C++ |
 |---|---|---|
-| MMTK (chosen GC, [heap-design.md](../model/gc/heap-design.md)) | Native: `VMBinding` is a Rust trait | Through a C wrapper |
-| Memory safety of a large long-lived codebase | Yes — unsafe islands are localized | No |
+| MMTK (a GC backend, [heap-design.md](../model/gc/heap-design.md)) | Native: `VMBinding` is a Rust trait | Through a C wrapper |
+| Memory safety of a large long-lived codebase | Yes (unsafe islands are localized) | No |
 | LLVM API (IR emission, JIT engine) | Bindings (inkwell/llvm-sys), lag behind LLVM | First-class, native |
-| In-memory compilation of interop snippets ([ir-integration-research.md](../../interop/ir-integration-research.md)) | Impossible (`librustc_driver` is closed) | Clang supports it — already in the interop plan |
+| In-memory compilation of interop snippets ([ir-integration-research.md](../../interop/ir-integration-research.md)) | Impossible (`librustc_driver` is closed) | Clang supports it, already in the interop plan |
 | LLVM version choice | Dictated by rustc (e.g. Rust 1.85 = LLVM 19) | Free |
 | Bitcode for cross-inlining into PHP code | Yes | Yes |
 
 ### Split
 
 - **Rust** — the runtime core (~90% of the code): memory manager, arenas,
-  GC binding (no real choice here — MMTK), runtime data structures,
+  GC binding (the MMTK backend), runtime data structures,
   strings/arrays, stdlib infrastructure. Long-lived, eventually
   multi-threaded code where Rust's safety pays for itself. Precedents:
   MMTK itself, Ruby's YJIT.

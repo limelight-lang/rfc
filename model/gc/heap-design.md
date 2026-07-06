@@ -11,7 +11,7 @@
 **Decision**: Limelight uses a non-moving GC. Objects are never relocated after allocation. Memory addresses are stable for the lifetime of an object.
 
 **Why:**
-- No statepoints, no `gc.relocate`, no stack maps required — significant reduction in LLVM IR complexity
+- No statepoints, no `gc.relocate`, no stack maps required: significant reduction in LLVM IR complexity
 - No read barriers or write barriers for relocation
 - CPython, PHP (Zend), and Ruby all use non-moving GC successfully in production
 
@@ -20,7 +20,7 @@
 - Fully empty blocks are returned to the pool and reused
 - Large objects (> 32KB) get dedicated blocks
 
-This makes Immix's non-moving mode significantly better than classic mark-sweep at managing fragmentation — no compaction needed.
+This makes Immix's non-moving mode significantly better than classic mark-sweep at managing fragmentation: no compaction needed.
 
 ---
 
@@ -36,13 +36,13 @@ way.
 MMTK is a Rust-based framework that provides production-quality GC plans including Immix, StickyImmix, ConcurrentImmix, and LXR.
 
 **Why MMTK as a backend:**
-- Written in Rust — natural fit for the Limelight stack
+- Written in Rust: natural fit for the Limelight stack
 - Implements all chosen algorithms out of the box
 - Used in production: OpenJDK, Ruby 3.4, Julia
 - Actively maintained by ANU + Shopify + Red Hat
-- Provides a C API via `cbindgen` — callable from LLVM IR and C++
+- Provides a C API via `cbindgen`, callable from LLVM IR and C++
 
-**Integration path**: implement the `VMBinding` Rust trait — describes how to scan Limelight objects, enumerate roots, and handle finalizers. Reference implementations: [mmtk-ruby](https://github.com/mmtk/mmtk-ruby), [mmtk-julia](https://github.com/mmtk/mmtk-julia).
+**Integration path**: implement the `VMBinding` Rust trait; it describes how to scan Limelight objects, enumerate roots, and handle finalizers. Reference implementations: [mmtk-ruby](https://github.com/mmtk/mmtk-ruby), [mmtk-julia](https://github.com/mmtk/mmtk-julia).
 
 **Links:**
 - Homepage: https://www.mmtk.io
@@ -59,12 +59,12 @@ MMTK is a Rust-based framework that provides production-quality GC plans includi
 
 **Decision**: Limelight does not maintain a global linked list of objects. The heap structure itself serves as the object enumeration mechanism.
 
-The heap is divided into fixed-size **blocks** (32KB, aligned to their size). Each block is subdivided into **lines** (256 bytes). The GC enumerates all live objects by linearly scanning blocks — no separate list required.
+The heap is divided into fixed-size **blocks** (32KB, aligned to their size). Each block is subdivided into **lines** (256 bytes). The GC enumerates all live objects by linearly scanning blocks: no separate list required.
 
 **Why:**
-- A global intrusive linked list is shared mutable state — requires synchronization on every allocation and free.
+- A global intrusive linked list is shared mutable state: it requires synchronization on every allocation and free.
 - Linear block traversal is cache-friendly: scanning a block = sequential memory reads. A linked list of heap objects scattered across memory causes pointer-chasing cache misses.
-- Block boundaries are computable from any pointer (mask off the low 15 bits) — the GC always knows which block an object belongs to without a lookup.
+- Block boundaries are computable from any pointer (mask off the low 15 bits): the GC always knows which block an object belongs to without a lookup.
 
 This is the approach used by MMTK, Immix, and LXR. Global object lists (as in Boehm GC, early PHP) are considered obsolete for this reason.
 
@@ -113,17 +113,17 @@ Because the GC enumerates objects by scanning blocks linearly, it encounters obj
 - Uncontended CAS: ~10–40 cycles
 - Contended CAS (rare): ~100–300 cycles + cache line bounce
 
-For typical PHP workloads where GC cycles are infrequent relative to mutator activity, contention is low and CAS is cheap. (This is not a substitute for the SATB deletion barrier — see the scope note above; they guard different races.)
+For typical PHP workloads where GC cycles are infrequent relative to mutator activity, contention is low and CAS is cheap. (This is not a substitute for the SATB deletion barrier, see the scope note above; they guard different races.)
 
 ### What happens when GC wins but object becomes unreachable during scan
 
-The GC completes its scan of the object, then checks reachability. If the object is unreachable (refcount dropped to zero or no tracing paths reach it), the GC enqueues it for deferred reclamation. The mutator does not need to be involved — it already stepped back from the CAS.
+The GC completes its scan of the object, then checks reachability. If the object is unreachable (refcount dropped to zero or no tracing paths reach it), the GC enqueues it for deferred reclamation. The mutator does not need to be involved: it already stepped back from the CAS.
 
 ---
 
 ## Deferred Free via GC Activity Bit
 
-**Decision**: The memory manager checks a single global bit set by the GC. When the bit is 1 (GC cycle active), physical memory is not released immediately — frees are queued. When the bit returns to 0 (cycle complete), the queue is flushed and memory is reclaimed.
+**Decision**: The memory manager checks a single global bit set by the GC. When the bit is 1 (GC cycle active), physical memory is not released immediately: frees are queued. When the bit returns to 0 (cycle complete), the queue is flushed and memory is reclaimed.
 
 ### Protocol
 
@@ -143,7 +143,7 @@ Memory manager on free:
 
 ### Queue growth
 
-While the bit is 1, freed objects accumulate in the deferred queue and their memory is not reclaimed. Queue growth is bounded by limiting GC cycle length — short safepoints (as Immix does) keep cycles brief, so the queue never grows large.
+While the bit is 1, freed objects accumulate in the deferred queue and their memory is not reclaimed. Queue growth is bounded by limiting GC cycle length: short safepoints (as Immix does) keep cycles brief, so the queue never grows large.
 
 ### Relationship to CAS handoff
 
@@ -151,4 +151,4 @@ These two mechanisms are complementary:
 - **CAS** determines *who decides* the fate of an object (mutator or GC)
 - **Deferred free bit** determines *when physical memory is actually released*
 
-A mutator can win the CAS and mark an object `DEAD` during a GC cycle — but the memory manager will defer the actual release until the cycle ends. This keeps the GC's view of the heap consistent throughout the cycle without per-object coordination.
+A mutator can win the CAS and mark an object `DEAD` during a GC cycle, but the memory manager will defer the actual release until the cycle ends. This keeps the GC's view of the heap consistent throughout the cycle without per-object coordination.

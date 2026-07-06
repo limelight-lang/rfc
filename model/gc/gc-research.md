@@ -21,8 +21,8 @@ Every heap-allocated Swift object has a 16-byte header (`HeapObject`):
 
 | Offset | Size | Field |
 |--------|------|-------|
-| 0 | 8 B | Metadata pointer (`isa`) — points to type descriptor |
-| 8 | 8 B | `InlineRefCounts` — packed 64-bit bitfield |
+| 0 | 8 B | Metadata pointer (`isa`); points to type descriptor |
+| 8 | 8 B | `InlineRefCounts`: packed 64-bit bitfield |
 
 `InlineRefCounts` bit layout:
 
@@ -73,7 +73,7 @@ Swift does **not** collect cycles automatically. The programmer must break cycle
 
 ```c
 struct _zval_struct {
-    zend_value value;      // 8 bytes — union (long, double, pointer, ...)
+    zend_value value;      // 8 bytes: union (long, double, pointer, ...)
     uint32_t   type_info;  // type (u8) + type_flags (u8) + const_flags (u8)
     uint32_t   var_flags;  // context-dependent
 };
@@ -97,12 +97,12 @@ struct _zend_refcounted_h {
 
 ### Key Flags
 
-- `IS_TYPE_REFCOUNTED`: set when the zval type requires reference counting. Scalars (int, float, bool, null) never set this — no counting overhead.
+- `IS_TYPE_REFCOUNTED`: set when the zval type requires reference counting. Scalars (int, float, bool, null) never set this: no counting overhead.
 - `IS_TYPE_COLLECTABLE`: set for types that can form cycles: objects and arrays. Only these are added to the cycle collector root buffer.
 
 ### Copy-on-Write
 
-Arrays and strings use COW. When a value with `refcount > 1` is about to be modified, a full copy is made and the original's refcount is decremented. The modifying variable takes exclusive ownership. Objects are never COW — they always use reference semantics.
+Arrays and strings use COW. When a value with `refcount > 1` is about to be modified, a full copy is made and the original's refcount is decremented. The modifying variable takes exclusive ownership. Objects are never COW: they always use reference semantics.
 
 COW check: `if (refcount > 1) { separate(); }`
 
@@ -169,7 +169,7 @@ Generational cycle detector runs:
 1. Copy `ob_refcnt` into scratch `gc_refs` for each object in the generation
 2. For each object, decrement `gc_refs` of each referenced object
 3. Objects with `gc_refs > 0` after this: reachable from outside, mark as such transitively
-4. Objects at `gc_refs == 0`: unreachable — collected
+4. Objects at `gc_refs == 0`: unreachable, collected
 
 Stop-the-world, runs only on one generation at a time.
 
@@ -216,7 +216,7 @@ A Rust-based framework for building GC subsystems. Used in OpenJDK, Ruby 3.4, Ju
 
 | Plan | Description |
 |------|-------------|
-| `NoGC` | Never collects — for baselines |
+| `NoGC` | Never collects; for baselines |
 | `MarkSweep` | Classic non-moving mark-sweep |
 | `MarkCompact` | LISP2-style mark-compact |
 | `SemiSpace` | Classic copying collector |
@@ -259,15 +259,15 @@ Origin: Deutsch & Bobrow, 1976.
 
 ### Shenandoah (OpenJDK)
 
-Concurrent compaction using **Brooks pointers** — an extra forwarding word in every object header. When GC relocates an object, it updates the Brooks pointer. A **read barrier** on every object load checks the forwarding pointer and redirects to the new address. Pause times: 1–5 ms typical.
+Concurrent compaction using **Brooks pointers**: an extra forwarding word in every object header. When GC relocates an object, it updates the Brooks pointer. A **read barrier** on every object load checks the forwarding pointer and redirects to the new address. Pause times: 1–5 ms typical.
 
 ### ZGC (OpenJDK)
 
-**Colored pointers** — GC metadata (mark bits, relocation bits) encoded in the high bits of 64-bit pointers. A load barrier strips the color and updates the reference if the object was relocated. No forwarding word in the object header. Pause times: 0.1–0.5 ms, sub-millisecond achievable.
+**Colored pointers**: GC metadata (mark bits, relocation bits) encoded in the high bits of 64-bit pointers. A load barrier strips the color and updates the reference if the object was relocated. No forwarding word in the object header. Pause times: 0.1–0.5 ms, sub-millisecond achievable.
 
 ### Azul C4 (Continuously Concurrent Compacting Collector)
 
-Proprietary. **Loaded Value Barrier (LVB)** — self-healing read barrier that repairs references in-place when the mutator loads a relocated object. True pauseless: no stop-the-world fallback. Pause times: sub-millisecond, most consistent of any JVM GC.
+Proprietary. **Loaded Value Barrier (LVB)**: self-healing read barrier that repairs references in-place when the mutator loads a relocated object. True pauseless: no stop-the-world fallback. Pause times: sub-millisecond, most consistent of any JVM GC.
 
 ### Oilpan / cppgc (V8/Chromium)
 
@@ -279,7 +279,7 @@ A C++ GC library available standalone. Requires explicit `Member<T>` smart point
 
 ### Why Pure ARC is Ruled Out
 
-PHP programmers routinely create cyclic object graphs: doubly-linked lists, trees with parent pointers, event listeners, observer patterns. Unlike Swift, you cannot force PHP users to declare `weak` references — it would break PHP compatibility. Pure ARC will leak in all real PHP applications.
+PHP programmers routinely create cyclic object graphs: doubly-linked lists, trees with parent pointers, event listeners, observer patterns. Unlike Swift, you cannot force PHP users to declare `weak` references: it would break PHP compatibility. Pure ARC will leak in all real PHP applications.
 
 ### Recommended Strategy: Deferred ARC + Immix + Concurrent Cycle Collection
 
@@ -290,7 +290,7 @@ Targeting the LXR architecture, implemented incrementally via MMTK.
 - Use MMTK's `Immix` plan as the heap allocator. Replace `malloc` entirely. Bump-pointer allocation from thread-local blocks is comparable to stack allocation throughput.
 - Implement retain/release as LLVM IR calls: `@limelight_retain(%obj)` / `@limelight_release(%obj)`. Apply ARC-style pairing elimination in LLVM passes (modeled after Swift's ARC optimizer or clang's ObjC ARC pass).
 - Run Bacon-Rajan synchronously when the root buffer fills (10K entries threshold).
-- COW arrays: `if (refcount > 1) { separate(); }` — unchanged from PHP semantics.
+- COW arrays: `if (refcount > 1) { separate(); }`, unchanged from PHP semantics.
 
 **Phase 2 — Low-latency:**
 

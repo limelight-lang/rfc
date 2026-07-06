@@ -7,7 +7,7 @@ Companion to [classes.md](classes.md): how the class and object model maps to co
 ## Core Structures
 
 ```c
-// Common refcounted header — offset 0 of EVERY heap entity
+// Common refcounted header: offset 0 of EVERY heap entity
 // (object, string, array, closure, reference)
 typedef struct RcHeader {
     _Atomic uint32_t refcount;
@@ -22,7 +22,7 @@ typedef struct RcHeader {
 typedef struct Object {
     RcHeader      rc;            // +0
     struct Class *cls;           // +8
-    Value         props[];       // +16 — fixed 16-byte slots
+    Value         props[];       // +16: fixed 16-byte slots
     // classes allowing dynamic properties have one extra hidden
     // slot: a lazily-allocated hashtable pointer
 } Object;
@@ -48,17 +48,17 @@ typedef struct Class {
 } Class;
 ```
 
-Intra-metadata references (`parent`, `interfaces`, `meta`, …) may be stored as u32 offsets from the long-lived arena base instead of 64-bit pointers — 4 bytes each, one add per dereference.
+Intra-metadata references (`parent`, `interfaces`, `meta`, …) may be stored as u32 offsets from the long-lived arena base instead of 64-bit pointers: 4 bytes each, one add per dereference.
 
 ---
 
 ## retain / release
 
-Phase 1 (one thread per request — no atomics needed, like Zend):
+Phase 1 (one thread per request, no atomics needed, like Zend):
 
 ```c
 static inline void ll_retain(RcHeader *h) {
-    if (h->flags & LL_MEMCAT_MASK) return;   // arena/immortal — not counted
+    if (h->flags & LL_MEMCAT_MASK) return;   // arena/immortal: not counted
     h->refcount++;
 }
 
@@ -84,14 +84,14 @@ The single `flags & 0b11` branch implements the immortal-object and arena-scopin
 %v = load %Value, ptr %p, align 8
 ```
 
-One GEP + load — identical to a C struct field access. Every declared,
+One GEP + load, identical to a C struct field access. Every declared,
 non-hooked property compiles to this, always. Hashtables are involved only
 for dynamic properties and `__get`/`__set`.
 
 A hooked property (PHP 8.4) compiles to a call through the hook's vtable
 slot instead; `virtual` properties have no backing slot at all. The
 plain/hooked distinction is known at class link time, so the access form is
-chosen at compile time — no runtime check.
+chosen at compile time, no runtime check.
 
 ---
 
@@ -107,7 +107,7 @@ chosen at compile time — no runtime check.
 %r     = call %Value %fn(ptr %obj, ...)
 ```
 
-Two dependent loads — the cost of a C++ virtual call. `!invariant.load` on
+Two dependent loads: the cost of a C++ virtual call. `!invariant.load` on
 the class pointer is sound because an object's class never changes after
 construction; LLVM may hoist and CSE the load freely.
 
@@ -123,7 +123,7 @@ The called class arrives as a hidden argument through the call chain:
 
 Branch-free: a class with no static overrides simply has `static_vtbl`
 pointing at its parent's table. `self::`, `parent::`, and explicit
-`Foo::bar()` never reach this path — they are direct calls.
+`Foo::bar()` never reach this path: they are direct calls.
 
 ### Interface call — interface known, slot 2
 
@@ -169,7 +169,7 @@ means genuine polymorphism at that site.
 
 ## Allocation
 
-`new User()` in the request arena — bump pointer inline:
+`new User()` in the request arena, bump pointer inline:
 
 ```llvm
 %cur  = load ptr, ptr @arena.bump
@@ -185,7 +185,7 @@ commit:
   call void @User__construct(ptr %cur, ...)      ; constructor known → direct
 ```
 
-Roughly five instructions per object — an order of magnitude cheaper than
+Roughly five instructions per object: an order of magnitude cheaper than
 `malloc`.
 
 ---
@@ -200,7 +200,7 @@ Roughly five instructions per object — an order of magnitude cheaper than
    then ordinary inlining erases the call entirely.
 3. **`!invariant.load` on the class pointer**: hoistable out of loops,
    CSE-able across accesses.
-4. **`instanceof` in O(1)**: Cohen display — each class stores an array of
+4. **`instanceof` in O(1)**: Cohen display; each class stores an array of
    its ancestors indexed by depth; the check is one load + compare instead
    of walking the parent chain. Interface checks: sorted-array search over
    `interfaces` + inline cache.
@@ -210,5 +210,5 @@ Roughly five instructions per object — an order of magnitude cheaper than
    hash precomputed (see classes.md).
 
 The `%Value` type used throughout is the 16-byte scalar/reference
-representation — its design (tagging, strings, arrays, COW) is a separate
+representation; its design (tagging, strings, arrays, COW) is a separate
 RFC.

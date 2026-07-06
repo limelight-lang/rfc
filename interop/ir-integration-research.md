@@ -53,12 +53,12 @@ If Limelight needs to call `Foo<MyPhpObject>` from C++ or `process::<MyPhpValue>
 
 ### In-memory compilation (C++)
 
-Clang supports compilation from an `llvm::MemoryBuffer` — no filesystem required:
+Clang supports compilation from an `llvm::MemoryBuffer`, no filesystem required:
 
 1. Generate a C++ snippet at runtime: `template class Foo<MyPhpObject>;`
 2. Feed it to `CompilerInstance` via `MemoryBuffer`
 3. Receive an `llvm::Module*` in memory
-4. Merge it into Limelight's module with `llvm::Linker::linkModules()` — also in memory
+4. Merge it into Limelight's module with `llvm::Linker::linkModules()`, also in memory
 
 This is the cleanest path for JIT use cases where PHP types are only known at runtime.
 
@@ -115,7 +115,7 @@ ThinLTO is used by **Mozilla Firefox in production** since 2019 to achieve cross
 - Vtables appear as `@_ZTV<ClassName>` globals. They are only emitted in the TU that defines the first non-inline virtual method.
 - RTTI appears as `@_ZTI<ClassName>` (type info) and `@_ZTS<ClassName>` (type string). Only present in the owning TU.
 - Name mangling: Clang uses Itanium C++ ABI. Rust uses its own scheme. Both are opaque to the linker as long as symbols resolve.
-- Calling a C++ virtual method from external IR requires loading the vtable slot explicitly — it is not a simple direct call.
+- Calling a C++ virtual method from external IR requires loading the vtable slot explicitly; it is not a simple direct call.
 
 ---
 

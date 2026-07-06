@@ -17,18 +17,18 @@ Value representation for scalars, strings, and arrays is covered separately. Mem
 +4  flags     u32  (atomic)
 ```
 
-**Why**: retain/release becomes a single type-agnostic code path — it operates on offset 0 of any counted entity without knowing its type. Zend (`zend_refcounted_h`) and CPython (`ob_refcnt` first) use the same layout for the same reason.
+**Why**: retain/release becomes a single type-agnostic code path: it operates on offset 0 of any counted entity without knowing its type. Zend (`zend_refcounted_h`) and CPython (`ob_refcnt` first) use the same layout for the same reason.
 
 ### Flags layout
 
 | Bits | Meaning |
 |------|---------|
 | 0–1 | Memory category: `00` GC heap, `01` request arena, `10` long-lived, `11` immortal |
-| 2–3 | GC state: `LIVE` / `SCANNING` / `DEAD` — CAS handoff field (see [heap-design.md](../gc/heap-design.md)) |
+| 2–3 | GC state: `LIVE` / `SCANNING` / `DEAD`, the CAS handoff field (see [heap-design.md](../gc/heap-design.md)) |
 | 4–5 | Cycle collector color |
 | 6 | Cycle collector buffered bit |
 | 7 | Has weak references (side table exists) |
-| 8 | Has destructor with side effects — arena must invoke it before reset |
+| 8 | Has destructor with side effects; arena must invoke it before reset |
 | 9–31 | Reserved |
 
 The retain/release fast path is a single branch covering both arenas and immortal objects:
@@ -45,7 +45,7 @@ This implements the immortal-object and arena-scoping optimizations from [arc-op
 
 ```
 +0   refcounted header                      (8 B)
-+8   class — pointer to Class descriptor    (8 B)
++8   class: pointer to Class descriptor     (8 B)
 +16  declared property slots, fixed offsets
 ```
 
@@ -53,22 +53,22 @@ An object instance contains only per-instance state: refcount, flags, and proper
 
 The class pointer is required at runtime because PHP is dynamically typed:
 
-- `$obj->foo()` on an untyped receiver — the vtable can only be found through the object itself
-- `instanceof`, `get_class()` — read the pointer directly
-- GC scanning — the property layout (which slots hold references) is described by the class
-- destruction — `__destruct` is found through the class
+- `$obj->foo()` on an untyped receiver: the vtable can only be found through the object itself
+- `instanceof`, `get_class()`: read the pointer directly
+- GC scanning: the property layout (which slots hold references) is described by the class
+- destruction: `__destruct` is found through the class
 
-Declared properties occupy fixed slots at offsets computed at class link time. `$this->x` with a known type compiles to a load/store at a constant offset — no hashtable involved.
+Declared properties occupy fixed slots at offsets computed at class link time. `$this->x` with a known type compiles to a load/store at a constant offset, no hashtable involved.
 
-**Class references are full 8-byte pointers — final decision.** Compressed class ids (u32 index into a global class table, as in the JVM) were considered and rejected: the 4 saved bytes per object do not justify an extra dependent load on every dispatch and a global table on the hottest path. Simpler and more flexible.
+**Class references are full 8-byte pointers (final decision).** Compressed class ids (u32 index into a global class table, as in the JVM) were considered and rejected: the 4 saved bytes per object do not justify an extra dependent load on every dispatch and a global table on the hottest path. Simpler and more flexible.
 
-**No object table.** Objects are referenced only by direct pointers — there is no analog of Zend's object store with handles. PHP 7 itself moved object access from handles to direct pointers for performance; the store's remaining duties are covered differently in Limelight: object enumeration by linear Immix block scanning (see [heap-design.md](../gc/heap-design.md)), shutdown/arena-reset destructors by the has-destructor flag bit, weak references by side tables. Non-moving GC means object addresses are stable for the object's lifetime, so `spl_object_id()` can be derived from the address.
+**No object table.** Objects are referenced only by direct pointers: there is no analog of Zend's object store with handles. PHP 7 itself moved object access from handles to direct pointers for performance; the store's remaining duties are covered differently in Limelight: object enumeration by linear Immix block scanning (see [heap-design.md](../gc/heap-design.md)), shutdown/arena-reset destructors by the has-destructor flag bit, weak references by side tables. Non-moving GC means object addresses are stable for the object's lifetime, so `spl_object_id()` can be derived from the address.
 
 ---
 
 ## Class Descriptor
 
-**Decision**: One descriptor per class, allocated in the long-lived arena at class link time. Its address is stable for the lifetime of the process — this is the foundation for inline caches (see below).
+**Decision**: One descriptor per class, allocated in the long-lived arena at class link time. Its address is stable for the lifetime of the process; this is the foundation for inline caches (see below).
 
 ### Fields
 
@@ -77,13 +77,13 @@ Hot part (touched by dispatch and property access):
 | Field | Purpose |
 |-------|---------|
 | `flags` | `final`, `abstract`, `interface` + magic-method presence bitmask (`__call`, `__get`, `__set`, `__destruct`, …) |
-| `parent` | Parent class — inheritance chain for `instanceof`, `parent::`, vtable construction |
+| `parent` | Parent class: inheritance chain for `instanceof`, `parent::`, vtable construction |
 | `object_size` | Allocation size for instances |
 | `prop_layout` | Property table: name → (offset, type, hook flags) |
 | `interfaces` | Sorted array: interface id → itable pointer |
-| `methods` | Hashtable: name → method — slow path lookup; also the source for building subclass vtables |
+| `methods` | Hashtable: name → method; slow path lookup, also the source for building subclass vtables |
 | `statics` | Static properties and class constants |
-| `static_vtbl` | Static-method table pointer — own table only when the class overrides an inherited static method, otherwise points to the parent's table (see below) |
+| `static_vtbl` | Static-method table pointer; own table only when the class overrides an inherited static method, otherwise points to the parent's table (see below) |
 | `vtbl[]` | **Inline trailing array** of code pointers |
 
 Cold part (reached via a metadata pointer):
@@ -92,11 +92,11 @@ Cold part (reached via a metadata pointer):
 |-------|---------|
 | `name` | Class name string |
 | `reflection` | Attributes, doc comments, declaration info |
-| `traits` | List of used traits — reflection only (see below) |
+| `traits` | List of used traits; reflection only (see below) |
 
 ### Inline trailing vtable
 
-The vtable is not a separately allocated table — it is the tail of the descriptor itself. A virtual call is two dependent loads:
+The vtable is not a separately allocated table: it is the tail of the descriptor itself. A virtual call is two dependent loads:
 
 ```
 class = obj->class
@@ -111,7 +111,7 @@ All class metadata lives in the long-lived arena. Internal references between me
 
 ### Traits
 
-Traits are flattened into the class at link time — their methods become ordinary class methods with ordinary vtable slots. The runtime has **no trait mechanism at all**. The list of used traits is kept only in reflection metadata for `getTraits()`.
+Traits are flattened into the class at link time: their methods become ordinary class methods with ordinary vtable slots. The runtime has **no trait mechanism at all**. The list of used traits is kept only in reflection metadata for `getTraits()`.
 
 ---
 
@@ -122,17 +122,17 @@ Slot assignment rules, applied at class link time:
 - A subclass inherits the parent's slot layout unchanged: inherited methods keep their indices.
 - New virtual methods are appended after the parent's slots.
 - An override writes its function pointer into the existing slot.
-- **Private methods get no slot** — they are not polymorphic in PHP and always compile to direct calls.
+- **Private methods get no slot**: they are not polymorphic in PHP and always compile to direct calls.
 - **Final methods occupy a slot** (uniform layout) but calls devirtualize to direct calls whenever the static type is known.
-- **Property hooks occupy vtable slots** like methods — this gives hook inheritance and overriding the ordinary vtable semantics for free.
+- **Property hooks occupy vtable slots** like methods: this gives hook inheritance and overriding the ordinary vtable semantics for free.
 
 ---
 
 ## Static Methods and Late Static Binding
 
-`self::foo()`, `parent::foo()`, and explicit `Foo::bar()` resolve at compile time to **direct calls** — no dispatch machinery involved. The only dynamic cases are `static::` (late static binding) and `$var::foo()`.
+`self::foo()`, `parent::foo()`, and explicit `Foo::bar()` resolve at compile time to **direct calls**, no dispatch machinery involved. The only dynamic cases are `static::` (late static binding) and `$var::foo()`.
 
-**Decision**: every class carries a `static_vtbl` pointer. A class that overrides at least one inherited static method gets its own physical table; a class that overrides nothing inherits the parent's table pointer — physical tables exist only where overriding actually happened. The call site is uniform and branch-free:
+**Decision**: every class carries a `static_vtbl` pointer. A class that overrides at least one inherited static method gets its own physical table; a class that overrides nothing inherits the parent's table pointer; physical tables exist only where overriding actually happened. The call site is uniform and branch-free:
 
 ```
 call cls->static_vtbl[slot](cls, ...)
@@ -140,19 +140,19 @@ call cls->static_vtbl[slot](cls, ...)
 
 A static method thus differs from an instance method only in its implicit first argument: the called class instead of `$this`. Slot indices are assigned at first declaration and never change down the hierarchy.
 
-Note on compilation order: a subclass is always linked with full knowledge of its parent (PHP requires the parent to be loaded first), so subclass tables are built correctly and finally. The reverse is not true — a parent's `static::foo()` call site is compiled before future subclasses exist (autoloading = open world). This is why the base dispatch always goes through `static_vtbl`, and compiling such sites as direct calls is only possible optimistically, with site patching when an overriding subclass loads (CHA-style; deferred to the JIT phase).
+Note on compilation order: a subclass is always linked with full knowledge of its parent (PHP requires the parent to be loaded first), so subclass tables are built correctly and finally. The reverse is not true: a parent's `static::foo()` call site is compiled before future subclasses exist (autoloading = open world). This is why the base dispatch always goes through `static_vtbl`, and compiling such sites as direct calls is only possible optimistically, with site patching when an overriding subclass loads (CHA-style; deferred to the JIT phase).
 
 ---
 
 ## Interface Tables (itables)
 
-**Decision**: An interface is an ABI contract — the declaration order of its methods permanently fixes their slot indices. A class carries **one itable per implemented interface**: an array of code pointers into the class's own methods, built eagerly at class link time. This is the COM model.
+**Decision**: An interface is an ABI contract: the declaration order of its methods permanently fixes their slot indices. A class carries **one itable per implemented interface**: an array of code pointers into the class's own methods, built eagerly at class link time. This is the COM model.
 
-Diamond composition is a non-issue by construction: PHP allows `interface C extends A, B`; a class implementing `C` simply carries three itables — for `C`, `A`, and `B`. Each itable has its own independent layout; nothing needs to be merged.
+Diamond composition is a non-issue by construction: PHP allows `interface C extends A, B`; a class implementing `C` simply carries three itables, for `C`, `A`, and `B`. Each itable has its own independent layout; nothing needs to be merged.
 
 ### Fat interface references
 
-**Decision**: a value statically typed as an interface is represented as a pair — COM's `interface_pointer_t` model:
+**Decision**: a value statically typed as an interface is represented as a pair, COM's `interface_pointer_t` model:
 
 ```
 struct iface_ref { object *obj; itable *itbl; }   // 16 bytes; registers/stack only
@@ -164,22 +164,22 @@ A call through an interface-typed receiver is then a single indirect call, with 
 call ref.itbl[slot](ref.obj, ...)
 ```
 
-The itable lookup does not disappear — it moves to the conversion point (object → interface), where it is usually free:
+The itable lookup does not disappear: it moves to the conversion point (object → interface), where it is usually free:
 
 | Conversion | Cost |
 |------------|------|
-| Concrete class known statically | itable address is a link-time constant — zero runtime cost |
+| Concrete class known statically | itable address is a link-time constant: zero runtime cost |
 | Interface → same interface | pass-through |
 | Interface → super-interface | `find` via `ref.obj->class` (IC applies) |
-| Untyped / `mixed` value → interface | `find(class->interfaces, interface_id)` — sorted array + IC |
+| Untyped / `mixed` value → interface | `find(class->interfaces, interface_id)`: sorted array + IC |
 
 The `find` step is the analog of COM's `QueryInterface`: a sorted array keyed by interface id (classes implement few interfaces, so a short array beats a hashtable on cache locality); an inline cache reduces it to one compare in hot code.
 
-**Fat references exist only in the calling convention** — registers, stack, interface-typed parameters and locals. In the heap (properties, array elements, `mixed`) an object reference is always a single 8-byte pointer; the fat reference is materialized at load/conversion time. Heap values stay uniform, while repeated calls through an interface-typed parameter cost exactly a C++ virtual call.
+**Fat references exist only in the calling convention**: registers, stack, interface-typed parameters and locals. In the heap (properties, array elements, `mixed`) an object reference is always a single 8-byte pointer; the fat reference is materialized at load/conversion time. Heap values stay uniform, while repeated calls through an interface-typed parameter cost exactly a C++ virtual call.
 
 ### Extension ("friend") interfaces
 
-**Decision**: any type — including primitives like `string` and `array` —
+**Decision**: any type, including primitives like `string` and `array`,
 can have interfaces attached to it from outside the type's declaration.
 This is a Limelight extension; PHP has no such feature. Precedents: C#
 extension methods, Kotlin extension functions, Rust trait impls on foreign
@@ -201,12 +201,12 @@ Chosen by the compiler per call site, in order of preference:
 
 | # | Static knowledge | Dispatch |
 |---|------------------|----------|
-| 1 | Final class or final method | Direct call — no indirection |
+| 1 | Final class or final method | Direct call, no indirection |
 | 2 | Concrete class known | `vtbl[slot]` |
-| 3 | Interface known | Fat reference: `ref.itbl[slot]` — lookup paid once at conversion, not per call |
+| 3 | Interface known | Fat reference: `ref.itbl[slot]`; lookup paid once at conversion, not per call |
 | 4 | Nothing (untyped receiver, `$obj->$name()`) | Inline cache → `methods` hashtable → `__call` |
 
-Most PHP code is untyped, so path 4 with an effective inline cache is not an edge case — it is the common case, and paths 1–3 are the reward for type hints.
+Most PHP code is untyped, so path 4 with an effective inline cache is not an edge case: it is the common case, and paths 1–3 are the reward for type hints.
 
 ---
 
@@ -215,17 +215,17 @@ Most PHP code is untyped, so path 4 with an effective inline cache is not an edg
 Each entry in `prop_layout` carries access flags: `plain` / `get-hook` / `set-hook` / `virtual`.
 
 - **Plain property, type known**: load/store at constant offset. The fast path.
-- **Hooked property** (PHP 8.4 `get`/`set` hooks): access compiles to a call through the hook's vtable slot. A `virtual` property has no backing slot at all — only hook calls.
+- **Hooked property** (PHP 8.4 `get`/`set` hooks): access compiles to a call through the hook's vtable slot. A `virtual` property has no backing slot at all, only hook calls.
 - **Type unknown**: property inline cache (cache the class pointer → offset or hook slot), same mechanism as method ICs. Standard practice in JS engines.
 - **`__get`/`__set`**: class-wide fallback, taken on `prop_layout` miss for classes whose magic-method bitmask has the corresponding bit set.
-- **Asymmetric visibility** (`private(set)`): compile-time check only — no runtime representation, the byte layout is identical.
-- **Dynamic properties**: only `stdClass` and classes marked `#[AllowDynamicProperties]` carry one hidden object slot holding a lazily-allocated hashtable (name → value). All other classes do not have the slot at all — zero cost for the common case.
+- **Asymmetric visibility** (`private(set)`): compile-time check only; no runtime representation, the byte layout is identical.
+- **Dynamic properties**: only `stdClass` and classes marked `#[AllowDynamicProperties]` carry one hidden object slot holding a lazily-allocated hashtable (name → value). All other classes do not have the slot at all; zero cost for the common case.
 
 ---
 
 ## Interned Names
 
-All names known at compile time — classes, methods, properties, interfaces — are interned into the long-lived arena as **immortal strings**: one string = one address for the lifetime of the process.
+All names known at compile time (classes, methods, properties, interfaces) are interned into the long-lived arena as **immortal strings**: one string = one address for the lifetime of the process.
 
 - Name equality = pointer compare, no `memcmp`.
 - The hash is computed once and stored next to the string.
@@ -241,8 +241,8 @@ Monomorphic IC per call site / property access site: cache the pair (class point
 
 Two already-made decisions make ICs unusually cheap in Limelight:
 
-1. **Non-moving GC** ([heap-design.md](../gc/heap-design.md)) — object and class addresses never change; a cached class pointer cannot be invalidated by relocation.
-2. **Classes are immutable after link** — PHP has no runtime monkey-patching of class methods. A conditionally-declared class (`if (...) { class A {} }`) produces a distinct descriptor at link time. Consequently ICs never require an invalidation mechanism.
+1. **Non-moving GC** ([heap-design.md](../gc/heap-design.md)): object and class addresses never change; a cached class pointer cannot be invalidated by relocation.
+2. **Classes are immutable after link**: PHP has no runtime monkey-patching of class methods. A conditionally-declared class (`if (...) { class A {} }`) produces a distinct descriptor at link time. Consequently ICs never require an invalidation mechanism.
 
 ---
 
@@ -252,6 +252,6 @@ Resolved design questions live in the sections above. Intentionally postponed:
 
 - **Optimistic devirtualization of `static::` call sites** with patching on subclass load: JIT phase.
 - **Interning of runtime-built name strings** (intern on first use vs hash-only matching): decide during stdlib work.
-- **Class-as-object model (metaclass)**: representing the class itself as an object implementing a runtime interface — `__new` as the allocator, `__dispose`, reflection entry point (see the design story). Needs full design before inclusion: interaction with the memory manager and the immutable-after-link guarantee that inline caches rely on.
+- **Class-as-object model (metaclass)**: representing the class itself as an object implementing a runtime interface: `__new` as the allocator, `__dispose`, reflection entry point (see the design story). Needs full design before inclusion: interaction with the memory manager and the immutable-after-link guarantee that inline caches rely on.
 
 Lowering of this model to concrete C structures and LLVM IR is specified in [lowering.md](lowering.md).

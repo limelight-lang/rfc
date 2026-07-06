@@ -28,13 +28,13 @@ a tri-color invariant violation:
 
 No gray path to `X` remains. The marker terminates with `X` white and
 frees a live object. Note that per-object state flags or CAS cannot
-catch this — `X` is never touched by the GC or deleted by the mutator;
+catch this: `X` is never touched by the GC or deleted by the mutator;
 it simply becomes invisible.
 
 ## The solution: Snapshot At The Beginning
 
 The collector promises to collect only what was **already garbage when
-the epoch started** — the logical snapshot. Everything reachable in the
+the epoch started** (the logical snapshot). Everything reachable in the
 snapshot stays live this epoch, even if the mutator drops it mid-epoch;
 it becomes *floating garbage*, collected next epoch.
 
@@ -49,16 +49,16 @@ The strategy hook installed into the unified store barrier slot
 
 ```
 ll_ref_store(slot, old, new):
-    category_barrier(slot, new)          # always — arenas
+    category_barrier(slot, new)          # always: arenas
     if marking_active and old is heap ref:
-        satb_queue.push(old)             # "this was in the snapshot — trace it"
+        satb_queue.push(old)             # "this was in the snapshot: trace it"
     retain(new); release(old)            # ARC layer
     *slot = new
 ```
 
 - The barrier reads the old value; it **never modifies the slot**.
 - The queue push is performed **by the mutator thread itself** into a
-  **thread-local** SATB queue — no cross-thread writes, no locks. The
+  **thread-local** SATB queue: no cross-thread writes, no locks. The
   marker drains full queue segments. This respects the rule that only
   the owning thread mutates its state; the GC thread only reads handed-
   off segments.
@@ -77,7 +77,7 @@ ll_ref_store(slot, old, new):
 2. SNAPSHOT     brief all-threads safepoint:
                   - scan stacks + globals → initial gray set
                   - set marking_active
-                (bounded by root count, not heap size — this is the only pause)
+                (bounded by root count, not heap size; this is the only pause)
 3. MARK         background marker traces from gray set;
                 mutator runs, deletion barrier feeds the queue;
                 marker drains SATB queues as additional gray sources
@@ -88,20 +88,20 @@ ll_ref_store(slot, old, new):
                 garbage → three-phase teardown, deferred-free honored
 ```
 
-Floating garbage (died during MARK) stays until the next epoch — the
+Floating garbage (died during MARK) stays until the next epoch: the
 standard SATB cost, bounded by epoch length.
 
 ## Integration with heap-design.md machinery
 
 Both coordination mechanisms defined in
-[heap-design.md](heap-design.md) exist **for this strategy** — under
+[heap-design.md](heap-design.md) exist **for this strategy**; under
 `rc-trace` the mutator is parked and the races never occur:
 
 - **CAS handoff (`LIVE / SCANNING / DEAD`)** resolves the
   delete-vs-scan race: a refcount hitting zero mid-epoch (mutator
   freeing) versus the marker scanning that object. One CAS decides the
-  winner. It does *not* — and is not meant to — protect the tri-color
-  invariant; that is the deletion barrier's job. The two are
+  winner. It does *not* protect the tri-color invariant, and is not
+  meant to; that is the deletion barrier's job. The two are
   complementary, not alternatives.
 - **Deferred-free bit**: while `marking_active`, frees queue instead of
   releasing memory, keeping the marker's view of block contents stable;
@@ -114,15 +114,15 @@ Both coordination mechanisms defined in
   arena escapes independently of the epoch.
 - **Sticky blocks** from arena-reset Mode B
   ([arena-reset.md](../memory/arena-reset.md)) are exactly the objects
-  with no refcount history — the tracing component of this strategy is
-  what manages them, as anticipated there.
-- A future LXR-style build (deferred RC, saturated 2-bit counts —
+  with no refcount history; the tracing component of this strategy
+  manages them, as anticipated there.
+- A future LXR-style build (deferred RC, saturated 2-bit counts; see
   [gc-research.md](gc-research.md)) would reuse this same SATB
   machinery; that remains research, not a committed strategy.
 
 ## What this strategy does not do
 
-- No moving, no compaction — the non-moving constraint holds; no read
+- No moving, no compaction: the non-moving constraint holds; no read
   barriers of any kind.
 - No insertion (incremental-update) barrier: SATB was chosen because
   the deletion barrier permits termination without rescanning mutated

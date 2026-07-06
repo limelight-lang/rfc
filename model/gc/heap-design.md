@@ -1,6 +1,6 @@
 # GC Heap Design Decisions
 
-> The collector itself is a pluggable build-time strategy — see
+> The collector itself is a pluggable build-time strategy; see
 > [strategies.md](strategies.md). This document owns the decisions that
 > hold across strategies (non-moving, block/line heap structure) and
 > the coordination machinery used by the concurrent strategy
@@ -26,7 +26,7 @@ This makes Immix's non-moving mode significantly better than classic mark-sweep 
 
 ## MMTK: One Available Backend
 
-**Decision (revised)**: MMTK is **not** the foundation — it is one
+**Decision (revised)**: MMTK is **not** the foundation; it is one
 pluggable backend behind the strategy contract (`mmtk:<plan>` in
 [strategies.md](strategies.md)), restricted to non-moving plans.
 Limelight's own strategies (`rc-trace`, `rc-satb`) own their heap
@@ -73,14 +73,14 @@ This is the approach used by MMTK, Immix, and LXR. Global object lists (as in Bo
 ## GC / Mutator Coordination: Lock-Free CAS Handoff
 
 **Scope**: this machinery belongs to the **concurrent strategy**
-(`rc-satb`, [satb.md](satb.md)) — it exists only when the mutator runs
+(`rc-satb`, [satb.md](satb.md)); it exists only when the mutator runs
 during a collection cycle. Under the default `rc-trace` the mutator is
 parked at a safepoint while marking runs, and none of these races occur.
 
 **What it does and does not solve**: the CAS handoff resolves the
 *delete-vs-scan* race (mutator freeing an object the marker is
 scanning). It does **not** maintain the tri-color invariant of
-concurrent marking — a mutator can hide a live object from the marker
+concurrent marking: a mutator can hide a live object from the marker
 without ever touching a state field. That correctness problem is owned
 by the SATB deletion barrier ([satb.md](satb.md)). The two mechanisms
 are complementary, not alternatives.

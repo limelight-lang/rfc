@@ -21,7 +21,7 @@ The number and types of arenas is not fixed. The architecture supports multiple 
 
 ## Request Arena
 
-The request arena is the degenerate case of an **actor-owned arena** —
+The request arena is the degenerate case of an **actor-owned arena**:
 a request is an actor that receives one message and dies
 ([actors.md](../../runtime/actors.md)). Long-lived actors own arenas
 with the same mechanics but repeated collection at message boundaries.
@@ -66,7 +66,7 @@ The category barrier is the strategy-independent layer of the **unified
 store barrier slot** ([strategies.md](../gc/strategies.md)): the
 compiler emits one hook per reference store, and the barrier composes
 there with ARC operations and, in the `rc-satb` build, the SATB
-deletion barrier ([satb.md](../gc/satb.md)) — one door, not two.
+deletion barrier ([satb.md](../gc/satb.md)). One door, not two.
 
 ### The dangerous direction: longer-lived ← shorter-lived
 

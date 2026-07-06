@@ -16,7 +16,7 @@ semantics:
 
 ```php
 #[Actor(gc: 'none')]
-class RequestHandler { ... }        // an actor — no new `actor` keyword
+class RequestHandler { ... }        // an actor, no new `actor` keyword
 
 class Node {
     #[Backedge] public ?Node $parent;   // cycle-shape hint for the GC
@@ -24,8 +24,8 @@ class Node {
 ```
 
 **2. Materialization (compiler → human).** The expensive analysis mode
-— whole-program, cross-autoload, possibly profile-assisted — writes
-its findings **back into the source code as the same attributes**. The
+(whole-program, cross-autoload, possibly profile-assisted) writes its
+findings **back into the source code as the same attributes**. The
 fast incremental compile then *reads* them as declarations and only
 verifies them locally.
 
@@ -44,15 +44,15 @@ MonkeyType applies runtime-observed types to Python source.
   the local facts; stale attributes are reported, re-inferred, never
   silently trusted. (Checker Framework's model.)
 - **Inferred is visible.** Materialized attributes live in the code:
-  reviewable in diffs, versioned in git, correctable by hand — unlike
+  reviewable in diffs, versioned in git, correctable by hand, unlike
   sidecar caches (GHC `.hi`, PGO profiles).
 - **No inferred-marker.** Materialization is a one-time codegen act:
   once an attribute is written into source, it is ordinary code owned
-  by the author — the compiler never rewrites or deletes it. When
+  by the author; the compiler never rewrites or deletes it. When
   analysis later disagrees with an attribute, the divergence surfaces
   through the compiler's **diagnostics system** (warning or error;
   severity per attribute), and a human resolves it. Provenance
-  verification via signature sidecar files is a parked idea —
+  verification via signature sidecar files is a parked idea,
   deliberately not now.
 
 ---
@@ -60,7 +60,7 @@ MonkeyType applies runtime-observed types to Python source.
 ## Why this principle is load-bearing
 
 1. **The entire PHP toolchain keeps working.** Parsers, IDEs,
-   formatters, Psalm/PHPStan, composer tooling — none of them break on
+   formatters, Psalm/PHPStan, composer tooling: none of them break on
    a Limelight codebase, because there is nothing new to parse.
 2. **Graceful degradation is possible.** Plain PHP ignores
    un-reflected attributes; a Limelight program remains *runnable* by
@@ -70,7 +70,7 @@ MonkeyType applies runtime-observed types to Python source.
 3. **Attributes are the persistent cache of whole-program analysis.**
    This closes the open problem in
    [static-lifetimes.md](model/memory/static-lifetimes.md): analysis
-   cannot see across unseen autoload boundaries — but materialized
+   cannot see across unseen autoload boundaries, but materialized
    attributes in already-analyzed code travel with that code. Fast
    builds stay fast; deep analysis runs when it runs.
 4. **The ecosystem already votes for this.** PHP's de-facto extension
@@ -90,7 +90,7 @@ MonkeyType applies runtime-observed types to Python source.
 | generics (`#[Template]`-family, vocabulary aligned with Psalm/PHPStan) | declared | parametric types without new syntax | future RFC (backlog) |
 
 **Decision**: all Limelight attributes live under the project's own
-namespace — `Limelight\` (`#[Limelight\Actor]`, or `#[Actor]` via a
+namespace `Limelight\` (`#[Limelight\Actor]`, or `#[Actor]` via a
 normal `use Limelight\Actor;` import). No collision with userland
 attributes is possible; the attribute classes themselves ship as a
 tiny inert composer package so plain PHP tooling resolves them.
@@ -98,7 +98,7 @@ tiny inert composer package so plain PHP tooling resolves them.
 ## Materialization boundary
 
 **Decision**: materialization edits only the project's own source
-tree. Vendor code is never touched — **packages ship with their
+tree. Vendor code is never touched: **packages ship with their
 attributes already materialized** by their own authors' analysis runs.
 Publishing materialized attributes is part of publishing a package;
 un-materialized dependencies simply compile with worst-case

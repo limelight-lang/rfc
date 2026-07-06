@@ -10,15 +10,15 @@ strategy behind a fixed contract**, selected **at build time**.
 - The runtime and codegen define the contract (below) once.
 - Each strategy implements the contract; the build selects the
   compiled-in set and the default. **Actors** may bind a different
-  collector from that set per class —
-  `#[Actor(gc: ...)]` ([actors.md](../../runtime/actors.md)); freely
-  mixable as long as only the collector differs, not the store path.
+  collector from that set per class via `#[Actor(gc: ...)]`
+  ([actors.md](../../runtime/actors.md)); freely mixable as long as
+  only the collector differs, not the store path.
 - Because selection is at build time, the strategy's hot-path code is
-  specialized and inlined — a NoGC or pure-RC build physically contains
+  specialized and inlined: a NoGC or pure-RC build physically contains
   no flag checks or dispatch in its store paths. (Same approach as
   Ruby's modular GC.)
 
-MMTK is **not** the foundation of this design — it is one backend that
+MMTK is **not** the foundation of this design; it is one backend that
 can sit behind the contract (see the registry below).
 
 ---
@@ -40,7 +40,7 @@ Its body is composed at build time from up to three layers:
 
 | Layer | Owner | Present |
 |---|---|---|
-| Category barrier (cross-arena check, remembered set) | arenas — strategy-independent | always ([arenas.md](../memory/arenas.md)) |
+| Category barrier (cross-arena check, remembered set) | arenas, strategy-independent | always ([arenas.md](../memory/arenas.md)) |
 | RC operations (`retain(new)` / `release(old)`) | ARC | in every RC-based strategy, after compiler pairing elimination |
 | Strategy hook (e.g. SATB deletion barrier) | active strategy | only if the strategy defines one |
 
@@ -50,10 +50,10 @@ stop-the-thread tracing) contribute zero instructions to it.
 
 Objects whose lifetime the compiler schedules statically (tiers 1–2 of
 [static-lifetimes.md](../memory/static-lifetimes.md)) bypass the
-strategy entirely — no RC layer, no strategy hook; only the category
+strategy entirely: no RC layer, no strategy hook; only the category
 barrier remains where a cross-arena store is possible.
 
-The COW check ([values.md](../values.md)) is *not* part of this slot —
+The COW check ([values.md](../values.md)) is *not* part of this slot:
 it guards entity mutation, not reference stores, and is orthogonal to
 the strategy.
 
@@ -65,7 +65,7 @@ The compiler inserts **poll safepoints** (load a global flag + branch,
 the thread's roots are enumerable.
 
 - Strategies that never stop threads and never scan stacks (NoGC, pure
-  RC) compile the poll away entirely — build-time selection again.
+  RC) compile the poll away entirely; build-time selection again.
 - These are cheap poll safepoints, **not** LLVM statepoints. The
   non-moving decision ([heap-design.md](heap-design.md)) stands:
   objects never relocate, so no stack maps or `gc.relocate` plumbing.
@@ -74,7 +74,7 @@ the thread's roots are enumerable.
 
 The strategy owns the allocator for the `GcHeap` memory category only.
 Request and long-lived arenas allocate independently of the strategy
-([arenas.md](../memory/arenas.md)) and are **invisible to it** — no
+([arenas.md](../memory/arenas.md)) and are **invisible to it**: no
 strategy scans or collects arena objects.
 
 ### 4. Object metadata and teardown
@@ -91,7 +91,7 @@ Strategies consume, not define, the object model:
 
 Per [heap-design.md](heap-design.md), objects never relocate. A
 strategy (or MMTK plan) that moves objects does not fit the contract.
-Arena-reset evacuation is not an exception — it is an arena-boundary
+Arena-reset evacuation is not an exception: it is an arena-boundary
 event with no live stack, outside any strategy
 ([arena-reset.md](../memory/arena-reset.md)).
 
@@ -104,7 +104,7 @@ event with no live stack, outside any strategy
 | `nogc` | bump allocation, never frees | leaks | none | benchmarks baseline; short scripts |
 | `rc` | ARC + arenas | **leaks cycles** | none | short CLI where cycles don't accumulate |
 | `rc-trace` **(default)** | ARC + arenas + stop-the-thread cycle tracing | collected | small, bounded by live general heap | web workloads; the first implementation |
-| `rc-satb` | ARC + arenas + concurrent SATB marking | collected | near-zero | latency-sensitive daemons — see [satb.md](satb.md) |
+| `rc-satb` | ARC + arenas + concurrent SATB marking | collected | near-zero | latency-sensitive daemons, see [satb.md](satb.md) |
 | `mmtk:<plan>` | MMTK backend via `VMBinding` adapter | per plan | per plan | experimentation; non-moving plans only |
 
 `nogc` is what the echo compiler ships today; `rc` is approximately
@@ -120,17 +120,17 @@ elephc's model; `rc-trace` is the Zend architecture done right
    immortal flags, arena scoping per
    [arc-optimizations.md](../memory/arc-optimizations.md).
 2. **Arenas absorb the bulk.** Request-scoped objects carry no
-   refcounts and die in O(1) at arena reset — the tracer never sees
+   refcounts and die in O(1) at arena reset; the tracer never sees
    them.
 3. **Stop-the-thread tracing collects cycles only.** Triggered by
    threshold (candidate-root buffer fill, as Zend's 10K, to be
    calibrated). The thread parks at a safepoint; the marker traces the
-   general heap from roots; unmarked refcounted islands are cycles —
-   freed through normal teardown. The pause is proportional to the
+   general heap from roots; unmarked refcounted islands are cycles and
+   are freed through normal teardown. The pause is proportional to the
    *live general heap*, which arenas keep small.
 
 Because the mutator is parked while marking runs, `rc-trace` needs
-**no store-barrier hook, no snapshot, no mark-phase coordination** —
+**no store-barrier hook, no snapshot, no mark-phase coordination**:
 the graph cannot change under the marker. That simplicity is why it is
 first.
 
@@ -141,6 +141,6 @@ the mutator, and correctness during marking is maintained by an SATB
 deletion barrier in the store slot. Design: [satb.md](satb.md).
 
 The GC/mutator coordination machinery in
-[heap-design.md](heap-design.md) — the lock-free CAS handoff and the
-deferred-free bit — belongs to this strategy: those races only exist
+[heap-design.md](heap-design.md) (the lock-free CAS handoff and the
+deferred-free bit) belongs to this strategy: those races only exist
 when the mutator runs during a collection cycle.

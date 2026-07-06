@@ -7,7 +7,7 @@
 > (ARC + arenas + stop-the-thread cycle tracing), with concurrent SATB
 > as the low-latency strategy ([satb.md](satb.md)); MMTK is one
 > backend, not the foundation; LLVM statepoints are ruled out by the
-> non-moving decision ([heap-design.md](heap-design.md)) — cheap poll
+> non-moving decision ([heap-design.md](heap-design.md)), cheap poll
 > safepoints suffice. The Phase 1→2→3 ladder maps onto the strategy
 > registry rather than onto successive rewrites of a single collector.
 

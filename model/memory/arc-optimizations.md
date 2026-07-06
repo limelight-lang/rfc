@@ -1,7 +1,7 @@
 # ARC Optimizations
 
 > Items 1 and 3 are superseded by
-> [static-lifetimes.md](static-lifetimes.md) — the compiler now tracks
+> [static-lifetimes.md](static-lifetimes.md): the compiler now tracks
 > ownership and moves as a general tier ladder (stack / scheduled drop /
 > runtime ARC), of which pairing elimination and escape analysis are
 > the degenerate rungs. Deferred ARC (item 2) is repositioned there as

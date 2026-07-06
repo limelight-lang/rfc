@@ -79,6 +79,23 @@ Applied at *pack time*, the one place references cross:
 | **share** | immortal and frozen-COW values | pass by reference; such values carry no mutable state and no non-atomic counts (interned strings, enum cases; cf. Erlang's shared refcounted binaries) |
 | **actor handle** | reference *to an actor* | a shareable opaque handle; the mailbox pointer itself is the only thing shared |
 
+### Allocation-site selection
+
+The compiler computes, per allocation site, whether the object is
+**actor-local** or **will be transferred** to another actor. A proven
+transferable object is allocated **directly in the general heap**, not
+in the actor's arena: the eventual move is then a pointer handoff
+through the queue, with no copy and no block reparenting. Ownership
+still transfers wholly (sender's bindings die), so serial access is
+preserved and the object needs no atomic counts.
+
+This is the same discipline as arena-promotion
+([arena-promotion.md](../model/memory/arena-promotion.md)): static
+analysis allocates in the destination directly, and the pack-time
+machinery (copy, or block reparenting for arena-born isolated
+subgraphs) remains the runtime fallback for what analysis could not
+prove.
+
 ## Actor Memory
 
 - The actor owns its arenas; everything it allocates lands there

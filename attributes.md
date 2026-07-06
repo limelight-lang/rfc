@@ -89,8 +89,11 @@ MonkeyType applies runtime-observed types to Python source.
 | acyclicity (`ACYCLIC` class bit) | inferred | cycle-candidate filtering (Level A) | [model/memory/static-lifetimes.md](model/memory/static-lifetimes.md) |
 | generics (`#[Template]`-family, vocabulary aligned with Psalm/PHPStan) | declared | parametric types without new syntax | future RFC (backlog) |
 
-All Limelight attributes live in a reserved namespace (exact name TBD)
-so they can never collide with userland attributes.
+**Decision**: all Limelight attributes live under the project's own
+namespace — `Limelight\` (`#[Limelight\Actor]`, or `#[Actor]` via a
+normal `use Limelight\Actor;` import). No collision with userland
+attributes is possible; the attribute classes themselves ship as a
+tiny inert composer package so plain PHP tooling resolves them.
 
 ## Materialization boundary
 
@@ -104,7 +107,6 @@ attributes in a package are thus also a quality signal.
 
 ## Open questions
 
-- Namespace choice for the Limelight attribute vocabulary.
 - Diagnostics severity policy per attribute (when is a stale attribute
   a warning, when an error).
 - Generics-via-attributes needs its own RFC: variance, reification vs

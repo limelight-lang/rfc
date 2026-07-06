@@ -38,8 +38,17 @@ into proper RFCs when picked up.
 - **`?float` niche via non-canonical NaN payloads** — would shrink
   `?float` back to 8 bytes; requires NaN canonicalization on stores;
   considered too subtle for phase 1 ([values.md](model/values.md)).
-- **GC phases 2–3** — concurrent marking, stack deferral, full LXR
-  ([gc-research.md](model/gc/gc-research.md)).
+- **Deferred RC / LXR-style strategy** — stack deferral, 2-bit
+  saturating counts as a future build strategy reusing the SATB
+  machinery ([satb.md](model/gc/satb.md),
+  [gc-research.md](model/gc/gc-research.md)).
+- **SATB epoch trigger and queue overflow policy** — calibrate the
+  candidate-bytes threshold; segment size and marker backpressure
+  ([satb.md](model/gc/satb.md)).
+- **Safepoint placement and barrier-slot codegen spec** — exact poll
+  sites, how `ll_ref_store` layers are composed and inlined per
+  strategy at build time ([strategies.md](model/gc/strategies.md));
+  belongs with the execution pipeline RFC.
 
 ## Explicit pack/optimize operation for long-lived structures
 

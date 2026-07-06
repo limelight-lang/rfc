@@ -57,6 +57,12 @@ are compared — 2 bits in each flags word, one XOR + test, and the flags
 are already loaded by retain. Same category (the overwhelmingly common
 case): no extra work. Different categories: escape handling.
 
+The category barrier is the strategy-independent layer of the **unified
+store barrier slot** ([strategies.md](../gc/strategies.md)): the
+compiler emits one hook per reference store, and the barrier composes
+there with ARC operations and, in the `rc-satb` build, the SATB
+deletion barrier ([satb.md](../gc/satb.md)) — one door, not two.
+
 ### The dangerous direction: longer-lived ← shorter-lived
 
 A heap or long-lived object storing a reference to a request-arena object

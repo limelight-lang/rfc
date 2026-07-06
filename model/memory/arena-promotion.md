@@ -37,6 +37,10 @@ Cases that fall through to the write barrier:
 
 ### 2. Write Barrier Fallback (runtime)
 
+This check is emitted through the unified store barrier slot
+([strategies.md](../gc/strategies.md)) — the same hook that carries ARC
+operations and any strategy barrier.
+
 Every pointer store checks whether a cross-arena assignment is happening. If a request-arena object is being stored into a long-lived slot — the object is copied to the long-lived arena and the slot is updated to the new address.
 
 #### Arena tag in pointer (fast check)

@@ -1,5 +1,16 @@
 # GC Research: ARC, Cycle Collection, and Hybrid Strategies for Limelight
 
+> **Status: research.** The survey below stands, but the
+> recommendation in §7 has been superseded by decisions:
+> the collector is a pluggable build-time strategy
+> ([strategies.md](strategies.md)); the default is `rc-trace`
+> (ARC + arenas + stop-the-thread cycle tracing), with concurrent SATB
+> as the low-latency strategy ([satb.md](satb.md)); MMTK is one
+> backend, not the foundation; LLVM statepoints are ruled out by the
+> non-moving decision ([heap-design.md](heap-design.md)) — cheap poll
+> safepoints suffice. The Phase 1→2→3 ladder maps onto the strategy
+> registry rather than onto successive rewrites of a single collector.
+
 ---
 
 ## 1. Swift ARC — Low-Level Mechanics

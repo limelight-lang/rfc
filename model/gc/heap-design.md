@@ -1,5 +1,11 @@
 # GC Heap Design Decisions
 
+> The collector itself is a pluggable build-time strategy — see
+> [strategies.md](strategies.md). This document owns the decisions that
+> hold across strategies (non-moving, block/line heap structure) and
+> the coordination machinery used by the concurrent strategy
+> ([satb.md](satb.md)).
+
 ## Object Movement: Non-Moving
 
 **Decision**: Limelight uses a non-moving GC. Objects are never relocated after allocation. Memory addresses are stable for the lifetime of an object.
@@ -18,13 +24,18 @@ This makes Immix's non-moving mode significantly better than classic mark-sweep 
 
 ---
 
-## Chosen Implementation: MMTK
+## MMTK: One Available Backend
 
-**Decision**: Limelight uses [MMTK (Memory Management Toolkit)](https://www.mmtk.io) as the GC implementation.
+**Decision (revised)**: MMTK is **not** the foundation — it is one
+pluggable backend behind the strategy contract (`mmtk:<plan>` in
+[strategies.md](strategies.md)), restricted to non-moving plans.
+Limelight's own strategies (`rc-trace`, `rc-satb`) own their heap
+directly; the block/line structure below is shared vocabulary either
+way.
 
-MMTK is a Rust-based framework that provides production-quality GC plans including exactly the algorithms chosen for Limelight: Immix, StickyImmix, ConcurrentImmix, and LXR.
+MMTK is a Rust-based framework that provides production-quality GC plans including Immix, StickyImmix, ConcurrentImmix, and LXR.
 
-**Why MMTK:**
+**Why MMTK as a backend:**
 - Written in Rust — natural fit for the Limelight stack
 - Implements all chosen algorithms out of the box
 - Used in production: OpenJDK, Ruby 3.4, Julia
@@ -61,6 +72,19 @@ This is the approach used by MMTK, Immix, and LXR. Global object lists (as in Bo
 
 ## GC / Mutator Coordination: Lock-Free CAS Handoff
 
+**Scope**: this machinery belongs to the **concurrent strategy**
+(`rc-satb`, [satb.md](satb.md)) — it exists only when the mutator runs
+during a collection cycle. Under the default `rc-trace` the mutator is
+parked at a safepoint while marking runs, and none of these races occur.
+
+**What it does and does not solve**: the CAS handoff resolves the
+*delete-vs-scan* race (mutator freeing an object the marker is
+scanning). It does **not** maintain the tri-color invariant of
+concurrent marking — a mutator can hide a live object from the marker
+without ever touching a state field. That correctness problem is owned
+by the SATB deletion barrier ([satb.md](satb.md)). The two mechanisms
+are complementary, not alternatives.
+
 **Decision**: GC and mutator coordinate ownership of objects via a single atomic CAS on the object's state field. Neither side waits for the other.
 
 ### Protocol
@@ -89,7 +113,7 @@ Because the GC enumerates objects by scanning blocks linearly, it encounters obj
 - Uncontended CAS: ~10–40 cycles
 - Contended CAS (rare): ~100–300 cycles + cache line bounce
 
-This is faster than any stop-the-world approach. Compared to write-barrier + SATB, the cost depends on contention frequency — for typical PHP workloads where GC cycles are infrequent relative to mutator activity, contention is low and CAS is cheap.
+For typical PHP workloads where GC cycles are infrequent relative to mutator activity, contention is low and CAS is cheap. (This is not a substitute for the SATB deletion barrier — see the scope note above; they guard different races.)
 
 ### What happens when GC wins but object becomes unreachable during scan
 

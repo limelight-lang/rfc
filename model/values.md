@@ -104,29 +104,43 @@ br %d == NULL → %coerce, else → %add
 ```
 
 - **Uninitialized typed properties**: **Decision** — the `UNINIT` state
-  is kept only where it can be encoded for free; a slot is never widened
-  to carry it.
+  never widens a slot. It is encoded in-slot where that is free, and in
+  a per-object sidecar **init bitmap** otherwise.
 
   | Slot | `UNINIT` encoding | Cost |
   |------|-------------------|------|
   | `?int`, `?float` | third discriminant value (the byte already exists) | free |
   | `?object`, `?string`, `?array` | sentinel pointer `1` (the null pointer already means PHP `null`) | free |
   | non-nullable pointer | null pointer | free |
-  | non-nullable scalar | **not represented** | would widen 8 → 16 B |
+  | non-nullable scalar | bit in the init bitmap; the slot itself is zero-initialized | ~free — bits usually fit the object's alignment padding |
 
-  Reading an `UNINIT` slot compiles to throwing `Error` (PHP semantics).
-  Where definite-assignment analysis proves initialization (e.g.
-  constructor promotion), the state is never materialized and the check
-  disappears.
+  The bitmap exists only in classes that have non-nullable scalar
+  properties escaping definite-assignment analysis; where the analysis
+  proves initialization (e.g. constructor promotion), no state is
+  materialized at all.
 
-  **Deliberate deviation**: a non-nullable scalar property whose
-  initialization definite-assignment analysis cannot prove is
-  zero-initialized; reading it before the first write yields `0` / `0.0`
-  instead of PHP's `Error`, and `unset()` cannot return it to the
-  uninitialized state. Doubling every escaping `int $x` slot to catch
-  this one case was judged not worth the memory. Lazy-proxy patterns
-  that rely on uninitialized state (à la Doctrine) use object/nullable
-  properties, which keep full `UNINIT` support.
+  The bitmap is **not consulted on ordinary reads** — the hot path pays
+  nothing. It is maintained and queried only by operations explicitly
+  about initialization state:
+
+  - a write to a tracked property sets its bit (one `or` store);
+  - `unset()` clears the bit, so `unset()` + `isset()` behave as in PHP;
+  - `isset()` and `ReflectionProperty::isInitialized()` read the bit;
+  - `get_object_vars()`, `(array)` casts, `var_dump()`, `serialize()`
+    and `foreach` over an object skip properties whose bit is clear,
+    matching PHP's skipping of uninitialized properties. Lazy-proxy
+    patterns (à la Doctrine) that probe state via reflection work
+    unchanged.
+
+  For the in-slot-encoded kinds (all other rows) reading `UNINIT`
+  throws `Error` per PHP semantics — the read decodes the slot anyway,
+  so the check is free.
+
+  **Deliberate deviation** — the one thing the unchecked read costs:
+  directly reading an uninitialized non-nullable scalar property yields
+  `0` / `0.0` instead of throwing `Error`. Guarding that would put a
+  bitmap test on every escaping `int $x` read, which is exactly the
+  cost this design refuses.
 
   `UNINIT` is a slot state, never a language-level type.
 

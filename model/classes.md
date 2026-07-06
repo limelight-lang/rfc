@@ -150,15 +150,32 @@ Note on compilation order: a subclass is always linked with full knowledge of it
 
 Diamond composition is a non-issue by construction: PHP allows `interface C extends A, B`; a class implementing `C` simply carries three itables — for `C`, `A`, and `B`. Each itable has its own independent layout; nothing needs to be merged.
 
-Call through an interface-typed receiver:
+### Fat interface references
+
+**Decision**: a value statically typed as an interface is represented as a pair — COM's `interface_pointer_t` model:
 
 ```
-class  = obj->class
-itable = find(class->interfaces, interface_id)   // sorted array; IC reduces to one compare
-call itable[slot]
+struct iface_ref { object *obj; itable *itbl; }   // 16 bytes; registers/stack only
 ```
 
-The `find` step is the analog of COM's `QueryInterface`. In hot code an inline cache eliminates it entirely (see below).
+A call through an interface-typed receiver is then a single indirect call, with no lookup of any kind at the call site:
+
+```
+call ref.itbl[slot](ref.obj, ...)
+```
+
+The itable lookup does not disappear — it moves to the conversion point (object → interface), where it is usually free:
+
+| Conversion | Cost |
+|------------|------|
+| Concrete class known statically | itable address is a link-time constant — zero runtime cost |
+| Interface → same interface | pass-through |
+| Interface → super-interface | `find` via `ref.obj->class` (IC applies) |
+| Untyped / `mixed` value → interface | `find(class->interfaces, interface_id)` — sorted array + IC |
+
+The `find` step is the analog of COM's `QueryInterface`: a sorted array keyed by interface id (classes implement few interfaces, so a short array beats a hashtable on cache locality); an inline cache reduces it to one compare in hot code.
+
+**Fat references exist only in the calling convention** — registers, stack, interface-typed parameters and locals. In the heap (properties, array elements, `mixed`) an object reference is always a single 8-byte pointer; the fat reference is materialized at load/conversion time. Heap values stay uniform, while repeated calls through an interface-typed parameter cost exactly a C++ virtual call.
 
 ### Extension ("friend") interfaces
 
@@ -186,7 +203,7 @@ Chosen by the compiler per call site, in order of preference:
 |---|------------------|----------|
 | 1 | Final class or final method | Direct call — no indirection |
 | 2 | Concrete class known | `vtbl[slot]` |
-| 3 | Interface known | `itable[slot]` |
+| 3 | Interface known | Fat reference: `ref.itbl[slot]` — lookup paid once at conversion, not per call |
 | 4 | Nothing (untyped receiver, `$obj->$name()`) | Inline cache → `methods` hashtable → `__call` |
 
 Most PHP code is untyped, so path 4 with an effective inline cache is not an edge case — it is the common case, and paths 1–3 are the reward for type hints.
@@ -235,5 +252,6 @@ Resolved design questions live in the sections above. Intentionally postponed:
 
 - **Optimistic devirtualization of `static::` call sites** with patching on subclass load: JIT phase.
 - **Interning of runtime-built name strings** (intern on first use vs hash-only matching): decide during stdlib work.
+- **Class-as-object model (metaclass)**: representing the class itself as an object implementing a runtime interface — `__new` as the allocator, `__dispose`, reflection entry point (see the design story). Needs full design before inclusion: interaction with the memory manager and the immutable-after-link guarantee that inline caches rely on.
 
 Lowering of this model to concrete C structures and LLVM IR is specified in [lowering.md](lowering.md).

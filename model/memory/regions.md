@@ -46,6 +46,34 @@ class RequestScratch { ... }
   is legal and useful: no cycle collection ever, the reset pays for
   everything.
 
+## Class-shared regions
+
+`#[Region(shared: true)]` binds **one region to the class itself**;
+every instance of the class, and everything those instances allocate,
+lives in that single region:
+
+```php
+#[Region(shared: true, gc: 'none')]
+class TrieNode {                     // all nodes of all tries live
+    public array $children = [];     // compactly in one arena
+}
+```
+
+- **Placement**: instances themselves are allocated in the class
+  region (unlike the per-instance form, where the instance lives
+  outside and only its contents live inside). This is the slab/pool
+  idiom: many small objects of one type co-located for cache density.
+- **Lifecycle**: the region keeps a live-instance count. When it drops
+  to zero, the region resets (tracked pre-destructors run, blocks
+  return to the pool). An explicit `pack()`/`reset()` API for shedding
+  content earlier is the same open question as for per-instance
+  regions.
+- **Cost to know**: one long-lived straggler instance keeps the whole
+  region's survivor blocks alive. Block-level retention from
+  [arena-reset.md](arena-reset.md) Mode B bounds the damage to the
+  blocks that actually carry survivors, but a shared region is still a
+  commitment: choose it for populations that live and die together.
+
 ## What a region is not
 
 A region is the **memory half of an actor**. Actor = region + mailbox

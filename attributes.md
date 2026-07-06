@@ -46,8 +46,14 @@ MonkeyType applies runtime-observed types to Python source.
 - **Inferred is visible.** Materialized attributes live in the code:
   reviewable in diffs, versioned in git, correctable by hand — unlike
   sidecar caches (GHC `.hi`, PGO profiles).
-- Inferred attributes carry a marker (parameter or dedicated namespace
-  — exact form TBD) so humans and tools can tell the two apart.
+- **No inferred-marker.** Materialization is a one-time codegen act:
+  once an attribute is written into source, it is ordinary code owned
+  by the author — the compiler never rewrites or deletes it. When
+  analysis later disagrees with an attribute, the divergence surfaces
+  through the compiler's **diagnostics system** (warning or error;
+  severity per attribute), and a human resolves it. Provenance
+  verification via signature sidecar files is a parked idea —
+  deliberately not now.
 
 ---
 
@@ -98,7 +104,8 @@ attributes in a package are thus also a quality signal.
 
 ## Open questions
 
-- Namespace choice; whether inferred attributes need a marker
-  distinguishing them from hand-written ones.
+- Namespace choice for the Limelight attribute vocabulary.
+- Diagnostics severity policy per attribute (when is a stale attribute
+  a warning, when an error).
 - Generics-via-attributes needs its own RFC: variance, reification vs
   erasure, interaction with the value model.

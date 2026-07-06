@@ -1,5 +1,12 @@
 # ARC Optimizations
 
+> Items 1 and 3 are superseded by
+> [static-lifetimes.md](static-lifetimes.md) — the compiler now tracks
+> ownership and moves as a general tier ladder (stack / scheduled drop /
+> runtime ARC), of which pairing elimination and escape analysis are
+> the degenerate rungs. Deferred ARC (item 2) is repositioned there as
+> an optional runtime optimization for tier-3 objects only.
+
 ## 1. Compiler ARC Pairing (static elimination)
 
 The LLVM ARC optimization pass eliminates paired retain/release calls when the code between them provably cannot trigger a release. Most temporary objects inside a function produce zero refcount operations after this pass.

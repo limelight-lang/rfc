@@ -44,6 +44,11 @@ The slot is the *only* door through which any strategy observes
 reference mutation. Strategies with no hook (NoGC, pure RC,
 stop-the-thread tracing) contribute zero instructions to it.
 
+Objects whose lifetime the compiler schedules statically (tiers 1–2 of
+[static-lifetimes.md](../memory/static-lifetimes.md)) bypass the
+strategy entirely — no RC layer, no strategy hook; only the category
+barrier remains where a cross-arena store is possible.
+
 The COW check ([values.md](../values.md)) is *not* part of this slot —
 it guards entity mutation, not reference stores, and is orthogonal to
 the strategy.

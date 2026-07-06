@@ -40,8 +40,18 @@ into proper RFCs when picked up.
   considered too subtle for phase 1 ([values.md](model/values.md)).
 - **Deferred RC / LXR-style strategy** — stack deferral, 2-bit
   saturating counts as a future build strategy reusing the SATB
-  machinery ([satb.md](model/gc/satb.md),
+  machinery; applies to tier-3 objects only
+  ([static-lifetimes.md](model/memory/static-lifetimes.md),
+  [satb.md](model/gc/satb.md),
   [gc-research.md](model/gc/gc-research.md)).
+- **Level C non-counting backedges** — compiler-verified ownership
+  trees where `#[Backedge]` edges carry no refcount; needs the
+  escape-upgrade barrier design and `&`-reference correctness
+  ([static-lifetimes.md](model/memory/static-lifetimes.md)).
+- **Ownership conventions across dynamic call sites** — how much of
+  tier 2 survives `call_user_func`-heavy code; measure, then decide if
+  signature metadata needs a runtime side channel
+  ([static-lifetimes.md](model/memory/static-lifetimes.md)).
 - **SATB epoch trigger and queue overflow policy** — calibrate the
   candidate-bytes threshold; segment size and marker backpressure
   ([satb.md](model/gc/satb.md)).

@@ -34,6 +34,13 @@ into proper RFCs when picked up.
   declarations, calling conventions, marshalling; belongs with the
   interop RFC
   ([zero-abstraction.md](model/memory/zero-abstraction.md)).
+- **Direct import of C headers and Rust modules** — include a `.h`
+  file or a Rust module straight into PHP code, with `#[FFI]`
+  declarations and zero-abstraction types generated from the foreign
+  source at compile time (à la Zig `@cImport`, bindgen). The in-memory
+  Clang path from
+  [ir-integration-research.md](interop/ir-integration-research.md)
+  is the natural backend for the C side; Rust via `rustc` subprocess.
 
 ## Deferred optimizations
 

@@ -86,11 +86,19 @@ MonkeyType applies runtime-observed types to Python source.
 All Limelight attributes live in a reserved namespace (exact name TBD)
 so they can never collide with userland attributes.
 
+## Materialization boundary
+
+**Decision**: materialization edits only the project's own source
+tree. Vendor code is never touched — **packages ship with their
+attributes already materialized** by their own authors' analysis runs.
+Publishing materialized attributes is part of publishing a package;
+un-materialized dependencies simply compile with worst-case
+assumptions (tier-3, no cycle shapes) and full analysis cost. The
+attributes in a package are thus also a quality signal.
+
 ## Open questions
 
-- Namespace and the inferred-marker mechanism.
-- Materialization ergonomics: how the analysis edits code it does not
-  own (vendor/) — likely sidecar overrides for read-only trees, source
-  edits for the project tree.
+- Namespace choice; whether inferred attributes need a marker
+  distinguishing them from hand-written ones.
 - Generics-via-attributes needs its own RFC: variance, reification vs
   erasure, interaction with the value model.

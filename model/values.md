@@ -64,7 +64,7 @@ retain/release on Box copy is a single bit test, with no tag decoding.
 There is deliberately **no `undef` tag**: Limelight targets PHP language
 semantics, not Zend internals, and `IS_UNDEF` is a Zend VM implementation
 detail. Its duties are dissolved elsewhere: uninitialized typed properties
-→ the Optional discriminant (below); hashtable holes → container-internal
+→ the `UNINIT` slot state (below); hashtable holes → container-internal
 markers invisible to the language.
 
 All pointer payloads point to entities that begin with the common
@@ -103,11 +103,32 @@ br %d == NULL → %coerce, else → %add
 %coerce:                               ; PHP: null + 5 = 5 (deprecation)
 ```
 
-- **Uninitialized typed properties**: where definite-assignment analysis
-  proves initialization (e.g. constructor promotion), no extra state
-  exists at all. Where it cannot, a third internal discriminant value
-  `UNINIT` is used; reading it compiles to throwing `Error` (PHP
-  semantics). `UNINIT` is a slot state, never a language-level type.
+- **Uninitialized typed properties**: **Decision** — the `UNINIT` state
+  is kept only where it can be encoded for free; a slot is never widened
+  to carry it.
+
+  | Slot | `UNINIT` encoding | Cost |
+  |------|-------------------|------|
+  | `?int`, `?float` | third discriminant value (the byte already exists) | free |
+  | `?object`, `?string`, `?array` | sentinel pointer `1` (the null pointer already means PHP `null`) | free |
+  | non-nullable pointer | null pointer | free |
+  | non-nullable scalar | **not represented** | would widen 8 → 16 B |
+
+  Reading an `UNINIT` slot compiles to throwing `Error` (PHP semantics).
+  Where definite-assignment analysis proves initialization (e.g.
+  constructor promotion), the state is never materialized and the check
+  disappears.
+
+  **Deliberate deviation**: a non-nullable scalar property whose
+  initialization definite-assignment analysis cannot prove is
+  zero-initialized; reading it before the first write yields `0` / `0.0`
+  instead of PHP's `Error`, and `unset()` cannot return it to the
+  uninitialized state. Doubling every escaping `int $x` slot to catch
+  this one case was judged not worth the memory. Lazy-proxy patterns
+  that rely on uninitialized state (à la Doctrine) use object/nullable
+  properties, which keep full `UNINIT` support.
+
+  `UNINIT` is a slot state, never a language-level type.
 
 ### References into unboxed slots
 

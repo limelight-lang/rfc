@@ -52,6 +52,10 @@ into proper RFCs when picked up.
   tier 2 survives `call_user_func`-heavy code; measure, then decide if
   signature metadata needs a runtime side channel
   ([static-lifetimes.md](model/memory/static-lifetimes.md)).
+- **Actor runtime** — sync-call deadlock policy, supervision/links,
+  mailbox backpressure, monomorphization for store-path-divergent
+  actors, actor handle representation in the value model
+  ([actors.md](runtime/actors.md)).
 - **SATB epoch trigger and queue overflow policy** — calibrate the
   candidate-bytes threshold; segment size and marker backpressure
   ([satb.md](model/gc/satb.md)).

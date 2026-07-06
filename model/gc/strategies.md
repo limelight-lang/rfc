@@ -8,7 +8,11 @@ collectors. Limelight therefore treats the collector as a **pluggable
 strategy behind a fixed contract**, selected **at build time**.
 
 - The runtime and codegen define the contract (below) once.
-- Each strategy implements the contract; the build selects exactly one.
+- Each strategy implements the contract; the build selects the
+  compiled-in set and the default. **Actors** may bind a different
+  collector from that set per class —
+  `#[Actor(gc: ...)]` ([actors.md](../../runtime/actors.md)); freely
+  mixable as long as only the collector differs, not the store path.
 - Because selection is at build time, the strategy's hot-path code is
   specialized and inlined — a NoGC or pure-RC build physically contains
   no flag checks or dispatch in its store paths. (Same approach as

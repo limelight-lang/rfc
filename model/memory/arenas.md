@@ -21,6 +21,11 @@ The number and types of arenas is not fixed. The architecture supports multiple 
 
 ## Request Arena
 
+The request arena is the degenerate case of an **actor-owned arena** —
+a request is an actor that receives one message and dies
+([actors.md](../../runtime/actors.md)). Long-lived actors own arenas
+with the same mechanics but repeated collection at message boundaries.
+
 Most PHP objects are created and die within a single request. These objects are allocated in the request arena:
 
 - Bump-pointer allocation — no locking, no free-list, ~1–3 cycles per allocation

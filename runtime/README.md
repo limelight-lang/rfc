@@ -8,3 +8,4 @@ Responsible for lifecycle management (startup, shutdown), platform abstraction, 
 
 - [implementation-language.md](implementation-language.md) — Rust core + thin C++ LLVM layer, the single-LLVM-version rule
 - [object-lifecycle.md](object-lifecycle.md) — `new`, three-phase teardown (pre-destructor / drop / memory release)
+- [actors.md](actors.md) — `#[Actor]`: serial execution contexts owning their arenas; the queue as the only door; per-actor collection and per-actor GC selection

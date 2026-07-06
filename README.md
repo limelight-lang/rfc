@@ -9,15 +9,6 @@ pluggable garbage collection instead of a one-size-fits-all VM heap.
 > first vertical slice is built. Deferred work lives in
 > [BACKLOG.md](BACKLOG.md).
 
-## The key principle
-
-**[Attributes are the language surface](attributes.md).** Limelight
-adds zero new keywords and zero new syntax to PHP. Every capability
-(actors, GC hints, generics) enters through native PHP 8 attributes
-under the `Limelight\` namespace, and the compiler's whole-program
-analysis materializes its findings back into source as the same
-attributes. A Limelight program is, syntactically, a valid PHP program.
-
 ## Architecture at a glance
 
 | Pillar | Idea | RFC |
@@ -53,6 +44,15 @@ attributes. A Limelight program is, syntactically, a valid PHP program.
 - [io/](io/README.md), [stdlib/](stdlib/README.md) — placeholders, not yet designed
 - [attributes.md](attributes.md) — the attributes principle (root document)
 - [BACKLOG.md](BACKLOG.md) — deferred work, collected from all RFCs
+
+## The key principle
+
+**[Attributes are the language surface](attributes.md).** Limelight
+adds zero new keywords and zero new syntax to PHP. Every capability
+(actors, GC hints, generics) enters through native PHP 8 attributes
+under the `Limelight\` namespace, and the compiler's whole-program
+analysis materializes its findings back into source as the same
+attributes. A Limelight program is, syntactically, a valid PHP program.
 
 ## Reading order
 

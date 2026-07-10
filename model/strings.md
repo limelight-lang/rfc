@@ -49,24 +49,41 @@ long-lived arena as immortal entities: one string = one address, equality
 
 ---
 
-## Mutability Modes
+## Mutability Modes: `StringInterface`, Two Classes
 
-Because COW is a per-object flag ([values.md](values.md)), strings come in
-two modes:
+**Revised decision**: COW and mutable strings are not one class with a
+mode bit — they are **two distinct final classes** behind a shared
+`StringInterface`, because their memory layouts are genuinely different,
+not just flag-different:
 
-- **COW string (default)** — PHP value semantics: assignment shares the
-  buffer, a write with `refcount > 1` separates.
-- **Non-COW string** — a freely mutable buffer (builder). In-place append
-  and modification with no separation, ever. This is the answer to the
-  classic "concatenation in a loop" pattern; no PHP-level API is defined
-  yet, but the runtime representation supports it natively.
+- **COW string (default)** — the layout above: bytes inline after the
+  header. Fixed size once allocated; a write with `refcount > 1`
+  separates (copies). Never grows in place.
+- **Mutable string (builder)** — `RcHeader | Buffer{data, len, capacity}`
+  ([docs/memory-manager.md](https://github.com/limelight-lang/ll-model/blob/main/docs/memory-manager.md)
+  Mutable Buffers): indirection is required because growth means moving
+  the payload, and the `RcHeader` entity's own address must stay stable
+  (non-moving GC, existing references must not dangle). In-place append
+  via the buffer's extend-in-place/grow algorithm, no separation, ever.
+  No PHP-level API is defined yet; the runtime representation supports
+  it natively.
 
-Both modes share the layout; they differ in one header bit.
-
-Both modes are managed entities: strings created in the language always
-carry RC/COW. The exception is the FFI boundary, where a foreign buffer
+Both are managed entities: RC/COW-flagged, created in the language always
+carrying RC. The exception is the FFI boundary, where a foreign buffer
 may be viewed as a string without copying; see
 [zero-abstraction.md](memory/zero-abstraction.md).
+
+### Freeze: builder → immutable, a class-pointer swap
+
+"Freezing" a builder into an immutable string (mentioned as a future
+operation in docs/memory-manager.md) changes the object's physical class
+from the mutable-string class to the immutable-string class — the same
+class-pointer-swap mechanism as Ghost objects
+([classes.md](classes.md#lazy-objects-ghost-and-proxy)), and the same
+`!invariant.load` conflict: the mutable-string class must carry the same
+opt-in "not invariant" flag Ghost-capable classes carry, since its
+instances' class pointer can change post-construction. The immutable
+side never swaps, so it keeps the full optimization.
 
 ---
 

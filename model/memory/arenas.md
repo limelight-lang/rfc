@@ -84,6 +84,19 @@ preserved, is specified in [arena-reset.md](arena-reset.md).
 data (COW strings/arrays), where copying is natural and reference identity
 is not observable.
 
+**Static vs dynamic resolution** ([arena-promotion.md](arena-promotion.md)):
+when the compiler proves the escape within one function/scope, it
+allocates the object directly in the target category up front — no
+barrier fires at all. The barrier above is the dynamic fallback only:
+origin unprovable (e.g. the object arrived as a parameter), so the check
+happens at the store.
+
+**Implementation note**: the remembered set is allocated **inside the
+arena's own bump memory**, as a growable buffer
+([buffers.md](buffers.md)) of fixed-size slot records — not a
+separately-allocated list. It dies for free with the arena, exactly like
+the destructor-tracking list.
+
 ### The reverse direction: request arena ← heap
 
 Not a dangling problem but a leak: arena reset skips per-object drop

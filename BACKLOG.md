@@ -10,6 +10,10 @@ into proper RFCs when picked up.
 - **`SplObjectStorage` / `WeakMap` after evacuation** — rehash
   address-keyed tables, or key by the stored lazy object id from the
   start ([arena-reset.md](model/memory/arena-reset.md)).
+- **Memory-pressure modes and the buffer arena**: design decided, see
+  [buffers.md](model/memory/buffers.md); only the mode thresholds and
+  the critical-mode search bound *K* remain to calibrate against real
+  workloads.
 
 ## Model — remaining documents
 

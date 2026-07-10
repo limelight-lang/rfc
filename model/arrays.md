@@ -12,9 +12,17 @@ architecture.
 
 ---
 
-## One Class, Three Storage Implementations
+## `ArrayInterface`, One Class, Three Storage Implementations
 
-**Decision**: to the language, `array` is a single final class (same
+**Decision**: `array` implements `ArrayInterface` (the language-facing
+type), but unlike the string split
+([strings.md](strings.md#mutability-modes-stringinterface-two-classes)),
+the three storage strategies below stay **internal to one class**, not
+separate classes: transitions between them (see below) never change the
+object's `class` pointer, so there is no `!invariant.load` conflict here
+— the storage-strategy tag is an internal bit, invisible to `instanceof`.
+
+To the language, `array` is a single final class (same
 construction as `string`, see [strings.md](strings.md): no per-instance
 class pointer, devirtualized methods). Internally it has three storage
 strategies, chosen per array:

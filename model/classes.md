@@ -246,6 +246,53 @@ Two already-made decisions make ICs unusually cheap in Limelight:
 
 ---
 
+## Lazy Objects: Ghost and Proxy
+
+PHP 8.4 introduces lazy objects (`ReflectionClass::newLazyGhost` /
+`newLazyProxy`): an instance that defers real initialization until first
+touch. Two shapes, two different mechanisms here.
+
+### Proxy — no new mechanism
+
+A proxy is a separate wrapper instance with its own fixed class; it holds
+one field pointing at the real (not yet constructed) instance, using the
+existing `UNINIT` slot state ([values.md](values.md)). First forwarded
+call materializes the real instance and stores it; the field transitions
+`UNINIT → initialized` exactly like any lazily-initialized typed property.
+No conflict with anything already decided.
+
+### Ghost — class-pointer swap, opt-in cost
+
+A ghost object preserves the target class's identity (`instanceof` must
+match the real class, not a wrapper). The object is allocated at full
+size up front, but its `class` field initially points at a **generated
+ghost-shim** descriptor for that class: same `object_size`, a `vtbl`
+whose every slot runs the initializer then rewrites `class` back to the
+real descriptor before retrying the call. After first touch, the object
+is indistinguishable from an eagerly-constructed instance: zero ongoing
+cost.
+
+**Conflict**: this contradicts the `!invariant.load` annotation on the
+class-pointer load ([lowering.md](lowering.md)), which assumes "an
+object's class never changes after construction." Resolution: a per-class
+opt-in flag (alongside `has-destructor` in the flags bitmask) marks a
+class as ghost-capable. Only instances of flagged classes lose
+`!invariant.load` on their class-pointer loads; the overwhelming majority
+of classes, never used as ghosts, keep the full optimization.
+
+### `instanceof` under Ghost/Proxy
+
+`instanceof` (and `get_class()`, reflection) must report the **target**
+class identity in both shapes, never the physical ghost-shim descriptor
+or a generic proxy-wrapper descriptor. For Ghost this falls out of the
+swap itself once triggered by the check; before the first touch,
+`instanceof` triggers initialization like any other access (the shim's
+"vtbl slot" for the type-check path is not exempt). For Proxy,
+`instanceof` reads the target class recorded on the proxy, not the
+proxy's own class.
+
+---
+
 ## Deferred
 
 Resolved design questions live in the sections above. Intentionally postponed:

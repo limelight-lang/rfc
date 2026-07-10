@@ -7,77 +7,90 @@ The fundamental division is binary: **does this object outlive the current reque
 - **No** → request arena
 - **Yes** → everything else (long-lived arena, immortal, GC heap)
 
-All further subdivisions (long-lived vs immortal vs GC heap) are implementation details. The write barrier checks exactly this one bit. Arena tag in the pointer encodes this as the highest bit.
+All further subdivisions (long-lived vs immortal vs GC heap) are
+implementation details. The memory category lives as a 2-bit field in
+the entity's header flags ([arenas.md](arenas.md),
+`ll-model/src/refcount.rs`); the barrier compares exactly these bits.
 
 ---
 
 ## Problem
 
-An object allocated in the request arena may need to outlive the request — for example, when assigned to a long-lived slot (global variable, persistent cache, class-level property). The request arena will be reset at end of request, so the object must be promoted to the long-lived arena before that happens.
+An object allocated in the request arena may need to outlive the request — for example, when assigned to a long-lived slot (global variable, persistent cache, class-level property). The request arena will be reset at end of request, so the object must be promoted before that happens.
 
 ---
 
-## Solution: Static Analysis + Write Barrier Fallback
+## Solution: Static Analysis + Barrier Fallback
 
 Two complementary mechanisms cover 100% of cases.
 
 ### 1. Static Analysis (compile-time)
 
-The compiler determines the target arena at allocation time and allocates directly there. No runtime check, no write barrier, no copy.
+The compiler determines the target category at allocation time and allocates directly there. No runtime check, no barrier logging, no copy.
 
 Cases the compiler can resolve statically:
 - Object created and dies within one function → request arena, guaranteed
 - Object assigned to a global variable → long-lived arena, guaranteed
 - Object assigned to a class-level persistent slot → long-lived arena, guaranteed
 
-Cases that fall through to the write barrier:
+Cases that fall through to the dynamic barrier:
 - Object passed to an external function (may be stored anywhere)
 - Object stored in a dynamically-typed container
 - Any case where the compiler cannot prove the destination lifetime
 
-### 2. Write Barrier Fallback (runtime)
+### 2. Category Barrier Fallback (runtime)
 
-This check is emitted through the unified store barrier slot
+Emitted through the unified store barrier slot
 ([strategies.md](../gc/strategies.md)), the same hook that carries ARC
 operations and any strategy barrier.
 
-Every pointer store checks whether a cross-arena assignment is happening. If a request-arena object is being stored into a long-lived slot — the object is copied to the long-lived arena and the slot is updated to the new address.
+The barrier compares the 2-bit category fields of the stored value and
+the destination's owner — one XOR + test on flags words that the
+retain path has already loaded. Same category (the overwhelmingly
+common case): no extra work. On the dangerous direction (arena value
+into a longer-lived container) it **only logs the slot into the
+arena's remembered set**; nothing is copied at the store. The fate of
+escaped objects is decided lazily at arena death, per 32 KB block —
+retention in place or evacuation ([arena-reset.md](arena-reset.md)).
+The reverse direction (heap value into an arena container) goes to the
+release-at-reset list ([arenas.md](arenas.md)).
 
-#### Arena tag in pointer (fast check)
+### Slot category resolution
 
-Arena metadata is stored in the high bits of the pointer. In 64-bit address space the upper bits are unused:
-
-```
-bits 63–62: arena tag
-  00 = request arena
-  01 = long-lived arena
-  10 = immortal
-  11 = GC heap (Immix)
-```
-
-Cross-arena check = one bitmask operation, ~1 cycle. Write barrier only copies when tags differ — which is the rare case.
-
-This is the same technique ZGC uses with colored pointers, applied here for arena discrimination rather than relocation.
-
-#### Write barrier protocol
-
-```
-store $value → $slot:
-  if arena_tag($value) == REQUEST
-  and arena_tag($slot) == LONG_LIVED:
-    $value = copy($value, long_lived_arena)
-    update forwarding pointer at old location
-  store $value → $slot
-```
+(Closes what an earlier revision left open.) The destination category
+is read from the containing entity's header flags — a slot's lifetime
+*is* its owner's lifetime. Slots with no owning entity (globals,
+static properties) are long-lived by definition and known at compile
+time: the compiler emits those stores with the destination category as
+a constant, no runtime lookup at all.
 
 ---
 
-## Open Question: Lifetime Tracking
+## Rejected Alternatives
 
-> **TODO**: The write barrier requires knowing at runtime whether a destination slot is long-lived or request-scoped. This means every slot (object field, variable, container entry) must carry or imply its arena. The mechanism for tracking slot lifetimes needs to be designed — options include slot-level tags, type-level annotations, or inference from the owning object's arena.
+- **Arena tag in pointer high bits** (bits 63–62, ZGC-style colored
+  pointers — the original design of this document). Killed by block
+  retention: [arena-reset.md](arena-reset.md) recategorizes surviving
+  objects *in place* by rewriting their header bits, which is possible
+  precisely because the category lives in one place. A pointer tag
+  would have to be rewritten in every existing pointer to the object —
+  exactly the reference-fixup problem the whole design avoids. The
+  header comparison is also effectively free, since retain loads the
+  flags word anyway.
+- **Eager copy + forwarding pointer at the barrier** (also the
+  original design). Superseded by deferred promotion: copying at the
+  store pays for escapes that may never survive to arena death,
+  requires identity fixes at every barrier hit, and forwarding
+  pointers would have to be left in live arena memory. Deferral
+  batches all of it into one moment where the remembered set is a
+  complete list of incoming references.
 
 ---
 
 ## Relationship to ARC
 
-Objects promoted from request arena to long-lived arena enter the ARC lifecycle at the moment of promotion. Before promotion they have no refcount (request arena semantics). After promotion they are reference counted normally.
+Before promotion an arena object has no refcount history (arena
+semantics: not counted). What happens after is owned by
+[arena-reset.md](arena-reset.md): objects in retained blocks become
+sticky and are managed by the tracing component; evacuated objects
+move into the GC heap and live under the active strategy.

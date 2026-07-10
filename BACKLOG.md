@@ -5,7 +5,8 @@ into proper RFCs when picked up.
 
 ## Needs a working runtime first (cannot be resolved on paper)
 
-- **Mode A/B thresholds** for arena reset — calibrate with real
+- **Per-block dense/sparse threshold** for arena reset (escaped bytes
+  per block deciding retain vs evacuate) — calibrate with real
   workloads ([arena-reset.md](model/memory/arena-reset.md)).
 - **`SplObjectStorage` / `WeakMap` after evacuation** — rehash
   address-keyed tables, or key by the stored lazy object id from the
@@ -75,9 +76,26 @@ into proper RFCs when picked up.
   mailbox backpressure, monomorphization for store-path-divergent
   actors, actor handle representation in the value model
   ([actors.md](runtime/actors.md)).
+- **Proxy-mediated movability for cold long-lived data** — opt-in: a
+  container that knows its contents are cold and long-lived (sessions,
+  warm caches) has them wrapped in canonical per-object proxies at
+  arena death, keeping the cluster repackable after remembered-set
+  completeness is gone. Requires the general interception proxy
+  (reference-returning reads must translate neighbors to their
+  proxies). Rejected as the core arena-reset mechanism — see the
+  rejected-alternatives section of
+  [arena-reset.md](model/memory/arena-reset.md); natural companion to
+  the explicit pack/optimize operation (below).
 - **SATB epoch trigger and queue overflow policy** — calibrate the
   candidate-bytes threshold; segment size and marker backpressure
   ([satb.md](model/gc/satb.md)).
+- **Periodic interruption of unbounded loops (system-signal check)** —
+  loops with no provable bound get an iteration guard: a counter in
+  the actor context, decrement + branch on the back-edge, on zero peek
+  for system signals (GC handshake, cancellation, timeout,
+  supervision) and reset — BEAM reduction counting. One general
+  mechanism instead of GC-specific polls; counter budget TBD
+  ([actors.md](runtime/actors.md)).
 - **Safepoint placement and barrier-slot codegen spec** — exact poll
   sites, how `ll_ref_store` layers are composed and inlined per
   strategy at build time ([strategies.md](model/gc/strategies.md));

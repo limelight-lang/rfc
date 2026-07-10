@@ -68,16 +68,47 @@ reference into actor memory never crosses the boundary raw.
   not enforced per-store; it is enforced by the queue being the only
   door.
 
+### Globals are not a door
+
+References into actor memory must not leave through global state
+either: storing into a global variable, a static property, or
+`$GLOBALS` from actor context admits **share-compatible values only**
+— immortal and frozen-COW entities, exactly the class of values the
+`share` row below admits. A global is, in effect, a message to
+everyone, so it obeys the message discipline. A mutable managed
+reference stored globally would hand another actor a raw pointer into
+this actor's serial memory — non-atomic refcounts and all — so it is
+an error, not a copy.
+
+Enforcement mirrors the call-site rule above:
+
+- store sites inside `#[Actor]` classes are known statically; the
+  compiler rejects non-share-compatible stores to global slots at
+  compile time;
+- shared library code, compiled once and callable from both worlds,
+  gets a runtime check on global-slot stores (in actor context and
+  value not share-compatible → error). Global stores are rare; the
+  check is cold.
+
 ## Message Payload Discipline
 
 Applied at *pack time*, the one place references cross:
 
 | Form | When | Cost |
 |---|---|---|
-| **copy** | semantic default | deep copy into recipient's arena (Erlang model) |
-| **move** | compiler proves the subgraph isolated (ownership/move analysis, [static-lifetimes.md](../model/memory/static-lifetimes.md)) | reparent whole 32KB blocks to the recipient's arena: zero copy, sender's bindings dead |
+| **move** | compiler proved at the allocation site that the object will be transferred (ownership/move analysis, [static-lifetimes.md](../model/memory/static-lifetimes.md)) | the object was born in the general heap (see below): the send is a pointer handoff through the queue, zero copy, sender's bindings dead |
+| **copy** | everything arena-born the analysis could not prove | deep copy into recipient's arena (Erlang model — which copies *always*, so this is the worst case, not the norm) |
 | **share** | immortal and frozen-COW values | pass by reference; such values carry no mutable state and no non-atomic counts (interned strings, enum cases; cf. Erlang's shared refcounted binaries) |
 | **actor handle** | reference *to an actor* | a shareable opaque handle; the mailbox pointer itself is the only thing shared |
+
+**Rejected: block reparenting** (moving arena-born subgraphs by
+re-owning their 32 KB blocks, zero-copy). An arena block is bump-filled
+with whatever the actor allocated in sequence: alongside the
+transferable subgraph live unrelated objects, and reparenting the block
+would move them too. The trick only works for subgraphs segregated into
+dedicated blocks from birth — but anything the compiler can prove that
+early is allocated straight into the general heap instead, which is
+strictly cheaper (no reparenting at all). Two paths, not three.
 
 ### Allocation-site selection
 
@@ -91,10 +122,8 @@ preserved and the object needs no atomic counts.
 
 This is the same discipline as arena-promotion
 ([arena-promotion.md](../model/memory/arena-promotion.md)): static
-analysis allocates in the destination directly, and the pack-time
-machinery (copy, or block reparenting for arena-born isolated
-subgraphs) remains the runtime fallback for what analysis could not
-prove.
+analysis allocates in the destination directly, and the pack-time deep
+copy remains the runtime fallback for what analysis could not prove.
 
 ## Actor Memory
 
@@ -123,6 +152,39 @@ This delivers the Erlang pause story through the existing `rc-trace`
 machinery, and shrinks the role of concurrent SATB
 ([../model/gc/satb.md](../model/gc/satb.md)) to what remains truly
 shared: the general heap outside any actor.
+
+## The Global Collector Speaks Mailbox
+
+The concurrent general-heap collector (`rc-satb`,
+[satb.md](../model/gc/satb.md)) never inspects a running actor. What it
+needs from one is small — the actor's roots into the general heap, and,
+for mark termination, the actor's SATB buffer — and both travel the
+same road as everything else: **a system message in the mailbox**
+(prior art: Pony's ORCA, whose whole GC protocol is actor messages).
+
+- The collector enqueues a handshake message; the actor handles it at
+  its next message boundary — stack empty, state consistent, the moment
+  the actor itself knows is safe — flushing its SATB buffer in the
+  reply. Mark termination = every actor has replied. A parked actor is
+  woken by the message like by any other.
+- Roots need no stop either: the release-at-reset list
+  ([arenas.md](../model/memory/arenas.md)) is an append-only registry
+  of every general-heap reference the arena holds, readable by the
+  marker up to a watermark while the actor runs. It over-approximates
+  (a stale entry keeps an object alive one extra cycle) — safe for
+  marking. Stack-only references are covered by allocate-black plus the
+  SATB deletion barrier; mailbox contents are scannable shared
+  structures. (Completeness of this root story to be re-verified at
+  implementation time.)
+- The queue stays the only door — for the collector too: no poll
+  safepoints, no external inspection of a running actor's state.
+
+The residual case is a long message (a batch chewing for minutes): the
+actor reaches no boundary, and mark termination waits on it. The fix is
+not a GC-specific poll but a general **system-signal check** compiled
+into unbounded loops — one mechanism serving GC handshakes,
+cancellation, timeouts, and supervision alike (Open Questions,
+[BACKLOG](../BACKLOG.md)).
 
 ## Per-Actor GC Selection
 
@@ -181,3 +243,9 @@ What this costs, split by what actually differs:
 - **Handle representation**: what an actor reference looks like in
   the value model ([values.md](../model/values.md)); likely a
   resource-like immortal cell.
+- **System-signal check in unbounded loops**: loops with no provable
+  bound get an iteration guard — a counter in the actor context,
+  decrement + branch on the back-edge, on zero: peek system signals,
+  reset (BEAM reduction counting). Lets a long-running message answer
+  GC handshakes, cancellation, and supervision probes. The counter's
+  budget and placement heuristics TBD.

@@ -60,23 +60,46 @@ isolation buys nothing there since the whole arena reclaims together.
 No size classes: buffers vary continuously in size, so the `Heap`
 size-class-slot model doesn't fit.
 
+### Size routing
+
+Everything below applies to payloads that fit a pooled block
+(≤ 32 KB − header). A larger payload lives in an OS-direct,
+32 KB-aligned run (the `BLOCK_KIND_LARGE_RUN` path of `ll-model`'s
+stdapi): growth there is alloc-new + copy + free-old, and a freed run
+returns to the OS immediately — the free-list machinery below never
+sees it. The memory-pressure modes still govern slack for runs; hole
+reuse is block-only.
+
 ### Reclaim Strategy Decision
 
 When a long-lived buffer grows and moves, the abandoned chunk is
 reclaimed via an **intrusive LIFO free-list threaded through the freed
 chunk's own payload** — the same zero-metadata trick `ll-model`'s
 `heap.rs` `FreeSlot` already uses, not a permanent boundary-tag header.
+The list is **per-block**: its head lives in the buffer block's
+256-byte header and the chain never leaves the block, so the
+L2-residency of a walk holds by construction, not by hope.
 
 - Live buffers pay **zero steady-state overhead**: no permanent header
   field to maintain or keep cache-warm.
-- Free (push): O(1), writes into memory that was just touched (the
-  freed chunk itself) — cache-hot.
-- `plenty`/`tight` mode: allocation just bumps, ignoring the list
+- Free (push): O(1) onto the owning block's list, writing into memory
+  that was just touched (the freed chunk itself) — cache-hot.
+- Each block header keeps a **live-chunk count** (as `heap.rs` blocks
+  do): when it hits zero the block returns to the global pool.
+  Without this, an emptied buffer block would be parked forever.
+- `plenty`/`tight` mode: allocation just bumps, ignoring the lists
   entirely.
-- `critical` mode: allocation pops from the list first, searching at
-  most the first *K* entries (bounded, tunable) before falling back to
-  bump. The chain is confined to one 32 KB block (L2-resident), so even
-  a cold walk stays cheap.
+- `critical` mode: allocation pops from a block's list first, searching
+  at most the first *K* entries (bounded, tunable) before falling back
+  to bump.
+
+**Known limit — no coalescing, ever**: adjacent free chunks are never
+merged (that would need boundary tags, rejected below), so a block can
+fragment into holes that individually fit nothing. Accepted because the
+damage is bounded by one block (32 KB), emptied blocks recycle through
+the live-chunk count, and sustained pathological fragmentation is what
+the compaction fallback (rejected alternative 2) exists for — the free
+list is a cheap opportunistic layer, not the defragmentation story.
 
 **Rejected alternatives**:
 
@@ -87,8 +110,9 @@ chunk's own payload** — the same zero-metadata trick `ll-model`'s
    but it taxes every live buffer forever (a permanent header field) for
    a benefit only `critical` mode needs.
 2. **Compaction/evacuation on mode transition** (relocate live buffers
-   into dense fresh blocks, à la [arena-reset.md](arena-reset.md) Mode
-   A) — the best cache behavior for the scan+copy itself (sequential,
+   into dense fresh blocks, à la the sparse-block evacuation of
+   [arena-reset.md](arena-reset.md)) — the best cache behavior for the
+   scan+copy itself (sequential,
    prefetcher-friendly), but requires a permanent owner back-pointer per
    chunk, and the owner-pointer fixup is an effectively-random pointer
    chase (each owning struct lives wherever it lives). Kept as a
@@ -104,8 +128,8 @@ Needs real workloads to pick *K* and the mode thresholds.
 - [strings.md](../strings.md): the mutable-string class embeds exactly
   this buffer.
 - [arena-reset.md](arena-reset.md): the compaction fallback above reuses
-  the same evacuation shape as Mode A, applied to buffer blocks instead
-  of whole arenas.
+  the same evacuation shape as sparse-block evacuation, applied to
+  buffer blocks instead of whole arenas.
 - [heap-design.md](../gc/heap-design.md): the memory-pressure mode is
   the same one-flag-load-and-branch shape as the GC activity bit;
   whether they are the same flag or two independent ones is open.

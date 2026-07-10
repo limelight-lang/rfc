@@ -70,7 +70,7 @@ class TrieNode {                     // all nodes of all tries live
   regions.
 - **Cost to know**: one long-lived straggler instance keeps the whole
   region's survivor blocks alive. Block-level retention from
-  [arena-reset.md](arena-reset.md) Mode B bounds the damage to the
+  [arena-reset.md](arena-reset.md) bounds the damage to the
   blocks that actually carry survivors, but a shared region is still a
   commitment: choose it for populations that live and die together.
 

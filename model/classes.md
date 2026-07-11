@@ -150,6 +150,39 @@ Note on compilation order: a subclass is always linked with full knowledge of it
 
 Diamond composition is a non-issue by construction: PHP allows `interface C extends A, B`; a class implementing `C` simply carries three itables, for `C`, `A`, and `B`. Each itable has its own independent layout; nothing needs to be merged.
 
+### Pure pointer tables, one trailing train
+
+**Invariant**: every dispatch table — vtbl, itables, `static_vtbl` — is
+a bare array of code pointers, nothing else. All metadata lives in the
+descriptor and in the `interfaces` entries, beside the tables, never
+inside them. C++-style table headers (offset-to-top, RTTI pointer) are
+unnecessary here: an object points at the *descriptor*, not at a
+table, so the descriptor is the vtbl's header; and no conversion ever
+navigates from an itable back to metadata (super-interface and
+mixed-value conversions go through `obj->class`).
+
+Because the tables are homogeneous, they ride **one trailing
+allocation** of the descriptor: `[Class][vtbl][itable A][itable B]…`.
+The `interfaces` entries point into this tail. One metadata allocation
+per class instead of 1+N, and all of a class's dispatch targets sit in
+one contiguous region next to the descriptor that every call has just
+loaded. Slot maps (below) are cold link-time data and stay off the
+train.
+
+### Re-linking inherited itables: the slot map
+
+An itable is a *baked* artifact — resolved code addresses — and a
+baked address does not say which vtable slot it came from. A subclass
+that inherited an interface and overrode one of its methods must not
+inherit the parent's itable as-is: it would keep pointing at the
+parent's implementation, silently bypassing the override on every
+interface-typed call. Each `interfaces` entry therefore also carries
+the **slot map** it was built from (interface slot → vtable slot);
+linking a subclass rebuilds every inherited itable by reading those
+same slots out of its *own* vtable — slot indices are stable down the
+hierarchy, so the override lands automatically. The map is touched
+only at class link time; dispatch never sees it.
+
 ### Fat interface references
 
 **Decision**: a value statically typed as an interface is represented as a pair, COM's `interface_pointer_t` model:

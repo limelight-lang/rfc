@@ -33,8 +33,17 @@ runtime or the generated code knows which strategy is active.
 The compiler emits every reference store through a single hook:
 
 ```
-ll_ref_store(slot, old_value, new_value)
+ll_ref_store(ctx, dst_owner, slot, old_value, new_value)
 ```
+
+`dst_owner` is the entity containing `slot`: a slot has no header of
+its own, so the destination's category is read from its owner's flags —
+and the generated code has the owner in a register anyway (it just
+computed `slot` from it). `ctx` supplies the arena whose remembered
+set / release list the barrier writes: one mounted arena per executing
+context, kept correct by the compiler (actor arenas are unreachable
+from outside, so an escape-creating store always runs with the owner's
+arena mounted).
 
 Its body is composed at build time from up to three layers:
 

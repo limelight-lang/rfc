@@ -322,3 +322,48 @@ risks a subtly wrong hand-rolled reciprocal, and 3.5% didn't justify
 that risk under the time available. Left as a documented, deferred
 optimization — matches this codebase's existing pattern of phased,
 explicitly-labeled deferrals (see `arena-reset.md`'s evacuation phase).
+
+---
+
+## Open items / notes for follow-up
+
+Not done, in rough priority order:
+
+- **Division in `mark_free`** (see "Known deferral" above) — ~3.5%,
+  needs a correctly-derived per-class magic-number reciprocal, tested
+  against all 32 classes before landing.
+- **Remaining ~2.0–2.2x gap to mimalloc is not fully attributed.** After
+  fixes 1-4, the next profiling pass should target the fully-integrated
+  production `Heap` (not another isolated prototype) — likely
+  candidates: TLS lookup cost re-measured now that the hot path is
+  shorter overall (its relative share has grown), `available`/
+  `empty_reserve` doubly-linked-list bookkeeping, `refill`/`BlockPool`
+  interaction cost. A repeat of the `selfprofile2.cpp`-style real
+  sampling profile (see `bench-external/README.md`), not another
+  ablation prototype, is the right next step — prototypes have twice
+  now underestimated real integrated cost (see fixes 3 and 4's "real
+  vs. prototype" gaps).
+- **`#[cfg(not(windows))]` TLS path is unverified.** The portable
+  `thread_local!` fallback for non-Windows targets has never been
+  measured — no Linux/macOS benchmark run exists yet for this project.
+  ELF `__thread` is expected to already be a single `%fs`-relative load
+  (no module-indirection tax the way windows-msvc has), so the fast-TLS
+  work from fix 3 may simply be unnecessary there, but this is an
+  assumption, not a measurement.
+- **jemalloc could not be added to any comparison in this investigation**
+  — `tikv-jemalloc-sys`'s autotools `configure` fails to find a working
+  C compiler when invoked from windows-msvc (confirmed independently,
+  matches the note already in `Cargo.toml`). Would need MSYS2/WSL with
+  a full mingw toolchain to include, which is a different ABI/build
+  than what ships — not attempted.
+- **Thread-exit abandonment remains unhandled** (pre-existing, not
+  touched by this investigation) — see `heap.rs`'s module doc. A thread
+  that exits with live heap blocks leaks them rather than having
+  another thread adopt them (mimalloc does adopt). Fine for long-lived
+  worker pools, not fine for short-lived-thread-per-task workloads.
+- **Terminology note:** fix 1's "lazy (bump) slot carving" no longer
+  exists in the code — fix 4 replaced the whole free/local_free/bump
+  scheme with the bitmap. The *effect* fix 1 achieved (refill is O(1),
+  not O(slots)) still holds under the bitmap design (initializing a
+  bitmap to all-free is O(slots/64) words, cheaper still), but readers
+  should not go looking for a `bump` field — it's gone.

@@ -247,3 +247,78 @@ The remaining ~1.6–2x gap to mimalloc/snmalloc is not yet attributed
 further. `claim()`/`retire_empty()` bookkeeping (churn accounting) and
 residual algorithmic differences are the likely remaining candidates —
 see the anchored-vs-raw breakdown further up this file.
+
+---
+
+## Fix 4 — Bitmap free-slot tracking + O(1) size-class lookup
+
+Profiling the real C ABI on a *realistic* workload (varying sizes
+8..1000, not one fixed size, 5000-object live-set churn — matching what
+`larson.cpp` actually does) found two more contributors that the
+fixed-size isolated loop above couldn't see:
+
+1. **`size_class_index`'s linear scan** (`SIZE_CLASSES.iter().position`)
+   compiles to a fully unrolled chain of up to 26 sequential
+   compare+branch pairs (confirmed via `dumpbin /disasm`) — negligible
+   for `size=64` (resolves in ~4 comparisons) but real for large,
+   varying sizes. Fixed with a direct lookup table at 16-byte
+   granularity (`CLASS_LUT`, built at compile time via `const fn`): one
+   array read, zero branches.
+2. **The intrusive linked-list free/local_free scheme** pops/pushes by
+   chasing a pointer stored inside the freed slot itself — a
+   cache-unfriendly, unpredictable-latency access, since that slot can
+   be anywhere in the 32 KB block. Fixed with a bitmap (one bit per
+   slot, `alloc` = find-first-set + clear, `free` = set the bit back):
+   one small, always-hot region touched on every operation, instead of
+   pointer-chasing scattered across 32 KB. The bitmap is heap-allocated
+   per block (a `Vec<u64>`'s raw parts, freed explicitly when the block
+   is truly released) rather than embedded in the fixed 256-byte
+   (`LINE_SIZE`) block header — the worst case (2032 slots for the
+   16-byte class) needs 256 bytes on its own, the entire existing header
+   budget, with no room left for `kind`/`used`/`owner`/etc.
+
+An isolated ablation prototype (`bench-external/larson/bitmap_proto.cpp`,
+static 8 MB arena per class, no `refill`/`BlockPool` interaction)
+measured, on the realistic workload:
+
+| Variant | ns/op | vs mimalloc |
+|---|---|---|
+| mimalloc (same workload) | ~11.6–15.7 | 1.0x |
+| bitmap + O(1) LUT (isolated prototype) | ~19.4–22 | ~1.7x slower |
+| bitmap + linear scan | ~26–29 | ~2.3x slower |
+| old linked-list + linear scan (production, before this fix) | ~32.5–43.75 | ~2.9x slower |
+
+Both changes landed in `Heap` (not just the prototype). **Real,
+measured result after landing** (same workload, real `ll_malloc`/
+`ll_c_free`, not the idealized prototype):
+
+| | ns/op | vs mimalloc |
+|---|---|---|
+| mimalloc | ~12.2–15.7 | 1.0x |
+| **ours, after fix 4** | **~27.5–30.4** | **~2.0–2.2x slower** |
+| ours, before fix 4 | ~32.5–43.75 | ~2.9x slower |
+
+The real gain (~15-25%, gap 2.9x → ~2.0-2.2x) is smaller than the
+isolated prototype's ~40-47% suggested — the prototype's static arena
+sidesteps real overhead the production `Heap` still pays: TLS lookup,
+the doubly-linked `available` block list, `refill`/`BlockPool`
+interaction, and `retire_empty`/`empty_reserve` bookkeeping. The
+prototype correctly isolated *which data-structure change* helps and by
+roughly how much in principle; it was never going to predict the
+fully-integrated number exactly.
+
+### Known deferral: division in slot-index computation
+
+`free`'s index-from-pointer computation
+(`(ptr - block_base) / class_size`) is a real 64-bit integer division —
+`class_size` is not a power of two for most classes, so the compiler
+can't fold it into a shift (it's a per-class *runtime* value, not a
+compile-time constant at the call site). An isolated profile
+(`selfprofile3.cpp`, real `SuspendThread`-based sampling) found this at
+~3.5% of total time — real, but the smallest of the three findings in
+this investigation. Not fixed: the correct fix (a precomputed
+per-class multiply-by-reciprocal-plus-shift, "magic number division")
+risks a subtly wrong hand-rolled reciprocal, and 3.5% didn't justify
+that risk under the time available. Left as a documented, deferred
+optimization — matches this codebase's existing pattern of phased,
+explicitly-labeled deferrals (see `arena-reset.md`'s evacuation phase).

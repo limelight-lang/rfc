@@ -505,6 +505,84 @@ working set grows; the worst case in absolute terms is under a megabyte.
 The `empty_reserve` cap (one spare block per class) doubles with it too:
 ~1 MB -> ~2 MB in the fully degenerate case.
 
+### Why `relink_unfull` is worth its cost, measured
+
+`relink_unfull` inserts an unfulled block **behind** the head instead of at
+it. Per event that is strictly more expensive: linking at the head writes
+one foreign header (`head.prev`), inserting behind it reads `head.next` and
+writes `head.next` and `second.prev` — three cold accesses against one. Once
+fix 5's eager unlink guarantees the head always has room, the obvious guess
+is that the cheap version is now good enough.
+
+It is not. Reverting to link-at-head, everything else held:
+
+| | churn/alloc @5000 live | larson |
+|---|---|---|
+| relink behind head | 0.323 | ~44.0M ops/s |
+| link at head | **0.768** | **~34.5M ops/s (-21.7%)** |
+
+Linking at the head installs a block with one free slot as the allocation
+point; the next alloc drains it and it crosses the full line again
+immediately. Churn **doubles**, and the rate swamps the per-event saving.
+
+The rule this gives: **the event rate dominates the per-event cost.** Do not
+optimise a churn operation without checking what it does to how often churn
+happens.
+
+### What churn actually costs — a bitmap over blocks buys nothing
+
+Fix 5 left this as the obvious next move, reasoning that `link`/`unlink`
+rewrite `prev.next` and `next.prev` — two *foreign* block headers, 64 KB
+away, touched for nothing else — so replacing the `available` list with a
+per-class "has room" bitmap (one hot word, `tzcnt` to pick, a bit to
+set/clear, zero foreign headers) should remove that cost outright.
+
+Built it in the real `Heap`: dense per-class block table, `has_room` /
+`occupied` masks, `slot_idx` in the header, and a `current[ci]` allocation
+point kept separate from the mask so a free cannot steal it (the lesson
+from the link-at-head experiment above).
+
+**Result: a tie.** +0.3% — noise.
+
+| variant | churn events/alloc @5000 live | larson |
+|---|---|---|
+| linked list (current) | 0.323 | ~42.4M |
+| bitmap over blocks | 0.291 | ~42.5M |
+
+The bitmap does *fewer* events, each with no foreign-header traffic at all,
+and buys nothing. Put that beside the other two churn results:
+
+| change | churn events | throughput |
+|---|---|---|
+| bookkeeping made free (bitmap) | 0.323 → 0.291 | **0%** |
+| events halved (64 KB block) | 0.634 → 0.323 | **+22%** |
+| events doubled (link at head) | 0.323 → 0.768 | **−21.7%** |
+
+Making an event cheaper: nothing. Changing how many events happen: ±22%.
+So **the cost of churn is not the bookkeeping** — it is the block switch
+itself. When the allocation point moves, the next block's header and its
+free-list head are both loads this thread has not made recently. Both
+designs pay that identically; the pointer updates are noise on top of it.
+
+The premise was wrong in a specific, instructive way: those "cold foreign
+headers" are not cold. A size class holds ~3 blocks at a 5000-object live
+set, and its own allocations touch all three constantly, so all three
+headers sit in L1. **Distance in the address space is not temperature** —
+the cache holds what you touch, not what is nearby. `metadata_probe.cpp`
+(fix 5) had already said exactly this about metadata layout, and the same
+mistake was made again here.
+
+Not landed: a tie that costs 32 KB per thread heap and imposes a hard
+ceiling (`MAX_BLOCKS_PER_CLASS`) the linked list does not have is strictly
+worse.
+
+One incidental finding worth keeping: the first cut of this measured
+**−15%**, and all of it was the block table being an inline
+`[[*mut; 128]; 32]` — 32 KB sitting *between* the fields the hot path reads,
+pushing `current` and `empty_reserve` 34 KB apart in a struct that had been
+~530 bytes and one page. Boxing the table recovered every bit of it. Field
+layout of a per-thread structure is worth 15% on its own.
+
 ### Unplanned: the cross-thread "known weakness" was never real
 
 Re-running the benchmarks that fixes 5-6 invalidated — `mt_bench.rs` had
@@ -555,14 +633,18 @@ Not done, in rough priority order:
 - ~~**Block-list churn is what is left**~~ / ~~**`BLOCK_SIZE` is not
   tunable**~~ — both done, fix 6. Churn confirmed causal, block size raised
   to 64 KB, the arena test now derives its constant.
-- **Churn is reduced, not gone** — still ~0.32 link/unlink per alloc at a
-  5000 live set. 128 KB was not tried; the footprint floor
-  (`classes_touched * BLOCK_SIZE`) doubles again, and the remaining gap at
-  that live set is now 1.05x, so there is little left to buy. If churn is
-  attacked again, the structural fix is to stop threading `available`
-  through the block headers at all — a per-class vector of partial blocks
-  would keep `unlink` from touching two *other* cold headers — but that is a
-  design change, not a constant.
+- ~~**stop threading `available` through the block headers**~~ — tried, ties,
+  not landed (see "What churn actually costs" above). The bookkeeping was
+  never the cost.
+- **Churn is reduced, not gone** — still ~0.32 block switches per alloc at a
+  5000 live set, and each one is a cold header plus a cold free-list head.
+  The only lever that has ever moved this is **how often the allocation
+  point changes**, so anything aimed at it must reduce that count, not make
+  the switch cheaper. Untried: 128 KB blocks (halves switches again, but
+  doubles the `classes_touched * BLOCK_SIZE` footprint floor a second time,
+  and the gap at that live set is already 1.05x); keeping more than one
+  block per class hot; sizing blocks per class rather than one constant for
+  all 32.
 - **The mid-curve rows are the ones to watch.** Every gain in fixes 5-6 came
   from 0.5-10 MB live sets; the small ones were already at parity and the
   huge ones were already ahead. Any future change should be judged on that

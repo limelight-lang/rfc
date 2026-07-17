@@ -460,6 +460,61 @@ point of the curve.**
   1.11 / 0.98x across 20..1404 blocks. Noise. A dense per-region header array
   would buy nothing; it was proposed and dropped on this measurement.
 
+## Fix 6 — `BLOCK_SIZE` 32 KB → 64 KB, and the churn was causal after all
+
+Fix 5 left block-list churn as the open item and a 64 KB block as its
+measured-but-unproven lever: block size moves **two** things at once — slots
+per block (fewer full/not-full crossings) and block count (fewer headers) —
+and nothing separated them.
+
+They separate cleanly on the live-set axis, because churn itself does. At a
+200-object live set the churn counters read 0.001 per alloc; at 5000 they
+read 0.634. So: if churn is the mechanism, 64 KB must do **nothing** at 200
+and a lot at 5000. If block count is, it should help at both, since 32 KB
+still uses ~20 blocks at a 200-object live set.
+
+| live bytes | churn/alloc, 32 KB | churn/alloc, 64 KB | 32 KB | 64 KB | gain |
+|---|---|---|---|---|---|
+| 98 KB | 0.001 | 0.000 | 6.10 ns | 6.14 ns | **0%** |
+| 492 KB | 0.138 | 0.019 | 8.07 ns | 6.60 ns | +18% |
+| 2.4 MB | 0.634 | 0.323 | 15.44 ns | 11.33 ns | +27% |
+| 9.8 MB | 1.091 | 0.803 | 22.59 ns | 20.28 ns | +10% |
+
+Zero churn, zero gain. **The mechanism is the churn; block count is not
+it** — consistent with `metadata_probe.cpp` (fix 5), which found metadata
+locality worth nothing on its own.
+
+Landed. Real `larson 5 8 1000 5000 100 4141 1`, interleaved: ~37.4M ->
+~45.6M ops/s, **1.52x -> 1.25x** slower than mimalloc. Cumulative with fix
+5, from where this investigation started: **~27.0M -> ~45.6M, +69%, 2.11x ->
+1.25x.** The gap-vs-working-set curve now reads 1.09 / 1.00 / 0.97 / 1.05 /
+1.15 across 24 KB..9.8 MB — parity, where it was 1.74..2.35 before.
+
+64 KB is also exactly mimalloc's small-page size
+(`MI_SMALL_PAGE_SHIFT == MI_SEGMENT_SLICE_SHIFT`, verified in its headers),
+which is not a coincidence worth ignoring: it faces the same trade-off.
+
+### What it costs
+
+A size class needs at least one whole block, so the footprint floor is
+`classes_touched * BLOCK_SIZE` and doubling the block doubles the floor.
+Measured resident (`blocks_probe.cpp`): 640 KB -> 1280 KB at a 24 KB live
+set (+100%), 3392 KB -> 3776 KB at 2.4 MB (+11%), 11.7 MB -> 12.1 MB at
+9.8 MB (+3%). It is a fixed per-class overhead, so it amortises away as the
+working set grows; the worst case in absolute terms is under a megabyte.
+The `empty_reserve` cap (one spare block per class) doubles with it too:
+~1 MB -> ~2 MB in the fully degenerate case.
+
+### Prerequisite: `BLOCK_SIZE` had to become tunable first
+
+`arena::tests::slow_path_takes_new_block_exactly_at_exhaustion` hardcoded
+`4064` — "32512 payload / 8" — so it failed on any change to `BLOCK_SIZE`
+with "block must be exactly full", which reads as an arena bug rather than a
+stale literal. It now derives the count from `BLOCK_PAYLOAD` and asserts the
+same property. Every other 32 KB mention in the tree was prose, not code;
+those are corrected, and the comments that spelled the ABA tag as "15 bits"
+now say it widens with `BLOCK_MASK`.
+
 ## Open items / notes for follow-up
 
 Not done, in rough priority order:
@@ -469,26 +524,22 @@ Not done, in rough priority order:
 - ~~**Remaining gap not fully attributed**~~ — done, fix 5. Both halves are
   now named and measured: path length (closed, parity at small working
   sets) and block-list churn (open, below).
-- **Block-list churn is what is left.** `link`+`unlink` still run ~0.63 per
-  alloc at a 5000 live set, each rewriting two neighbouring blocks' cold
-  headers. Root cause is slots-per-block: a 32 KB block holds 50 slots of
-  class 640, so ~190 live objects of that class fill 4 blocks to 93% and
-  they cross the full/not-full line constantly. mimalloc's small page is
-  **64 KB** (`MI_SMALL_PAGE_SHIFT == MI_SEGMENT_SLICE_SHIFT`, verified in
-  its headers), i.e. twice the slots. Measured: `BLOCK_SIZE = 64 KB` halves
-  churn (0.634 -> 0.323 per alloc) and gains **+24%**, taking the gap to
-  ~1.36x. Not landed — it changes arena granularity, internal
-  fragmentation, and the empty-block reserve's cost (32 classes x 64 KB),
-  so it needs its own decision. **Caveat: this has not been shown to be
-  *causal*.** Block size moves two things at once — slots per block (fewer
-  full transitions) and block count (fewer headers) — and no experiment yet
-  separates them.
-- **`BLOCK_SIZE` is not actually tunable.**
-  `arena::tests::slow_path_takes_new_block_exactly_at_exhaustion` hardcodes
-  `4064` slots derived from a 32512-byte payload, so any change to
-  `BLOCK_SIZE` fails it with "block must be exactly full" rather than a
-  useful message. The property it asserts is right; the constant should come
-  from `BLOCK_PAYLOAD`. Fix before touching block size.
+- ~~**Block-list churn is what is left**~~ / ~~**`BLOCK_SIZE` is not
+  tunable**~~ — both done, fix 6. Churn confirmed causal, block size raised
+  to 64 KB, the arena test now derives its constant.
+- **Churn is reduced, not gone** — still ~0.32 link/unlink per alloc at a
+  5000 live set. 128 KB was not tried; the footprint floor
+  (`classes_touched * BLOCK_SIZE`) doubles again, and the remaining gap at
+  that live set is now 1.05x, so there is little left to buy. If churn is
+  attacked again, the structural fix is to stop threading `available`
+  through the block headers at all — a per-class vector of partial blocks
+  would keep `unlink` from touching two *other* cold headers — but that is a
+  design change, not a constant.
+- **The mid-curve rows are the ones to watch.** Every gain in fixes 5-6 came
+  from 0.5-10 MB live sets; the small ones were already at parity and the
+  huge ones were already ahead. Any future change should be judged on that
+  band, and `scaling_probe.cpp` is the tool for it — a single larson run
+  reports one point on that curve and hides the shape.
 - **`#[cfg(not(windows))]` TLS path is unverified.** The portable
   `thread_local!` fallback for non-Windows targets has never been
   measured — no Linux/macOS benchmark run exists yet for this project.

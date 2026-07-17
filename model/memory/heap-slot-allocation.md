@@ -252,6 +252,18 @@ see the anchored-vs-raw breakdown further up this file.
 
 ## Fix 4 — Bitmap free-slot tracking + O(1) size-class lookup
 
+> **Half of this fix has since been reverted — read Fix 5 before trusting
+> anything below.** The O(1) size-class lookup table stands and is still in
+> `Heap`. The bitmap does not: it was replaced by an intrusive per-block
+> free list, which measured **+18-20%** on the same real `larson.cpp`. The
+> ablation table below does not support the conclusion it was read as
+> supporting — the row labelled "old linked-list" is the *entire production
+> allocator* of the time, while every "bitmap" row is a standalone prototype
+> with a static per-class arena and no `refill`, no `BlockPool`, no block
+> list, and no slow paths at all. It compared an isolated arena against
+> production, not one free-slot structure against another. Fix 5 has the
+> detail.
+
 Profiling the real C ABI on a *realistic* workload (varying sizes
 8..1000, not one fixed size, 5000-object live-set churn — matching what
 `larson.cpp` actually does) found two more contributors that the
@@ -325,24 +337,158 @@ explicitly-labeled deferrals (see `arena-reset.md`'s evacuation phase).
 
 ---
 
+## Fix 5 — Free list back, block-list churn, and a split fast path
+
+Fix 4's own follow-up asked for a profile of the *fully-integrated* `Heap`
+rather than another prototype. That profile (`selfprofile4.cpp` — same
+`SuspendThread` sampling, but resolving RIPs to symbol+line in-process via
+DbgHelp instead of dumping 300 MB of raw addresses) was run, and it found
+the remaining gap was three separate things, not one.
+
+Headline, real `larson.cpp` through the C ABI, `larson 5 8 1000 5000 100
+4141 1`, all binaries interleaved run-by-run in one session (the machine
+drifts ~20% over a long session; only interleaved ratios are meaningful):
+
+| | throughput | vs mimalloc |
+|---|---|---|
+| before (fix 4 state) | ~26.0M ops/s | 2.15x slower |
+| **after** | **~36.4M ops/s** | **1.54x slower** |
+| mimalloc | ~55.9M ops/s | 1.0x |
+
+### 5a — Intrusive free list replaces the bitmap (+18-20%)
+
+Fix 4's premise — a free list "chases a pointer to an essentially random
+address within the block" — is true but irrelevant, because that address is
+one the caller touches anyway: on `alloc` it is the slot being handed out
+(the caller is about to write it), on `free` it is the slot just released.
+The link rides a line that is already hot. The bitmap, by contrast, is a
+*side* allocation: it adds a second dependent load into a line nothing else
+touches, makes "is this block full?" an O(words) scan instead of a null
+check, and forces `free` to recover a slot index via `(ptr - base) /
+class_size` — a real integer division (fix 4's own "known deferral", now
+simply gone: a free list never needs the index).
+
+Not measured as a data-structure swap in isolation, because that is exactly
+the mistake fix 4 made — measured by changing the production `Heap` and
+running the real benchmark.
+
+### 5b — Block-list churn was the memory cost (walk 1.41 -> 1.00)
+
+Instrumenting how many blocks one `alloc` walks before finding a slot
+produced a number that tracked the gap across every working-set size:
+
+| live set | walk/alloc | gap then |
+|---|---|---|
+| 50 | 1.000 | 1.23x |
+| 200 | 1.001 | 1.24x |
+| 1000 | 1.159 | 1.75x |
+| 5000 | 1.410 | 1.80x |
+
+Cause: `free` re-linked an unfulled block at the **head** of `available`,
+which is exactly where `alloc` serves from. So every cross-block free
+installed a head with a single free slot; the next alloc took it, the block
+was full again, and the alloc after that loaded that header cold only to
+discover it was full and unlink it. `unlink` rewrites `prev.next` and
+`next.prev` — two *other* blocks' headers, 32 KB apart, both cold.
+
+Two changes: an unfulled block re-links **behind** the head
+(`relink_unfull`), and a block that has just handed out its last slot is
+unlinked **immediately**, while its header is still hot, instead of being
+left for the next alloc to trip over. `walk/alloc` is now 1.000 flat.
+
+### 5c — Fast path split out of the slow paths (+4.4%)
+
+Reading the generated code (`cargo rustc -- --emit asm`) against mimalloc's
+(`dumpbin /disasm mimalloc.lib`) showed `mi_malloc` is **21 instructions,
+leaf, no stack frame**, ending in `jmp _mi_malloc_generic` — every rare path
+lives in another function. Ours was three non-inlined functions
+(`ll_malloc` -> `ll_alloc` -> `Heap::alloc`), ~45-50 instructions, two stack
+frames, five `push`es and a `movaps` saving `xmm6` (LLVM had picked a
+callee-saved SSE register to zero 16 bytes inside `unlink`). None of that
+frame is used by a free-list pop; it existed because the rare branches
+shared the function, and LLVM — with no `#[cold]` anywhere in the file — had
+no reason to think `refill` (measured: 0.00003 calls per alloc) was rare.
+
+`refill`/`drain_remote`/full-block/large-object/TLS-fallback are now
+`#[cold] #[inline(never)]` tails reached by tail calls; the fast path is
+`#[inline]` and collapses into `ll_malloc`. Also removed from the hot path:
+a redundant second `CLASS_LUT` lookup (the `size_class_index(size).is_some()`
+guard was equivalent to the `size <= MAX_SMALL` test beside it), a bounds
+check that cannot fire (`get_unchecked` on a const-built table), the
+`Vec`-behind-a-pointer indirection for the per-class tables (now inline
+arrays), and the lazy-init check on every TLS read (`ll_thread_init`'s
+contract already guarantees it, so `get` no longer re-checks). Frame is down
+to one `push` and a `sub rsp, 32`.
+
+Only +4.4% on its own: those instructions were cheap, hot-stack traffic that
+pipelines well. Its real value is visible on small working sets, where
+nothing stalls (see below) — and note the profile is a *poor* tool for this
+class of cost, since samples land on stalled loads, not on cheap prologue
+stores. The disassembly is the evidence here, not the profile.
+
+### What the gap is now, by working set
+
+`scaling_probe.cpp` — larson-shaped, only the live set varies. Baseline and
+current built from the same tree, run back-to-back (mimalloc's own column
+agrees within 10% across the two runs on every row but the last, which is
+why the last is not quoted):
+
+| live bytes | before | after |
+|---|---|---|
+| 24 KB | 1.74x | **1.03x** |
+| 98 KB | 1.81x | **0.95x** |
+| 492 KB | 2.09x | **1.18x** |
+| 2.4 MB | 2.35x | **1.45x** |
+| 9.8 MB | 2.12x | **1.32x** |
+
+The floor — small working sets, everything cache-resident, pure path length
+— went from ~1.8x to parity. That is 5c's result and it confirms the
+attribution. What remains is memory behaviour, peaking ~1.45x where the live
+set is in L2/L3 range, which is exactly where larson's default 5000-object
+config sits: **the project's headline benchmark is measured at the worst
+point of the curve.**
+
+### Two hypotheses this killed, recorded so nobody re-runs them
+
+- **Scan length in the bitmap was not the cost.** An ablation adding O(1)
+  full detection and a resume hint to the scan gained 1.6% — noise. The 27%
+  of samples on those lines were a *stall* on the bitmap's cache line, not
+  loop iterations.
+- **Metadata layout is not the cost.** `metadata_probe.cpp` isolates
+  scattered per-block headers (ours) against one dense array (mimalloc's
+  `mi_segment_t.slices[]`) under identical data traffic: 1.07 / 1.02 / 0.96 /
+  1.11 / 0.98x across 20..1404 blocks. Noise. A dense per-region header array
+  would buy nothing; it was proposed and dropped on this measurement.
+
 ## Open items / notes for follow-up
 
 Not done, in rough priority order:
 
-- **Division in `mark_free`** (see "Known deferral" above) — ~3.5%,
-  needs a correctly-derived per-class magic-number reciprocal, tested
-  against all 32 classes before landing.
-- **Remaining ~2.0–2.2x gap to mimalloc is not fully attributed.** After
-  fixes 1-4, the next profiling pass should target the fully-integrated
-  production `Heap` (not another isolated prototype) — likely
-  candidates: TLS lookup cost re-measured now that the hot path is
-  shorter overall (its relative share has grown), `available`/
-  `empty_reserve` doubly-linked-list bookkeeping, `refill`/`BlockPool`
-  interaction cost. A repeat of the `selfprofile2.cpp`-style real
-  sampling profile (see `bench-external/README.md`), not another
-  ablation prototype, is the right next step — prototypes have twice
-  now underestimated real integrated cost (see fixes 3 and 4's "real
-  vs. prototype" gaps).
+- ~~**Division in `mark_free`**~~ — gone with the bitmap (fix 5a); a free
+  list never computes a slot index.
+- ~~**Remaining gap not fully attributed**~~ — done, fix 5. Both halves are
+  now named and measured: path length (closed, parity at small working
+  sets) and block-list churn (open, below).
+- **Block-list churn is what is left.** `link`+`unlink` still run ~0.63 per
+  alloc at a 5000 live set, each rewriting two neighbouring blocks' cold
+  headers. Root cause is slots-per-block: a 32 KB block holds 50 slots of
+  class 640, so ~190 live objects of that class fill 4 blocks to 93% and
+  they cross the full/not-full line constantly. mimalloc's small page is
+  **64 KB** (`MI_SMALL_PAGE_SHIFT == MI_SEGMENT_SLICE_SHIFT`, verified in
+  its headers), i.e. twice the slots. Measured: `BLOCK_SIZE = 64 KB` halves
+  churn (0.634 -> 0.323 per alloc) and gains **+24%**, taking the gap to
+  ~1.36x. Not landed — it changes arena granularity, internal
+  fragmentation, and the empty-block reserve's cost (32 classes x 64 KB),
+  so it needs its own decision. **Caveat: this has not been shown to be
+  *causal*.** Block size moves two things at once — slots per block (fewer
+  full transitions) and block count (fewer headers) — and no experiment yet
+  separates them.
+- **`BLOCK_SIZE` is not actually tunable.**
+  `arena::tests::slow_path_takes_new_block_exactly_at_exhaustion` hardcodes
+  `4064` slots derived from a 32512-byte payload, so any change to
+  `BLOCK_SIZE` fails it with "block must be exactly full" rather than a
+  useful message. The property it asserts is right; the constant should come
+  from `BLOCK_PAYLOAD`. Fix before touching block size.
 - **`#[cfg(not(windows))]` TLS path is unverified.** The portable
   `thread_local!` fallback for non-Windows targets has never been
   measured — no Linux/macOS benchmark run exists yet for this project.

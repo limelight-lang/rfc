@@ -505,6 +505,34 @@ working set grows; the worst case in absolute terms is under a megabyte.
 The `empty_reserve` cap (one spare block per class) doubles with it too:
 ~1 MB -> ~2 MB in the fully degenerate case.
 
+### Unplanned: the cross-thread "known weakness" was never real
+
+Re-running the benchmarks that fixes 5-6 invalidated — `mt_bench.rs` had
+been left with numbers measured against the bitmap design — turned up
+something nobody was looking for.
+
+| pattern, 8 threads | recorded before | now |
+|---|---|---|
+| independent | ~11.5 vs ~12.0 — a tie | **~18.9 vs ~13.9 — +36% ahead** |
+| bleeding (cross-thread) | ~19.6 vs ~23.1 — **mimalloc +15%** | **~34.2 vs ~24.4 — +40% ahead** |
+
+`benches/RESULTS.md` and `heap.rs`'s module doc both recorded the
+cross-thread deficit as "the real weakness", with a diagnosis (all
+cross-thread frees funnel through **one** contended `remote_free` stack per
+owner, where mimalloc shards per page) and a planned fix (per-destination
+batching, snmalloc-style).
+
+**Nothing on that path was touched by fixes 5-6.** `remote_free` is still
+one atomic stack per owner. What changed is only what `drain_remote` does
+once it has a slot: push onto a free list instead of dividing to find a
+bitmap index, across half as many blocks. The contention was never the
+bottleneck; the per-slot work on the owner's side was.
+
+So the planned sharding is **not justified by any measurement we hold**, and
+should not be built until something re-establishes a need. The diagnosis was
+plausible, matched what mimalloc does, and was wrong — it was inferred from
+a number, not measured.
+
 ### Prerequisite: `BLOCK_SIZE` had to become tunable first
 
 `arena::tests::slow_path_takes_new_block_exactly_at_exhaustion` hardcoded

@@ -621,6 +621,113 @@ same property. Every other 32 KB mention in the tree was prose, not code;
 those are corrected, and the comments that spelled the ABA tag as "15 bits"
 now say it widens with `BLOCK_MASK`.
 
+## Fix 7 — Thread-exit abandonment, and the gap was never 1.25x
+
+Two findings, and the second one invalidates most of the numbers above.
+
+### 7a — The leak
+
+`heap.rs` had carried this since the beginning, as a documented limitation:
+
+> Not yet handled: **thread-exit abandonment**. Blocks still holding objects
+> are leaked rather than adopted by another thread.
+
+It is not a limitation, it is the largest defect this allocator had. Real
+`larson 5 8 1000 5000 100 4141 1`, against a **2.5 MiB live set**:
+
+| | resident | regions |
+|---|---|---|
+| before | **1706 MiB** | 853 |
+| after | **10 MiB** | 5 |
+
+**170x.** And it was never a corner case: larson respawns its worker as a
+fresh OS thread every NumBlocks rounds *by design* — Larson & Krishnan's
+paper is precisely about servers whose worker pools come and go and whose
+memory must not grow. The benchmark exists to catch this. We had been
+running it for months and reading only the throughput line.
+
+Isolated (`thread_churn_probe.cpp`, same work split across N sequential
+threads):
+
+| threads | before | after |
+|---|---|---|
+| 1 | 1.02x, 2 regions | 1.03x, 2 regions |
+| 16 | 1.36x, 30 regions | 1.05x, **2** regions |
+| 64 | 1.82x, **117** regions | 0.98x, **3** regions |
+
+Resident grew linearly with thread count — ~4 MiB stranded per dead thread.
+
+**Design.** The one decision everything hangs off: `remote_free` moved from
+the heap **into the block**. Per-heap, adoption is unfixably racy — a thread
+reads `owner`, an adopter changes it, the free lands in a dead heap's stack
+and nobody ever drains it. Per-block, the message travels *with* the block,
+so whichever `owner` the racing thread read, the block's current owner
+collects it. This is mimalloc's `page->xthread_free`, for the same reason.
+
+The rest: a per-class `owned` chain (a full block is unlinked from
+`available` and would otherwise be unreachable — exactly how they leaked);
+`ll_thread_exit` returns empty blocks to the pool and puts the rest on a
+global per-class abandoned list; `Heap::adopt` claims one on the refill path
+via a CAS on `owner`. The abandoned list is a `Mutex`, not a lock-free
+stack — both users are cold, and a Treiber stack here would need ABA tagging
+to buy nothing.
+
+**Two things this broke on the way**, both worth keeping:
+
+- Collecting a block's parked frees only in `alloc_block_full` strands every
+  block that was unlinked as full — nobody revisits it, so it never returns
+  to service and the thread refills forever. **34.2M → 2.3M ops/s** on the
+  bleeding pattern. Fixed by `collect_owned`, which sweeps the class's blocks
+  before asking the pool; mimalloc's full queue exists for this.
+- `BlockPool`'s thread cache is a `thread_local!` with a destructor, and
+  `abandon_all` runs from another TLS destructor. TLS teardown order is
+  undefined, so `with` panics; it is `try_with` now.
+
+Cost: bleeding larson went from ~34.2M to ~25.4M ops/s. Read that honestly —
+the 34.2M was measured on a design that *leaked*, where `mt_bench`'s threads
+dropped their blocks and nothing charged them for it.
+
+### 7b — The gap was a measurement artifact
+
+Every "Nx slower than mimalloc" in this file and in `benches/RESULTS.md`,
+fixes 4 through 6 included, came from running `larson_ours.exe` against
+`larson_mimalloc.exe` — **two separately-linked executables**. That
+comparison cannot resolve the effect it was being used to measure: our
+number wandered 1.12 / 1.14 / 1.18 / 1.26 across one afternoon on unchanged
+code, and each figure got written down as fact.
+
+Measured properly — larson's exact loop with both allocators compiled into
+one binary and run alternately (`bisect_probe.cpp`):
+
+**1.05–1.07x.** Stable across runs.
+
+By elimination, not assumption. Bisecting larson's loop moved nothing:
+
+| variant | ratio |
+|---|---|
+| baseline loop | 1.05x |
+| + larson's `lran2` RNG | 1.05x |
+| + larson's warmup permutation | 1.07x |
+| + `blksize` array write | 1.06x |
+| + larson's 2 writes + read | 1.06x |
+| + counters + stopflag | 1.08x |
+| **all of them = larson's loop** | **1.07x** |
+
+Nor the CRT (`/MT` 1.14x vs `/MD` 1.13x — the two exes had been built with
+*different* CRTs, which turned out not to matter either). Nor thread churn:
+running larson with `num_rounds` large enough that it never respawns made
+the two-exe number *worse* (1.26x). Nor the cross-thread path: 0.2% of
+frees. What was left was the method.
+
+One real unfairness did surface: mimalloc-bench reaches mimalloc with
+`#define CUSTOM_MALLOC mi_malloc`, a direct call, while our shim wrapped
+both calls in an init check running on every malloc *and* every free —
+because `ll_malloc` demanded an explicit `ll_thread_init` first. It
+self-initialises on a cold branch now, exactly as `mi_malloc` does
+(`test rcx,rcx; je _mi_malloc_generic`), and the shim is a direct `#define`.
+The explicit contract remains the documented, faster path for an embedder;
+skipping it is now merely slower once, not undefined.
+
 ## Open items / notes for follow-up
 
 Not done, in rough priority order:
@@ -650,6 +757,29 @@ Not done, in rough priority order:
   huge ones were already ahead. Any future change should be judged on that
   band, and `scaling_probe.cpp` is the tool for it — a single larson run
   reports one point on that curve and hides the shape.
+- **The remaining gap is ~5-7%, not 25%** (fix 7b), and it is unattributed.
+  Anything chasing it must be measured with both allocators in one binary
+  (`bisect_probe.cpp`); the two-exe comparison cannot see an effect this
+  small, and believing it cost this investigation most of a day.
+- **`stats.rs`'s three tests are racy and will fail under load.** They assert
+  deltas on the process-global `blocks_out` while `test_guard` only
+  serialises the tests themselves — a thread exiting now returns blocks from
+  its TLS destructor, outside that lock. Reproduced at
+  `--test-threads=16` (`arena_lifecycle_is_visible_at_block_granularity`,
+  off by exactly one block). Not a product regression: their isolation was
+  resting on the leak fix 7a removed, since thread exit used to do nothing.
+  The fix is to release a test's heap under the same lock the test holds,
+  rather than in a TLS destructor. Do not weaken the assertions.
+- **Abandoned blocks are only reclaimed when adopted.** A size class that
+  goes permanently idle keeps whatever was live in it at thread exit.
+  Bounded, and no periodic trim exists.
+- **Load-bearing invariant, not an open item, but write it down:** a heap's
+  identity is its own address, and `ll_thread_exit` frees the `Heap`, so that
+  address is free to be reused by a future thread's heap. That is safe only
+  because `abandon_all` stores `null` into every one of its blocks' `owner`
+  *before* the `Heap` is dropped — so no block can ever name a dead heap, and
+  a recycled address cannot be mistaken for ownership. Anything that starts
+  storing heap identities elsewhere breaks this.
 - **`#[cfg(not(windows))]` TLS path is unverified.** The portable
   `thread_local!` fallback for non-Windows targets has never been
   measured — no Linux/macOS benchmark run exists yet for this project.

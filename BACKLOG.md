@@ -101,6 +101,70 @@ into proper RFCs when picked up.
   strategy at build time ([strategies.md](model/gc/strategies.md));
   belongs with the execution pipeline RFC.
 
+## Compiler-declared block shapes (type-segregated blocks)
+
+Let the compiler declare a block whose slots are exactly one class's
+instances — `ll_alloc_shape(SHAPE_POINT)` instead of `ll_malloc(size)`.
+Classic idea with a name and a graveyard: **BiBOP** (Big Bag of Pages), as
+in SML/NJ, older Lisps, Boehm's "kinds". We are already half-way there —
+blocks are segregated by *size*; this segregates by *type*.
+
+**The obvious motivation is already dead, so don't re-derive it.** Exact
+slot sizing buys nothing: `object_size = 16 + 16 * nprops` is always a
+multiple of 16, and the size classes step by 16 up to 128. A 2-property
+class is 48 bytes and lands in the 48 class — exact. Rounding only appears
+at 8+ properties (144 → 160, ~10%).
+
+What would actually be bought, in descending order of interest:
+
+- **Trace by block, not by object.** The collector currently reads
+  `obj->class` → `prop_layout.refcounted_slots()` per object. A typed block
+  has one layout for all ~1300 of its objects: one lookup per block, and a
+  linear sweep instead of pointer chasing. This is the real prize, and it is
+  a *GC* prize, not an allocator one.
+- **8 bytes off every object.** `Object` is `{ rc: 8, class: 8, props… }`.
+  If a block holds one class, the class pointer belongs in the block header.
+  40 bytes instead of 48 for a 2-property class — 17%.
+- **Constant-folded allocation.** A compile-time shape index kills the
+  `CLASS_LUT` load, the `SIZE_CLASSES[ci]` load, and turns `idx * class_size`
+  into a `lea`. Roughly halves the fast path.
+
+Four things any design has to answer, and none of them are small:
+
+1. **The hot path gets nothing.** PHP request objects go to the request
+   arena (`ll_object_new`: `RequestArena => arena.alloc(size)`), which is a
+   pure bump — no size classes, no lookup, size already constant-folds.
+   Shapes only apply to `GcHeap`/`LongLived`, the *minority* of objects in a
+   request. They happen to be the ones the collector traces, which is why the
+   GC win above is the one worth chasing.
+2. **Variable block size breaks the pointer→block trick.** `of_ptr` is one
+   `and` (`ptr & !BLOCK_MASK`) and works only because every block is the same
+   size *and* aligned to it; 17 places depend on it. Mixing 32 KB and 64 KB
+   blocks needs mimalloc's answer — fix a granularity, keep a per-region unit
+   table, map any address through it — which costs a **dependent load on
+   every free**, taxing the whole allocator to serve shapes. Regions would
+   also have to become `REGION_SIZE`-aligned (today they are `BLOCK_SIZE`-
+   aligned). Cheaper alternative: keep one block size and solve the footprint
+   with policy (below) instead.
+3. **Header elision may be a net loss.** Removing `obj->class` means every
+   virtual dispatch, `instanceof`, and layout-dependent access reads it from
+   the block header instead — an `and` plus a load from another line, on
+   paths far hotter than allocation. Only pays if the compiler really does
+   monomorphise most dispatch, which is the design's central unvalidated bet
+   (see PLAN.md's vertical slice). Do not assume it; measure it first.
+4. **Footprint is what killed BiBOP.** One block per shape per thread: 500
+   classes × 8 threads × 64 KB ≈ 256 MB of half-empty blocks. We have just
+   paid for one 170x memory bug (`heap-slot-allocation.md`, fix 7a); this
+   would reintroduce the same failure through the front door. Needs a policy
+   — which classes earn a shape, who decides (compiler, PGO, a runtime
+   instance counter), and what the fallback to size classes looks like.
+
+Verdict: plausible, but it is a **GcHeap design item, not a `Heap` one**, and
+it should be scoped by the GC win rather than the allocation win. Revisit
+when the Immix-shaped `GcHeap` is designed ([heap-design.md](model/gc/heap-design.md));
+by then the vertical slice should also say how much dispatch survives
+compilation, which decides point 3.
+
 ## Explicit pack/optimize operation for long-lived structures
 
 Structures that live long (caches, config trees, routing tables,

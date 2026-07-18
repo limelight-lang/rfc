@@ -72,9 +72,14 @@ The only phase visible to PHP code.
   flags, set before the call.
 - Called through the vtable slot (it is an ordinary virtual method).
 - **Resurrection check**: `__destruct` may store `$this` somewhere,
-  raising the refcount. After the call, if `refcount > 0`, teardown is
-  aborted: the object lives on. When its count reaches zero again,
-  phase 1 is *skipped* (the bit is set) and teardown proceeds to phase 2.
+  raising the refcount. The call is made with **one guard reference held**:
+  a *transient* `$this` reference taken and dropped inside the destructor
+  (`$x = $this;` then `$x` leaves scope) must not drive the count to zero
+  and re-enter teardown, which would free the object here and again below
+  (a double free). After the call the guard is dropped; if `refcount > 0`,
+  teardown is aborted and the object lives on. When its count reaches zero
+  again, phase 1 is *skipped* (the bit is set) and teardown proceeds to
+  phase 2.
 
 ### Phase 2 — Real destructor: drop
 
@@ -100,7 +105,9 @@ pub extern "C" fn ll_object_die(obj: *mut Object) {
 
     // Phase 1: pre-destructor, exactly once, resurrection-aware
     if class.has_php_destructor() && !flags_test_and_set(obj, DESTRUCTED) {
+        refcount(obj) += 1;               // guard: a transient $this ref
         call_vtbl_slot(obj, class.destruct_slot());
+        refcount(obj) -= 1;               // drop the guard, no re-entry
         if refcount(obj) > 0 {
             return;                       // resurrected: abort teardown
         }

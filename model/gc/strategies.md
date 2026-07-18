@@ -131,17 +131,70 @@ elephc's model; `rc-trace` is the Zend architecture done right
 2. **Arenas absorb the bulk.** Request-scoped objects carry no
    refcounts and die in O(1) at arena reset; the tracer never sees
    them.
-3. **Stop-the-thread tracing collects cycles only.** Triggered by
+3. **Stop-the-thread tracing collects cycles only.** *Armed* by a
    threshold (candidate-root buffer fill, as Zend's 10K, to be
-   calibrated). The thread parks at a safepoint; the marker traces the
-   general heap from roots; unmarked refcounted islands are cycles and
-   are freed through normal teardown. The pause is proportional to the
-   *live general heap*, which arenas keep small.
+   calibrated) but *fired* only at a clean point (see [Triggering:
+   arm vs fire](#triggering-arm-vs-fire) below). At the fire point the
+   thread is parked at a safepoint; the marker traces the general heap
+   from roots; unmarked refcounted islands are cycles and are freed
+   through normal teardown. The pause is proportional to the *live
+   general heap*, which arenas keep small.
 
 Because the mutator is parked while marking runs, `rc-trace` needs
 **no store-barrier hook, no snapshot, no mark-phase coordination**:
 the graph cannot change under the marker. That simplicity is why it is
 first.
+
+### Triggering: arm vs fire
+
+Cycle collection reads refcounts against the physical object graph and
+frees what the two agree is unreachable. It may therefore run **only
+where refcounts and edges agree** — between mutator operations, after
+the current store or teardown has completed. This is a *correctness*
+requirement, not a tuning choice.
+
+The failure it rules out is concrete. A reference store
+(`$box->slot = null`) lowers the old value's refcount *before* it
+overwrites the pointer; for that instant the count says "one fewer
+reference" while the pointer is still physically in the slot. A
+collection that runs in that window walks the stale edge and subtracts
+that same reference a second time, drives a still-live object to
+refcount 0, and frees it out from under its remaining holder. The same
+window opens mid-teardown (a child release during phase 2) and mid-reset.
+
+So the trigger splits in two, and only the runtime half is fixed:
+
+- **Arm (runtime mechanics).** A non-zero decrement buffers a candidate
+  root; crossing the threshold sets a *pending* flag. It runs from
+  inside `ll_release`, i.e. mid-mutation, so it **never runs the
+  collector** — it only records that one is due. The candidate buffer
+  itself is always maintained (the collector needs it to know what to
+  trace), even when no automatic trigger is configured.
+- **Fire (compiler policy).** The collector runs only at a **clean
+  point** the compiler chooses: an explicit `ll_gc_collect_cycles`, or a
+  `ll_gc_maybe_collect` poll injected at a safepoint (§2) — a statement
+  boundary, an allocation slow path, request end. A reentrancy guard
+  makes any fire point safe even if reached from within teardown (a
+  nested collection is a no-op).
+
+**The policy is the compiler's, outside the runtime model.** *Which*
+signals arm a collection and at what thresholds — candidate count,
+bytes allocated since the last cycle, the memory-pressure mode
+([buffers.md](../memory/buffers.md)), request end — is decided before
+codegen and injected as calls, exactly as the store barrier's
+*whether-to-call* is the compiler's (§1). Each signal is independently
+enabled and tuned per build; **there is no universal trigger.** Request
+end in particular is one optional signal among others, not a default:
+daemons, actors and long CLI runs are not request-shaped, and much
+cyclic garbage already dies for free at arena reset regardless. With no
+signal enabled the runtime never fires on its own — collection is then
+purely explicit — which is a legitimate configuration (its cost is
+retained cycles, the caller's call to make).
+
+The runtime therefore exposes only mechanism: `buffer_candidate`
+(arm), `collect_cycles` / `ll_gc_collect_cycles` (fire now),
+`ll_gc_maybe_collect` (fire if armed), and the reentrancy guard. No
+triggering policy lives in the model.
 
 ## The flagship against pauses: `rc-satb`
 

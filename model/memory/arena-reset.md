@@ -110,6 +110,13 @@ allocating or escaping from a destructor forces the reset to re-settle and
 is usually a smell, so the classification is worth showing the author, not
 just consuming internally.
 
+And fewer of these arise in the first place: the compiler's static
+resolution allocates a provably-escaping object directly in its target
+category, never in the arena, so it is never an escapee and never dirties
+a destructor — this fixpoint sees only the escapes the compiler could
+*not* prove statically. See [arenas.md](arenas.md), "Static vs dynamic
+resolution".
+
 **The loop body** is therefore: run the dying, unescaped objects'
 destructors; if the round held **any** non-pure destructor, re-settle —
 re-trace the survivors' current children, run the destructors of

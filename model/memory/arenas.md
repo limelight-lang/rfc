@@ -109,6 +109,44 @@ longer-lived managed containers. Raw pointers handed *out* to native
 code are the separate, already-covered case: such objects are pinned
 and their blocks always retained ([arena-reset.md](arena-reset.md)).
 
+### Between two request arenas: forbidden
+
+The escape rule is really about **relative lifetime**, not "heap vs
+arena": an escape exists whenever the holder outlives the value. Heap
+and long-lived containers are just the always-longer case. A reference
+from one request arena into a **different, longer-lived** request arena
+is the same dangling hazard — and it is **not supported**.
+
+Storing *within a single arena* is of course fine and is the common case
+(`$node->next = $other`, both request-scoped): the two die together at
+the same reset, no escape. What is forbidden is a store whose destination
+slot lives in a *different* arena that outlives the source.
+
+This is an **invariant, held by construction, not enforced by the
+barrier**. The category barrier compares only the 2-bit category, so it
+cannot tell one request arena from another — it treats every
+`RequestArena → RequestArena` store as same-arena-safe. That is correct
+only because cross-arena references do not arise: actor arenas are
+isolated (actors share no direct references, only messages —
+[actors.md](../../runtime/actors.md)), and there is at most one request
+arena mounted per executing context. There is no scoped/nested request
+arena that another can reference.
+
+Why not simply extend the remembered set to cover it: the counting side
+does not compose. A heap holder releases the promoted object through its
+own refcounted teardown; an *arena* holder does not count references, so
+it would have to acquire a release obligation for the promoted object,
+and maintaining that obligation across overwrites and holder death
+re-introduces exactly the dangling-record problem the remembered set
+exists to avoid. Cross-lifetime arena references therefore need their
+own design (an arena lifetime/depth order, and how a holder learns of a
+promotion) — deferred until a feature actually requires them (nested
+request scopes, fibers). Until then the invariant stands: **references
+into a different, longer-lived arena must not be created.** Lifetimes of
+any two arenas that *can* reference each other must be comparable
+(nesting or isolation); partially-overlapping arena lifetimes are
+likewise out of scope.
+
 ### The reverse direction: request arena ← heap
 
 Not a dangling problem but a leak: arena reset skips per-object drop

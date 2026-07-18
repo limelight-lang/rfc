@@ -73,13 +73,36 @@ deletion barrier ([satb.md](../gc/satb.md)). One door, not two.
 ### The dangerous direction: longer-lived ← shorter-lived
 
 A heap or long-lived object storing a reference to a request-arena object
-would dangle after arena reset. **Primary strategy — deferred promotion**:
-the barrier only logs the referencing slot into the arena's **remembered
-set**; the fate of escaped objects is decided lazily at arena death, per
-32 KB block — survivor-less blocks are freed, dense blocks are retained
-in place, sparse blocks have their survivors evacuated. The full
-algorithm, including why no statepoints are needed and how identity is
-preserved, is specified in [arena-reset.md](arena-reset.md).
+would dangle after arena reset. **Primary strategy — deferred promotion by
+escape counting**: rather than remember the *slot*, the barrier counts the
+*escape* on the escapee itself. Each request-arena object carries a
+**hold-count** — how many longer-lived containers currently reference it —
+kept in its otherwise-idle `refcount` field (arena objects are not
+lifetime-counted). A store into a longer-lived container increments it
+(the object joins the arena's escapee list on the 0 → 1 transition); an
+overwrite, or the teardown of a holder, decrements it. Those two are the
+**same event** — a slot let go of the escapee — so there is one decrement
+rule, invoked from the store barrier and from holder teardown alike. At
+arena death the escapees with a non-zero count are the survivors; their
+fate is decided per 32 KB block — survivor-less blocks are freed, dense
+blocks are retained in place, sparse blocks have their survivors
+evacuated. The full algorithm, including why no statepoints are needed and
+how identity is preserved, is specified in
+[arena-reset.md](arena-reset.md).
+
+**Why count the escapee, not remember the slot**: a remembered slot points
+*into a longer-lived container*, which can itself die before the arena
+resets. Reading that slot back at reset would dereference freed (and
+possibly reused) memory — a use-after-free. Counting on the escapee
+sidesteps it entirely: the count is kept truthful while every holder is
+alive (a dying holder's own teardown does the final decrement), so reset
+decides promotion from the count and **never dereferences a holder slot**.
+The trade-off, accepted for now: only the count is kept, not *which* slots
+hold the escapee, so an escapee cannot be **moved** — evacuation needs the
+slots to fix references up. Back-pointers for evacuation are deferred until
+evacuation and arrays are designed together (an array holder is many
+elements, and its storage rehashes, so a per-slot back-pointer is both
+expensive and unstable — the count is neither).
 
 **deepCopy at the barrier** remains as the eager variant for value-like
 data (COW strings/arrays), where copying is natural and reference identity
@@ -92,13 +115,16 @@ barrier fires at all. The barrier above is the dynamic fallback only:
 origin unprovable (e.g. the object arrived as a parameter), so the check
 happens at the store.
 
-**Implementation note**: the remembered set is allocated **inside the
-arena's own bump memory**, as a growable buffer
-([buffers.md](buffers.md)) of fixed-size slot records — not a
-separately-allocated list. It dies for free with the arena, exactly like
-the destructor-tracking list.
+**Implementation note**: the escapee list lives **inside the arena's own
+bump memory** ([buffers.md](buffers.md)), as an append-only list of the
+escapee *entities* — not a separately-allocated structure, and not a list
+of slots. It dies for free with the arena, exactly like the
+destructor-tracking list. An escapee whose count returns to zero is simply
+skipped at reset; a re-escape appends it again (harmless — the reset-time
+subgraph mark deduplicates). The hold-count itself lives in each escapee's
+`refcount`, not in the list.
 
-**Completeness contract**: "the remembered set is a complete registry
+**Completeness contract**: "the escape count is a complete registry
 of external references" holds only because every reference store in
 generated code goes through `ll_ref_store`. Native code at the FFI
 boundary writes memory directly, past the barrier. The contract is

@@ -20,10 +20,16 @@ object lifecycle ([object-lifecycle.md](../../runtime/object-lifecycle.md)).
 
 ## Inputs — all available for free at reset time
 
-- **Remembered set**: the category barrier logged every store of an
-  arena reference into a longer-lived container. This is a *complete*
-  registry of external references into the arena: no heap tracing is
-  ever needed to find them.
+- **Escapee list + hold-count**: the category barrier counted every store
+  of an arena reference into a longer-lived container on the escapee
+  itself (its `refcount` doubles as the hold-count; see
+  [arenas.md](arenas.md), "The dangerous direction"). The arena's
+  append-only **escapee list** names every object that ever escaped; the
+  live external count of each is its hold-count, kept truthful by
+  increments on store and decrements on overwrite or holder teardown. This
+  is a *complete* registry of external references into the arena, and it is
+  read **without dereferencing any holder slot** — so a holder that died
+  before reset cannot dangle it. No heap tracing is ever needed.
 - **Arena block map**: which 32KB blocks belong to the arena, and (after
   the survivor trace) which contain survivors.
 - **No live stack**: the arena dies after the request completes, so no
@@ -37,24 +43,28 @@ Destructors and the trace depend on each other circularly: which
 destructors run depends on who escaped (escaped objects are not dying
 and are skipped), but `__destruct` runs PHP code and can *create new
 escapes* — store an arena object, `$this` included, into a longer-lived
-slot, after the remembered set was already read. A fixed step order
-would miss those. So step 1 iterates to a fixpoint:
+slot after the escapee list was already read. A fixed step order would
+miss those. So step 1 iterates to a fixpoint:
 
-1. Walk the remembered set; drop stale entries (the slot was overwritten
-   or its owner died; check it still points into this arena). Remember
-   the high-water mark — the set is append-only.
-2. Trace the **escaped subgraph** from the valid external references:
-   escaped objects may reference other arena objects transitively. The
-   trace is bounded by the size of the escaping graph, not the arena.
+1. Walk the escapee list; the survivors are the entries whose hold-count
+   is still non-zero (an escapee every holder has since released, or whose
+   holders all died, carries a zero count and is skipped — no slot is read
+   to discover this, so a dead holder cannot dangle the walk). The list is
+   append-only; remember the high-water mark.
+2. Trace the **escaped subgraph** from those survivors: an escapee may
+   reference other arena objects transitively. The trace is bounded by the
+   size of the escaping graph, not the arena.
 3. Run pre-destructors (`__destruct`) for tracked dying objects
    ([object-lifecycle.md](../../runtime/object-lifecycle.md)) that are
    not escaped and not yet destructed (the `DESTRUCTED` flag is the
-   exactly-once guard). Destructors go through the normal barrier, so
-   new escapes land in the remembered set; destructor-allocated objects
-   land in the arena and may register destructors of their own.
-4. If the remembered set grew past the mark, or new destructors were
-   registered: validate and trace **only the delta**, then repeat
-   from 3. Otherwise the state is stable — proceed to step 2.
+   exactly-once guard). Destructors go through the normal barrier, so new
+   escapes bump hold-counts and append to the escapee list; a destructor
+   that tears down a holder decrements the counts it held (the same
+   `lose` event); destructor-allocated objects land in the arena and may
+   register destructors of their own.
+4. If the escapee list grew past the mark, or new destructors were
+   registered: trace **only the delta**, then repeat from 3. Otherwise the
+   state is stable — proceed to step 2.
 
 The loop terminates: every round either destructs at least one new
 object (each destructs at most once) or is the last. An object

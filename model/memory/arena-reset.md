@@ -67,9 +67,64 @@ miss those. So step 1 iterates to a fixpoint:
    state is stable — proceed to step 2.
 
 The loop terminates: every round either destructs at least one new
-object (each destructs at most once) or is the last. An object
-resurrected from its own `__destruct` survives already-destructed —
-the destructor never runs again, matching Zend semantics.
+object (each destructs at most once) or is the last, and the runaway
+case is bounded by `N` (see below). An object resurrected from its own
+`__destruct` survives already-destructed — the destructor never runs
+again, matching Zend semantics.
+
+### What keeps the fixpoint going — destructor purity
+
+A `__destruct` runs arbitrary PHP, so the reset must keep settling until
+the destructors stop changing the picture. Each destructor's effect falls
+into one of three classes, and the class says exactly what a round of it
+can add:
+
+- **Pure** — creates nothing and stores no managed reference. It cannot
+  add work: no new arena object, no new escape, no new release-log entry.
+  **A round of only pure destructors is the last.**
+- **Dirty** — allocates in the *same arena*. The new objects may carry
+  their own destructors (which must then run) and may be stored into a
+  **survivor**, so the survivor trace must re-read that survivor's current
+  children — a destructor-added child has no reason to be a new *escape*
+  (it is an arena→arena store) yet must still be promoted. This is the
+  hazard a naïve "re-run destructors only" loop misses.
+- **Heap-effecting** — creates heap objects, or stores an arena reference
+  into a longer-lived container (a **new escape**), or a heap reference
+  into an arena container (a **new release-log entry**). A
+  destructor-created escape means an arena object must now be promoted, so
+  heap-effecting also keeps the reset going.
+
+The compiler computes the class **statically**: a destructor is
+*potentially* dirty or heap-effecting at any explicit allocation or managed
+store, and at any call it cannot see through; it refines by inspecting
+callees where it can. The class is conservative — "potentially" is treated
+as "is" — and is metadata on the destructor, read by the reset (a
+destructor may also return its actual outcome for a tighter loop).
+
+The same classification pays off twice more. As an **optimization**: when
+the compiler proves every destructor reachable in an arena is pure, the
+reset needs no fixpoint at all — a single pass settles it, and the loop
+machinery compiles away. As a **diagnostic** (later): a dirty or
+heap-effecting destructor can be surfaced as a compile-time warning —
+allocating or escaping from a destructor forces the reset to re-settle and
+is usually a smell, so the classification is worth showing the author, not
+just consuming internally.
+
+**The loop body** is therefore: run the dying, unescaped objects'
+destructors; if the round held **any** non-pure destructor, re-settle —
+re-trace the survivors' current children, run the destructors of
+newly-created dying objects, and fold in new escapes and release-log
+entries — then repeat. **Object memory is logically freed as each
+destructor runs, but the arena's pages are held until a fully-pure round
+closes the fixpoint** (a single dirty *or* heap-effecting destructor keeps
+them alive).
+
+**Recursion bound.** Pure and non-recreating dirty destructors converge in
+rounds bounded by the object count (each destructs at most once). A
+pathological destructor that endlessly creates destructor-bearing objects
+would not converge, so the loop is capped at `N` rounds; **hitting the cap
+is an error (abort), never a silent drop of the un-settled tail** —
+dropping it would dangle. This mirrors Zend's GC recursion limit.
 
 ## Step 2 — Decide, per block
 

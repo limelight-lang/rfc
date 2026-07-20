@@ -72,22 +72,12 @@ refused rather than allowed to fault again.
 Worth knowing about, since it is the fallback if guard-page handling
 proves fragile on some target.)
 
-**Two claims about Zend in this document are wrong and are flagged
-rather than quietly corrected**, because they affect the embedded mode:
-`zend_bailout` jumps to the *innermost* enclosing `zend_try`, not the
-request root, and some `zend_catch` sites deliberately swallow it. So
-"not catchable" and "request root" describe what we might build, not
-what Zend does.
-
-Channel B is not a weaker version of the other two; it answers a
-different question. Unwinding and error returns are for failures user
-code may handle. Bailout is for failures where continuing to run user
-code is not possible or not meaningful.
-
-setjmp/longjmp is rejected below as an *exception* mechanism because it
-would charge every `try`. As a *fatal* mechanism it charges **one setjmp
-per request**, which is nothing, and that difference is the whole reason
-it belongs here and not there.
+**A note on Zend, because the embedded mode depends on it:** the
+description of `zend_bailout` above is how one might build such a thing,
+not how Zend actually behaves. Zend jumps to the *innermost* enclosing
+`zend_try`, not the request root, and some `zend_catch` sites
+deliberately swallow the jump. Anything the embedded mode says about
+mapping onto it has to start from that.
 
 **What is different here from every language above: the programmer does
 not choose the channel — the compiler does.** In the others the choice
@@ -285,6 +275,13 @@ control-flow graph, and does not pin values for a landing pad. That is
 the one cost of channel U listed above as unavoidable — and this is what
 avoids it. It should be inferred wherever provable, not only where
 written.
+
+**Every entry point into the Rust runtime is `nothrow` by
+construction.** That is not a separate rule but the same principle seen
+from the caller's side: Rust never raises, it returns a status. So calls
+into the runtime are plain `call`s, and the allocator's hot paths carry
+no landing pads and no `invoke`-induced pressure on register allocation.
+The boundary principle and the codegen property are the same fact.
 
 **One function, one convention.** No dual entry points, no thunks, no
 per-call-site variants — a function is compiled one way and that is what
@@ -539,14 +536,36 @@ it is thrown, and that is observable: `(new Exception)->getTrace()`
 returns a full trace for an exception never thrown. Two modes, matching
 PHP's `zend.exception_ignore_args`: with arguments and without.
 
-### Materialization: only the frames that are about to die
+### Capture is eager, symbolization is lazy
 
-Unwinding does not destroy the stack — it destroys the **segment**
-between the raise point and the handler. Everything below the handler
-survives. So only that segment need be copied into the exception, and
-phase 1 identifies it exactly, before phase 2 destroys anything.
+**Capture happens at construction, always, and copies the whole chain of
+return addresses.** Not at throw, not partially, not conditionally.
 
-The order falls out on its own:
+That is forced by semantics rather than chosen: PHP builds the trace
+when the `Throwable` is constructed, and `return new Exception()` proves
+why nothing lazier works. The constructing frame dies by an *ordinary
+return* — no unwinding, no store, no barrier of any kind — yet it
+belongs in the trace. There is no event to hang laziness on, because
+nothing happens.
+
+The cost is bounded and small: copying one machine word per frame. It is
+not resolution.
+
+**Symbolization stays lazy.** A captured frame is a number. Turning it
+into function, file and line happens only when the program asks for
+`getTrace()` / `getTraceAsString()`, so an exception that is caught and
+swallowed never pays for it — which is where the real cost lives.
+
+This needs a PC→(function, file, line) side table in release builds,
+registered at compile time for JIT code. A genuine size cost, and it
+belongs in the budget.
+
+### Deferred optimization: materialize only the doomed segment
+
+Unwinding does not destroy the stack, only the **segment** between the
+raise point and the handler; everything below survives. Phase 1
+identifies that segment exactly, before phase 2 destroys anything, so
+the order falls out on its own:
 
 ```
 phase 1: find the handler   ->   the doomed segment is now known
@@ -554,33 +573,21 @@ materialize:                     copy only that segment
 phase 2: destroy it
 ```
 
-The work is proportional to **the distance to the handler**, not to
-stack depth. A nearby `try/catch` materializes a handful of frames. If
-there is **no** handler, phase 2 never runs, the whole stack survives,
-and nothing needs materializing at all.
+Work proportional to the distance to the handler rather than to stack
+depth — and with no handler at all, phase 2 never runs and nothing needs
+copying.
 
-### Capture is cheap; symbolization is lazy
+**This cannot be the general mechanism**, for the reason above: it is
+tied to the throw, while capture is tied to construction. It is
+applicable only where the compiler can see construction, throw and catch
+together and prove the exception does not outlive them. Kept as an
+optimization for that case, not as the design.
 
-Materializing a frame records its **return address** — a number. It does
-not resolve function, file or line. That resolution happens only if the
-program actually asks for `getTrace()` / `getTraceAsString()`, and an
-exception that is caught and swallowed never pays it.
-
-This requires a PC→(function, file, line) side table present in release
-builds, and for JIT-compiled code, registered at compile time. That is a
-real size cost and belongs in the budget.
-
-### Validity of the surviving segment
-
-The frames below the handler can be walked lazily — but only while they
-are alive. If the exception is stored somewhere longer-lived and
-inspected later, they are gone.
-
-**The escape barrier already detects exactly this event.** Storing an
-exception into a longer-lived container is an escape, which the barrier
-must notice anyway for arena reasons
-([arenas.md](../model/memory/arenas.md)); materializing the remainder of
-the trace there costs no new check on any hot path.
+An earlier draft proposed hanging the lazy remainder on the escape
+barrier. That does not work: the barrier fires on
+`RequestArena → longer-lived` stores only
+([arenas.md](../model/memory/arenas.md)), so it never sees an exception
+stored arena-to-arena, chained as `previous`, or simply returned.
 
 ### Arguments must not hold references
 
@@ -734,17 +741,12 @@ resolved**. They are listed because a design document that hides its
 holes is worse than one that has them: each of these invalidates part of
 what is written above, and the reader needs to know which part.
 
-**1. Trace capture cannot be lazy the way the section above describes.**
-The escape barrier fires only on `RequestArena → longer-lived` stores,
-so it does not see the events that actually end a frame's life: an
-exception stored arena→arena, an exception chained as `previous`, or
-simply `return new Exception()` — where the constructing frame dies by
-an ordinary return, having never been part of any doomed segment. Since
-PHP captures at *construction*, that frame belongs in the trace. The
-likely fix is that capture of the return-address chain is always eager
-(it is a copy of machine words, cheap) and only symbolization is
-deferred, with the doomed-segment scheme surviving as an optimization
-where the compiler can see construction, throw and catch together.
+**1. ~~Trace capture cannot be lazy the way described.~~ Resolved.**
+Capture is now eager at construction and copies the whole return-address
+chain; only symbolization is deferred. The doomed-segment scheme
+survives as an optimization where the compiler can see construction,
+throw and catch together. See "Capture is eager, symbolization is
+lazy".
 
 **2. ~~Channel R and dynamically dispatched calls.~~ Resolved**, and
 without adding machinery: one function has one convention, and a

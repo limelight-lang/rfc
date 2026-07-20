@@ -24,11 +24,15 @@ into proper RFCs when picked up.
 - **Closures** — capture (by-value / by-ref), `$this` binding,
   first-class callable syntax.
 - **Exceptions** — designed, see [exceptions.md](runtime/exceptions.md):
-  table-driven unwinding, O(1) `catch` matching off the Cohen display,
-  and a pending-exception channel at the runtime boundary. Still open
-  within it: stack-trace capture (cost of recording frames at `throw`),
-  the ELF/Windows funclet fork in the code generator, and the deferred
-  direct-jump optimization.
+  two channels (table-driven unwinding, plus error-return for frequent
+  exceptions) chosen by the compiler over the known class hierarchy;
+  runtime→PHP callbacks always use the return channel so unwinding never
+  enters Rust; traces materialize only the frames unwinding is about to
+  destroy, with symbolization deferred. Open within it: generators and
+  fibers (segmented stacks break the trace walk), how interface `catch`
+  — including `Throwable` — avoids an itable search, the Windows funclet
+  constraint on a custom personality, unwind registration for JIT code,
+  and where the frequency hint comes from.
 - **Enums** (PHP 8.1) — immortal singletons; mostly falls out of the
   existing model, needs a short document.
 - **Generators / Fibers** — execution-stack capture; heavily coupled to

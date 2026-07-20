@@ -44,11 +44,33 @@ no `finally` — and it is **not catchable**. This is PHP's own
 `zend_bailout`, used there for `memory_limit` exhaustion, `E_ERROR` and
 `exit()`.
 
-**Its scope here has collapsed to almost nothing.** Memory exhaustion is
-an ordinary exception, and so is `exit()` — both decided below. What is
-left for B is a violated internal invariant, which kills the process
-anyway, and stack exhaustion, which is unresolved. It is quite possible
-that channel B does not need to exist at all.
+**Decided: channel B is not needed.** Every candidate for it turned out
+to be an ordinary exception — memory exhaustion, `exit()`, and stack
+exhaustion, each decided below. What remains is a violated internal
+invariant, and that is not a channel: it aborts the process, because
+there is nothing safe to continue into.
+
+So the design has **two** channels, U and R, and the paragraph above is
+kept only to record why a third was considered and rejected.
+
+### Stack exhaustion is an exception as well
+
+Detected by a guard page, and raised as an ordinary exception, so
+`finally` blocks and destructors run as they do for anything else. Java
+does exactly this with `StackOverflowError`, and it is catchable there
+for the same reason.
+
+The mechanism has one requirement that must be sized deliberately: the
+guard region has to leave enough stack to *unwind*, and unwinding runs
+user code — `finally` bodies and destructors — which consumes stack of
+its own. A destructor that recurses could exhaust the reserve a second
+time, so re-entering the reserve while already unwinding on it must be
+refused rather than allowed to fault again.
+
+(PHP 8.3 went the other way, checking stack depth explicitly with
+`zend.max_allowed_stack_size` rather than trusting guard-page recovery.
+Worth knowing about, since it is the fallback if guard-page handling
+proves fragile on some target.)
 
 **Two claims about Zend in this document are wrong and are flagged
 rather than quietly corrected**, because they affect the embedded mode:

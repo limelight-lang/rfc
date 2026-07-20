@@ -841,16 +841,23 @@ unanswered.
 
 **6. ~~The channel-R ABI is unspecified.~~ Answered at the right
 level.** It is not specified as registers at all. The return type
-becomes an / — a value, as in Rust — and **the backend
+becomes an `Option`/`Result` — a value, as in Rust — and **the backend
 decides how it travels**, by the ordinary rules that put small
 aggregates in registers. We mandate no reserved register and no
 platform-specific convention, which is also what makes it portable
 across the execution modes and interoperable with Rust.
 
-Likely encoding, and it is ours to choose:  already carries a
+Mandating a reserved register the way Swift does with `swifterror`
+would fix a platform-specific decision into the language, and it is
+exactly the kind of thing that does not survive the execution modes:
+WASM and the JVM have no such register to reserve.
+
+Likely encoding, and it is ours to choose: `Value` already carries a
 tag, so "error" can be another tag value rather than an extra word.
 The return stays 16 bytes, the aggregate does not grow, and it keeps
-travelling wherever it travelled before.
+travelling wherever it travelled before — which matters, since growing
+past the return-register budget would push it into memory and quietly
+undo the point.
 
 Still open, and genuinely: what a function does when its raisable set
 holds one frequent and one rare class, and how the caller tests the

@@ -259,12 +259,32 @@ union over every override of that slot and assigns the slot one
 convention. This is why closed-world knowledge is load-bearing rather
 than merely convenient.
 
+**One function, one convention.** No dual entry points, no thunks, no
+per-call-site variants — a function is compiled one way and that is what
+it is. The compiler decides which.
+
+From that follows the rule that settles the dynamic-dispatch objection
+without any machinery: **a function may use channel R only if every call
+to it is statically resolved.** One erased call site — an inline cache,
+a first-class callable, `__call` — and the function is channel U, since
+an inline cache holds one code pointer and calls it one way
+([lowering.md](../model/lowering.md)). The compiler sees every call
+site, so this is a property it can check rather than a convention to
+maintain.
+
+The motivating case survives intact: a function that raises often — a
+dispatcher failing 20-40% of the time — called directly by code that
+handles the failure immediately. Unwinding twice per five calls is
+exactly what channel U is bad at. That call is direct, so the function
+qualifies.
+
 **Adapters.** Where a channel-R function is called from a context that
 wants channel U, the caller checks the returned error and raises it —
 a couple of instructions. The other direction is more expensive: calling
 a channel-U function from a channel-R one needs a landing pad to catch
 and convert. The compiler generates both; the second is the direction to
-avoid, and the fixpoint should prefer assignments that minimise it.
+avoid.
+
 
 ### Where the frequency hint comes from — deliberately open
 
@@ -698,15 +718,17 @@ likely fix is that capture of the return-address chain is always eager
 deferred, with the doomed-segment scheme surviving as an optimization
 where the compiler can see construction, throw and catch together.
 
-**2. Channel R and dynamically dispatched calls.** Knowing every class
-is not the same as knowing the callee. `classes.md` records that the
-untyped-receiver path — inline cache into the method table — is the
-common case, and an inline cache holds one code pointer called with one
-baked convention. So channel R appears usable only at statically
-resolved sites, with every function additionally needing a
-channel-U entry point for erased calls to target. That would narrow
-channel R considerably, and the cost model above does not account for
-it.
+**2. ~~Channel R and dynamically dispatched calls.~~ Resolved**, and
+without adding machinery: one function has one convention, and a
+function may use channel R only if **every** call to it is statically
+resolved. One erased call site and it is channel U. The compiler sees
+every call site, so this is something it checks rather than something
+anyone maintains — no dual entry points, no thunks, no per-site
+variants.
+
+What remains open is quantitative rather than structural: how much of a
+real program is reachable only by direct calls, which decides how far
+channel R actually reaches.
 
 **3. ~~The pending check on the ordinary destruction path.~~ Resolved.**
 Destructors are called by generated code and compiled so they cannot

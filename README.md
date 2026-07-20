@@ -18,6 +18,7 @@ pluggable garbage collection instead of a one-size-fits-all VM heap.
 | Pluggable GC | The collector is a build-time strategy behind a fixed contract. Default `rc-trace`: ARC + arenas + stop-the-thread cycle tracing. Flagship against pauses: concurrent SATB marking | [strategies](model/gc/strategies.md), [satb](model/gc/satb.md), [heap-design](model/gc/heap-design.md) |
 | Actors | `#[Actor]` classes own their arenas and execute serially; queues are the only door between actors. Collection runs per actor at message boundaries; each actor may bind its own GC | [actors](runtime/actors.md) |
 | Object model | C++-grade dispatch for PHP: inline-trailing vtables, COM-style itables, fat interface references, inline caches that never invalidate | [classes](model/classes.md), [lowering](model/lowering.md) |
+| Exceptions | `try` compiles to no instructions at all: handlers are found from the return addresses calls already push. `catch` matching is O(1) off the Cohen display. The runtime never unwinds — it reports through the context | [exceptions](runtime/exceptions.md) |
 | Values | 16-byte Box for the dynamic world, raw unboxed slots for declared types, COW as a per-object flag | [values](model/values.md), [strings](model/strings.md), [arrays](model/arrays.md) |
 
 ## Document map
@@ -37,6 +38,7 @@ pluggable garbage collection instead of a one-size-fits-all VM heap.
 - [implementation-language.md](runtime/implementation-language.md) — Rust core + thin C++ LLVM layer
 - [object-lifecycle.md](runtime/object-lifecycle.md) — `new` and the three-phase teardown
 - [actors.md](runtime/actors.md) — actor contexts, message queues, per-actor GC
+- [exceptions.md](runtime/exceptions.md) — `throw`/`try`/`finally`: table-driven unwinding, and why `try` costs nothing
 
 ### Other areas
 

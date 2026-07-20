@@ -23,8 +23,12 @@ into proper RFCs when picked up.
   migration ([arrays.md](model/arrays.md)).
 - **Closures** — capture (by-value / by-ref), `$this` binding,
   first-class callable syntax.
-- **Exceptions** — exception object layout, throw/catch lowering in LLVM
-  (landing pads vs alternatives), stack traces, `finally`.
+- **Exceptions** — designed, see [exceptions.md](runtime/exceptions.md):
+  table-driven unwinding, O(1) `catch` matching off the Cohen display,
+  and a pending-exception channel at the runtime boundary. Still open
+  within it: stack-trace capture (cost of recording frames at `throw`),
+  the ELF/Windows funclet fork in the code generator, and the deferred
+  direct-jump optimization.
 - **Enums** (PHP 8.1) — immortal singletons; mostly falls out of the
   existing model, needs a short document.
 - **Generators / Fibers** — execution-stack capture; heavily coupled to

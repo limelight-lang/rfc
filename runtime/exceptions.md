@@ -259,9 +259,37 @@ union over every override of that slot and assigns the slot one
 convention. This is why closed-world knowledge is load-bearing rather
 than merely convenient.
 
+### The channels are not exclusive: it is an ABI property of the function
+
+This is below the language, not part of it. PHP has nothing to say here;
+it is what the function's ABI declares.
+
+A function's error behaviour has three independent parts:
+
+- **which exception classes travel by return.** Declaring some does not
+  forbid the others from unwinding: a function may return `E` and still
+  throw everything else. Both channels can be live at once, and the
+  common shape is exactly that — the frequent class by return, the rest
+  by unwinding.
+- **whether it can raise at all.**
+- **`nothrow`** — a hard guarantee that it cannot, under any channel.
+
+Declaring the return set may also be **forced** rather than inferred: a
+function can be obliged to report a class by return even where the
+compiler would not have chosen it.
+
+`nothrow` is the most valuable of the three, and not for documentation.
+A call to a `nothrow` function is an ordinary `call`, not an `invoke`,
+so it does not terminate the basic block, does not split the
+control-flow graph, and does not pin values for a landing pad. That is
+the one cost of channel U listed above as unavoidable — and this is what
+avoids it. It should be inferred wherever provable, not only where
+written.
+
 **One function, one convention.** No dual entry points, no thunks, no
 per-call-site variants — a function is compiled one way and that is what
-it is. The compiler decides which.
+it is. The compiler decides which, subject to any declaration forcing
+its hand.
 
 From that follows the rule that settles the dynamic-dispatch objection
 without any machinery: **a function may use channel R only if every call

@@ -44,6 +44,21 @@ no `finally` — and it is **not catchable**. This is PHP's own
 `zend_bailout`, used there for `memory_limit` exhaustion, `E_ERROR` and
 `exit()`.
 
+**Its scope here is much narrower than in PHP, and shrinking.** Memory
+exhaustion is *not* channel B for us — it is an ordinary exception (see
+below), which is a deliberate improvement on PHP. What is left for B is
+genuinely unrecoverable: a violated internal invariant, stack
+exhaustion, and possibly `exit()`. Whether `exit()` belongs here is
+unsettled: PHP runs destructors and shutdown functions after it, which a
+mechanism defined as "no user code" cannot do.
+
+**Two claims about Zend in this document are wrong and are flagged
+rather than quietly corrected**, because they affect the embedded mode:
+`zend_bailout` jumps to the *innermost* enclosing `zend_try`, not the
+request root, and some `zend_catch` sites deliberately swallow it. So
+"not catchable" and "request root" describe what we might build, not
+what Zend does.
+
 Channel B is not a weaker version of the other two; it answers a
 different question. Unwinding and error returns are for failures user
 code may handle. Bailout is for failures where continuing to run user
@@ -61,30 +76,38 @@ visible. Here `throw` and `catch` mean one thing in the source and the
 compiler selects the lowering. That is the novel part of this design and
 also where its risk sits (see "Risks").
 
-### Allocation failure is channel B, not an exception
+### Allocation failure is an ordinary exception
 
-PHP does not make memory exhaustion catchable: exceeding `memory_limit`
-is a fatal error, not a `Throwable`. Copying that is both compatible and
-much cheaper — **allocation sites need no check at all.** No error
-return, no landing pad, nothing.
+**Deliberate deviation from PHP**, and it is the better behaviour:
+exceeding the memory limit in PHP is a fatal error that cannot be
+caught, so a request loses everything it was doing. Here it is an
+ordinary `Throwable`, caught by the ordinary rules.
 
-Our arena makes the bailout itself nearly free: killing a request does
-not require walking frames and releasing references one at a time, since
-the request's memory is reclaimed in bulk at reset. Running user
-destructors on this path would be wrong anyway — they allocate, and
-there is no memory.
+That is only possible because the failure path is prepared in advance:
 
-The process is killed only by a violated internal invariant (a corrupt
-free list, an impossible block kind), where continuing is unsound. A
-request that cannot get memory kills the request; the worker serves the
-next one.
+1. The memory manager **permanently reserves a block** for this
+   situation. Constructing the exception object needs memory, and by
+   definition there is none — so it must have been kept back.
+2. On failure it does not give up immediately. First a coarser
+   reclamation pass and a GC cycle, using the reserve as working room.
+3. Only if that also fails does it raise.
 
-**Constraint that must be respected:** a `longjmp` may not cross a frame
-holding a runtime lock — the block pool's mutex would stay locked
-forever and the next thread would deadlock. The points at which bailout
-is permitted must be defined as those where no runtime lock is held.
-Skipped Rust `Drop`s are survivable (the arena reclaims), a skipped
-`MutexGuard` is not.
+So an exception here means the collector has already run and lost, which
+is what makes it a legitimate error rather than a transient condition.
+
+### `isThrow`: making "must not throw" enforceable
+
+Allocation takes a flag. With `isThrow = true` it raises on failure and
+the caller writes straight-line code. With `isThrow = false` it returns
+null and the caller checks.
+
+This is not a convenience. Everywhere throwing would be unsafe — inside
+the runtime, while a lock is held, during arena reset where no PHP frame
+exists to receive the exception — the call passes `false`, and raising
+becomes **impossible rather than merely discouraged**. A rule enforced
+by a parameter beats a rule enforced by discipline, which is how the
+"no lock held across a raise" constraint stops being something to
+remember.
 
 ### Why unwinding is the default and the universal one
 
@@ -107,7 +130,7 @@ opinion about who owns the stack.
 
 | Mode | Who owns unwinding | Native channel | Our channels |
 |---|---|---|---|
-| Embedded in the real PHP runtime | Zend | `EG(exception)` flag + `zend_bailout` | R at the boundary, B maps directly |
+| Embedded in the real PHP runtime | Zend | `EG(exception)` flag + `zend_bailout` | R at the boundary; B does **not** map directly — see above |
 | Our own runtime | us | table-driven | U, R, B — the model described here |
 | Hybrid | both, alternating | both | conversion at every crossing |
 | WASM | the engine | `try_table`/`exnref`, or nothing | U if the engine has EH, else R only |
@@ -132,10 +155,18 @@ even if every exception in every program were rare.
 **Embedded (Zend).** Zend owns the exception state. Our code must not
 unwind through Zend's C frames; at every crossing it publishes into
 `EG(exception)` and returns, which is precisely channel R's shape — a
-flag check is exactly Zend's own model. `zend_bailout` and channel B are
-the same mechanism, so fatal handling composes for free. Whether the
-Zend VM is present or only its runtime changes what we call, not this
-rule.
+flag check is exactly Zend's own model. Whether the Zend VM is present
+or only its runtime changes what we call, not this rule.
+
+**Unsolved here, and it is the harder half:** Zend raises bailouts of
+its own — any allocation of its crossing `memory_limit`, a user
+`exit()` — while *our* frames sit between the raise and the enclosing
+`zend_try`. That jump crosses our frames whether we like it or not, and
+the only defence is a `zend_try` at every Zend→ours crossing, which
+costs a setjmp per crossing. Also unaddressed: `EG(exception)` wants a
+real `zend_object`, while our exceptions are arena-allocated with our
+own headers, so the boundary needs a data conversion nobody has
+designed.
 
 **Own runtime.** The full model in this document, and the only mode
 where channel U is under our control end to end.
@@ -310,38 +341,54 @@ unwinder.
 
 ## The runtime boundary, and destructors
 
-The runtime is Rust built with `panic = "abort"` in the release profile
-and linked statically
-([implementation-language.md](implementation-language.md)). Unwinding
-through its frames is not permitted.
+The runtime core is Rust, built `panic = "abort"` in the release profile
+(`Cargo.toml`) and linked statically
+([implementation-language.md](implementation-language.md) covers the
+split, not the panic strategy). Unwinding through its frames is not
+permitted.
 
-**This is not solved by "the runtime returns a status", because the
-runtime calls PHP code.** `__destruct` is invoked from Rust frames
-([object-lifecycle.md](object-lifecycle.md)), and in PHP a destructor
-may throw during entirely ordinary execution, when the last reference
-dies at a scope end. If that throw unwound, it would unwind through
-Rust.
+**The governing principle: an exception is born in a Limelight frame.
+The Rust core never raises — it returns a status.**
 
-**Resolution: every runtime→PHP callback uses channel R.** Destructors,
-collector callbacks, and anything else the runtime calls back into
-return an error rather than raising. The signatures are ours, PHP does
-not constrain them, and a destructor occupies one vtable slot, so the
-convention is uniform by construction.
+So allocation failure does not unwind out of the allocator. Rust reports
+it; the Limelight-side entry point raises, and from there everything
+follows the ordinary rules, because that frame is an ordinary
+participant in unwinding with ordinary tables. This is how C++
+`operator new` produces `bad_alloc`, and it costs the caller a
+predictable, never-taken branch rather than a flag check.
 
-The runtime then decides what to do with a returned error according to
-context, and the contexts differ sharply:
+If a case is ever found where an exception must genuinely originate
+inside Rust, it is analysed on its own. The principle is not weakened to
+accommodate it in advance.
 
-| Where | Policy |
-|---|---|
-| Destructor during normal refcount death | hand the error to the raising PHP frame, which raises it normally |
-| Destructor during phase-2 cleanup | chain onto the in-flight exception as `previous`, continue unwinding |
-| Destructor during **arena reset** | no live stack exists ([arena-reset.md](../model/memory/arena-reset.md)); report to the request's error sink and continue the fixpoint |
-| Destructor from the cycle collector | same as arena reset |
+### Destructors never propagate
 
-The third row is the one that has no other answer: reset runs after the
-request body has finished, so there is no frame to raise into. Zend
-faces the identical situation at shutdown and reports rather than
-propagates; this does the same, deliberately.
+`__destruct` is called by **generated code**, not from inside the Rust
+teardown. And it is compiled so that it cannot let an exception escape:
+any exception raised inside is caught at the destructor's own boundary
+and handed back as a value.
+
+The reason is not tidiness. **After the destructor, runtime code must
+run — always.** Phases 2 and 3 release the object's children and return
+its memory ([object-lifecycle.md](object-lifecycle.md)); skipping them
+leaks the whole subgraph. A destructor that could unwind past that code
+would skip it, so it must not be able to.
+
+Two consequences worth stating plainly:
+
+- **No check is needed after a reference release or a store barrier.**
+  An earlier draft required one, which would have put a test on the most
+  frequent operations in the program, on the non-raising path — the Zend
+  model this document rejects elsewhere. Since a destructor cannot
+  propagate, there is nothing to check for.
+- **Every teardown completes.** No leaked children, no half-updated
+  candidate buffer, no block left un-freed.
+
+What is then *done* with a returned error depends on where the death
+happened — raised in the frame that dropped the last reference, chained
+onto an exception already in flight, or reported when there is no frame
+at all (arena reset, the collector). That policy still needs work; the
+part settled here is that the destructor boundary always returns.
 
 ### The pending channel
 
@@ -365,7 +412,8 @@ while unwinding chains onto the original" cannot be implemented.
 
 **Which entry points can fail must be enumerated in the ABI**, because
 the compiler emits the check only after those. Allocation is **not** on
-that list — it is channel B and needs no check at all.
+that list. It raises an ordinary exception from a Limelight frame, so
+there is nothing for a caller to check beyond the returned pointer.
 
 What remains is narrower than it first appears, and deliberately so:
 the boundary where foreign code calls into ours, and runtime-initiated
@@ -616,16 +664,11 @@ channel-U entry point for erased calls to target. That would narrow
 channel R considerably, and the cost model above does not account for
 it.
 
-**3. The pending check on the ordinary destruction path.** As written,
-"check after anything that can run a destructor" puts a test after every
-reference release and every store barrier — the hottest operations
-there are, on the non-raising path. Candidate resolution: split
-`ll_object_die` so that the `__destruct` call for ordinary refcount
-death is issued by *generated* code, in a PHP frame that can unwind
-normally, leaving channel R for genuinely runtime-initiated destruction
-(reset, collector). The runtime is already half-shaped for this —
-`ll_release` returns whether the entity died and the caller runs
-teardown.
+**3. ~~The pending check on the ordinary destruction path.~~ Resolved.**
+Destructors are called by generated code and compiled so they cannot
+propagate, because runtime teardown code must run after them
+unconditionally. Nothing to check for, so the check is gone. See
+"Destructors never propagate".
 
 **4. A channel-R error in flight is invisible to the runtime.** It
 travels in a return slot, so neither `pending` nor `unwinding` is set,

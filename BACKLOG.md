@@ -23,7 +23,15 @@ into proper RFCs when picked up.
   migration ([arrays.md](model/arrays.md)).
 - **Closures** — capture (by-value / by-ref), `$this` binding,
   first-class callable syntax.
-- **Exceptions** — designed, see [exceptions.md](runtime/exceptions.md):
+- **Execution modes** — the project targets several hosts: embedded in
+  the real PHP runtime (with or without its VM), our own runtime, a
+  hybrid of the two, WASM, and the JVM. Each has its own integration
+  rules, and exceptions are the subsystem most affected — see the mode
+  table in [exceptions.md](runtime/exceptions.md). The rest of the
+  corpus assumes our own runtime and has not been revisited for the
+  other modes.
+- **Exceptions** — designed with **known open defects listed in the
+  document**, see [exceptions.md](runtime/exceptions.md):
   two channels (table-driven unwinding, plus error-return for frequent
   exceptions) chosen by the compiler over the known class hierarchy;
   runtime→PHP callbacks always use the return channel so unwinding never

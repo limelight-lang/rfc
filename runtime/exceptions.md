@@ -38,12 +38,53 @@ dynamic cost when nothing is raised, expensive when something is.
 The caller tests and branches. A couple of instructions per call,
 cheap to raise.
 
+**Channel B (bailout).** A `longjmp` to a point established at the
+request root. It runs **no** user code on the way out — no destructors,
+no `finally` — and it is **not catchable**. This is PHP's own
+`zend_bailout`, used there for `memory_limit` exhaustion, `E_ERROR` and
+`exit()`.
+
+Channel B is not a weaker version of the other two; it answers a
+different question. Unwinding and error returns are for failures user
+code may handle. Bailout is for failures where continuing to run user
+code is not possible or not meaningful.
+
+setjmp/longjmp is rejected below as an *exception* mechanism because it
+would charge every `try`. As a *fatal* mechanism it charges **one setjmp
+per request**, which is nothing, and that difference is the whole reason
+it belongs here and not there.
+
 **What is different here from every language above: the programmer does
 not choose the channel — the compiler does.** In the others the choice
 is in the type system, so it is the author's judgement and it is
 visible. Here `throw` and `catch` mean one thing in the source and the
 compiler selects the lowering. That is the novel part of this design and
 also where its risk sits (see "Risks").
+
+### Allocation failure is channel B, not an exception
+
+PHP does not make memory exhaustion catchable: exceeding `memory_limit`
+is a fatal error, not a `Throwable`. Copying that is both compatible and
+much cheaper — **allocation sites need no check at all.** No error
+return, no landing pad, nothing.
+
+Our arena makes the bailout itself nearly free: killing a request does
+not require walking frames and releasing references one at a time, since
+the request's memory is reclaimed in bulk at reset. Running user
+destructors on this path would be wrong anyway — they allocate, and
+there is no memory.
+
+The process is killed only by a violated internal invariant (a corrupt
+free list, an impossible block kind), where continuing is unsound. A
+request that cannot get memory kills the request; the worker serves the
+next one.
+
+**Constraint that must be respected:** a `longjmp` may not cross a frame
+holding a runtime lock — the block pool's mutex would stay locked
+forever and the next thread would deadlock. The points at which bailout
+is permitted must be defined as those where no runtime lock is held.
+Skipped Rust `Drop`s are survivable (the arena reclaims), a skipped
+`MutexGuard` is not.
 
 ### Why unwinding is the default and the universal one
 
@@ -55,6 +96,67 @@ Therefore: **channel U is the fallback for anything the compiler cannot
 see** — a class it does not know, an FFI boundary, a dynamically formed
 call. No special casing is needed; the universal convention is simply
 the one that was already universal.
+
+---
+
+## Execution modes
+
+Limelight is intended to run in several modes, and **exceptions are the
+subsystem most affected by which one**, because each host has its own
+opinion about who owns the stack.
+
+| Mode | Who owns unwinding | Native channel | Our channels |
+|---|---|---|---|
+| Embedded in the real PHP runtime | Zend | `EG(exception)` flag + `zend_bailout` | R at the boundary, B maps directly |
+| Our own runtime | us | table-driven | U, R, B — the model described here |
+| Hybrid | both, alternating | both | conversion at every crossing |
+| WASM | the engine | `try_table`/`exnref`, or nothing | U if the engine has EH, else R only |
+| JVM | the JVM | `athrow` + per-method tables | the JVM's; R unusual but possible |
+
+The one property that makes this tractable: **the semantic model is
+portable even where the implementation is not.** "A range of code is
+protected by a handler, matched by type, with cleanup on the way out" is
+exactly what the JVM's per-method exception tables and WASM's
+`try_table` express natively. So source semantics map onto every mode;
+what changes is who runs the unwinder and how the tables are encoded.
+
+The second property, and it is the stronger argument for the hybrid than
+frequency ever was: **channel R needs no host support whatsoever.** It
+is return values. On any host where we do not own the stack, it is
+available. That makes it the portability floor, not merely an
+optimization — and it means the two-channel design would be required
+even if every exception in every program were rare.
+
+### Per-mode integration notes
+
+**Embedded (Zend).** Zend owns the exception state. Our code must not
+unwind through Zend's C frames; at every crossing it publishes into
+`EG(exception)` and returns, which is precisely channel R's shape — a
+flag check is exactly Zend's own model. `zend_bailout` and channel B are
+the same mechanism, so fatal handling composes for free. Whether the
+Zend VM is present or only its runtime changes what we call, not this
+rule.
+
+**Own runtime.** The full model in this document, and the only mode
+where channel U is under our control end to end.
+
+**Hybrid.** The expensive mode: our frames and Zend frames interleave,
+so every crossing is a conversion — our in-flight unwind must become
+`EG(exception)` on the way in, and a Zend exception must become our
+raise on the way out. Conversion points have to be enumerated in the
+ABI, not discovered.
+
+**WASM.** No DWARF unwinding exists. Engines with the exception-handling
+proposal give a table-shaped mechanism we can target; engines without it
+leave channel R as the only option, which is survivable precisely
+because R exists for other reasons. Trace materialization cannot read a
+native stack here and must use the engine's frames or a shadow stack.
+
+**JVM.** We own nothing about the stack, so exceptions are JVM
+exceptions and the JVM's tables do the work. The mapping is natural
+because the shapes agree; traces come from the JVM rather than from our
+materialization, which means the trace design below applies only to
+modes where we unwind.
 
 ---
 
@@ -262,9 +364,31 @@ cleanup cannot even be detected, and the rule "a destructor that throws
 while unwinding chains onto the original" cannot be implemented.
 
 **Which entry points can fail must be enumerated in the ABI**, because
-the compiler emits the check only after those. At minimum: allocation
-(object, array, string, buffer), anything that can run a destructor
-(reference release, the store barrier), and explicit `throw`.
+the compiler emits the check only after those. Allocation is **not** on
+that list — it is channel B and needs no check at all.
+
+What remains is narrower than it first appears, and deliberately so:
+the boundary where foreign code calls into ours, and runtime-initiated
+destruction (arena reset, the cycle collector).
+
+Destruction on the *ordinary* refcount-death path is the contested case.
+Putting it on this list would mean a check after every reference release
+and every store barrier — the most frequent operations in the program,
+on the non-raising path, which is the Zend model this document rejects
+elsewhere. See the open defect below; it is not settled here.
+
+### Foreign code in the middle
+
+`ours → foreign → ours → throw` must not unwind: the foreign frames have
+no tables of ours, and the runtime is built `panic = "abort"`.
+
+The rule is therefore absolute: **wherever foreign code calls into ours,
+the exception is captured at that boundary.** It becomes a plain return
+to the foreign caller, and is re-raised once control is back in our
+frames. Every such callback carries a capture wrapper — a real, local,
+visible cost.
+
+This applies to runtime→PHP callbacks and to user FFI callbacks alike.
 
 ---
 
@@ -427,6 +551,81 @@ consciously; the cost is incremental build complexity.
 regardless of channel, including trace contents and `finally` ordering.
 Every semantic rule above has to hold in both, and the test suite must
 run the important cases under both lowerings.
+
+---
+
+## Open defects
+
+Found by adversarial review of the previous revision and **not yet
+resolved**. They are listed because a design document that hides its
+holes is worse than one that has them: each of these invalidates part of
+what is written above, and the reader needs to know which part.
+
+**1. Trace capture cannot be lazy the way the section above describes.**
+The escape barrier fires only on `RequestArena → longer-lived` stores,
+so it does not see the events that actually end a frame's life: an
+exception stored arena→arena, an exception chained as `previous`, or
+simply `return new Exception()` — where the constructing frame dies by
+an ordinary return, having never been part of any doomed segment. Since
+PHP captures at *construction*, that frame belongs in the trace. The
+likely fix is that capture of the return-address chain is always eager
+(it is a copy of machine words, cheap) and only symbolization is
+deferred, with the doomed-segment scheme surviving as an optimization
+where the compiler can see construction, throw and catch together.
+
+**2. Channel R and dynamically dispatched calls.** Knowing every class
+is not the same as knowing the callee. `classes.md` records that the
+untyped-receiver path — inline cache into the method table — is the
+common case, and an inline cache holds one code pointer called with one
+baked convention. So channel R appears usable only at statically
+resolved sites, with every function additionally needing a
+channel-U entry point for erased calls to target. That would narrow
+channel R considerably, and the cost model above does not account for
+it.
+
+**3. The pending check on the ordinary destruction path.** As written,
+"check after anything that can run a destructor" puts a test after every
+reference release and every store barrier — the hottest operations
+there are, on the non-raising path. Candidate resolution: split
+`ll_object_die` so that the `__destruct` call for ordinary refcount
+death is issued by *generated* code, in a PHP frame that can unwind
+normally, leaving channel R for genuinely runtime-initiated destruction
+(reset, collector). The runtime is already half-shaped for this —
+`ll_release` returns whether the entity died and the caller runs
+teardown.
+
+**4. A channel-R error in flight is invisible to the runtime.** It
+travels in a return slot, so neither `pending` nor `unwinding` is set,
+and the per-context policy table above cannot distinguish "a destructor
+failed during normal death" from "a destructor failed while an error was
+already propagating". Either compiled code owns chaining on every
+error-return cleanup path, or propagation must set a context flag — with
+the per-hop cost that implies.
+
+**5. Closed world versus autoloading.** The slot-convention rule needs
+every override known, while `classes.md` documents autoloading as an
+open world. A class loaded later that overrides a slot cannot change a
+convention already compiled into every call site; it must be coerced to
+the frozen one. That rule is not written anywhere, and there is no
+link-time convention fingerprint to detect a mismatch between separately
+built components.
+
+**6. The channel-R ABI is unspecified.** Where the error physically
+travels when every function already returns a 16-byte `Value`; what a
+function does when its raisable set contains one frequent and one rare
+class; how the caller tests the class cheaply, given that the interface
+case is not O(1).
+
+**7. Contradiction on uncaught exceptions.** One section says phase 2
+never runs when there is no handler, another says it must run to the
+root or heap references in locals leak. Both cannot be true, and which
+one holds also decides whether the "stack stays intact for a debugger"
+rationale survives.
+
+**8. Cyclic garbage destructors are cited as settled and are not.** The
+implementation does not run `__destruct` for cyclically-dead objects at
+all; that is its own open problem, larger than the error channel, and
+this document should not lean on it.
 
 ---
 

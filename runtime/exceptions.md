@@ -554,6 +554,39 @@ run the important cases under both lowerings.
 
 ---
 
+## To think about: a call into PHP may never return
+
+The runtime calls PHP code in several places — `__destruct`, collector
+callbacks, anything user-supplied. Every one of those call sites is
+written as if control comes back. **It may not.**
+
+PHP code can `exit()`, hit a fatal, or be killed by a limit. Whatever
+mechanism carries that out, it does not return to the Rust frame that
+made the call. So the frame's assumptions never get to unwind: a lock it
+holds stays held, a half-built structure stays half-built, a block taken
+from the pool but not yet owned stays in limbo, an entry appended to a
+log without its counterpart stays inconsistent.
+
+This is the mirror image of the foreign-code rule above. There, foreign
+frames are the ones an exception must not cross. Here, **our own runtime
+frames are the foreign ones** — from PHP's point of view they are native
+code it is escaping through.
+
+The candidate invariant, to be confirmed or replaced after thought:
+
+> No runtime frame may call into PHP while holding a lock, owning a
+> half-constructed object, or having cleanup that must run afterwards.
+> Everything must be consistent *before* the call, because there may be
+> no "after".
+
+If that holds, it is checkable — a call into PHP is a barrier, like a
+safepoint — and it constrains where destructors and callbacks can be
+invoked from far more than the exception design alone suggests.
+
+**Not resolved. Recorded so it is not rediscovered late.**
+
+---
+
 ## Open defects
 
 Found by adversarial review of the previous revision and **not yet

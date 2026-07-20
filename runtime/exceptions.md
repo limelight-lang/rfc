@@ -839,11 +839,22 @@ be called and adapts, paying a small overhead confined to the dynamic
 case. See "To think about: gates for late-loaded code" for what remains
 unanswered.
 
-**6. The channel-R ABI is unspecified.** Where the error physically
-travels when every function already returns a 16-byte `Value`; what a
-function does when its raisable set contains one frequent and one rare
-class; how the caller tests the class cheaply, given that the interface
-case is not O(1).
+**6. ~~The channel-R ABI is unspecified.~~ Answered at the right
+level.** It is not specified as registers at all. The return type
+becomes an / — a value, as in Rust — and **the backend
+decides how it travels**, by the ordinary rules that put small
+aggregates in registers. We mandate no reserved register and no
+platform-specific convention, which is also what makes it portable
+across the execution modes and interoperable with Rust.
+
+Likely encoding, and it is ours to choose:  already carries a
+tag, so "error" can be another tag value rather than an extra word.
+The return stays 16 bytes, the aggregate does not grow, and it keeps
+travelling wherever it travelled before.
+
+Still open, and genuinely: what a function does when its raisable set
+holds one frequent and one rare class, and how the caller tests the
+class cheaply given that interface matching is not O(1).
 
 **7. ~~Contradiction on uncaught exceptions.~~ Resolved.** The request
 root always has a handler, so phase 1 always finds one and phase 2

@@ -44,13 +44,11 @@ no `finally` — and it is **not catchable**. This is PHP's own
 `zend_bailout`, used there for `memory_limit` exhaustion, `E_ERROR` and
 `exit()`.
 
-**Its scope here is much narrower than in PHP, and shrinking.** Memory
-exhaustion is *not* channel B for us — it is an ordinary exception (see
-below), which is a deliberate improvement on PHP. What is left for B is
-genuinely unrecoverable: a violated internal invariant, stack
-exhaustion, and possibly `exit()`. Whether `exit()` belongs here is
-unsettled: PHP runs destructors and shutdown functions after it, which a
-mechanism defined as "no user code" cannot do.
+**Its scope here has collapsed to almost nothing.** Memory exhaustion is
+an ordinary exception, and so is `exit()` — both decided below. What is
+left for B is a violated internal invariant, which kills the process
+anyway, and stack exhaustion, which is unresolved. It is quite possible
+that channel B does not need to exist at all.
 
 **Two claims about Zend in this document are wrong and are flagged
 rather than quietly corrected**, because they affect the embedded mode:
@@ -94,6 +92,30 @@ That is only possible because the failure path is prepared in advance:
 
 So an exception here means the collector has already run and lost, which
 is what makes it a legitimate error rather than a transient condition.
+
+### `exit()` is an exception too
+
+Not a bailout, not a separate shutdown mechanism: an ordinary raise that
+unwinds by the ordinary rules.
+
+Its class sits **outside the `Throwable` hierarchy**, so user code
+cannot name it and `catch (\Throwable $e)` does not catch it. Only the
+request root does. Matching costs nothing extra — it is the same
+class test every catch already performs, and this one simply never
+matches a user clause.
+
+**`finally` blocks and destructors run on the way out.** This is a
+deliberate deviation from PHP, where `exit()` bypasses `finally`
+entirely, and it is the better behaviour: a `finally` releasing a lock
+or closing a handle should not be skipped because the program chose to
+stop. Resources are released by the same mechanism that releases them
+for every other exception.
+
+What this buys structurally is that a whole mechanism disappears. PHP
+needs `exit()` to longjmp and then runs a separate shutdown phase to get
+destructors executed. Here unwinding already does exactly that, so there
+is no second path, no reserve to fund it, and no ordering question
+between the two.
 
 ### `isThrow`: making "must not throw" enforceable
 

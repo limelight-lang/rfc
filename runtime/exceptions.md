@@ -612,6 +612,31 @@ documented rather than discovered.
 so the PC→frame mapping has to expand one address into several logical
 frames.
 
+**Deferred until generators are designed, with one constraint already
+clear.** Whether the trace walk has a problem at all depends on how they
+are implemented, and the two options differ completely:
+
+- **Flat state machine** (LLVM's `llvm.coro.*` intrinsics, as used by
+  C++20 coroutines and Swift async): no separate stack exists. Live
+  state across a suspension goes into a heap frame object; resuming is
+  an ordinary call and suspending an ordinary return. While the
+  generator runs, the logical PHP chain is contiguous on the native
+  stack and there is nothing to hop across. A suspended generator has no
+  frames at all, only a data structure.
+- **A real separate stack**: the segmented walk below becomes real.
+
+PHP's own rule points at the first for generators: `yield` is only legal
+in the generator's own body, never from a function it calls, so there is
+never a deep suspended segment to preserve. `Fiber::suspend()` has no
+such restriction — it suspends from arbitrary depth — so fibers are the
+ones that need a real stack, and the ones this problem is actually
+about.
+
+Still to think through: when the generator body has called into
+something and the whole thing must be cut back to the generator's
+suspension point, since after `yield` its state is no longer what the
+inner frames assumed.
+
 **Generators and fibers break the "walk down the stack" assumption**
 ([actors.md](actors.md) already depends on fibers). A generator has its
 own stack segment, so the logical PHP caller chain crosses a context
@@ -640,10 +665,20 @@ than stopping it, which needs no separate mechanism. A `finally` that
 raises, or that returns, replaces the in-flight exception per PHP rules;
 its normal-path copy is ordinary code.
 
-**Uncaught exceptions.** Phase 2 still runs to the root, or heap
-references held by locals leak permanently — they are in no
-release-at-reset list. The user handler runs at the root, above the
-frame that owns the C-ABI boundary to the host loop.
+**There is no such thing as an uncaught exception.** The request root
+always has a handler — it is what turns a failure into a response and
+what the host loop expects. So phase 1 always finds one and phase 2
+always runs to it, which is what keeps heap references held by locals
+from leaking: they are in no release-at-reset list, so only cleanup
+frees them.
+
+"Nothing is caught anywhere" therefore does not arise in normal
+operation. It can only mean the root handler itself is missing or
+broken, which is a runtime bug and aborts.
+
+(An earlier revision said both that phase 2 never runs without a handler
+and that it must run to the root. The first was written thinking of a
+C++-style program with no outer `try`; here there always is one.)
 
 **Actors.** A synchronous actor call that fails delivers the `Throwable`
 as its reply, which means the exception and its materialized trace are
@@ -788,11 +823,9 @@ function does when its raisable set contains one frequent and one rare
 class; how the caller tests the class cheaply, given that the interface
 case is not O(1).
 
-**7. Contradiction on uncaught exceptions.** One section says phase 2
-never runs when there is no handler, another says it must run to the
-root or heap references in locals leak. Both cannot be true, and which
-one holds also decides whether the "stack stays intact for a debugger"
-rationale survives.
+**7. ~~Contradiction on uncaught exceptions.~~ Resolved.** The request
+root always has a handler, so phase 1 always finds one and phase 2
+always runs to it. "Uncaught" cannot arise except as a runtime bug.
 
 **8. Cyclic garbage destructors are cited as settled and are not.** The
 implementation does not run `__destruct` for cyclically-dead objects at

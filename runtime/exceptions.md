@@ -736,6 +736,29 @@ run the important cases under both lowerings.
 
 ---
 
+## To think about: gates for late-loaded code
+
+The rule that a function may use channel R only if every call to it is
+statically resolved assumes the compiler sees every call site. Autoloading
+breaks that assumption directly ([classes.md](../model/classes.md)), and
+the answer is not to freeze conventions globally.
+
+**Late-bound code is reached through a gate**: a small piece of runtime
+code that decides how the target may actually be called and adapts. The
+overhead is real but small, and it is confined to the dynamic case
+rather than taxing everything to accommodate it.
+
+That inverts the usual framing. The question stops being "how do we keep
+a convention stable across separate compilations" and becomes "what does
+the gate need to know, and what does it cost" — a local problem with a
+local answer.
+
+Unresolved: what the gate inspects, whether it is per-call-site or
+per-target, whether it can be cached the way an inline cache is, and
+what it does when the target's convention cannot be satisfied at all.
+
+---
+
 ## To think about: a call into PHP may never return
 
 The runtime calls PHP code in several places — `__destruct`, collector
@@ -809,13 +832,12 @@ already propagating". Either compiled code owns chaining on every
 error-return cleanup path, or propagation must set a context flag — with
 the per-hop cost that implies.
 
-**5. Closed world versus autoloading.** The slot-convention rule needs
-every override known, while `classes.md` documents autoloading as an
-open world. A class loaded later that overrides a slot cannot change a
-convention already compiled into every call site; it must be coerced to
-the frozen one. That rule is not written anywhere, and there is no
-link-time convention fingerprint to detect a mismatch between separately
-built components.
+**5. Closed world versus autoloading — direction settled, details
+open.** Conventions are not frozen globally. Late-bound code is reached
+through a **gate**: small runtime code that works out how the target may
+be called and adapts, paying a small overhead confined to the dynamic
+case. See "To think about: gates for late-loaded code" for what remains
+unanswered.
 
 **6. The channel-R ABI is unspecified.** Where the error physically
 travels when every function already returns a 16-byte `Value`; what a

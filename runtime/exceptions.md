@@ -111,19 +111,52 @@ That is only possible because the failure path is prepared in advance:
 So an exception here means the collector has already run and lost, which
 is what makes it a legitimate error rather than a transient condition.
 
-**Proposed second job for the reserve**, and the thing that would keep
-the store barrier free of any failure channel: funding the runtime's own
-bookkeeping pushes — the arena's escape and release-at-reset logs, which
-cannot be abandoned without leaving a dangling reference. One push costs
-a bounded amount (a log segment, worst case a fresh block behind it),
-but the *number* of pushes is not bounded: the destructor fixpoint at
-reset runs up to its round limit and every round may log again, while
-the same reserve is also booked for the exception object and for the
-collector's working room. **So this is an obligation, not a guarantee**:
-either a bound on pushes per replenishment or a replenishment protocol
-has to be designed, and until one exists the honest statement is that
-the barrier fails only past the reserve — and that failure is an abort.
-See "The enumeration, and the two ways off the list".
+**The reserve is three reserves, not one.** Written as a single block it
+is booked simultaneously for constructing the exception object, for the
+collector's working room, and for the runtime's own bookkeeping pushes —
+so each consumer's worst case becomes the sum of all three, and none of
+them can be reasoned about alone. Split them:
+
+1. **The exception reserve.** Process-global, drawn only while raising
+   memory-exhausted, released when the raise completes.
+2. **The log reserve.** Per mutator thread, two blocks, held beside the
+   thread heap and never visible to the ordinary allocator. This is what
+   funds the store barrier; the protocol is below.
+3. **The collector's working room.** Not blocks at all — the collector's
+   own vectors — and therefore bounded separately, not from here.
+
+**The log reserve protocol.** Filled when the thread is initialized,
+where a refusal already reports (the thread's first allocation returns
+null). Drawn only by the arena's log-segment growth, and only after the
+ordinary path has been refused: the block is stamped as an ordinary
+arena block and goes home at reset, so nothing new owns it. Replenished
+at the safepoint poll the compiler already emits, which is the move that
+makes the whole thing work — the poll runs in a Limelight frame, so if
+replenishment fails there it does the ordinary thing: reclaim, collect,
+retry, and raise memory-exhausted if that fails too.
+
+**"The barrier cannot fail" therefore means: the barrier's failure is
+converted into an ordinary raise at the next poll**, thousands of
+pushes before the reserve could actually run dry, rather than an
+impossible-to-report failure at the store itself.
+
+That conversion needs one contract from the compiler, and it belongs in
+the ABI: **a bounded number of barrier operations between two polls.**
+Any loop has a backedge poll and straight-line code is finite, so the
+bound is generous rather than delicate — and the arithmetic has to be
+stated in the ABI document rather than assumed, because it is what the
+reserve is sized from.
+
+The reset fixpoint uses the same reserve, replenished at round
+boundaries rather than at polls, and it is allowed a degraded exit that
+the barrier is not: `ll_arena_reset` is on the pending list, so when
+replenishment fails there it stops running destructors — the only source
+of new pushes — finishes the reset, and reports. Unrun destructors are
+exactly what the report is for. No record is ever dropped, because every
+record already written sits in memory already allocated.
+
+**Unbuilt.** The runtime aborts on this path today, and the abort is
+documented at the site as a placeholder for this protocol.
 
 ### `exit()` is an exception too
 
@@ -588,7 +621,7 @@ for a `pending` check, and there are seven:
 | Entry point | Allocates | Answer |
 |---|---|---|
 | `ll_ref_store` | arena escape / release-at-reset log | funded (below) |
-| `ll_arena_track_destructor` | arena destructor log | **unsettled** (below) |
+| `ll_arena_track_destructor` | arena destructor log | folded into construction failure (below) |
 | `ll_arena_reserve` | a block, best-effort | deferred: the next `alloc` reports |
 | `ll_arena_reset` | fixpoint working memory | **on the list** |
 | `ll_object_die` | transitively: user `__destruct`, releases, reentrant stores | decomposes into the rows above |
@@ -606,19 +639,24 @@ segment when it records an escape or a release-at-reset, and a lost
 record there is not a failed operation but a broken invariant: the
 escapee dangles at reset, or the entity is never released. There is
 nothing useful to report and nothing safe to continue into. So the
-barrier is funded rather than checked — see the obligation attached to
-the reserve above, which is real and unpaid. Until it is paid this is
-a **direction, not a settlement**: today that path aborts. What the
-direction does settle is that the Zend-shaped check after every store
-stays rejected — the cost of correctness here is paid once, in a
-reserve, not on every store that succeeds.
+barrier is funded rather than checked — by the per-thread log reserve
+and the poll replenishment specified above, which turn "the barrier
+would eventually fail" into "the next poll raises". The Zend-shaped
+check after every store stays rejected: the cost of correctness here is
+paid once, in a reserve, not on every store that succeeds. **Not built:
+that path aborts today.**
 
 `ll_arena_track_destructor` uses the same mechanism but is **not** the
-same argument, and is left open deliberately: a dropped destructor
-record does not dangle, it silently skips a `__destruct`, which is a
-semantic break rather than a memory-safety one. Funding it is the
-obvious answer and it may be the wrong one — a skipped side effect might
-deserve to be reported. Nobody has decided.
+same argument: a dropped destructor record does not dangle, it silently
+skips a `__destruct`, which is a semantic break rather than a
+memory-safety one. It is answered by the object lifecycle rather than by
+a channel ([object-lifecycle.md](object-lifecycle.md), "Two
+constructors"). Registration happens once `__construct` has returned
+successfully, so a refused registration raises memory-exhausted at the
+creation site — and that outcome is byte-for-byte the one already
+specified for a constructor that threw: our teardown runs, the user
+destructor does not. No record is ever silently dropped, because an
+object whose registration failed does not survive its own creation.
 
 **Refusable, so there is nothing to report.** Buffering a candidate root
 for the cycle collector can simply not happen, provided the "buffered"

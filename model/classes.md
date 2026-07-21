@@ -237,7 +237,12 @@ Cold part (reached via a metadata pointer):
 | `name` | Class name string |
 | `reflection` | Attributes, doc comments, declaration info |
 | `traits` | List of used traits; reflection only (see below) |
-| `link_info` | Everything needed to link a *new* class against this one at runtime: the interface method lists in slot order, the method names behind each vtable slot, the property declarations behind each offset |
+
+The cold block is also what a *new* class links against when one has to
+be built while the program runs: it carries the interface method lists
+in slot order, the method names behind vtable slots, and the property
+declarations behind offsets. That is not a separate structure — it is
+the same metadata reflection already needs, and the same pointer.
 
 ### Linking is the compiler's job
 
@@ -251,8 +256,8 @@ A class that did not exist at compile time is still possible: `eval()`,
 a plugin loaded after the build, code the JIT compiles from outside the
 unit. That case is served by the **cold metadata**, not by keeping a
 linker in the runtime. The descriptor points at its metadata block; the
-metadata carries what building a derived descriptor requires, and
-nothing on a hot path ever reads it.
+metadata block already carries what building a derived descriptor
+requires, and nothing on a hot path ever reads it.
 
 The consequence for the hot tables is that they hold **only** what
 dispatch needs. Recipes for rebuilding them live in the metadata, one
@@ -361,7 +366,7 @@ for a case that occurs approximately never. It does not belong there.
 **Decision**: a value statically typed as an interface is represented as a pair, COM's `interface_pointer_t` model:
 
 ```
-struct iface_ref { object *obj; itable *itbl; }   // 16 bytes; registers/stack only
+struct interface_ref { object *obj; itable *itbl; }  // 16 bytes; registers/stack only
 ```
 
 A call through an interface-typed receiver is then a single indirect call, with no lookup of any kind at the call site:

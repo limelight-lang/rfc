@@ -44,10 +44,10 @@ typedef struct Node {
     uint8_t       ok;            // +56
 } Node;                          // object_size 64
 
-typedef struct IfaceEntry {
-    uint32_t iface_id;
+typedef struct InterfaceEntry {
+    uint32_t interface_id;
     void   **itable;             // array of code pointers, slots fixed
-} IfaceEntry;                    // by interface declaration order
+} InterfaceEntry;                // by interface declaration order
 
 typedef struct Class {
     uint32_t      flags;         // final/abstract/interface + magic-method bitmask
@@ -59,8 +59,8 @@ typedef struct Class {
                                  //         declaration index)
     Run          *traced_runs;   // (offset, count) pairs: the counted-pointer
                                  // and Box runs, strided by init, GC and teardown
-    IfaceEntry   *interfaces;    // sorted by iface_id
-    uint32_t      iface_count;
+    InterfaceEntry *interfaces;  // sorted by interface_id
+    uint32_t      interface_count;
     MethodTable  *methods;       // interned name → method (slow path)
     Value        *statics;       // static properties, class constants
     void        **static_vtbl;   // own table only if this class overrides an

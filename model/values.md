@@ -65,15 +65,50 @@ arithmetic speed. Zend reached the same conclusion; 16 bytes it is.
 | `object` | pointer → Object ([classes.md](classes.md)) |
 | `resource` | pointer |
 | `reference` | pointer → reference box (below) |
+| `uninit` | — (a **slot state**, not a value; see the restriction below) |
 
 The `refcounted` flag in the Box duplicates what the tag implies so that
 retain/release on Box copy is a single bit test, with no tag decoding.
 
-There is deliberately **no `undef` tag**: Limelight targets PHP language
-semantics, not Zend internals, and `IS_UNDEF` is a Zend VM implementation
-detail. Its duties are dissolved elsewhere: uninitialized typed properties
-→ the `UNINIT` slot state (below); hashtable holes → container-internal
-markers invisible to the language.
+### `uninit` is a slot state, and only a slot state
+
+**Decision**: the tag space carries `uninit`, and it is confined to
+**property slots**. It is the Box's equivalent of the sentinel pointer
+`1` that already encodes the same state in a pointer slot: the storage
+says "nothing has been written here yet", in the room the storage
+already has.
+
+The restriction is the whole design, and it is what separates this from
+Zend's `IS_UNDEF`:
+
+- A Box tagged `uninit` may exist **only** in a property slot. Never in
+  a local, a parameter, a return value, an array element, or a
+  reference box.
+- Reading such a slot throws `Error`, per PHP semantics for
+  uninitialized typed properties. The read decodes the tag anyway, so
+  the check costs nothing.
+- Therefore it cannot escape into a value context: the only operation
+  that could carry it out of the slot is the one that throws.
+
+`IS_UNDEF` in Zend is a general VM value that flows through locals and
+hashtables, and that generality is what makes it an implementation
+detail leaking into semantics. Here it is a state of one storage site,
+with the language never able to observe it as a type: `gettype()`,
+`is_*()` and every other reflection of "what is this" are unreachable
+for it, because reading the slot throws first.
+
+Hashtable holes remain a separate, container-internal marker
+([arrays.md](arrays.md)), invisible to the language and unrelated to
+this tag.
+
+**`null` keeps tag value 0, and `uninit` does not.** An all-zero Box is
+`null`, which is what an untyped property must start as and what makes
+object initialization a single range store
+([classes.md](classes.md), "Slot order"). A `?int` property starts as
+`uninit` instead, so its slot takes one explicit tag store after that
+range is cleared. Untyped properties are the common case in real PHP
+and pay nothing; nullable scalar properties pay one store each at
+construction. The reverse numbering would invert that trade.
 
 All pointer payloads point to entities that begin with the common
 `RcHeader` (refcount + flags at offset 0, see [classes.md](classes.md)).
@@ -134,17 +169,15 @@ that touches a value.
   |------|-------------------|------|
   | `?object`, `?string`, `?array` | sentinel pointer `1` (the null pointer already means PHP `null`) | free |
   | non-nullable pointer | null pointer | free |
-  | `?int`, `?float` | bit in the init bitmap; the slot reads as `null` | ~free (bits usually fit the object's alignment padding) |
-  | non-nullable scalar | bit in the init bitmap; the slot itself is zero-initialized | ~free |
+  | `?int`, `?float`, untyped / `mixed` | the `uninit` tag (the tag byte already exists) | free |
+  | non-nullable scalar | bit in the init bitmap; the slot itself is zero-initialized | ~free (bits usually fit the object's alignment padding) |
 
-  `?int` and `?float` moved to the bitmap when the separate `Optional`
-  representation was dropped (above). There is no spare encoding left in
-  the slot: the Box's tag set deliberately has no `undef`, and inventing
-  one would put a Zend VM implementation detail into the language model
-  for the sake of one row of this table.
+  Every boxed slot therefore encodes the state in itself, and the
+  bitmap is left serving one case: raw scalar slots, which have no room
+  to say anything but their own value.
 
-  The bitmap exists only in classes that have scalar properties —
-  nullable or not — escaping definite-assignment analysis; where the analysis
+  The bitmap exists only in classes that have non-nullable scalar
+  properties escaping definite-assignment analysis; where the analysis
   proves initialization (e.g. constructor promotion), no state is
   materialized at all.
 
@@ -161,15 +194,14 @@ that touches a value.
     patterns (à la Doctrine) that probe state via reflection work
     unchanged.
 
-  For the in-slot-encoded kinds (the pointer rows) reading `UNINIT`
-  throws `Error` per PHP semantics; the read decodes the slot anyway,
-  so the check is free.
+  For every in-slot-encoded kind — the pointer rows and the boxed rows
+  — reading `UNINIT` throws `Error` per PHP semantics; the read decodes
+  the slot anyway, so the check is free.
 
-  **Deliberate deviation**, the one thing the unchecked read costs:
-  directly reading an uninitialized **scalar** property yields `0` /
-  `0.0`, and an uninitialized `?int` / `?float` yields `null`, instead
-  of throwing `Error`. Guarding that would put a bitmap test on every
-  escaping `int $x` read, which is exactly the cost this design
+  **Deliberate deviation**, now down to one row: directly reading an
+  uninitialized **non-nullable scalar** property yields `0` / `0.0`
+  instead of throwing `Error`. Guarding that would put a bitmap test on
+  every escaping `int $x` read, which is exactly the cost this design
   refuses. The bit is still maintained, so every operation that is
   *about* initialization — `isset()`, reflection, `serialize()`,
   `foreach` — answers correctly; only the direct read is unguarded.

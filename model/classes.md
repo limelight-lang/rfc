@@ -113,10 +113,18 @@ Two things follow, and they are the reason for the grouping:
 
 - **Initialization is one range.** A counted pointer must start as
   `NULL` or teardown would release garbage; a Box must start as the
-  `null` tag. Both are all-zero bit patterns, so the two runs are
-  cleared by a single store of a contiguous range. Raw scalars are
-  **not** initialized at all: the compiler proves them assigned before
-  use, or the property is tracked by the init bitmap.
+  `null` tag, which is tag value 0 ([values.md](values.md)). Both are
+  all-zero bit patterns, so the two runs are cleared by a single store
+  of a contiguous range. Raw scalars are **not** initialized at all:
+  the compiler proves them assigned before use, or the property is
+  tracked by the init bitmap.
+
+  Two slot kinds start as something other than zero and take one store
+  each after the range is cleared: a `?int` / `?float` property, whose
+  initial state is the `uninit` tag, and a pointer-typed property whose
+  initial state is the `UNINIT` sentinel `1` rather than `null`. Both
+  are typed properties, so the compiler knows which slots need the
+  stamp and emits them straight-line — no loop, no metadata read.
 - **GC tracing and teardown read ranges, not metadata.** The descriptor
   carries `(offset, count)` pairs; the collector strides them. No
   per-property flag is consulted on that path. This is HotSpot's

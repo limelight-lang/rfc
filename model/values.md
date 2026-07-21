@@ -27,6 +27,13 @@ The mixed world is large in real PHP code, so the Box is not an edge case;
 but every type declaration the programmer writes moves storage into the
 unboxed contract for free.
 
+**In an object, a Box appears only where the property has no declared
+type.** A declared property occupies its machine representation and
+nothing more — a bare pointer for an object or string, eight raw bytes
+for an `int`. The Box is not the object's storage format; it is the
+storage format of one kind of property. See
+[classes.md](classes.md), "Slot kinds".
+
 ---
 
 ## Box Layout

@@ -22,10 +22,27 @@ typedef struct RcHeader {
 typedef struct Object {
     RcHeader      rc;            // +0
     struct Class *cls;           // +8
-    Value         props[];       // +16: fixed 16-byte slots
-    // classes allowing dynamic properties have one extra hidden
-    // slot: a lazily-allocated hashtable pointer
+    // +16: property slots, each the machine representation of its
+    // declared type (classes.md, "Slot kinds"). Laid out as three runs
+    // — counted pointers, Boxes, then the rest in declaration order —
+    // followed by the byte block (init bits, ?scalar discriminants,
+    // packed bools). There is no uniform slot size and no per-slot tag.
+    // Classes allowing dynamic properties have one extra hidden slot:
+    // a lazily-allocated hashtable pointer.
 } Object;
+
+// So a PHP class lowers to an ordinary C struct:
+//   class Node { public Node $next; public ?Node $prev;
+//                public $meta; public int $id; public bool $ok; }
+typedef struct Node {
+    RcHeader      rc;            // +0
+    struct Class *cls;           // +8
+    struct Node  *next;          // +16  ┐ counted-pointer run
+    struct Node  *prev;          // +24  ┘ NULL = null, 1 = UNINIT
+    Value         meta;          // +32    untyped → Box
+    int64_t       id;            // +48    not initialized at all
+    uint8_t       ok;            // +56
+} Node;                          // object_size 64
 
 typedef struct IfaceEntry {
     uint32_t iface_id;
@@ -35,8 +52,13 @@ typedef struct IfaceEntry {
 typedef struct Class {
     uint32_t      flags;         // final/abstract/interface + magic-method bitmask
     uint32_t      object_size;
+    uint32_t      layout_end;    // first free byte, unrounded: where a
+                                 // subclass resumes (classes.md)
     struct Class *parent;
-    PropLayout   *prop_layout;   // name → (offset, type, hook flags)
+    PropLayout   *prop_layout;   // name → (offset, slot kind, hook flags,
+                                 //         declaration index)
+    Run          *traced_runs;   // (offset, count) pairs: the counted-pointer
+                                 // and Box runs, strided by init, GC and teardown
     IfaceEntry   *interfaces;    // sorted by iface_id
     uint32_t      iface_count;
     MethodTable  *methods;       // interned name → method (slow path)
@@ -86,16 +108,38 @@ immortal-object and arena-scoping optimizations from [arc-optimizations.md](memo
 
 ## Property Access
 
-`$this->x`, type known, slot 2 → byte offset 16 + 2·16 = 48:
+The offset and the slot kind both come from `prop_layout` at compile
+time, so the load is emitted for the type, with no tag anywhere:
 
 ```llvm
-%p = getelementptr inbounds i8, ptr %obj, i64 48
-%v = load %Value, ptr %p, align 8
+; $this->id   where id: int, offset 48
+%p  = getelementptr inbounds i8, ptr %obj, i64 48
+%v  = load i64, ptr %p, align 8
+
+; $this->next   where next: Node, offset 16 — a bare pointer
+%p2 = getelementptr inbounds i8, ptr %obj, i64 16
+%o  = load ptr, ptr %p2, align 8, !nonnull !0
+
+; $this->meta   where meta is untyped, offset 32 — the only boxed form
+%p3 = getelementptr inbounds i8, ptr %obj, i64 32
+%b  = load %Value, ptr %p3, align 8
+
+; $this->ok   where the compiler packed this class's bools: bit 3 of
+;             the byte block at offset 65 (the plain form is a byte load)
+%p4 = getelementptr inbounds i8, ptr %obj, i64 65
+%w  = load i8, ptr %p4
+%s  = lshr i8 %w, 3
+%v2 = trunc i8 %s to i1
 ```
 
 One GEP + load, identical to a C struct field access. Every declared,
-non-hooked property compiles to this, always. Hashtables are involved only
-for dynamic properties and `__get`/`__set`.
+non-hooked property compiles to this, always; only a packed `bool`
+costs the extra shift, and only where the compiler chose to pack it.
+Hashtables are involved only for dynamic properties and `__get`/`__set`.
+
+Stores to a slot holding a counted reference go through the store
+barrier, which is chosen statically by slot kind: an 8-byte pointer
+slot and a 16-byte Box slot are two different entries.
 
 A hooked property (PHP 8.4) compiles to a call through the hook's vtable
 slot instead; `virtual` properties have no backing slot at all. The
@@ -191,8 +235,12 @@ commit:
   store i64 RC1_PLUS_FLAGS, ptr %cur             ; header in one 8-byte store
   store ptr @class.User,
         ptr getelementptr(i8, ptr %cur, i64 8)
-  ; property slots need a defined initial state (definite assignment /
-  ; UNINIT discriminants); the runtime factory null-fills them today
+  ; Only the traced runs need a defined initial state, and all-zero is
+  ; exactly what they need: a null pointer and a null-tagged Box. They
+  ; are contiguous, so this is one range store. Raw scalar slots are
+  ; left untouched — definite assignment or the init bitmap covers them
+  ; (classes.md, "Slot order").
+  call void @llvm.memset.p0.i64(ptr %runs, i8 0, i64 %runs_len, i1 false)
   call void @User__construct(ptr %cur, ...)      ; constructor known → direct
   ; Only for a class with a destructor, and only after __construct
   ; returns: this is what makes the object owe a __destruct at all
@@ -229,6 +277,9 @@ magnitude cheaper than `malloc`.
 6. **Interned names on the slow path**: name compare = pointer compare,
    hash precomputed (see classes.md).
 
-The `%Value` type used throughout is the 16-byte scalar/reference
-representation; its design (tagging, strings, arrays, COW) is a separate
-RFC.
+The `%Value` type in the call signatures above is the 16-byte
+scalar/reference representation, used where the type is not known
+statically; its design (tagging, strings, arrays, COW) is a separate
+RFC. It is not the representation of an object's properties — a
+declared property is stored as its machine type (classes.md, "Slot
+kinds").

@@ -728,6 +728,30 @@ self-initialises on a cold branch now, exactly as `mi_malloc` does
 The explicit contract remains the documented, faster path for an embedder;
 skipping it is now merely slower once, not undefined.
 
+## Per-class pools — reserved, not built
+
+**Decision (design only, nothing implemented):** the compiler may emit a
+pool whose stride is exactly one class's `object_size`, and direct that
+class's allocation sites at it. Internal fragmentation is then zero, and
+the size-class table above does not apply.
+
+The size classes here round a request up to a 16-byte step
+(`16, 32, 48, 64, …`). That rounding is real but it belongs to the
+*allocation site*, not to the class: the same class allocated in a
+request arena is bump-allocated and pays for every byte, and the same
+class allocated from a pool of its own pays for none. So object layout
+([../classes.md](../classes.md), "Layout targets exact bytes") minimizes
+exact bytes and never tunes itself to this table.
+
+The compiler is the only party that can choose between them: it knows
+the memory strategy of each site, and it can know — from the program, or
+from the programmer saying so — that a class is about to be instantiated
+thousands of times. The runtime never guesses this and has no heuristic
+for it.
+
+Written down now because the layout decisions above depend on it being
+possible, not because it is scheduled.
+
 ## Open items / notes for follow-up
 
 Not done, in rough priority order:

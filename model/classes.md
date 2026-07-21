@@ -73,6 +73,139 @@ Declared properties occupy fixed slots at offsets computed at class link time. `
 
 **No object table.** Objects are referenced only by direct pointers: there is no analog of Zend's object store with handles. PHP 7 itself moved object access from handles to direct pointers for performance; the store's remaining duties are covered differently in Limelight: object enumeration by linear Immix block scanning (see [heap-design.md](../gc/heap-design.md)), shutdown/arena-reset destructors by the has-destructor flag bit, weak references by side tables. Non-moving GC means object addresses are stable for the object's lifetime, so `spl_object_id()` can be derived from the address.
 
+### Slot kinds
+
+**Decision**: a property slot is the machine representation of the
+property's declared type, and nothing more. The 16-byte Box
+([values.md](values.md)) appears inside an object **only** where the
+property has no declared type — that is the one storage site in an
+object where the type is not known statically.
+
+| Declared as | Slot | Size / align |
+|---|---|---|
+| `int`, `float` | raw `i64` / `f64`, no tag | 8 / 8 |
+| declared class type, `string`, `array` | bare pointer | 8 / 8 |
+| `?T` for pointer-shaped `T` | the same pointer; `NULL` is PHP `null`, `1` is `UNINIT` (niche) | 8 / 8 |
+| `?int`, `?float` | payload; the discriminant lives in the byte block | 8 / 8 + 1 bit-or-byte |
+| `bool` | a byte, or a bit in the byte block (below) | 1 / 1 |
+| untyped / `mixed` | Box | 16 / 8 |
+| hooked property with no backing store (`virtual`) | none | 0 |
+
+A typed property therefore costs what its type costs. An object with
+four `int` fields is 16 bytes of header plus 32 bytes of payload, not
+16 plus 64.
+
+### Slot order
+
+**Decision**: a class lays out its own properties in three runs —
+**counted pointers, then Boxes, then everything else in declaration
+order** — and the byte block last.
+
+```
++0   header (8) | class (8)
+     counted pointers          ← contiguous run
+     Boxes                     ← contiguous run
+     remaining slots, in declaration order
+     byte block: init bits, ?scalar discriminants, packed bools
+```
+
+Two things follow, and they are the reason for the grouping:
+
+- **Initialization is one range.** A counted pointer must start as
+  `NULL` or teardown would release garbage; a Box must start as the
+  `null` tag. Both are all-zero bit patterns, so the two runs are
+  cleared by a single store of a contiguous range. Raw scalars are
+  **not** initialized at all: the compiler proves them assigned before
+  use, or the property is tracked by the init bitmap.
+- **GC tracing and teardown read ranges, not metadata.** The descriptor
+  carries `(offset, count)` pairs; the collector strides them. No
+  per-property flag is consulted on that path. This is HotSpot's
+  `OopMapBlock` and V8's `FixedBodyDescriptor`, for the same reason.
+
+Physical order therefore differs from declaration order. Declaration
+order remains observable — `serialize()`, `(array)`, `foreach` over an
+object, reflection — so `prop_layout` carries each property's
+declaration index. It costs metadata in the descriptor and nothing in
+the instance.
+
+### Inheritance, and the parent's tail padding
+
+**Decision**: a class descriptor carries two sizes: `object_size`, the
+allocation size, and `layout_end`, the first free byte before any
+rounding. A subclass starts laying out its own properties at the
+parent's `layout_end`, not at the parent's `object_size`.
+
+Inherited slots never move: a parent's offsets are compiled into the
+parent's own code, and subclasses are linked in an open world. But the
+padding at the end of the parent is not spoken for, and the subclass
+takes it. (HotSpot gained the same rule in JDK 15, JDK-8237767.)
+
+**Consequence, stated because it is easy to violate**: an object may
+not be copied by "the size of its parent". A subclass field can live
+inside what looks like the parent's trailing padding. Cloning and
+copying always walk the *target* class's `prop_layout`.
+
+### The byte block
+
+One trailing region of the object holds everything that is smaller than
+a slot: the init bitmap ([values.md](values.md)), the discriminants of
+`?int` / `?float` properties, and packed `bool`s where the compiler
+chooses to pack them. It is allocated from the same hole-filling pass
+as the small slots, so in most classes it lands in alignment padding
+and costs nothing.
+
+### Layout targets exact bytes
+
+**Decision**: the layout algorithm minimizes the exact byte count.
+Rounding to an allocator size class is a property of the *allocation
+site*, not of the class, and the layout must not be tuned to one
+allocator's class table: the same class can be instantiated in the GC
+heap (size classes, see
+[heap-slot-allocation.md](memory/heap-slot-allocation.md)), in a
+request arena (bump, every byte real), or out of a pool the compiler
+generated for that one class (stride = `object_size`, no rounding at
+all).
+
+The compiler knows which strategy a site uses; the runtime does not
+guess. Where it matters, the compiler decides — including whether the
+saved bytes are worth anything at that site at all.
+
+### `bool`: a byte or a bit
+
+**Decision**: the runtime supports both, and the choice is the
+compiler's, per class. A byte is the default.
+
+A bit is smaller but not free: reading it is a load, a shift and a
+mask, and writing it is read-modify-write instead of a store. Packing
+pays only when it actually changes the allocated size, which depends on
+the strategy above. A class with many `bool`s allocated from a
+per-class pool is the case where it does.
+
+`&$obj->flag` on a packed `bool` has no byte to point at. It is served
+by the typed slot reference of [values.md](values.md) — `RcHeader |
+owner | slot | type` — whose `type` additionally carries the bit index.
+`&` is rare, and the whole cost stays inside that box.
+
+### The link-time algorithm
+
+Per class, once, when it is linked:
+
+1. **Classify** each own property by its declared type into a slot kind
+   (table above). `virtual` properties take no slot.
+2. **Start** the cursor at the parent's `layout_end`, or at 16 for a
+   root class. The hole list is empty.
+3. **Place** the runs in order — counted pointers, Boxes, then the rest
+   in declaration order. For each slot: align the cursor up, record any
+   skipped interval as a hole, take the slot, advance.
+4. **Fill holes** with 4/2/1-byte slots and the byte block before
+   extending the cursor. Pointers and Boxes are never placed into a
+   hole: that would break the contiguity of the runs.
+5. **Finish**: `layout_end` is the cursor, `object_size` is it rounded
+   up to 8.
+6. **Record** the run table: the parent's `(offset, count)` pairs plus
+   at most one pair of this class's own, for each of the two traced
+   kinds.
+
 ---
 
 ## Class Descriptor
@@ -88,7 +221,9 @@ Hot part (touched by dispatch and property access):
 | `flags` | `final`, `abstract`, `interface` + magic-method presence bitmask (`__call`, `__get`, `__set`, `__destruct`, …) |
 | `parent` | Parent class: inheritance chain for `instanceof`, `parent::`, vtable construction |
 | `object_size` | Allocation size for instances |
-| `prop_layout` | Property table: name → (offset, type, hook flags) |
+| `layout_end` | First free byte, unrounded: where a subclass resumes laying out |
+| `prop_layout` | Property table: name → (offset, slot kind, hook flags, declaration index) |
+| `traced_runs` | `(offset, count)` pairs for the counted-pointer and Box runs: what initialization, GC tracing and teardown stride |
 | `interfaces` | Sorted array: interface id → itable pointer |
 | `methods` | Hashtable: name → method; slow path lookup, also the source for building subclass vtables |
 | `statics` | Static properties and class constants |

@@ -111,6 +111,20 @@ That is only possible because the failure path is prepared in advance:
 So an exception here means the collector has already run and lost, which
 is what makes it a legitimate error rather than a transient condition.
 
+**Proposed second job for the reserve**, and the thing that would keep
+the store barrier free of any failure channel: funding the runtime's own
+bookkeeping pushes — the arena's escape and release-at-reset logs, which
+cannot be abandoned without leaving a dangling reference. One push costs
+a bounded amount (a log segment, worst case a fresh block behind it),
+but the *number* of pushes is not bounded: the destructor fixpoint at
+reset runs up to its round limit and every round may log again, while
+the same reserve is also booked for the exception object and for the
+collector's working room. **So this is an obligation, not a guarantee**:
+either a bound on pushes per replenishment or a replenishment protocol
+has to be designed, and until one exists the honest statement is that
+the barrier fails only past the reserve — and that failure is an abort.
+See "The enumeration, and the two ways off the list".
+
 ### `exit()` is an exception too
 
 Not a bailout, not a separate shutdown mechanism: an ordinary raise that
@@ -557,7 +571,83 @@ Destruction on the *ordinary* refcount-death path is the contested case.
 Putting it on this list would mean a check after every reference release
 and every store barrier — the most frequent operations in the program,
 on the non-raising path, which is the Zend model this document rejects
-elsewhere. See the open defect below; it is not settled here.
+elsewhere. It is answered below, but only for one half of the problem —
+memory. A destructor that fails for any other reason during
+barrier-triggered teardown still has nowhere to go; that is open defect
+4, and nothing here closes it.
+
+#### The enumeration, and the three ways off the list
+
+An audit of the runtime's own C ABI (`ll-model`, 2026-07-21) enumerated
+every entry point that can allocate and has **no error channel in its
+return** — either it returns nothing, or its return already means
+something else (`ll_release` returns "the entity died",
+`ll_gc_collect_cycles` returns a count). Those are the only candidates
+for a `pending` check, and there are seven:
+
+| Entry point | Allocates | Answer |
+|---|---|---|
+| `ll_ref_store` | arena escape / release-at-reset log | funded (below) |
+| `ll_arena_track_destructor` | arena destructor log | **unsettled** (below) |
+| `ll_arena_reserve` | a block, best-effort | deferred: the next `alloc` reports |
+| `ll_arena_reset` | fixpoint working memory | **on the list** |
+| `ll_object_die` | transitively: user `__destruct`, releases, reentrant stores | decomposes into the rows above |
+| `ll_release` | cycle-collector candidate buffer | refusable (below) |
+| `ll_thread_init` | the thread heap | deferred: the next allocation reports null |
+
+This settles the void-returning half of the list only. The foreign-code
+boundary named above stays on it regardless, for reasons that have
+nothing to do with allocation.
+
+**Funded, so the failure cannot be reported because it must not
+happen.** The store barrier is the contested case, and the answer is not
+a channel. Its only *unabsorbed memory* failure is growing an arena log
+segment when it records an escape or a release-at-reset, and a lost
+record there is not a failed operation but a broken invariant: the
+escapee dangles at reset, or the entity is never released. There is
+nothing useful to report and nothing safe to continue into. So the
+barrier is funded rather than checked — see the obligation attached to
+the reserve above, which is real and unpaid. Until it is paid this is
+a **direction, not a settlement**: today that path aborts. What the
+direction does settle is that the Zend-shaped check after every store
+stays rejected — the cost of correctness here is paid once, in a
+reserve, not on every store that succeeds.
+
+`ll_arena_track_destructor` uses the same mechanism but is **not** the
+same argument, and is left open deliberately: a dropped destructor
+record does not dangle, it silently skips a `__destruct`, which is a
+semantic break rather than a memory-safety one. Funding it is the
+obvious answer and it may be the wrong one — a skipped side effect might
+deserve to be reported. Nobody has decided.
+
+**Refusable, so there is nothing to report.** Buffering a candidate root
+for the cycle collector can simply not happen, provided the "buffered"
+mark is set only when the entry really went in. Nothing is corrupted and
+nothing dangles; a refusal arms a collection instead. This is a third
+category next to *report* and *raise*, and it is the cheapest of the
+three: **refusable work**. Every operation moved into it is one the
+channel never has to carry. (Implemented in `ll-model` as of
+2026-07-21.)
+
+Its cost is real and should not be understated. Buffering is
+edge-triggered on a non-zero decrement, so a refused root is not
+re-offered later: if that decrement was the last external release of a
+garbage cycle, no further decrement ever comes and **no future
+collection can find it** — the buffer is the only root set the collector
+has. The armed collection does not recover it either, since the refused
+root is not in the buffer, and arming only fires where the compiler
+emitted a poll. So the refusal converts a collectable cycle into a leak
+that lasts until the thread ends, and it does so exactly when memory is
+scarcest. That is still the right trade against killing the process, but
+it is a leak, not a postponement.
+
+The rule the enumeration produces, in the order to try it: **make the
+failure impossible, or make the work refusable, before giving it a
+channel.** A channel is the most expensive answer, because its cost is
+paid by every call that does not fail. What the rule does not do is
+enforce itself: new entry points (strings and arrays will bring theirs)
+land in no category by default, so the enumeration is a snapshot and
+needs revisiting whenever the ABI grows.
 
 ### Foreign code in the middle
 

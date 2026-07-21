@@ -128,8 +128,12 @@ them can be reasoned about alone. Split them:
 **The log reserve protocol.** Filled when the thread is initialized,
 where a refusal already reports (the thread's first allocation returns
 null). Drawn only by the arena's log-segment growth, and only after the
-ordinary path has been refused: the block is stamped as an ordinary
-arena block and goes home at reset, so nothing new owns it. Replenished
+ordinary path has been refused. **A reserve block never becomes the
+arena's bump block** — otherwise the next ordinary allocation would eat
+the reserve instead of reporting null, which is the one thing it must
+not do. Log growth carves segments from it with its own cursor, so two
+blocks hold roughly thirty segments, and it is returned like any other
+block at reset. Replenished
 at the safepoint poll the compiler already emits, which is the move that
 makes the whole thing work — the poll runs in a Limelight frame, so if
 replenishment fails there it does the ordinary thing: reclaim, collect,
@@ -154,6 +158,12 @@ replenishment fails there it stops running destructors — the only source
 of new pushes — finishes the reset, and reports. Unrun destructors are
 exactly what the report is for. No record is ever dropped, because every
 record already written sits in memory already allocated.
+
+One gap in that exit, stated rather than hidden: the fixpoint's own
+working memory — the per-round collections it builds — is funded by
+none of the three reserves. Reset is on the pending list, so it has
+somewhere to report; but "finishes the reset" currently assumes that
+working memory is available.
 
 **Unbuilt.** The runtime aborts on this path today, and the abort is
 documented at the site as a placeholder for this protocol.
@@ -621,7 +631,7 @@ for a `pending` check, and there are seven:
 | Entry point | Allocates | Answer |
 |---|---|---|
 | `ll_ref_store` | arena escape / release-at-reset log | funded (below) |
-| `ll_arena_track_destructor` | arena destructor log | folded into construction failure (below) |
+| `ll_object_constructed` | arena destructor log | folded into construction failure (below); it has a channel — `false` — precisely because of it |
 | `ll_arena_reserve` | a block, best-effort | deferred: the next `alloc` reports |
 | `ll_arena_reset` | fixpoint working memory | **on the list** |
 | `ll_object_die` | transitively: user `__destruct`, releases, reentrant stores | decomposes into the rows above |

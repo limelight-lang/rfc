@@ -108,7 +108,8 @@ pub extern "C" fn ll_object_new(class: &Class, cat: MemCat) -> *mut Object {
     let obj = mem as *mut Object;
     unsafe {
         // header in one store: refcount = 1 (off-by-one: zero bits),
-        // flags = memory category + HAS_DESTRUCTOR from class
+        // flags = memory category. NOT HAS_DESTRUCTOR: that flag means
+        // "this object owes a __destruct", which is not true yet.
         (*obj).rc = RcHeader::init(cat, class.flags);
         (*obj).class = class;
         class.init_props(obj);          // defaults / UNINIT discriminants
@@ -122,9 +123,15 @@ pub extern "C" fn ll_object_new(class: &Class, cat: MemCat) -> *mut Object {
     // successfully — see "Two constructors" above: an object whose
     // constructor threw must never have its `__destruct` run, so a
     // record created by the factory would be a record demanding exactly
-    // the thing that is forbidden. The implementation still registers
-    // here (`ll-model`, `object.rs`) and has to move.
+    // the thing that is forbidden.
 }
+
+// Emitted after `__construct` returns, and only for a class that has a
+// destructor. Sets HAS_DESTRUCTOR on the header and, for an arena
+// object, writes the destructor-log record. False means the record could
+// not be written: the creation fails with memory-exhausted, which is the
+// same observable outcome as a constructor that threw.
+pub extern "C" fn ll_object_constructed(ctx: *mut LLContext, obj: *mut Object) -> bool;
 ```
 
 ---
@@ -173,8 +180,11 @@ Decided entirely by the memory category bits:
 pub extern "C" fn ll_object_die(obj: *mut Object) {
     let class = unsafe { &*(*obj).class };
 
-    // Phase 1: pre-destructor, exactly once, resurrection-aware
-    if class.has_php_destructor() && !flags_test_and_set(obj, DESTRUCTED) {
+    // Phase 1: pre-destructor, exactly once, resurrection-aware.
+    // The test is the object's own HAS_DESTRUCTOR flag, not the class:
+    // a class may declare __destruct while this object never completed
+    // construction, and such an object must not run it.
+    if flags_test(obj, HAS_DESTRUCTOR) && !flags_test_and_set(obj, DESTRUCTED) {
         refcount(obj) += 1;               // guard: a transient $this ref
         call_vtbl_slot(obj, class.destruct_slot());
         refcount(obj) -= 1;               // drop the guard, no re-entry

@@ -165,8 +165,12 @@ none of the three reserves. Reset is on the pending list, so it has
 somewhere to report; but "finishes the reset" currently assumes that
 working memory is available.
 
-**Unbuilt.** The runtime aborts on this path today, and the abort is
-documented at the site as a placeholder for this protocol.
+**Built, minus its trigger** (`ll-model`, `memory::reserve`, 2026-07-21):
+the reserve exists, `grow_log` draws on it, and `ll_gc_maybe_collect`
+refills. What does not exist is a compiler emitting the polls, so the
+bound on barrier operations between two of them is a contract nobody can
+check yet. The abort behind the reserve remains, now genuinely a last
+resort rather than the first one.
 
 ### `exit()` is an exception too
 

@@ -929,10 +929,44 @@ class cheaply given that interface matching is not O(1).
 root always has a handler, so phase 1 always finds one and phase 2
 always runs to it. "Uncaught" cannot arise except as a runtime bug.
 
-**8. Cyclic garbage destructors are cited as settled and are not.** The
-implementation does not run `__destruct` for cyclically-dead objects at
-all; that is its own open problem, larger than the error channel, and
-this document should not lean on it.
+**8. ~~Cyclic garbage destructors are cited as settled and are not.~~
+Moved** — it is a collector problem, not an exception one, and this
+document should not have leaned on it. See the GC entry in
+[BACKLOG.md](../BACKLOG.md).
+
+---
+
+## Questions to decide
+
+Not defects: choices nobody has made yet. Listed so they are decided
+deliberately rather than by whoever writes the code first.
+
+**1. How an interface `catch` matches, `\Throwable` above all.** Class
+matching is O(1) off the Cohen display; interfaces are an itable search,
+and `catch (\Throwable $e)` — the most common catch there is — is an
+interface. Candidates: a bit in the class flags for "implements
+Throwable", making the catch-all a single test; fixed slots for the
+well-known root interfaces; a sorted itable with a binary search. The
+first is cheap and covers the case that dominates.
+
+**2. What a failing synchronous actor call delivers to its caller.** The
+`Throwable` as the reply, presumably — which puts the exception and its
+materialized trace under the payload copy discipline
+([actors.md](actors.md)). Uncaught with no awaiting caller is a
+supervision question, still open there.
+
+**3. The embedded seam with Zend**, in two parts, both harder than the
+rest of this document: Zend raises bailouts of its own that cross *our*
+frames, defensible only by a `zend_try` at every crossing, which costs a
+setjmp per crossing; and `EG(exception)` wants a real `zend_object`
+while ours are arena-allocated with our own headers, so the boundary
+needs a data conversion nobody has designed. This is also the
+commercially most valuable mode, so the hardest work and the highest
+value coincide.
+
+**4. Whether the frequency hint is an attribute, a profile, or both**
+(see above — deliberately deferred; the mechanism does not depend on
+it).
 
 ---
 

@@ -23,6 +23,24 @@ into proper RFCs when picked up.
   migration ([arrays.md](model/arrays.md)).
 - **Closures** — capture (by-value / by-ref), `$this` binding,
   first-class callable syntax.
+- **`__destruct` is not run for cyclically-dead objects** — a real
+  divergence from PHP, where Zend does run it. The difficulty is
+  structural rather than incidental: Bacon–Rajan finds cyclic garbage by
+  *trial-deleting* internal edges, so at the moment the white set is
+  known the reference counts are deliberately wrong. Running arbitrary
+  PHP there — and `__destruct` is arbitrary PHP — means it may resurrect
+  a white object, allocate, raise, or touch something already freed in
+  the same pass, and a trial-mutated count cannot tell resurrection from
+  bookkeeping.
+  Zend's answer is a re-scan discipline: restore the counts, run the
+  destructors over the whole white set with a per-object "already
+  destructed" mark so none runs twice, then **re-detect**, because the
+  destructors may have resurrected objects or created fresh garbage.
+  PHP carried bugs here for years, which is a fair warning about the
+  care needed. Memory safety is unaffected today — the objects are still
+  freed — so this is a semantic gap, logged in the crate's `PLAN.md` as
+  a phase-1 limit.
+
 - **Execution modes** — the project targets several hosts: embedded in
   the real PHP runtime (with or without its VM), our own runtime, a
   hybrid of the two, WASM, the JVM, .NET, Android and iOS. Each has its

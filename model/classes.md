@@ -237,6 +237,26 @@ Cold part (reached via a metadata pointer):
 | `name` | Class name string |
 | `reflection` | Attributes, doc comments, declaration info |
 | `traits` | List of used traits; reflection only (see below) |
+| `link_info` | Everything needed to link a *new* class against this one at runtime: the interface method lists in slot order, the method names behind each vtable slot, the property declarations behind each offset |
+
+### Linking is the compiler's job
+
+**Decision**: class descriptors — vtable, itables, property offsets,
+Cohen display, `object_size` — are built **by the compiler**, and the
+runtime only reads them. Deriving a subclass's tables from its parent's
+is compilation, not execution. There is no runtime linker on any path
+that a normal program takes.
+
+A class that did not exist at compile time is still possible: `eval()`,
+a plugin loaded after the build, code the JIT compiles from outside the
+unit. That case is served by the **cold metadata**, not by keeping a
+linker in the runtime. The descriptor points at its metadata block; the
+metadata carries what building a derived descriptor requires, and
+nothing on a hot path ever reads it.
+
+The consequence for the hot tables is that they hold **only** what
+dispatch needs. Recipes for rebuilding them live in the metadata, one
+pointer away and one temperature colder.
 
 ### Inline trailing vtable
 
@@ -313,19 +333,28 @@ one contiguous region next to the descriptor that every call has just
 loaded. Slot maps (below) are cold link-time data and stay off the
 train.
 
-### Re-linking inherited itables: the slot map
+### Re-linking inherited itables
 
-An itable is a *baked* artifact — resolved code addresses — and a
-baked address does not say which vtable slot it came from. A subclass
-that inherited an interface and overrode one of its methods must not
+An itable is a *baked* artifact — resolved code addresses — and a baked
+address does not say which vtable slot it came from. A subclass that
+inherited an interface and overrode one of its methods must not
 inherit the parent's itable as-is: it would keep pointing at the
 parent's implementation, silently bypassing the override on every
-interface-typed call. Each `interfaces` entry therefore also carries
-the **slot map** it was built from (interface slot → vtable slot);
-linking a subclass rebuilds every inherited itable by reading those
-same slots out of its *own* vtable — slot indices are stable down the
-hierarchy, so the override lands automatically. The map is touched
-only at class link time; dispatch never sees it.
+interface-typed call. Its itables are therefore built fresh, from its
+own vtable.
+
+**This is compilation.** The compiler knows the interface's method
+order and which slots the subclass overrode, and it emits both tables
+finished. Nothing is rebuilt while the program runs, and the itable
+carries no map, no back-reference, no metadata — only code pointers.
+
+For the late case (`eval`, a plugin, JIT code from outside the unit)
+the recipe is in the **cold metadata**: the interface's method list in
+slot order, resolved against the new class's methods by interned name.
+Slot indices are stable down the hierarchy, so an override lands
+automatically. A previous revision of this document kept that recipe as
+a *slot map* stored beside every itable, in hot metadata, permanently,
+for a case that occurs approximately never. It does not belong there.
 
 ### Fat interface references
 

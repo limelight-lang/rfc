@@ -25,11 +25,28 @@ into proper RFCs when picked up.
   first-class callable syntax.
 - **Execution modes** — the project targets several hosts: embedded in
   the real PHP runtime (with or without its VM), our own runtime, a
-  hybrid of the two, WASM, and the JVM. Each has its own integration
-  rules, and exceptions are the subsystem most affected — see the mode
-  table in [exceptions.md](runtime/exceptions.md). The rest of the
-  corpus assumes our own runtime and has not been revisited for the
-  other modes.
+  hybrid of the two, WASM, the JVM, .NET, Android and iOS. Each has its
+  own integration rules, and exceptions are the subsystem most affected
+  — see the mode table in [exceptions.md](runtime/exceptions.md).
+
+  The count matters less than it looks, because **the modes reduce to
+  three memory models**: ours (own runtime, WASM, .NET, Android via the
+  NDK, iOS — raw memory is available on all of them, so arenas and
+  refcounting survive unchanged), Zend's when embedded (also refcounted,
+  so semantically close), and a host tracing collector on the JVM (no
+  arenas, no refcounting, and `__destruct` stops being deterministic).
+  **The JVM is the only outlier**, and its cost is a branch of semantics
+  rather than a port.
+
+  Two constraints that fall out of the mobile targets and belong in the
+  compiler design, not just here: **iOS forbids JIT entirely** — no
+  executable pages for third-party apps, so the path is strictly AOT and
+  nothing may work by patching instructions (inline caches must be data)
+  — and **Apple platforms use a third unwind format**, Mach-O compact
+  unwind, alongside ELF and Windows.
+
+  The rest of the corpus assumes our own runtime and has not been
+  revisited for the other modes.
 - **Exceptions** — designed with **known open defects listed in the
   document**, see [exceptions.md](runtime/exceptions.md):
   two channels (table-driven unwinding, plus error-return for frequent

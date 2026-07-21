@@ -174,7 +174,10 @@ opinion about who owns the stack.
 | Our own runtime | us | table-driven | U, R, B — the model described here |
 | Hybrid | both, alternating | both | conversion at every crossing |
 | WASM | the engine | `try_table`/`exnref` (in the 3.0 spec), or nothing | U where the engine has EH; otherwise **R universally**, and the zero-cost guarantee does not apply |
-| JVM | the JVM | `athrow` + per-method tables | the JVM's; R unusual but possible |
+| JVM | the JVM | `athrow` + per-method tables | the JVM's. No arenas, no refcounting — the JVM collector owns memory, so landing pads carry only `finally` |
+| .NET | the CLR | `throw` + protected regions | ours can stay: raw memory is first-class there (`NativeMemory`, `Span<T>`, pointers), so arenas and refcounting survive |
+| Android | us, via the NDK | native | ours, unchanged. ART only matters when living inside a Java app, and then the JVM row applies |
+| iOS | us | native | ours, unchanged — but **AOT only**, see below |
 
 The one property that makes this tractable: **the semantic model is
 portable even where the implementation is not.** "A range of code is
@@ -240,11 +243,30 @@ and WASM's 64 KB page happens to be our block size. What does not
 survive is stack walking: trace capture cannot read return addresses
 here and needs the engine's frames or a shadow stack.
 
-**JVM.** We own nothing about the stack, so exceptions are JVM
-exceptions and the JVM's tables do the work. The mapping is natural
-because the shapes agree; traces come from the JVM rather than from our
-materialization, which means the trace design below applies only to
-modes where we unwind.
+**JVM.** A different memory model, decided: **no arenas, and the JVM's
+collector.** PHP objects are JVM objects. Everything in
+[arenas.md](../model/memory/arenas.md),
+[arena-reset.md](../model/memory/arena-reset.md) and the reference
+counting around them simply does not apply in this mode — there is no
+escape barrier, no reset, no promotion, no retain/release, no cycle
+collector.
+
+For exceptions that is a large simplification rather than a
+complication. Exceptions are JVM exceptions and the JVM's per-method
+tables do the work; the shapes agree, so `try`/`catch`/`finally` map
+directly. And **landing pads nearly empty out**: ours consist mostly of
+releasing heap references held by locals, and with a tracing collector
+there is nothing to release. What remains is `finally` bodies. Traces
+come from the JVM rather than from our materialization, so the capture
+design below applies only to modes where we unwind ourselves.
+
+**The cost, and it is a real semantic one: `__destruct` stops being
+deterministic.** PHP runs it when the last reference dies; a tracing
+collector cannot promise that, and `Cleaner`/`PhantomReference` run
+eventually rather than at a defined point. Code that closes a file or
+commits a transaction in a destructor behaves differently here. That is
+a deviation of the mode, not of the design, and it has to be documented
+where users can see it rather than discovered.
 
 ---
 
@@ -727,9 +749,26 @@ personality is treated as landingpad-style, which windows-msvc does not
 support. This constrains how much personality customization is available
 there and must be settled before committing to a custom personality.
 
+**Apple platforms are a third format**, not a variant of the first two:
+Mach-O compact unwind. With iOS a target this stops being a footnote
+about macOS.
+
 **JIT-compiled code must register unwind information at runtime**
 (`RtlAddFunctionTable`, `__register_frame`). For a language that is both
 AOT and JIT this is a real subsystem, not a detail.
+
+**On iOS there is no JIT at all** — third-party apps get no executable
+pages, so code generation at runtime is impossible and the path is
+strictly ahead-of-time. Two consequences beyond exceptions, recorded
+here because this is where the constraint first bites: the runtime
+unwind-registration subsystem above is not universal, and **any
+mechanism that works by patching instructions is unavailable**. Inline
+caches must therefore be data — a cached class pointer and target in a
+data slot — never rewritten code
+([lowering.md](../model/lowering.md) should say so explicitly).
+
+Android has no such restriction: through the NDK it is an ordinary
+native target, and our memory model needs no concession there.
 
 **Size.** The `.eh_frame`/CFI portion is typically the dominant EH
 contribution, and it is the part this design **cannot** shrink: every

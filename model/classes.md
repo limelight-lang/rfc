@@ -233,7 +233,7 @@ Hot part (touched by dispatch and property access):
 | `traced_runs` | `(offset, count)` pairs for the counted-pointer and Box runs: what initialization, GC tracing and teardown stride |
 | `interfaces` | Sorted array: interface id → itable pointer |
 | `methods` | Hashtable: name → method; slow path lookup, also the source for building subclass vtables |
-| `statics` | Static properties and class constants |
+| `statics` | Pointer to this class's static block — its **own** declarations only (see below) |
 | `static_vtbl` | Static-method table pointer; own table only when the class overrides an inherited static method, otherwise points to the parent's table (see below) |
 | `vtbl[]` | **Inline trailing array** of code pointers |
 
@@ -317,6 +317,80 @@ call cls->static_vtbl[slot](cls, ...)
 A static method thus differs from an instance method only in its implicit first argument: the called class instead of `$this`. Slot indices are assigned at first declaration and never change down the hierarchy.
 
 Note on compilation order: a subclass is always linked with full knowledge of its parent (PHP requires the parent to be loaded first), so subclass tables are built correctly and finally. The reverse is not true: a parent's `static::foo()` call site is compiled before future subclasses exist (autoloading = open world). This is why the base dispatch always goes through `static_vtbl`, and compiling such sites as direct calls is only possible optimistically, with site patching when an overriding subclass loads (CHA-style; deferred to the JIT phase).
+
+---
+
+## Static Properties and Constants
+
+### The static block
+
+**Decision**: a class's static properties live in a **static block** —
+one contiguous region per class, laid out by the object layout
+algorithm above, whose lifetime is the program's. It is not part of the
+descriptor: the descriptor is immortal and read-mostly, and the thing
+inline caches depend on is that it never changes.
+
+For a class the compiler knows, the block is **emitted into the binary
+image**. The unwritten-data section is zero-filled by the OS lazily,
+page by page, on first touch, so a class the program never uses costs
+address space and nothing else, and start-up does no work at all. Its
+address is a link-time constant, which makes `Foo::$bar` a load at a
+fixed address — no base, no dependent load. Allocating the block at
+link time instead would make the address a runtime value and put an
+extra dependent load on every static access.
+
+A class born at runtime (`eval`, a plugin, JIT code from outside the
+unit) gets its block from long-lived memory instead, reached through
+the descriptor's pointer. One mechanism, and the common case is free.
+
+Inside, the block is an object: the same slot kinds, the same three
+runs with counted pointers first, the same `traced_runs`, the same
+single range store for initialization.
+
+**The form of access is the compiler's choice, not a property of the
+block.** An absolute address commits statics to one copy per process,
+which is right while a request owns a thread and wrong once it does
+not; a TLS-indexed base gives per-thread statics at the cost of one
+load. The runtime never encodes an address, so this stays a decision
+rather than a constraint — the same rule as memory strategies
+([heap-slot-allocation.md](memory/heap-slot-allocation.md)).
+
+### Statics do not inherit by prefix
+
+**This is where statics differ from objects.** In PHP a subclass that
+does not redeclare a static property **shares the parent's storage**:
+`Child::$x` and `Parent::$x` are one cell, and writing through either
+is visible through both. So the "parent's slots first, own appended"
+rule of object layout does not apply here. A class's block holds
+**only what that class declares**, and `Child::$x` resolves — at
+compile time, at no runtime cost — to the slot in the block of the
+class that declared it.
+
+### Constants
+
+A constant whose initializer is a literal or a constant expression is
+folded at the use site and needs no storage at all.
+
+A constant whose initializer must run (PHP 8.1 allows `new` in constant
+expressions) needs a slot and a "not yet computed" state. That state is
+the **`uninit` tag** ([values.md](values.md)), already carried for
+uninitialized property slots: the constant's slot starts `uninit`, and
+the first access sees it and runs the initializer. Reading an
+uninitialized *property* throws while reading an unevaluated *constant*
+initializes it, and the compiler knows which slot it is emitting for,
+so the difference costs no runtime check.
+
+### GC roots
+
+Static blocks are a permanent root set. The compiler already emits a
+class table — reflection and `class_exists` need one — so the collector
+walks it and takes each class's block pointer and `traced_runs`. There
+is no runtime root registration; the root set is known at link time.
+
+**The cost, stated because it is real**: a static block lives as long
+as the program, so a cycle held by a static property is never
+collected. In PHP-FPM the death of the process after each request
+disposed of that; here nothing does.
 
 ---
 

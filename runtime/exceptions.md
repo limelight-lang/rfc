@@ -16,6 +16,12 @@ secondarily but explicitly: **an exception that is caught should cost as
 little as possible**, because in a request-serving language caught
 exceptions are ordinary control flow at the request level.
 
+Scoped honestly: the first requirement holds **in modes where we own the
+stack**. On a host that cannot unwind — a WASM engine without exception
+handling — everything moves to the return channel and every call carries
+a check. That is the host's price, not a hole in the design, and it is
+stated rather than quietly excepted.
+
 ---
 
 ## Two channels
@@ -167,7 +173,7 @@ opinion about who owns the stack.
 | Embedded in the real PHP runtime | Zend | `EG(exception)` flag + `zend_bailout` | R at the boundary; B does **not** map directly — see above |
 | Our own runtime | us | table-driven | U, R, B — the model described here |
 | Hybrid | both, alternating | both | conversion at every crossing |
-| WASM | the engine | `try_table`/`exnref`, or nothing | U if the engine has EH, else R only |
+| WASM | the engine | `try_table`/`exnref` (in the 3.0 spec), or nothing | U where the engine has EH; otherwise **R universally**, and the zero-cost guarantee does not apply |
 | JVM | the JVM | `athrow` + per-method tables | the JVM's; R unusual but possible |
 
 The one property that makes this tractable: **the semantic model is
@@ -211,11 +217,28 @@ so every crossing is a conversion — our in-flight unwind must become
 raise on the way out. Conversion points have to be enumerated in the
 ABI, not discovered.
 
-**WASM.** No DWARF unwinding exists. Engines with the exception-handling
-proposal give a table-shaped mechanism we can target; engines without it
-leave channel R as the only option, which is survivable precisely
-because R exists for other reasons. Trace materialization cannot read a
-native stack here and must use the engine's frames or a shadow stack.
+**WASM.** No DWARF unwinding exists, and what is available depends on
+the engine rather than on WASM as such: exception handling
+(`try_table`/`exnref`) is in the 3.0 spec, so a current engine offers a
+table-shaped mechanism to target.
+
+**On an engine without it, channel R is universal — every function,
+every call, no exceptions.** That is not a fallback applied
+function-by-function; it is the mode. And it is precisely what makes it
+work: the rule that channel R needs statically resolved calls exists
+only because two conventions cannot share one call site, and when *all*
+code uses one convention there is nothing to mix. Erased calls included.
+
+The honest consequence, which must be said rather than implied: **the
+"no instructions when nothing raises" guarantee holds only in modes
+where we own the stack.** On an EH-less engine every call carries a
+check. That is the price of the host, not a defect in the design, and
+scoping the guarantee is better than pretending it is universal.
+
+Memory needs no such concession — linear memory suits the manager well,
+and WASM's 64 KB page happens to be our block size. What does not
+survive is stack walking: trace capture cannot read return addresses
+here and needs the engine's frames or a shadow stack.
 
 **JVM.** We own nothing about the stack, so exceptions are JVM
 exceptions and the JVM's tables do the work. The mapping is natural

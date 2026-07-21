@@ -131,8 +131,25 @@ into proper RFCs when picked up.
   region lives until the process exits); and it removes the
   self-reference that currently makes the crate unusable as a Rust
   `#[global_allocator]` — carving re-enters `ll_alloc` with an alignment
-  it refuses. Windows needs no alignment work (`VirtualAlloc` granularity
-  is 64 KB = one block); Linux `mmap` needs the usual over-map-and-trim.
+  it refuses.
+
+  **And there is more than one OS behind it**, which is why this should
+  be an interface rather than `#[cfg]`s sprinkled through `block_pool`.
+  Windows: `VirtualAlloc`, granularity 64 KB = one block, so alignment
+  comes free, and reserve/commit is native. Linux and Android: `mmap`
+  with no alignment guarantee (the usual over-map-and-trim) plus
+  `MADV_HUGEPAGE`; Android also has `prctl(PR_SET_VMA_ANON_NAME)` if we
+  want regions nameable in a memory profile. macOS and iOS: `mmap`, no
+  `MADV_HUGEPAGE` — the equivalent is `VM_FLAGS_SUPERPAGE_SIZE_2MB`
+  through `mach_vm_allocate` — and on iOS nothing may be JIT-shaped, so
+  the mapping code stays plain data pages. WASM: **none of this exists**
+  — one linear memory that only grows, so the layer degenerates to a
+  bump over it and unmapping is impossible. JVM/.NET: memory belongs to
+  the host and the layer is replaced, not ported.
+
+  That spread is the design constraint: the interface has to be small
+  enough that a host which cannot unmap and cannot choose alignment can
+  still implement it honestly.
   **Constraint that must not be lost:** Miri cannot execute either
   syscall, and Miri is the only tool that sees this crate's formal-UB
   class — so the `std::alloc` path stays as a `cfg(miri)` fallback and

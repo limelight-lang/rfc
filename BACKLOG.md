@@ -100,6 +100,19 @@ into proper RFCs when picked up.
 
 ## Deferred optimizations
 
+- **No zeroing by default, anywhere** — the memory manager must not
+  clear memory it hands out, and object creation must not clear property
+  slots as a matter of course. Zeroing is work proportional to the
+  allocation on the hottest path in the system, paid for data that is
+  usually about to be overwritten. **The factory constructor decides**:
+  it owns the allocation (see [object-lifecycle.md](runtime/object-lifecycle.md),
+  "Two constructors"), so it is the one place that knows which slots get
+  real values immediately, which need a defined initial state, and which
+  can be left alone. What has to be worked out: which initial states the
+  value model actually requires (UNINIT discriminants, refcounted slots
+  that teardown will read), what `ll_calloc` and friends still owe their
+  C callers, and how the compiler proves a slot is written before it is
+  read.
 - **Optimistic devirtualization of `static::` call sites** with patching
   on subclass load (CHA-style) — JIT phase
   ([classes.md](model/classes.md)).

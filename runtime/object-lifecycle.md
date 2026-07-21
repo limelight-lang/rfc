@@ -10,6 +10,73 @@ layout per [classes.md](../model/classes.md).
 
 ---
 
+## Two constructors, and why the split matters
+
+`new` is not one operation. It is two, with different natures, and
+almost everything below follows from keeping them apart.
+
+**1. The factory constructor.** Runtime code, and **static by nature**:
+it runs with no `$this`, because there is no object yet. It is called
+**without allocated memory at all — it allocates the memory itself**,
+then stamps the header, the class pointer and the property defaults.
+Its input is a class, its output is an object that exists but has not
+been touched by user code.
+
+**2. The user constructor** (`__construct`). An instance method, and
+therefore not static: it runs on memory the factory has already
+produced, with `$this` bound, and it is ordinary user code that may do
+anything, including throw.
+
+The split is what makes the interesting optimizations legal. Because
+the factory *owns* the allocation rather than receiving it, it is free
+to decide where the object comes from and whether it needs to come from
+anywhere at all: the arena, the heap, the immortal region, inline in a
+caller's frame, a shared instance for a value-like class, or nothing at
+all when the object provably does not escape. None of that is available
+to a design that allocates first and then calls a constructor on the
+result — there the address is already fixed before anyone knows what
+the object is for. Being static also means the factory is dispatched on
+the class, not through an instance, so it is a direct call the compiler
+can see through and inline.
+
+### What each of the two guarantees on failure
+
+**A failed factory is the cheapest failure in the system.** Nothing has
+run, nothing is registered, nothing is observable — there is no object,
+so there is nothing to destruct and nothing to unwind. This is why
+allocation refusal is reported here rather than anywhere else: the
+factory is the one place where "it did not happen" is the whole truth.
+
+**A failed user constructor is a different event.** The object exists;
+user code has run and may have left effects elsewhere. The rule:
+
+> If `__construct` throws, the **user destructor is not called** —
+> `__destruct` never runs for an object whose construction did not
+> complete. Our own teardown *does* run: children are released and the
+> memory is reclaimed.
+
+So the guarantee "`__destruct` will run" does not begin when the object
+exists. It begins **when the user constructor returns successfully**,
+and that is the boundary every mechanism keyed on destructors must use.
+
+### Consequence: when a destructor is registered
+
+An arena object with a `__destruct` must be recorded in the arena's
+destructor log. That registration belongs **after** the user
+constructor returns, not in the factory: registering earlier leaves a
+record demanding a `__destruct` that must never run, for exactly the
+objects whose constructor threw.
+
+Registration itself can fail (the log may need memory). It needs no new
+policy: raising the memory-exhausted exception at the creation site
+makes the outcome **identical to a constructor that threw** — our
+teardown runs, the user destructor does not. A failure with nowhere to
+go is thereby folded into a path that already exists and is already
+specified. See `exceptions.md`, "The enumeration, and the three ways
+off the list".
+
+---
+
 ## Creation: `new`
 
 The compiler emits allocation inline (bump pointer, see
@@ -46,14 +113,17 @@ pub extern "C" fn ll_object_new(class: &Class, cat: MemCat) -> *mut Object {
         (*obj).class = class;
         class.init_props(obj);          // defaults / UNINIT discriminants
     }
-    // arena objects with a PHP destructor must be tracked: the arena
-    // reset must run their pre-destructors first (see arenas.md)
-    if cat == MemCat::RequestArena && class.has_php_destructor() {
-        request_arena().track_destructor(obj);
-    }
     obj
     // the __construct call is emitted by the compiler at the call
     // site: the class is known there, so it is a direct call
+    //
+    // Tracking the destructor is NOT done here. An arena object with a
+    // `__destruct` is registered only once `__construct` has returned
+    // successfully — see "Two constructors" above: an object whose
+    // constructor threw must never have its `__destruct` run, so a
+    // record created by the factory would be a record demanding exactly
+    // the thing that is forbidden. The implementation still registers
+    // here (`ll-model`, `object.rs`) and has to move.
 }
 ```
 

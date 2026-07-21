@@ -119,6 +119,24 @@ into proper RFCs when picked up.
   that teardown will read), what `ll_calloc` and friends still owe their
   C callers, and how the compiler proves a slot is written before it is
   read.
+- **Regions from the OS, not from `std::alloc`** — `BlockPool::carve_region`
+  takes its 2 MB regions through the Rust global allocator. Replacing
+  that with `VirtualAlloc` / `mmap` behind a small `region::map/unmap`
+  interface is not a speed change in itself (carving happens once per
+  2 MB), but it is the prerequisite for three things that are:
+  **huge pages** — a region is exactly 2 MB, so it *is* a huge page, and
+  `MEM_LARGE_PAGES` / `MADV_HUGEPAGE` is the last large untaken win on
+  the hot path; **reserve/commit split**, which makes it possible to
+  return memory to the OS at all (today the pool only grows, and a
+  region lives until the process exits); and it removes the
+  self-reference that currently makes the crate unusable as a Rust
+  `#[global_allocator]` — carving re-enters `ll_alloc` with an alignment
+  it refuses. Windows needs no alignment work (`VirtualAlloc` granularity
+  is 64 KB = one block); Linux `mmap` needs the usual over-map-and-trim.
+  **Constraint that must not be lost:** Miri cannot execute either
+  syscall, and Miri is the only tool that sees this crate's formal-UB
+  class — so the `std::alloc` path stays as a `cfg(miri)` fallback and
+  must stay exercised.
 - **Optimistic devirtualization of `static::` call sites** with patching
   on subclass load (CHA-style) — JIT phase
   ([classes.md](model/classes.md)).

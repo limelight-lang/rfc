@@ -99,7 +99,7 @@ pub struct Object {
 }
 
 #[no_mangle]
-pub extern "C" fn ll_object_new(class: &Class, cat: MemCat) -> *mut Object {
+pub extern "C" fn ll_object_new(ctx: *mut LLContext, class: &Class, cat: MemCat) -> *mut Object {
     let mem = match cat {
         MemCat::RequestArena => request_arena().bump(class.object_size),
         MemCat::GcHeap       => gc_alloc(class.object_size),
@@ -107,10 +107,11 @@ pub extern "C" fn ll_object_new(class: &Class, cat: MemCat) -> *mut Object {
     };
     let obj = mem as *mut Object;
     unsafe {
-        // header in one store: refcount = 1 (off-by-one: zero bits),
-        // flags = memory category. NOT HAS_DESTRUCTOR: that flag means
+        // header in one store: refcount = 1 (the off-by-one encoding is
+        // deferred), flags = memory category + ENTITY_OBJECT. NOT
+        // HAS_DESTRUCTOR, and not the class's flag word: that flag means
         // "this object owes a __destruct", which is not true yet.
-        (*obj).rc = RcHeader::init(cat, class.flags);
+        (*obj).rc = RcHeader::new(cat, ENTITY_OBJECT);
         (*obj).class = class;
         class.init_props(obj);          // defaults / UNINIT discriminants
     }
@@ -193,8 +194,23 @@ pub extern "C" fn ll_object_die(obj: *mut Object) {
         }
     }
 
+    // Leaving the cycle collector's candidate buffer comes BEFORE any
+    // child release, and the order is load-bearing: a child release can
+    // fill the candidate buffer and run a collection, which would trace
+    // this still-buffered object — refcount already zero — as a root and
+    // free it, and then phase 3 would free it again.
+    forget_candidate(obj);
+
     // Phase 2: drop, release children and internal structures
     for slot in class.prop_layout.refcounted_slots() {
+        // A holder going away is a `lose` for every request-arena
+        // escapee it referenced — the same event as the store barrier
+        // overwriting the slot. Heap children fall through to the
+        // ordinary release below. (The cycle collector owes this too,
+        // when it frees a holder without coming through here.)
+        if is_request_arena(prop_ptr(obj, slot)) {
+            escape_lose(prop_ptr(obj, slot));
+        }
         ll_release(prop_ptr(obj, slot));
     }
     if let Some(dyn_props) = dynamic_props(obj) { free_hashtable(dyn_props); }

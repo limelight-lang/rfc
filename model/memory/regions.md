@@ -80,8 +80,9 @@ A region is the **memory half of an actor**. Actor = region + mailbox
 + serial execution. Unbundling costs the concurrency guarantees:
 
 - **No isolation.** References cross the region boundary freely; the
-  ordinary category barrier logs escapes into the remembered set
-  ([arenas.md](arenas.md)), and promotion at reset handles survivors.
+  ordinary category barrier counts the escape in the escapee's own
+  header ([arenas.md](arenas.md)), and promotion at reset handles
+  survivors.
   There is no queue and no packing discipline.
 - **No serial-execution guarantee.** A region does not make refcounts
   non-atomic by itself; counting follows the build's threading mode.

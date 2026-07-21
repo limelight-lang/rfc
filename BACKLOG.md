@@ -7,7 +7,11 @@ into proper RFCs when picked up.
 
 - **Per-block dense/sparse threshold** for arena reset (escaped bytes
   per block deciding retain vs evacuate) — calibrate with real
-  workloads ([arena-reset.md](model/memory/arena-reset.md)).
+  workloads ([arena-reset.md](model/memory/arena-reset.md)). Blocked
+  first by a design debt, not by measurement: evacuation needs to fix up
+  the references to a moved escapee, and the barrier deliberately keeps
+  no holder slots ([arenas.md](model/memory/arenas.md)), so there is
+  nothing to fix up with. Retention is what the runtime implements.
 - **`SplObjectStorage` / `WeakMap` after evacuation** — rehash
   address-keyed tables, or key by the stored lazy object id from the
   start ([arena-reset.md](model/memory/arena-reset.md)).
@@ -108,7 +112,9 @@ into proper RFCs when picked up.
   it owns the allocation (see [object-lifecycle.md](runtime/object-lifecycle.md),
   "Two constructors"), so it is the one place that knows which slots get
   real values immediately, which need a defined initial state, and which
-  can be left alone. What has to be worked out: which initial states the
+  can be left alone. The concrete site today is `ll_object_new`, which
+  null-fills every property slot unconditionally. What has to be worked
+  out: which initial states the
   value model actually requires (UNINIT discriminants, refcounted slots
   that teardown will read), what `ll_calloc` and friends still owe their
   C callers, and how the compiler proves a slot is written before it is
@@ -143,8 +149,9 @@ into proper RFCs when picked up.
 - **Proxy-mediated movability for cold long-lived data** — opt-in: a
   container that knows its contents are cold and long-lived (sessions,
   warm caches) has them wrapped in canonical per-object proxies at
-  arena death, keeping the cluster repackable after remembered-set
-  completeness is gone. Requires the general interception proxy
+  arena death, keeping the cluster repackable once the arena's own
+  bookkeeping is gone — the escape hold-count says *how many* references
+  exist, never *where*, so nothing else can find them to fix up. Requires the general interception proxy
   (reference-returning reads must translate neighbors to their
   proxies). Rejected as the core arena-reset mechanism — see the
   rejected-alternatives section of

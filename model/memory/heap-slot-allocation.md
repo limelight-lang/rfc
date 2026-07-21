@@ -2,7 +2,7 @@
 
 ## Scope
 
-How `Heap` (`ll-model/src/memory/heap.rs`) carves a 32 KB block into
+How `Heap` (`ll-model/src/memory/heap.rs`) carves a 64 KB block into
 fixed-size slots for a size class, and what happens to a block when its
 last live slot is freed. Two decisions here, found by profiling a
 degenerate but realistic workload (alloc one object, free it, alloc
@@ -36,7 +36,7 @@ from ~140 ns/op to ~5 ns/op — tied with mimalloc):
 
 - `refill()` built the entire free list eagerly: for a 64-byte class,
   `BLOCK_PAYLOAD / 64 ≈ 508` slots, each written with a `next` pointer
-  in a loop — O(slots) work, touching all 32 KB of a cold block, every
+  in a loop — O(slots) work, touching all 64 KB of a cold block, every
   time a block was carved.
 - `free_local()`/`drain_remote()` returned a block to the global pool
   the instant its `used` count hit zero — including the very common
@@ -104,8 +104,8 @@ When a slot is claimed from a block that was the reserve (`used` goes
 0 → 1), `empty_reserve[ci]` is cleared — the block is active again, not
 a spare.
 
-This bounds the extra resident cost to at most one empty 32 KB block
-per size class (≤ 32 classes × 32 KB ≈ 1 MB high-water in the fully
+This bounds the extra resident cost to at most one empty 64 KB block
+per size class (≤ 32 classes × 64 KB ≈ 1 MB high-water in the fully
 degenerate case) while eliminating the instant-return/instant-refill
 cycle for the common case of one class briefly going idle.
 
@@ -279,10 +279,10 @@ fixed-size isolated loop above couldn't see:
 2. **The intrusive linked-list free/local_free scheme** pops/pushes by
    chasing a pointer stored inside the freed slot itself — a
    cache-unfriendly, unpredictable-latency access, since that slot can
-   be anywhere in the 32 KB block. Fixed with a bitmap (one bit per
+   be anywhere in the 64 KB block. Fixed with a bitmap (one bit per
    slot, `alloc` = find-first-set + clear, `free` = set the bit back):
    one small, always-hot region touched on every operation, instead of
-   pointer-chasing scattered across 32 KB. The bitmap is heap-allocated
+   pointer-chasing scattered across 64 KB. The bitmap is heap-allocated
    per block (a `Vec<u64>`'s raw parts, freed explicitly when the block
    is truly released) rather than embedded in the fixed 256-byte
    (`LINE_SIZE`) block header — the worst case (2032 slots for the
@@ -389,7 +389,7 @@ which is exactly where `alloc` serves from. So every cross-block free
 installed a head with a single free slot; the next alloc took it, the block
 was full again, and the alloc after that loaded that header cold only to
 discover it was full and unlink it. `unlink` rewrites `prev.next` and
-`next.prev` — two *other* blocks' headers, 32 KB apart, both cold.
+`next.prev` — two *other* blocks' headers, 64 KB apart, both cold.
 
 Two changes: an unfulled block re-links **behind** the head
 (`relink_unfull`), and a block that has just handed out its last slot is
@@ -460,7 +460,7 @@ point of the curve.**
   1.11 / 0.98x across 20..1404 blocks. Noise. A dense per-region header array
   would buy nothing; it was proposed and dropped on this measurement.
 
-## Fix 6 — `BLOCK_SIZE` 32 KB → 64 KB, and the churn was causal after all
+## Fix 6 — `BLOCK_SIZE` 64 KB → 64 KB, and the churn was causal after all
 
 Fix 5 left block-list churn as the open item and a 64 KB block as its
 measured-but-unproven lever: block size moves **two** things at once — slots
@@ -470,10 +470,10 @@ and nothing separated them.
 They separate cleanly on the live-set axis, because churn itself does. At a
 200-object live set the churn counters read 0.001 per alloc; at 5000 they
 read 0.634. So: if churn is the mechanism, 64 KB must do **nothing** at 200
-and a lot at 5000. If block count is, it should help at both, since 32 KB
+and a lot at 5000. If block count is, it should help at both, since 64 KB
 still uses ~20 blocks at a 200-object live set.
 
-| live bytes | churn/alloc, 32 KB | churn/alloc, 64 KB | 32 KB | 64 KB | gain |
+| live bytes | churn/alloc, 64 KB | churn/alloc, 64 KB | 64 KB | 64 KB | gain |
 |---|---|---|---|---|---|
 | 98 KB | 0.001 | 0.000 | 6.10 ns | 6.14 ns | **0%** |
 | 492 KB | 0.138 | 0.019 | 8.07 ns | 6.60 ns | +18% |
@@ -572,13 +572,13 @@ the cache holds what you touch, not what is nearby. `metadata_probe.cpp`
 (fix 5) had already said exactly this about metadata layout, and the same
 mistake was made again here.
 
-Not landed: a tie that costs 32 KB per thread heap and imposes a hard
+Not landed: a tie that costs 64 KB per thread heap and imposes a hard
 ceiling (`MAX_BLOCKS_PER_CLASS`) the linked list does not have is strictly
 worse.
 
 One incidental finding worth keeping: the first cut of this measured
 **−15%**, and all of it was the block table being an inline
-`[[*mut; 128]; 32]` — 32 KB sitting *between* the fields the hot path reads,
+`[[*mut; 128]; 32]` — 64 KB sitting *between* the fields the hot path reads,
 pushing `current` and `empty_reserve` 34 KB apart in a struct that had been
 ~530 bytes and one page. Boxing the table recovered every bit of it. Field
 layout of a per-thread structure is worth 15% on its own.
@@ -617,7 +617,7 @@ a number, not measured.
 `4064` — "32512 payload / 8" — so it failed on any change to `BLOCK_SIZE`
 with "block must be exactly full", which reads as an arena bug rather than a
 stale literal. It now derives the count from `BLOCK_PAYLOAD` and asserts the
-same property. Every other 32 KB mention in the tree was prose, not code;
+same property. Every other 64 KB mention in the tree was prose, not code;
 those are corrected, and the comments that spelled the ABA tag as "15 bits"
 now say it widens with `BLOCK_MASK`.
 

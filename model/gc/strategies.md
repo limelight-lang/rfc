@@ -33,14 +33,21 @@ runtime or the generated code knows which strategy is active.
 The compiler emits every reference store through a single hook:
 
 ```
-ll_ref_store(ctx, dst_owner, slot, old_value, new_value)
+ll_ref_store(ctx, dst_owner, slot: *Value, old_entity, new_value: Value)
 ```
+
+The two value arguments are deliberately asymmetric. `new_value` is the
+whole 16-byte `Value` and the barrier writes it — one slot has one
+writer, and a caller stamping the tag afterwards would leave the slot
+torn for the length of the call. `old_entity` is only the entity the
+slot currently holds (null when it holds a scalar), because that is all
+the counting needs and the caller already has it loaded.
 
 `dst_owner` is the entity containing `slot`: a slot has no header of
 its own, so the destination's category is read from its owner's flags —
 and the generated code has the owner in a register anyway (it just
-computed `slot` from it). `ctx` supplies the arena whose remembered
-set / release list the barrier writes: one mounted arena per executing
+computed `slot` from it). `ctx` supplies the arena whose escape and
+release-at-reset logs the barrier writes: one mounted arena per executing
 context, kept correct by the compiler (actor arenas are unreachable
 from outside, so an escape-creating store always runs with the owner's
 arena mounted).
@@ -49,7 +56,7 @@ Its body is composed at build time from up to three layers:
 
 | Layer | Owner | Present |
 |---|---|---|
-| Category barrier (cross-arena check, remembered set) | arenas, strategy-independent | always ([arenas.md](../memory/arenas.md)) |
+| Category barrier (cross-arena check, escape count + release log) | arenas, strategy-independent | always ([arenas.md](../memory/arenas.md)) |
 | RC operations (`retain(new)` / `release(old)`) | ARC | in every RC-based strategy, after compiler pairing elimination |
 | Strategy hook (e.g. SATB deletion barrier) | active strategy | only if the strategy defines one |
 
@@ -73,6 +80,14 @@ The compiler inserts **poll safepoints** (load a global flag + branch,
 ~1–3 cycles) at function entries and loop back-edges. At a safepoint
 the thread's roots are enumerable.
 
+The poll has a second duty that is not about tracing at all: it refills
+the block reserve the store barrier's log growth draws on
+([exceptions.md](../../runtime/exceptions.md), "The log reserve
+protocol"). That is what converts a failure the barrier cannot report
+into an ordinary exception raised at the next poll — so poll density is
+a correctness input for the barrier, not only a latency knob for the
+collector.
+
 - Strategies that never stop threads and never scan stacks (NoGC, pure
   RC) compile the poll away entirely; build-time selection again.
 - These are cheap poll safepoints, **not** LLVM statepoints. The
@@ -93,8 +108,13 @@ Strategies consume, not define, the object model:
 - `RcHeader` flags and refcount ([object-lifecycle.md](../../runtime/object-lifecycle.md))
 - class `prop_layout.refcounted_slots()` for tracing object children
 - the three-phase teardown (`__destruct` with resurrection check →
-  drop → memory release); a strategy that proves an object garbage
-  enters teardown at phase 1 like any refcount death
+  drop → memory release). A strategy that proves an object garbage may
+  free it directly instead of entering teardown — today's `rc-trace`
+  does, and the missing `__destruct` for cyclic garbage is a known gap
+  (BACKLOG). What such a strategy still owes is the bookkeeping teardown
+  would have done: above all, dropping the escape hold-count of every
+  request-arena entity the dead holder referenced, since arena entities
+  are invisible to the trace and nothing else will
 
 ## Constraint: non-moving only
 

@@ -28,13 +28,22 @@ Value representation for scalars, strings, and arrays is covered separately. Mem
 | 4–5 | Cycle collector color |
 | 6 | Cycle collector buffered bit |
 | 7 | Has weak references (side table exists) |
-| 8 | Has destructor with side effects; arena must invoke it before reset |
-| 9–31 | Reserved |
+| 8 | **Owes a `__destruct`** — set only when the user constructor has returned successfully, and what every teardown path dispatches on, not just the arena's ([object-lifecycle.md](../runtime/object-lifecycle.md)) |
+| 9 | Copy-on-write: counted in every memory category |
+| 10 | `__destruct` has already run (exactly-once guard) |
+| 11 | Transient mark: part of the escaped subgraph during arena reset |
+| 12 | The entity is an object (has a class pointer at +8) |
+| 13 | Live escapee: `refcount` currently holds the escape hold-count |
+| 14–31 | Position in the cycle collector's candidate buffer, as `index + 1`; zero means "position unknown" and costs a linear scan |
 
-The retain/release fast path is a single branch covering both arenas and immortal objects:
+Nothing is reserved: bits 14–31 are the candidate index, so a new
+per-object flag needs either a freed bit or a *class* flag, which has
+room.
+
+The retain/release fast path is a single branch covering both arenas and immortal objects, with one exception:
 
 ```
-if (flags & 0b11) return;   // non-zero category → no counting
+if ((flags & 0b11) && !(flags & COW)) return;   // non-zero category → no counting
 ```
 
 This implements the immortal-object and arena-scoping optimizations from [arc-optimizations.md](memory/arc-optimizations.md) with one check.

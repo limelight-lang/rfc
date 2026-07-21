@@ -18,7 +18,7 @@
 **Fragmentation:** handled by Immix's block/line structure:
 - Free lines within a block are recycled for new allocations (line-level reuse)
 - Fully empty blocks are returned to the pool and reused
-- Large objects (> 32KB) get dedicated blocks
+- Objects above the small-object limit (8 KB) get a dedicated pooled block; above a block payload, an OS-direct block-aligned run
 
 This makes Immix's non-moving mode significantly better than classic mark-sweep at managing fragmentation: no compaction needed.
 
@@ -59,12 +59,12 @@ MMTK is a Rust-based framework that provides production-quality GC plans includi
 
 **Decision**: Limelight does not maintain a global linked list of objects. The heap structure itself serves as the object enumeration mechanism.
 
-The heap is divided into fixed-size **blocks** (32KB, aligned to their size). Each block is subdivided into **lines** (256 bytes). The GC enumerates all live objects by linearly scanning blocks: no separate list required.
+The heap is divided into fixed-size **blocks** (64KB, aligned to their size). Each block is subdivided into **lines** (256 bytes). The GC enumerates all live objects by linearly scanning blocks: no separate list required.
 
 **Why:**
 - A global intrusive linked list is shared mutable state: it requires synchronization on every allocation and free.
 - Linear block traversal is cache-friendly: scanning a block = sequential memory reads. A linked list of heap objects scattered across memory causes pointer-chasing cache misses.
-- Block boundaries are computable from any pointer (mask off the low 15 bits): the GC always knows which block an object belongs to without a lookup.
+- Block boundaries are computable from any pointer (mask off the low 16 bits): the GC always knows which block an object belongs to without a lookup.
 
 This is the approach used by MMTK, Immix, and LXR. Global object lists (as in Boehm GC, early PHP) are considered obsolete for this reason.
 

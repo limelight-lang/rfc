@@ -35,7 +35,8 @@ unboxed contract for free.
 +0   payload   8 B   union { i64, f64, ptr }
 +8   type      1 B   type tag
 +9   flags     1 B   refcounted / collectable
-+10  reserved  6 B   alignment; available for future caches
++10  reserved  6 B   alignment; not usable as per-slot state — the
+                     store barrier writes all 16 bytes of the Box
 ```
 
 **Why not NaN-boxing (8 bytes)?** JS engines fit everything into a double's

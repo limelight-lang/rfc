@@ -48,9 +48,12 @@ The barrier compares the 2-bit category fields of the stored value and
 the destination's owner — one XOR + test on flags words that the
 retain path has already loaded. Same category (the overwhelmingly
 common case): no extra work. On the dangerous direction (arena value
-into a longer-lived container) it **only logs the slot into the
-arena's remembered set**; nothing is copied at the store. The fate of
-escaped objects is decided lazily at arena death, per 32 KB block —
+into a longer-lived container) it **only counts the escape** — a
+hold-count in the escapee's own header, plus one append to the arena's
+escapee list on the 0 → 1 transition ([arenas.md](arenas.md)). The
+holder's slot is never recorded, precisely so that a holder dying before
+reset cannot dangle it. Nothing is copied at the store. The fate of
+escaped objects is decided lazily at arena death, per 64 KB block —
 retention in place or evacuation ([arena-reset.md](arena-reset.md)).
 The reverse direction (heap value into an arena container) goes to the
 release-at-reset list ([arenas.md](arenas.md)).

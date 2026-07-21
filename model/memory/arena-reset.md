@@ -6,13 +6,13 @@ What happens when a request arena dies. Escaped references are handled
 **lazily** — not at the assignment barrier, but at arena destruction, and
 only for objects that actually survived. The algorithm is adaptive: it
 chooses between evacuating survivors and retaining their blocks, **per
-32 KB block**, based on how much survived in each block.
+64 KB block**, based on how much survived in each block.
 
 Prior art: this is the Garbage-First principle (G1: collect regions where
 garbage dominates, skip regions where survivors dominate) combined with
 en-masse promotion and Immix opportunistic evacuation.
 
-Builds on: the category barrier ([arenas.md](arenas.md)), the 32KB
+Builds on: the category barrier ([arenas.md](arenas.md)), the 64KB
 block / 256B line heap structure ([heap-design.md](../gc/heap-design.md)),
 object lifecycle ([object-lifecycle.md](../../runtime/object-lifecycle.md)).
 
@@ -26,11 +26,12 @@ object lifecycle ([object-lifecycle.md](../../runtime/object-lifecycle.md)).
   [arenas.md](arenas.md), "The dangerous direction"). The arena's
   append-only **escapee list** names every object that ever escaped; the
   live external count of each is its hold-count, kept truthful by
-  increments on store and decrements on overwrite or holder teardown. This
+  increments on store and decrements on overwrite, on holder teardown,
+  and when a collector frees a holder directly. This
   is a *complete* registry of external references into the arena, and it is
   read **without dereferencing any holder slot** — so a holder that died
   before reset cannot dangle it. No heap tracing is ever needed.
-- **Arena block map**: which 32KB blocks belong to the arena, and (after
+- **Arena block map**: which 64KB blocks belong to the arena, and (after
   the survivor trace) which contain survivors.
 - **No live stack**: the arena dies after the request completes, so no
   PHP frames or registers reference it. Moving survivors requires **no
@@ -135,7 +136,7 @@ dropping it would dangle. This mirrors Zend's GC recursion limit.
 
 ## Step 2 — Decide, per block
 
-**The unit of decision is the 32 KB block, not the arena.** An arena is
+**The unit of decision is the 64 KB block, not the arena.** An arena is
 heterogeneous at death: bump allocation places objects created together
 next to each other, so mass survivors cluster densely (a cache built in
 one loop fills whole blocks) while accidental stragglers sit alone in
@@ -156,9 +157,12 @@ knob disappears; the only tunable left is the per-block one.
 
 ### Evacuation is now-or-never
 
-Evacuation is legal **only at this moment**. The remembered set is a
-complete registry of external references exactly at arena death, and
-there is no live stack. The instant a block is retained, its objects
+Evacuation is legal **only at this moment** — and, as written, not yet
+legal at all: it needs the references to a moved escapee fixed up, and
+the barrier records how many there are, never where (see the note under
+"Escapees"). What follows describes the intended mechanism; the runtime
+implements retention only. The escapee registry is complete exactly at
+arena death, and there is no live stack. The instant a block is retained, its objects
 become ordinary heap objects: stores of references to them are no
 longer logged anywhere, completeness is gone, and the non-moving
 contract ([heap-design.md](../gc/heap-design.md)) fixes their addresses
@@ -185,17 +189,22 @@ is evacuated now or carried until its stragglers die; there is no
 
 ### Retention (dense blocks)
 
-- Free lines within retained blocks are recyclable through normal Immix
-  line-level allocation: the retained blocks are donated to the general
-  heap, not held as a private reserve.
-- Retained blocks are marked **sticky**: their objects carried no
-  refcount history while in the arena (objects are not counted there), so
-  they are managed by the tracing component from now on, exactly the
-  fate of saturated objects in LXR, a mechanism already in the plan
-  ([gc-research.md](../gc/gc-research.md)).
+- Free lines within retained blocks are meant to be recyclable through
+  normal line-level allocation, the blocks donated to the general heap
+  rather than held as a private reserve. **Not built:** the runtime
+  stamps a retained block and keeps it out of the pool, and nothing
+  reuses it yet.
+- Survivors do **not** arrive without refcount history. Promotion
+  rebuilds an exact count — external hold-count, plus internal
+  arena → arena edges, plus one compensating retain per heap entity the
+  survivor holds — and rewrites the category, so a survivor becomes an
+  ordinary counted heap object. Handing them to a tracing component
+  instead (the LXR saturated-object shape,
+  [gc-research.md](../gc/gc-research.md)) remains an option for later,
+  not what happens today.
 - **Category bits are rewritten in place**: a linear walk over the
   retained blocks flips the memory-category bits in each live object's
-  flags. Sequential reads over a handful of 32KB blocks: cheap, and it
+  flags. Sequential reads over a handful of 64KB blocks: cheap, and it
   keeps the retain/release fast path exactly as designed (one load of the
   object's own flags, no block-metadata lookup). Deriving the category
   from block headers was considered and rejected: it would add an
@@ -233,7 +242,7 @@ long-lived data ([BACKLOG.md](../../BACKLOG.md)).
 
 Everything released (survivor-less blocks, evacuated sparse blocks, and
 every block of an arena nothing escaped from) goes back to the
-**global 32KB block pool** and is immediately
+**global 64KB block pool** and is immediately
 reusable by any consumer: new request arenas, the GC heap. An arena is not
 a separate memory kingdom; it is a set of blocks borrowed from the common
 pool and returned on death.

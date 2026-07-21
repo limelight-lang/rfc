@@ -63,8 +63,8 @@ size-class-slot model doesn't fit.
 ### Size routing
 
 Everything below applies to payloads that fit a pooled block
-(≤ 32 KB − header). A larger payload lives in an OS-direct,
-32 KB-aligned run (the `BLOCK_KIND_LARGE_RUN` path of `ll-model`'s
+(≤ 64 KB − header). A larger payload lives in an OS-direct,
+64 KB-aligned run (the `BLOCK_KIND_LARGE_RUN` path of `ll-model`'s
 stdapi): growth there is alloc-new + copy + free-old, and a freed run
 returns to the OS immediately — the free-list machinery below never
 sees it. The memory-pressure modes still govern slack for runs; hole
@@ -96,7 +96,7 @@ L2-residency of a walk holds by construction, not by hope.
 **Known limit — no coalescing, ever**: adjacent free chunks are never
 merged (that would need boundary tags, rejected below), so a block can
 fragment into holes that individually fit nothing. Accepted because the
-damage is bounded by one block (32 KB), emptied blocks recycle through
+damage is bounded by one block (64 KB), emptied blocks recycle through
 the live-chunk count, and sustained pathological fragmentation is what
 the compaction fallback (rejected alternative 2) exists for — the free
 list is a cheap opportunistic layer, not the defragmentation story.
@@ -105,7 +105,7 @@ list is a cheap opportunistic layer, not the defragmentation story.
 
 1. **Permanent boundary tags on every chunk** (classic free-list +
    coalescing, dlmalloc-style) — correct, and the search stays
-   block-local (bounded by 32 KB) so it never suffers the classic
+   block-local (bounded by 64 KB) so it never suffers the classic
    scattered-free-list cache-miss problem of a general-purpose malloc —
    but it taxes every live buffer forever (a permanent header field) for
    a benefit only `critical` mode needs.

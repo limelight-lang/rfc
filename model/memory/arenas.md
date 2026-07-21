@@ -80,11 +80,14 @@ escape counting**: rather than remember the *slot*, the barrier counts the
 kept in its otherwise-idle `refcount` field (arena objects are not
 lifetime-counted). A store into a longer-lived container increments it
 (the object joins the arena's escapee list on the 0 → 1 transition); an
-overwrite, or the teardown of a holder, decrements it. Those two are the
+overwrite, or the teardown of a holder, decrements it. Those are the
 **same event** — a slot let go of the escapee — so there is one decrement
-rule, invoked from the store barrier and from holder teardown alike. At
+rule, invoked from three places: the store barrier, holder teardown, and
+any collector that frees a holder without going through teardown (the
+cycle collector does exactly that, and arena entities are invisible to
+its trace, so nothing else would drop the count). At
 arena death the escapees with a non-zero count are the survivors; their
-fate is decided per 32 KB block — survivor-less blocks are freed, dense
+fate is decided per 64 KB block — survivor-less blocks are freed, dense
 blocks are retained in place, sparse blocks have their survivors
 evacuated. The full algorithm, including why no statepoints are needed and
 how identity is preserved, is specified in
@@ -123,6 +126,19 @@ destructor-tracking list. An escapee whose count returns to zero is simply
 skipped at reset; a re-escape appends it again (harmless — the reset-time
 subgraph mark deduplicates). The hold-count itself lives in each escapee's
 `refcount`, not in the list.
+
+**What happens when that memory runs out.** An arena allocation reports
+null and leaves the arena usable — allocation failure is an ordinary
+exception, raised by the frame that asked, not by the runtime
+([exceptions.md](../../runtime/exceptions.md)). The logs are the
+exception: a lost escapee record dangles at reset and a lost
+release-at-reset record leaks, so those two cannot simply fail. They are
+funded instead — a per-thread block reserve the barrier's log growth
+draws on, refilled at the compiler's safepoint poll, which is what lets
+the store barrier keep no failure channel at all. A refused *destructor*
+record is different again: it fails the object's creation, which is
+already a specified path. The remaining abort behind the reserve is the
+last resort, not the first.
 
 **Completeness contract**: "the escape count is a complete registry
 of external references" holds only because every reference store in

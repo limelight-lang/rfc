@@ -58,20 +58,29 @@ Phase 1 (one thread per request, no atomics needed, like Zend):
 
 ```c
 static inline void ll_retain(RcHeader *h) {
-    if (h->flags & LL_MEMCAT_MASK) return;   // arena/immortal: not counted
+    // Not lifetime-counted — unless COW, which counts in every category
+    // (values.md), so the test is category != 0 && !COW.
+    if ((h->flags & LL_MEMCAT_MASK) && !(h->flags & LL_COW)) return;
     h->refcount++;
 }
 
-static inline void ll_release(RcHeader *h) {
-    if (h->flags & LL_MEMCAT_MASK) return;
+// Returns "this entity just died", it does not free: the caller runs
+// the three-phase teardown (ll_object_die). Only GcHeap entities die
+// this way; an arena object's count reaching zero means nothing.
+static inline bool ll_release(RcHeader *h) {
+    if ((h->flags & LL_MEMCAT_MASK) && !(h->flags & LL_COW)) return false;
+    if (h->flags & LL_MEMCAT_MASK == LL_IMMORTAL) return false;
     if (--h->refcount == 0)
-        ll_free(h);
-    else
-        ll_buffer_cycle_root(h);   // non-zero decrement → possible cycle
-}                                  //   root (Bacon-Rajan, see gc-research.md)
+        return (h->flags & LL_MEMCAT_MASK) == LL_GCHEAP;
+    // Non-zero decrement of a heap *object* → possible cycle root.
+    // Buffering only arms a collection; it never runs one inline.
+    if (is_gcheap_object(h)) ll_buffer_cycle_root(h);
+    return false;
+}
 ```
 
-The single `flags & 0b11` branch implements the immortal-object and arena-scoping optimizations from [arc-optimizations.md](memory/arc-optimizations.md). Biased/atomic counting arrives with multi-threading (phase 2+).
+The `flags & 0b11` test (plus the COW exception) implements the
+immortal-object and arena-scoping optimizations from [arc-optimizations.md](memory/arc-optimizations.md). Biased/atomic counting arrives with multi-threading (phase 2+).
 
 ---
 
@@ -182,11 +191,22 @@ commit:
   store i64 RC1_PLUS_FLAGS, ptr %cur             ; header in one 8-byte store
   store ptr @class.User,
         ptr getelementptr(i8, ptr %cur, i64 8)
+  ; property slots need a defined initial state (definite assignment /
+  ; UNINIT discriminants); the runtime factory null-fills them today
   call void @User__construct(ptr %cur, ...)      ; constructor known → direct
+  ; Only for a class with a destructor, and only after __construct
+  ; returns: this is what makes the object owe a __destruct at all
+  ; (runtime/object-lifecycle.md, "Two constructors").
+  %ok2 = call i1 @ll_object_constructed(ptr %ctx, ptr %cur)
+  br i1 %ok2, label %done, label %oom            ; false → raise memory-exhausted
 ```
 
-Roughly five instructions per object: an order of magnitude cheaper than
-`malloc`.
+The refill path is a runtime call that **can report null** — allocation
+failure is an ordinary exception raised from the generated frame, not
+something the runtime throws (runtime/exceptions.md).
+
+Roughly five instructions per object on the fast path: an order of
+magnitude cheaper than `malloc`.
 
 ---
 

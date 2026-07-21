@@ -102,7 +102,7 @@ Applied at *pack time*, the one place references cross:
 | **actor handle** | reference *to an actor* | a shareable opaque handle; the mailbox pointer itself is the only thing shared |
 
 **Rejected: block reparenting** (moving arena-born subgraphs by
-re-owning their 32 KB blocks, zero-copy). An arena block is bump-filled
+re-owning their 64 KB blocks, zero-copy). An arena block is bump-filled
 with whatever the actor allocated in sequence: alongside the
 transferable subgraph live unrelated objects, and reparenting the block
 would move them too. The trick only works for subgraphs segregated into

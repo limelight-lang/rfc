@@ -165,9 +165,12 @@ none of the three reserves. Reset is on the pending list, so it has
 somewhere to report; but "finishes the reset" currently assumes that
 working memory is available.
 
-**Built, minus its trigger** (`ll-model`, `memory::reserve`, 2026-07-21):
-the reserve exists, `grow_log` draws on it, and `ll_gc_maybe_collect`
-refills. What does not exist is a compiler emitting the polls, so the
+**Partly built** (`ll-model`, `memory::reserve`, 2026-07-21): the **log**
+reserve exists, `grow_log` draws on it, and `ll_gc_maybe_collect`
+refills. The other two do not: there is no exception-construction
+reserve at all, and the collector's working room is still unbounded
+`Vec`s. Nor is the *failure* half of this protocol built — the poll
+discards a failed refill instead of reclaiming, retrying and raising. What does not exist is a compiler emitting the polls, so the
 bound on barrier operations between two of them is a contract nobody can
 check yet. The abort behind the reserve remains, now genuinely a last
 resort rather than the first one.
@@ -232,7 +235,7 @@ opinion about who owns the stack.
 | Mode | Who owns unwinding | Native channel | Our channels |
 |---|---|---|---|
 | Embedded in the real PHP runtime | Zend | `EG(exception)` flag + `zend_bailout` | R at the boundary; B does **not** map directly — see above |
-| Our own runtime | us | table-driven | U, R, B — the model described here |
+| Our own runtime | us | table-driven | U, R — the model described here |
 | Hybrid | both, alternating | both | conversion at every crossing |
 | WASM | the engine | `try_table`/`exnref` (in the 3.0 spec), or nothing | U where the engine has EH; otherwise **R universally**, and the zero-cost guarantee does not apply |
 | JVM | the JVM | `athrow` + per-method tables | the JVM's. No arenas, no refcounting — the JVM collector owns memory, so landing pads carry only `finally` |
@@ -657,8 +660,8 @@ barrier is funded rather than checked — by the per-thread log reserve
 and the poll replenishment specified above, which turn "the barrier
 would eventually fail" into "the next poll raises". The Zend-shaped
 check after every store stays rejected: the cost of correctness here is
-paid once, in a reserve, not on every store that succeeds. **Not built:
-that path aborts today.**
+paid once, in a reserve, not on every store that succeeds. The reserve
+exists (see above); the abort behind it remains as the last resort.
 
 `ll_arena_track_destructor` uses the same mechanism but is **not** the
 same argument: a dropped destructor record does not dangle, it silently
@@ -1030,7 +1033,7 @@ unconditionally. Nothing to check for, so the check is gone. See
 
 **4. A channel-R error in flight is invisible to the runtime.** It
 travels in a return slot, so neither `pending` nor `unwinding` is set,
-and the per-context policy table above cannot distinguish "a destructor
+and nothing in the context can distinguish "a destructor
 failed during normal death" from "a destructor failed while an error was
 already propagating". Either compiled code owns chaining on every
 error-return cleanup path, or propagation must set a context flag — with

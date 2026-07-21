@@ -48,15 +48,19 @@ The strategy hook installed into the unified store barrier slot
 ([strategies.md](strategies.md)):
 
 ```
-ll_ref_store(slot, old, new):
-    category_barrier(slot, new)          # always: arenas
-    if marking_active and old is heap ref:
-        satb_queue.push(old)             # "this was in the snapshot: trace it"
-    retain(new); release(old)            # ARC layer
-    *slot = new
+ll_ref_store(ctx, owner, slot, old_entity, new_value):
+    retain(new_value)                    # ARC layer, before anything else
+    category_barrier(owner, new_value)   # always: arenas (escape / release log)
+    if marking_active and old_entity is heap ref:
+        satb_queue.push(old_entity)      # "this was in the snapshot: trace it"
+    *slot = new_value                    # published as a whole Value...
+    release(old_entity)                  # ...before the displaced value dies
 ```
 
-- The barrier reads the old value; it **never modifies the slot**.
+- The barrier is the **only** writer of the slot, and it writes the
+  whole `Value` before releasing the displaced one: teardown runs user
+  code, and user code that collects must not see an edge the refcount
+  has already given up.
 - The queue push is performed **by the mutator thread itself** into a
   **thread-local** SATB queue: no cross-thread writes, no locks. The
   marker drains full queue segments. This respects the rule that only

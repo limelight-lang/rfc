@@ -25,8 +25,8 @@ typedef struct Object {
     // +16: property slots, each the machine representation of its
     // declared type (classes.md, "Slot kinds"). Laid out as three runs
     // — counted pointers, Boxes, then the rest in declaration order —
-    // followed by the byte block (init bits, ?scalar discriminants,
-    // packed bools). There is no uniform slot size and no per-slot tag.
+    // followed by the byte block (init bits, packed bools). There is no
+    // uniform slot size and no per-slot tag.
     // Classes allowing dynamic properties have one extra hidden slot:
     // a lazily-allocated hashtable pointer.
 } Object;

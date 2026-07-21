@@ -86,7 +86,7 @@ object where the type is not known statically.
 | `int`, `float` | raw `i64` / `f64`, no tag | 8 / 8 |
 | declared class type, `string`, `array` | bare pointer | 8 / 8 |
 | `?T` for pointer-shaped `T` | the same pointer; `NULL` is PHP `null`, `1` is `UNINIT` (niche) | 8 / 8 |
-| `?int`, `?float` | payload; the discriminant lives in the byte block | 8 / 8 + 1 bit-or-byte |
+| `?int`, `?float` | Box — a nullable scalar has no representation of its own ([values.md](values.md)) | 16 / 8 |
 | `bool` | a byte, or a bit in the byte block (below) | 1 / 1 |
 | untyped / `mixed` | Box | 16 / 8 |
 | hooked property with no backing store (`virtual`) | none | 0 |
@@ -106,7 +106,7 @@ order** — and the byte block last.
      counted pointers          ← contiguous run
      Boxes                     ← contiguous run
      remaining slots, in declaration order
-     byte block: init bits, ?scalar discriminants, packed bools
+     byte block: init bits, packed bools
 ```
 
 Two things follow, and they are the reason for the grouping:
@@ -148,11 +148,10 @@ copying always walk the *target* class's `prop_layout`.
 ### The byte block
 
 One trailing region of the object holds everything that is smaller than
-a slot: the init bitmap ([values.md](values.md)), the discriminants of
-`?int` / `?float` properties, and packed `bool`s where the compiler
-chooses to pack them. It is allocated from the same hole-filling pass
-as the small slots, so in most classes it lands in alignment padding
-and costs nothing.
+a slot: the init bitmap ([values.md](values.md)) and packed `bool`s
+where the compiler chooses to pack them. It is allocated from the same
+hole-filling pass as the small slots, so in most classes it lands in
+alignment padding and costs nothing.
 
 ### Layout targets exact bytes
 

@@ -87,29 +87,44 @@ A declared scalar type occupies exactly its machine size in the slot:
 is a bare pointer. No tag, no flags: the type lives in `prop_layout` /
 the function signature.
 
-### Optional — nullable types
+### Nullable types
 
-**Decision**: `?T` is represented as **Optional**, the Rust `Option<T>` /
-Swift `Optional` construction. Not boxed, no dynamic type tag: the type is
-static, the only runtime information is a discriminant.
+**Decision**: `?T` introduces **no third representation**. A pointer-shaped
+`T` uses its own null; a scalar `T` uses the Box.
 
-- **Scalar `T`** (`?int`, `?float`): `{ u8 discriminant, T value }`,
-  16 bytes. An operation like `$x + 5` compiles to one discriminant test
-  (the unwrap) followed by native arithmetic; the null branch takes PHP's
-  coercion path.
 - **Pointer `T`** (`?object`, `?string`, `?array`): **niche
   optimization**: null is the null pointer, size stays 8 bytes (exactly
-  as `Option<&T>` in Rust).
+  as `Option<&T>` in Rust). No tag exists, because none is needed —
+  this is not a wrapper, it is the pointer.
+- **Scalar `T`** (`?int`, `?float`): the **Box**, with the compiler
+  knowing statically that only two tags can occur.
+
+An earlier revision specified a separate `Optional` construction,
+`{ u8 discriminant, T value }`, for the scalar case. It bought nothing:
+that is 16 bytes with alignment, exactly what the Box costs, and the
+unwrap is a one-byte compare either way, since a statically-known `?int`
+can only be tagged `null` or `int`. What it did cost was a third value
+representation, which every path handling a nullable scalar would have
+had to implement beside the other two. SpiderMonkey removed its
+`UnboxedObject` for that reason and measured a **gain** on real
+workloads from having one representation less; the microbenchmark that
+regressed 23% did not save it.
 
 ```llvm
-; $x = $x + 5   where $x: ?int
-%d = load i8, ptr %x.disc
-br %d == NULL → %coerce, else → %add
+; $x = $x + 5   where $x: ?int  — payload +0, tag +8 (Box layout)
+%t = load i8, ptr %x.tag
+br %t == TAG_NULL → %coerce, else → %add
 %add:                                  ; hot path
-  %v = load i64, ptr %x.value
+  %v = load i64, ptr %x.payload
   %r = add i64 %v, 5                   ; bare machine arithmetic
 %coerce:                               ; PHP: null + 5 = 5 (deprecation)
 ```
+
+The cost is paid in one place and named: a `?int` **property** occupies
+16 bytes where a discriminant packed into the object's byte block would
+have taken 9. Classes with many nullable scalar properties pay it. That
+is the trade for not carrying a third representation through every path
+that touches a value.
 
 - **Uninitialized typed properties**: **Decision**: the `UNINIT` state
   never widens a slot. It is encoded in-slot where that is free, and in
@@ -117,13 +132,19 @@ br %d == NULL → %coerce, else → %add
 
   | Slot | `UNINIT` encoding | Cost |
   |------|-------------------|------|
-  | `?int`, `?float` | third discriminant value (the byte already exists) | free |
   | `?object`, `?string`, `?array` | sentinel pointer `1` (the null pointer already means PHP `null`) | free |
   | non-nullable pointer | null pointer | free |
-  | non-nullable scalar | bit in the init bitmap; the slot itself is zero-initialized | ~free (bits usually fit the object's alignment padding) |
+  | `?int`, `?float` | bit in the init bitmap; the slot reads as `null` | ~free (bits usually fit the object's alignment padding) |
+  | non-nullable scalar | bit in the init bitmap; the slot itself is zero-initialized | ~free |
 
-  The bitmap exists only in classes that have non-nullable scalar
-  properties escaping definite-assignment analysis; where the analysis
+  `?int` and `?float` moved to the bitmap when the separate `Optional`
+  representation was dropped (above). There is no spare encoding left in
+  the slot: the Box's tag set deliberately has no `undef`, and inventing
+  one would put a Zend VM implementation detail into the language model
+  for the sake of one row of this table.
+
+  The bitmap exists only in classes that have scalar properties —
+  nullable or not — escaping definite-assignment analysis; where the analysis
   proves initialization (e.g. constructor promotion), no state is
   materialized at all.
 
@@ -140,15 +161,18 @@ br %d == NULL → %coerce, else → %add
     patterns (à la Doctrine) that probe state via reflection work
     unchanged.
 
-  For the in-slot-encoded kinds (all other rows) reading `UNINIT`
+  For the in-slot-encoded kinds (the pointer rows) reading `UNINIT`
   throws `Error` per PHP semantics; the read decodes the slot anyway,
   so the check is free.
 
   **Deliberate deviation**, the one thing the unchecked read costs:
-  directly reading an uninitialized non-nullable scalar property yields
-  `0` / `0.0` instead of throwing `Error`. Guarding that would put a
-  bitmap test on every escaping `int $x` read, which is exactly the
-  cost this design refuses.
+  directly reading an uninitialized **scalar** property yields `0` /
+  `0.0`, and an uninitialized `?int` / `?float` yields `null`, instead
+  of throwing `Error`. Guarding that would put a bitmap test on every
+  escaping `int $x` read, which is exactly the cost this design
+  refuses. The bit is still maintained, so every operation that is
+  *about* initialization — `isset()`, reflection, `serialize()`,
+  `foreach` — answers correctly; only the direct read is unguarded.
 
   `UNINIT` is a slot state, never a language-level type.
 

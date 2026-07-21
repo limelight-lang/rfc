@@ -785,15 +785,21 @@ Not done, in rough priority order:
   Anything chasing it must be measured with both allocators in one binary
   (`bisect_probe.cpp`); the two-exe comparison cannot see an effect this
   small, and believing it cost this investigation most of a day.
-- **`stats.rs`'s three tests are racy and will fail under load.** They assert
-  deltas on the process-global `blocks_out` while `test_guard` only
-  serialises the tests themselves — a thread exiting now returns blocks from
-  its TLS destructor, outside that lock. Reproduced at
-  `--test-threads=16` (`arena_lifecycle_is_visible_at_block_granularity`,
-  off by exactly one block). Not a product regression: their isolation was
-  resting on the leak fix 7a removed, since thread exit used to do nothing.
-  The fix is to release a test's heap under the same lock the test holds,
-  rather than in a TLS destructor. Do not weaken the assertions.
+- ~~**`stats.rs`'s three tests are racy and will fail under load**~~ —
+  done. `TestGuard` releases the test's heap, and the barrier reserve
+  with it, inside the serialized section instead of leaving it to the
+  TLS destructor. Assertions untouched.
+
+  The same fault reappeared one layer up and is also fixed: the heap's
+  own accounting oracle (`live_slots_after_collect`) summed `used` over
+  every owned block, including blocks **adopted** from the abandoned
+  list. An abandoned block is on that list because it still holds live
+  objects whose thread has exited, so the oracle read another test's
+  leftovers as this test's lost cross-thread frees — a flake at
+  `--test-threads=32` accusing the MPSC free path of losing slots. The
+  oracle now subtracts what adoption brought in. The general lesson is
+  in `dev/POSTMORTEM.md`: a test reading process-global runtime state
+  must say which part of it is attributable to the test.
 - **Abandoned blocks are only reclaimed when adopted.** A size class that
   goes permanently idle keeps whatever was live in it at thread exit.
   Bounded, and no periodic trim exists.

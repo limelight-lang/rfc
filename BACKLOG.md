@@ -140,12 +140,17 @@ needs a design decision, deferred deliberately.
   singleton descriptor → its `interfaces`/itable. Written into
   [classes.md](model/classes.md), entity-kind section.
 - **`deep_clone` / `thread_move` atomicity on failure mid-copy** —
-  allocation can fail partway through a large, possibly-cyclic graph
-  copy; the identity map then holds a half-built cyclic subgraph that
-  refcounting alone cannot tear down, and `thread_move` additionally
-  leaves the source half-destroyed. The ownership model is already
-  reserved; the rollback/atomicity of a partially-applied graph op is
-  the unaddressed part ([classes.md](model/classes.md) lifecycle family).
+  **deferred to a far-future pass** (designed with the threading/interop
+  functionality). Correction to the framing: **`thread_move` does not
+  copy** — it invokes a special handler on the object that knows how to
+  move itself, most likely via an **interface** (the object implements it →
+  that method is called). So its mid-move failure behaviour is whatever
+  that handler defines, to be designed then; revisit the `thread_move`
+  entry of the lifecycle family in [classes.md](model/classes.md)
+  accordingly. For `deep_clone` (a genuine copy) the direction is the
+  identity map as a **rollback log**: on failure, walk it and directly free
+  every copy already made — they are provably garbage, so cycles are no
+  obstacle. Not urgent.
 - **Backed enum with a string value as an immortal singleton** —
   **resolved 2026-07-22**. The value string is itself **immortal** (memory
   category `11`), so retain/release are no-ops on it and there is no

@@ -255,8 +255,10 @@ commit:
   ; is uninitialized — every uninitialized slot's correct start, and the
   ; bitmap's, in one store. No sentinel or tag to stamp.
   call void @llvm.memset.p0.i64(ptr %body, i8 0, i64 BODY_LEN, i1 false)
-  ; Then the properties that carry a default value:
-  store i64 1, ptr getelementptr(i8, ptr %cur, i64 U_COUNT)  ; public int $count = 1
+  ; Then the explicit stores: defaults, and the undef flag on a mixed
+  ; slot with no default (an all-zero Box is null, not undefined).
+  store i64 1, ptr getelementptr(i8, ptr %cur, i64 U_COUNT)   ; public int $count = 1
+  store i8 UNDEF, ptr getelementptr(i8, ptr %cur, i64 U_META_FLAGS) ; public $meta;
   call void @User__construct(ptr %cur, ...)      ; constructor known → direct
   ; Only for a class with a destructor, and only after __construct
   ; returns: this is what makes the object owe a __destruct at all

@@ -132,12 +132,14 @@ no production VM adopted it.)
 
 **Initialization does not read this map.** At a `new` site the class is
 known, so the compiler emits the initializer as straight-line code: one
-zero-fill over the object body (which sets every uninitialized slot to a
-clean `null`/`0` and every init-bitmap bit to clear at once), then the
-stores for properties that carry a default value. No slot needs a
-sentinel or tag; no loop; no `traced_runs` read. The map serves
-initialization only on the out-of-line path where the class is dynamic
-(§"Construction and teardown").
+zero-fill over the object body — which makes every raw slot `null`/`0`
+and every init-bitmap bit clear (i.e. uninitialized) at once — then the
+few explicit stores: a default value where the property has one, and a
+`undef` flag on a `mixed`/untyped slot declared **without** a default,
+since an all-zero Box is `null`, not undefined ([values.md](values.md)).
+No loop, no `traced_runs` read. The map serves initialization only on
+the out-of-line path where the class is dynamic (§"Construction and
+teardown").
 
 Physical order therefore differs from declaration order. Declaration
 order remains observable — `serialize()`, `(array)`, `foreach` over an

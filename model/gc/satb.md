@@ -120,10 +120,11 @@ Both coordination mechanisms defined in
 - Arena objects are invisible to the marker (contract:
   [strategies.md](strategies.md)); the category barrier already logs
   arena escapes independently of the epoch.
-- **Sticky blocks** from arena-reset Mode B
-  ([arena-reset.md](../memory/arena-reset.md)) are exactly the objects
-  with no refcount history; the tracing component of this strategy
-  manages them, as anticipated there.
+- **Retained (dense) blocks** from arena reset
+  ([arena-reset.md](../memory/arena-reset.md), "Retention") promote their
+  survivors into the general heap as ordinary counted objects; the tracing
+  component of this strategy then manages them like any heap citizen, as
+  anticipated there.
 - A future LXR-style build (deferred RC, saturated 2-bit counts; see
   [gc-research.md](gc-research.md)) would reuse this same SATB
   machinery; that remains research, not a committed strategy.

@@ -24,22 +24,20 @@ Value representation for scalars, strings, and arrays is covered separately. Mem
 | Bits | Meaning |
 |------|---------|
 | 0–1 | Memory category: `00` GC heap, `01` request arena, `10` long-lived, `11` immortal |
-| 2–3 | GC state: `LIVE` / `SCANNING` / `DEAD`, the CAS handoff field (see [heap-design.md](../gc/heap-design.md)) |
+| 2–3 | GC state: `LIVE` / `SCANNING` / `DEAD`, the CAS handoff field (see [heap-design.md](../gc/heap-design.md)). Idle for arena-category entities — no strategy ever sees them — so arena reset borrows these two bits (and the color bits below) as the transient mark for its escaped-subgraph trace, cleared when a survivor is promoted ([arena-reset.md](memory/arena-reset.md)) |
 | 4–5 | Cycle collector color |
 | 6 | Cycle collector buffered bit |
 | 7 | Has weak references (side table exists) |
-| 8 | **Owes a `__destruct`** — set only when the user constructor has returned successfully, and what every teardown path dispatches on, not just the arena's ([object-lifecycle.md](../runtime/object-lifecycle.md)) |
-| 9 | Copy-on-write: counted in every memory category |
-| 10 | `__destruct` has already run (exactly-once guard) |
-| 11 | Transient mark: part of the escaped subgraph during arena reset |
-| 12 | Carries a class pointer at +8 — set for an object (kind 0) and a lazy object (kind 6, holding its target class); clear for string/array/reference/`Box`/`WeakRef`, which have no class pointer. A fast "is there a class at +8" test; the precise kind is bits 14–16 |
-| 13 | Live escapee: `refcount` currently holds the escape hold-count |
-| 14–16 | **Entity kind**: `0` object, `1` string, `2` array, `3` reference box (a PHP `&` reference: `RcHeader \| Value`), `4` `Box` (built-in class wrapping a C struct), `5` `WeakRef` (built-in `WeakReference` class), `6` lazy object (Ghost/Proxy, uninitialized until first touch), `7` reserved (a plain closure is an object). Selects the free routine at teardown, and for a bare non-object pointer the per-tag descriptor (below) |
-| 17–31 | Position in the cycle collector's candidate buffer, as `index + 1`; zero means "position unknown" and costs a linear scan |
+| 8 | **`DESTRUCTOR_PENDING`** — this instance owes a `__destruct`: set only when the user constructor has returned successfully, **and** only for a class that has a destructor. What every teardown path dispatches on, not just the arena's ([object-lifecycle.md](../runtime/object-lifecycle.md)) |
+| 9 | **`DESTRUCTOR_RAN`** — `__destruct` has already run (exactly-once guard) |
+| 10 | Copy-on-write: counted in every memory category |
+| 11 | Live escapee: `refcount` currently holds the escape hold-count |
+| 12–14 | **Entity kind**: `0` object, `1` string, `2` array, `3` reference box (a PHP `&` reference: `RcHeader \| Value`), `4` `Box` (built-in class wrapping a C struct), `5` `WeakRef` (built-in `WeakReference` class), `6` lazy object (Ghost/Proxy, uninitialized until first touch), `7` reserved (a plain closure is an object). Selects the free routine at teardown, and for a bare non-object pointer the per-tag descriptor (below) |
+| 15–31 | Position in the cycle collector's candidate buffer, as `index + 1`; zero means "position unknown" and costs a linear scan |
 
 ### Entity kind and non-object teardown
 
-**Decision**: the kind field (bits 14–16) is what makes a **bare heap
+**Decision**: the kind field (bits 12–14) is what makes a **bare heap
 pointer self-describing** for freeing. An object frees through
 `obj->class->dispose`, reachable from its `class` at +8; a string, array
 or reference box has no `class`, so its free routine is selected by the
@@ -55,8 +53,14 @@ each need an extra word per entry to say what they point at. The kind
 bit costs ~3 bits once per entity, in a word that is read at free time
 anyway; a per-entry tag would cost 8 bytes per *reference*, of which
 there are far more than entities. (The candidate buffer never even needs
-the switch: it holds only objects and arrays, which bit 12 already
-separates.)
+the switch: it holds only objects and arrays, which the kind field's
+middle bit (13) already separates — object `000`, array `010`.)
+
+Whether `+8` holds a class pointer is itself a function of the kind —
+object (`0`) and lazy (`6`) carry one, every other kind does not — so no
+separate flag records it. The old "is there a class at +8" flag bit was
+removed: the one path that asks (an unknown-type free or dispatch) is
+already switching on the kind, which subsumes the test.
 
 The same field answers "what type is this non-object" for a `mixed` →
 interface conversion on a `string`/`array`: the Box tag is gone once you
@@ -71,9 +75,13 @@ it to the managed world ([FFI](memory/ffi.md)); a `WeakRef` is
 `WeakReference`. There is only one class per kind, so `+8` holds no class
 pointer (8 bytes saved), methods are direct calls, and `get_class` /
 teardown / conversion resolve through the kind's singleton descriptor.
-Teardown by kind: a `Box` runs the wrapped struct's release hook, a
-`WeakRef` clears its side-table registration and never strong-releases
-its referent.
+Teardown by kind: a `Box` runs the wrapped struct's `dispose` (the FFI
+class's lowered `__destruct`; [ffi.md](memory/ffi.md)), a `WeakRef` clears
+its side-table registration and never strong-releases its referent. The
+`Box` kind is a single singleton, but it wraps *different* FFI types, each
+with its own layout and `dispose`; the wrapped type is therefore recorded
+in the `Box` **body** as an instance field (a descriptor pointer), not at
+`+8` and not in the flags.
 
 **Lazy objects (kind 6, Ghost/Proxy) are the exception that keeps the
 class pointer** — because there the class is *not* fixed by the kind. A
@@ -86,8 +94,10 @@ Ghost-*capability* remains a **class** flag (a class opts in, beside the
 magic-method bits); this instance kind marks a live not-yet-touched
 instance.
 
-Code `7` remains reserved; the candidate index keeps 15 bits (32767
-positions, ample against the ~10k buffer arm threshold).
+Code `7` remains reserved; the candidate index now spans 17 bits (131071
+positions, ample against the ~10k buffer arm threshold) — the two bits
+freed by removing the old class-pointer flag and the arena-reset mark
+return here.
 
 The retain/release fast path is a single branch covering both arenas and immortal objects, with one exception:
 
@@ -223,7 +233,7 @@ arrays are not objects at all (no class pointer; identified by tag —
 [values.md](values.md), [strings.md](strings.md), [arrays.md](arrays.md)),
 so the question never applies to them.
 
-**No object table.** Objects are referenced only by direct pointers: there is no analog of Zend's object store with handles. PHP 7 itself moved object access from handles to direct pointers for performance; the store's remaining duties are covered differently in Limelight: object enumeration by linear Immix block scanning (see [heap-design.md](../gc/heap-design.md)), shutdown/arena-reset destructors by the has-destructor flag bit, weak references by side tables. Non-moving GC means object addresses are stable for the object's lifetime, so `spl_object_id()` can be derived from the address.
+**No object table.** Objects are referenced only by direct pointers: there is no analog of Zend's object store with handles. PHP 7 itself moved object access from handles to direct pointers for performance; the store's remaining duties are covered differently in Limelight: object enumeration by linear Immix block scanning (see [heap-design.md](../gc/heap-design.md)), shutdown/arena-reset destructors by the `DESTRUCTOR_PENDING` flag bit, weak references by side tables. Non-moving GC means object addresses are stable for the object's lifetime, so `spl_object_id()` can be derived from the address.
 
 ### Slot kinds
 
@@ -959,7 +969,7 @@ its body is zero-filled, i.e. every slot reads as uninitialized (a
 `NULL` pointer, a clear init bit), which the stride's `NULL`-skip
 handles. So the shim traces and frees exactly as the real class would
 for an all-uninitialized instance; a `dispose` on an untouched ghost
-runs no user `__destruct` (its `HAS_DESTRUCTOR` is unset until the
+runs no user `__destruct` (its `DESTRUCTOR_PENDING` is unset until the
 constructor completes) and releases nothing (all slots `NULL`). Entity
 kind is `6` (lazy) until first touch, then `0` (object) — see the flags
 layout above.

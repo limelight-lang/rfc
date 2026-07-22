@@ -1,12 +1,14 @@
 # FFI: Pure C Structures, Ownership, and Attributes
 
-> **Under review.** A first-pass adversarial review found two hard
-> contradictions with the committed model and several holes — the
-> hidden-`RcHeader`-at-−8 Box form (breaks the offset-0 invariant), the
-> mandatory-owner-or-compile-error rule (contradicts accept-every-program),
-> the arena-owned free-hook leak, and the missing owned-foreign slot
-> kind. They are logged in [BACKLOG.md](../../BACKLOG.md), "FFI document —
-> review findings," and must be settled before this document is relied on.
+> **Partially revised.** The review's two hard contradictions and the main
+> holes are now resolved in this document: the hidden-`RcHeader`-at-−8 form
+> is dropped (offset-0 invariant); an un-anchored foreign value falls to a
+> tier-3 auto-`Box` rather than a compile error (accept-every-program); a
+> foreign property is always a `Box`, so there is no bare "owned-foreign"
+> slot kind; freeing is the class's own `__destruct` (no separate hook);
+> and the `Box` records its wrapped type as an instance field. Still open,
+> in [BACKLOG.md](../../BACKLOG.md): the `#[Borrow]`-into-`Box` UAF and the
+> smaller naming/marshalling contradictions.
 
 ## Scope
 
@@ -96,19 +98,26 @@ a C `string` field copies (owned) or borrows (`#[Borrow]`).
 ## The owner model
 
 **Decision**: a pure C structure **cannot exist in a vacuum** — it must
-have an owner, resolved at compile time, and a structure the compiler
-cannot anchor to an owner is a **compile error**. This is Rust's
-lifetimes-must-anchor rule adapted to a language without lifetime
-syntax: the compiler infers the owner instead of the programmer writing
-it.
+have an owner. Wherever the compiler can anchor it to one at compile time
+it does, and the lifetime is fully static (below). Where it cannot — the
+value escapes into `mixed`, a container, an unbounded call — the structure
+does **not** become a compile error (that would break
+accept-every-program, [static-lifetimes.md](static-lifetimes.md)); it
+falls to the **tier-3 fallback: a managed `Box` wraps it**, supplying the
+`RcHeader` the headerless struct lacks, and the `Box` becomes the owner.
+This is Rust's lifetimes-must-anchor rule adapted to a language without
+lifetime syntax and without rejection: infer the owner where possible, box
+where not.
 
 An owner is one of two things:
 
-1. **A managed (ARC) object** — a property holds the C structure (or a
-   pointer to it). The structure's lifetime is the owner object's: it is
-   released in the owner's `dispose` (drop phase), before the owner's
-   own memory is reclaimed. This is PHP FFI's rule made static — there,
-   an owned `CData` lives and dies with the PHP object that holds it.
+1. **A managed (ARC) object** — a property anchors the C structure. A
+   managed object never stores a raw headerless struct inline; the
+   property holds a **`Box`** wrapping it (a store into a class property is
+   exactly an escape, "Escape" below). The structure's lifetime is then the
+   `Box`'s, released in the owner's `dispose` (drop phase) before the
+   owner's own memory is reclaimed. This is PHP FFI's rule made static —
+   there, an owned `CData` lives and dies with the PHP object that holds it.
 2. **The code itself** — a local binding or a tier-1/2 value the
    compiler destroys deterministically at a known point
    ([static-lifetimes.md](static-lifetimes.md)). The structure is freed
@@ -122,38 +131,47 @@ a proven anchor, and no anchor is dropped while a borrow is live.
 
 ### Freeing
 
-The release action comes from the declaration: `#[FFI(free: 'lib_close')]`
-names the function that frees the structure's foreign memory; absent a
-hook, the structure owns nothing to free (it is borrowed foreign memory)
-and its death is a no-op beyond dropping the reference.
+Freeing is the FFI class's own **`__destruct`**: you write an ordinary
+destructor that calls the library's release function
+(`sqlite3_close($this->handle)`), and the compiler lowers it into the
+type's `dispose`, invoked at the structure's scheduled death — the owner's
+`dispose`, the end of a tier-1/2 scope, or a wrapping `Box`'s teardown. A
+class with no `__destruct` owns nothing to free (borrowed foreign memory)
+and its death is a no-op beyond dropping the reference. There is **no
+separate `free:` attribute**: a headerless struct cannot run a destructor
+by refcount, so the compiler runs it directly at the death point it
+already schedules.
 
 ### Escape: attaching to the managed world with `Box`
 
 When a C structure must enter the dynamic world — stored into `mixed`, a
-container, returned into untyped code — it can no longer be a bare
-compile-time-typed reference (the Box needs a tag and a lifetime the raw
-structure cannot carry). It is attached through **`Box`**, the built-in
-wrapper class (entity kind 4, [classes.md](../classes.md)):
+container, a class property, returned into untyped code — it can no longer
+be a bare compile-time-typed reference (the managed world needs a tag and
+a lifetime the raw structure cannot carry). It is attached through
+**`Box`**, the built-in wrapper class (entity kind 4,
+[classes.md](../classes.md)):
 
-- `Box` is a managed, refcounted, GC-visible entity holding the C
-  structure (or a pointer to it) plus the release hook. Its teardown
-  runs the hook. This is `FFI\CData` / Rust `Box<T>`-around-a-raw-pointer,
-  made explicit.
-- Two physical forms, the compiler's choice by whether the structure
-  escapes:
-  - **hidden-header** — the C structure carries an `RcHeader` **hidden
-    at −8**, so `Box` points straight at the C data (offset 0 stays
-    C-compatible: the library sees the fields, our code reads the header
-    at −8). Costs 8 bytes on the structure, saves the separate wrapper
-    allocation. Zend does the same with the refcount ahead of the data.
-  - **separate wrapper** — the C structure stays truly headerless and
-    `Box` is a distinct managed object holding a pointer to it. Zero
-    overhead on the structure, one extra allocation and indirection.
-- A C structure that never escapes pays neither: it stays a pure
-  headerless value bound to its owner, and `Box` never materializes.
+- `Box` is a managed, refcounted, GC-visible entity, always a **separate
+  wrapper**: the C structure stays truly headerless and the `Box` holds a
+  pointer to it. There is no hidden-header form — the offset-0 `RcHeader`
+  invariant ([classes.md](../classes.md)) forbids a header at −8 of the C
+  data, where the library's own fields live.
+- The `Box` kind (4) is a single class-less singleton but wraps
+  *different* FFI types, so the `Box` records its **wrapped type as an
+  instance field** in its body: a descriptor pointer carrying the type's
+  layout (for transparent `$box->field` access) and its `dispose`. Teardown
+  runs that `dispose` — the wrapped class's lowered `__destruct`. This is
+  `FFI\CData` / Rust `Box<T>`-around-a-raw-pointer, made explicit.
+- A C structure that never escapes — provably confined to a tier-1 local —
+  pays none of this: it stays a pure headerless value bound to its owner,
+  freed by the compiler's scheduled `dispose`, and `Box` never
+  materializes. Boxing is the tier-3 fallback for everything else.
 
 `Box` appears **only** where a C structure is attached to the managed
-world; code that keeps its FFI values in typed locals never sees it.
+world; code that keeps its FFI values in typed locals never sees it. A
+managed object's property is such an attachment, so a foreign-typed
+property holds a `Box`, not a bare struct — there is no separate
+"owned-foreign" property slot kind.
 
 ---
 
@@ -175,7 +193,6 @@ outside world, so any write copies).
 | Attribute | On | Meaning |
 |---|---|---|
 | `#[FFI]` | class | the class is a pure C structure |
-| `#[FFI(free: 'fn')]` | class | function that frees the structure's foreign memory |
 | `#[FFI(pack: N)]` | class | packed layout / alignment override (Rust `repr(packed)`, C# `Pack`) |
 | `#[I32]` / `#[I16]` / `#[I8]` / `#[U32]` … | field | integer width/signedness (default `int` = `i64`) |
 | `#[F32]` | field | `float` instead of `double` |

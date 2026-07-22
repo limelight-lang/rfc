@@ -69,15 +69,16 @@ returned into untyped code), the compiler attaches it through **`Box`**,
 the built-in wrapper class (entity kind 4, [classes.md](../classes.md);
 full model in [ffi.md](ffi.md)).
 
-- `Box` is a normal managed citizen: refcounted, GC-visible; its
-  teardown invokes the declared release hook.
-- The hook comes from the declaration: `#[FFI(free: 'lib_close')]`;
-  absent a hook, `Box` frees nothing and only carries the pointer
-  (borrowed foreign memory).
-- Two physical forms, the compiler's choice: a **hidden `RcHeader` at
-  −8** on the structure itself (`Box` points at the C data, offset 0
-  stays C-compatible), or a **separate** `Box` object pointing at a
-  headerless structure ([ffi.md](ffi.md), "Escape").
+- `Box` is a normal managed citizen: refcounted, GC-visible. It is a
+  **separate wrapper**: the C structure stays truly headerless, and the
+  `Box` holds a pointer to it plus the wrapped FFI type's descriptor as
+  an instance field. There is no "hidden header on the struct" form — the
+  offset-0 header invariant of [classes.md](../classes.md) forbids it: the
+  `RcHeader` lives on the `Box`, never at −8 of the C data.
+- Freeing is the FFI class's own `__destruct`, lowered by the compiler
+  into the type's `dispose`, which the `Box`'s teardown runs. A class with
+  no `__destruct` frees nothing and the `Box` only carries the pointer
+  (borrowed foreign memory). There is no separate `free:` hook.
 - Analogy: PHP's `FFI\CData`, Rust's `Box<T>` around a raw pointer.
   `Box` appears only where escape actually happens; code that stays in
   tier 1–2 pays zero.

@@ -87,7 +87,7 @@ MonkeyType applies runtime-observed types to Python source.
 | `#[Backedge]` | declared **and** inferred | cycle shapes (Level B) | [model/memory/static-lifetimes.md](model/memory/static-lifetimes.md) |
 | ownership conventions (borrows / takes / escapes per parameter) | inferred | move analysis across signatures | [model/memory/static-lifetimes.md](model/memory/static-lifetimes.md) |
 | acyclicity (`ACYCLIC` class bit) | inferred | cycle-candidate filtering (Level A) | [model/memory/static-lifetimes.md](model/memory/static-lifetimes.md) |
-| `#[FFI]`, `#[FFI(free:)]` | declared | zero-abstraction entities: no header, no ARC, owner-bound or wrapper lifetime | [model/memory/zero-abstraction.md](model/memory/zero-abstraction.md) |
+| `#[FFI]` | declared | zero-abstraction entities: no header, no ARC, owner-bound or wrapper lifetime; freeing via the class's own `__destruct` | [model/memory/zero-abstraction.md](model/memory/zero-abstraction.md) |
 | `#[Region]`, `#[Region(gc:, threshold:, shared:)]` | declared | instance-owned (or class-shared) arenas with their own GC binding; the memory half of an actor | [model/memory/regions.md](model/memory/regions.md) |
 | generics (`#[Template]`-family, vocabulary aligned with Psalm/PHPStan) | declared | parametric types without new syntax | future RFC (backlog) |
 

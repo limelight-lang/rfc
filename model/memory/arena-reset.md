@@ -54,10 +54,14 @@ miss those. So step 1 iterates to a fixpoint:
    append-only; remember the high-water mark.
 2. Trace the **escaped subgraph** from those survivors: an escapee may
    reference other arena objects transitively. The trace is bounded by the
-   size of the escaping graph, not the arena.
+   size of the escaping graph, not the arena. It marks visited objects in
+   the GC-state/color flag bits (bits 2–5), which are idle for
+   arena-category entities — no strategy traces them — so no dedicated
+   flag bit is spent; the mark is cleared when a survivor is promoted (its
+   flags are rewritten there anyway, see Step 2 retention).
 3. Run pre-destructors (`__destruct`) for tracked dying objects
    ([object-lifecycle.md](../../runtime/object-lifecycle.md)) that are
-   not escaped and not yet destructed (the `DESTRUCTED` flag is the
+   not escaped and not yet destructed (the `DESTRUCTOR_RAN` flag is the
    exactly-once guard). Destructors go through the normal barrier, so new
    escapes bump hold-counts and append to the escapee list; a destructor
    that tears down a holder decrements the counts it held (the same
@@ -202,13 +206,19 @@ is evacuated now or carried until its stragglers die; there is no
   instead (the LXR saturated-object shape,
   [gc-research.md](../gc/gc-research.md)) remains an option for later,
   not what happens today.
-- **Category bits are rewritten in place**: a linear walk over the
-  retained blocks flips the memory-category bits in each live object's
-  flags. Sequential reads over a handful of 64KB blocks: cheap, and it
-  keeps the retain/release fast path exactly as designed (one load of the
-  object's own flags, no block-metadata lookup). Deriving the category
-  from block headers was considered and rejected: it would add an
-  indirection to every retain for the benefit of a rare reset-time event.
+- **Category and GC-state bits are rewritten in place**: a linear walk
+  over the retained blocks flips the memory-category bits (0–1) in each
+  live object's flags to GC-heap, and in the same store resets the
+  GC-state and color bits (2–5) — which Step 1's escaped-subgraph trace
+  borrowed as its transient mark — to the canonical `LIVE`/unmarked value
+  the receiving strategy expects, so a promoted survivor enters the
+  general heap carrying no stale mark. (Evacuated sparse-block survivors
+  get fresh flags from the copy, so the question does not arise there.)
+  Sequential reads over a handful of 64KB blocks: cheap, and it keeps the
+  retain/release fast path exactly as designed (one load of the object's
+  own flags, no block-metadata lookup). Deriving the category from block
+  headers was considered and rejected: it would add an indirection to
+  every retain for the benefit of a rare reset-time event.
 - **Why carrying stragglers is acceptable**: retention damage is
   bounded by the straggler's own lifetime. A short-lived escapee (a
   session entry living minutes) frees its lines when it dies, and the

@@ -114,7 +114,7 @@ pub struct Object {
 // What `Foo`'s generated factory does — the shape, not a generic body:
 //   fn Foo__factory(ctx, category) -> *mut Object {
 //     let obj = allocate(ctx, category, FOO_OBJECT_SIZE); // per category
-//     obj.rc = RcHeader::new(category, ENTITY_OBJECT); // NOT HAS_DESTRUCTOR
+//     obj.rc = RcHeader::new(category, ENTITY_KIND_OBJECT); // kind 0; NOT DESTRUCTOR_PENDING
 //     obj.class = &FOO_CLASS;
 //     // straight-line init: zero-fill the body, then the explicit stores
 //     // (defaults, and a Box `undef` flag on a mixed slot without a
@@ -129,7 +129,7 @@ pub struct Object {
 // demand exactly the __destruct that must never run.
 
 // Emitted after `__construct` returns, and only for a class that has a
-// destructor. Sets HAS_DESTRUCTOR on the header and, for an arena
+// destructor. Sets DESTRUCTOR_PENDING on the header and, for an arena
 // object, writes the destructor-log record. False means the record could
 // not be written: the creation fails with memory-exhausted, the same
 // observable outcome as a constructor that threw.
@@ -156,8 +156,8 @@ the object garbage).
 
 The only phase visible to PHP code.
 
-- Runs **exactly once** per object: guarded by a `DESTRUCTED` bit in the
-  flags, set before the call.
+- Runs **exactly once** per object: guarded by a `DESTRUCTOR_RAN` bit in
+  the flags, set before the call.
 - Called through the vtable slot (it is an ordinary virtual method).
 - **Resurrection check**: `__destruct` may store `$this` somewhere,
   raising the refcount. The call is made with **one guard reference held**:
@@ -193,10 +193,10 @@ Decided entirely by the memory category bits:
 // walk at runtime; the compiler knew the slots and emitted the releases.
 fn Foo__dispose(obj: *mut Object) {
     // Phase 1: pre-destructor, exactly once, resurrection-aware.
-    // The test is the object's own HAS_DESTRUCTOR flag, not the class:
+    // The test is the object's own DESTRUCTOR_PENDING flag, not the class:
     // a class may declare __destruct while this object never completed
     // construction, and such an object must not run it.
-    if flags_test(obj, HAS_DESTRUCTOR) && !flags_test_and_set(obj, DESTRUCTED) {
+    if flags_test(obj, DESTRUCTOR_PENDING) && !flags_test_and_set(obj, DESTRUCTOR_RAN) {
         refcount(obj) += 1;               // guard: a transient $this ref
         call_user_destruct(obj);          // Foo's __destruct, known here
         refcount(obj) -= 1;               // drop the guard, no re-entry

@@ -13,7 +13,11 @@ typedef struct RcHeader {
     _Atomic uint32_t refcount;
     _Atomic uint32_t flags;      // bits: [0-1] memory category, [2-3] GC state,
                                  //       [4-5] cycle color, [6] buffered,
-                                 //       [7] weak, [8] has-destructor
+                                 //       [7] has-weak, [8] DESTRUCTOR_PENDING,
+                                 //       [9] DESTRUCTOR_RAN, [10] COW,
+                                 //       [11] live escapee, [12-14] entity kind,
+                                 //       [15-31] candidate index.
+                                 // Authoritative table: classes.md "Flags layout"
 } RcHeader;
 
 #define LL_MEMCAT_MASK 0x3u      // 00=GC heap, 01=request arena,
@@ -192,7 +196,12 @@ chosen at compile time, no runtime check.
 
 Two dependent loads: the cost of a C++ virtual call. `!invariant.load` on
 the class pointer is sound because an object's class never changes after
-construction; LLVM may hoist and CSE the load freely.
+construction; LLVM may hoist and CSE the load freely. The one exception is
+a **ghost-capable** class (per-class opt-in flag, [classes.md](classes.md)
+"Lazy Objects: Ghost and Proxy"), whose class pointer is rewritten on first
+touch: instances of such classes emit the class-pointer load **without**
+`!invariant.load`. The overwhelming majority of classes, never used as
+ghosts, keep it.
 
 ### `static::foo()` — late static binding, slot 1
 

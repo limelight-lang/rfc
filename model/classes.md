@@ -84,7 +84,7 @@ object where the type is not known statically.
 | Declared as | Slot | Size / align |
 |---|---|---|
 | `int`, `float` | raw `i64` / `f64`, no tag | 8 / 8 |
-| declared class type, `string`, `array` | bare pointer | 8 / 8 |
+| declared class type, `string`, `array` | bare pointer; `NULL` means **uninitialized** (a non-nullable type has no valid null), read compares and throws ([values.md](values.md)) | 8 / 8 |
 | `?T` for pointer-shaped `T` | the same pointer; `NULL` is PHP `null` (niche). Uninitialized, if possible, is an init-bitmap bit ([values.md](values.md)) | 8 / 8 |
 | `?int`, `?float` | Box — a nullable scalar has no representation of its own ([values.md](values.md)) | 16 / 8 |
 | `bool` | a byte, or a bit in the byte block (below) | 1 / 1 |

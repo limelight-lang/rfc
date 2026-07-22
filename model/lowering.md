@@ -127,9 +127,16 @@ time, so the load is emitted for the type, with no tag anywhere:
 %p  = getelementptr inbounds i8, ptr %obj, i64 48
 %v  = load i64, ptr %p, align 8
 
-; $this->next   where next: Node, offset 16 — a bare pointer
+; $this->next   where next: Node, offset 16 — a bare pointer.
+; NULL here means uninitialized (a non-nullable type has no valid null),
+; so an unproven read tests for it and throws before use:
 %p2 = getelementptr inbounds i8, ptr %obj, i64 16
-%o  = load ptr, ptr %p2, align 8, !nonnull !0
+%o  = load ptr, ptr %p2, align 8
+%u  = icmp eq ptr %o, null
+br i1 %u, label %throw_uninit, label %use          ; elided if init is proven
+use:
+; on this path %o is non-null, so a reload/CSE may carry !nonnull; the
+; annotation is valid only here, never on the load above unconditionally
 
 ; $this->meta   where meta is untyped, offset 32 — the only boxed form
 %p3 = getelementptr inbounds i8, ptr %obj, i64 32
@@ -143,10 +150,14 @@ time, so the load is emitted for the type, with no tag anywhere:
 %v2 = trunc i8 %s to i1
 ```
 
-One GEP + load, identical to a C struct field access. Every declared,
-non-hooked property compiles to this, always; only a packed `bool`
-costs the extra shift, and only where the compiler chose to pack it.
-Hashtables are involved only for dynamic properties and `__get`/`__set`.
+One GEP + load, essentially a C struct field access. The only additions
+are an uninitialized check where the property can be uninitialized and
+the compiler has not proven otherwise — a null compare for a
+non-nullable pointer, a bitmap-bit test for a `?T`/scalar, a Box `undef`
+test folded into the tag decode — and the shift for a packed `bool`.
+None of these is emitted for a property with a default or a proven
+assignment. Hashtables are involved only for dynamic properties and
+`__get`/`__set`.
 
 Stores to a slot holding a counted reference go through the store
 barrier, which is chosen statically by slot kind: an 8-byte pointer

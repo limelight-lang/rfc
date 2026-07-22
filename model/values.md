@@ -146,16 +146,22 @@ that touches a value.
 
 ### Uninitialized properties
 
-**Decision**: the uninitialized state is tracked in **two places by
-storage kind**, and only for properties that can actually have it.
+**Decision**: the uninitialized state is tracked by **where the slot has
+room to say it**, and only for properties that can actually have it.
 
 - **Box slot** (`mixed` / untyped): the `undef` flag bit in the Box
   itself (above). A read decodes the Box anyway, so testing the bit is
   part of that decode and costs nothing extra.
-- **Raw typed slot** (`int`, `float`, `bool`, a bare pointer): no room
-  in the slot, so a bit in a per-object **init bitmap**. A class carries
-  a bitmap only when it has such properties, and one bit per tracked
-  property.
+- **Non-nullable pointer** (`Foo`, `string`, `array`): **`NULL` itself**.
+  A non-nullable type can never legally hold null, so a null in the slot
+  is unambiguously "not written yet". The read compares to null and
+  throws on it — no bitmap, one compare. After that compare the value is
+  provably non-null, which is exactly where `!nonnull` is legal
+  ([lowering.md](lowering.md)).
+- **`?T` pointer and raw scalar** (`?Foo`, `int`, `float`, `bool`): no
+  spare value — `null` is a real value for `?T`, `0` is a real value for
+  a scalar — so a bit in a per-object **init bitmap**. A class carries a
+  bitmap only when it has such properties, one bit each.
 
 **Which properties, in both cases.** The criterion is the declaration,
 not the type: a property **declared without an initializer** can be
@@ -187,12 +193,13 @@ This state is metadata, never a language-level type: `gettype()`,
 `is_*()` and every other value reflection are unreachable for it,
 because the read throws before any of them runs.
 
-**Construction.** A raw slot's clear bit is zero, so the zero-fill of
-the object body sets "uninitialized" for free. A Box slot's `undef` flag
-is *not* zero (an all-zero Box is `null`), so a `mixed` property with no
-default takes one flag store after the zero-fill — the same shape as
-stamping any non-zero default, and only for the uncommon
-mixed-without-default case.
+**Construction.** Most of it is the zero-fill. A non-nullable pointer's
+uninitialized marker is `NULL` (zero), and a bitmap-tracked slot's clear
+bit is zero, so the body zero-fill sets "uninitialized" for both for
+free. Only a Box slot's `undef` flag is *not* zero (an all-zero Box is
+`null`), so a `mixed` property with no default takes one flag store
+after the zero-fill — the same shape as stamping any non-zero default,
+and only for that uncommon case.
 
 ### References into unboxed slots
 

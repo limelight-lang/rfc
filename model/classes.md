@@ -697,6 +697,7 @@ Each entry in `prop_layout` carries access flags: `plain` / `get-hook` / `set-ho
 - **Type unknown**: property inline cache (cache the class pointer → offset or hook slot), same mechanism as method ICs. Standard practice in JS engines.
 - **`__get`/`__set`**: class-wide fallback, taken on `prop_layout` miss for classes whose magic-method bitmask has the corresponding bit set.
 - **Asymmetric visibility** (`private(set)`): compile-time check only; no runtime representation, the byte layout is identical.
+- **`readonly`**: a compile-time fact, and the byte layout is identical. On a statically-resolved write the compiler enforces the write-once rule directly, usually with no runtime code at all. The dynamic paths that do not know the property statically — `$obj->$name = …`, `ReflectionProperty::setValue()` — read the `readonly` flag from `prop_layout` (the metadata is there for exactly this) and enforce at runtime. "First write vs violation" is not a new mechanism: it is the property's uninitialized state (a `NULL` non-nullable pointer, an init-bitmap bit, a Box `undef` flag) — a write to an uninitialized readonly slot is the one allowed initialization, a write to an initialized one throws.
 - **Dynamic properties**: only `stdClass` and classes marked `#[AllowDynamicProperties]` carry one hidden object slot holding a lazily-allocated hashtable (name → value). All other classes do not have the slot at all; zero cost for the common case.
 
 ---

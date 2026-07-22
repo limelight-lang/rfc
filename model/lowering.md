@@ -55,17 +55,26 @@ typedef struct Class {
     uint32_t      layout_end;    // first free byte, unrounded: where a
                                  // subclass resumes (classes.md)
     struct Class *parent;
+    void         *factory;       // factory(ctx, category): allocate + init;
+                                 // the dynamic `new $class` path (classes.md)
+    void         *dispose;       // dispose(obj): release counted fields, run
+                                 // __destruct if present
     PropLayout   *prop_layout;   // name → (offset, slot kind, hook flags,
                                  //         declaration index)
-    Run          *traced_runs;   // (offset, count) pairs: the counted-pointer
-                                 // and Box runs, strided by init, GC and teardown
+    Run          *traced_runs;   // LIST of (offset, count) pairs — the GC trace
+                                 // map; one pair per hierarchy level with pointers
+    uint32_t      traced_run_count;
+    struct Class **display;      // Cohen display, indexed by depth (instanceof)
+    uint32_t      display_len;
+    uint32_t      destruct_slot; // vtbl slot of __destruct, or NO_DESTRUCT_SLOT
     InterfaceEntry *interfaces;  // sorted by interface_id
     uint32_t      interface_count;
     MethodTable  *methods;       // interned name → method (slow path)
-    Value        *statics;       // static properties, class constants
+    void         *statics;       // pointer to the static block (classes.md);
+                                 // laid out like an object, not a Value array
     void        **static_vtbl;   // own table only if this class overrides an
                                  // inherited static method; otherwise = parent's
-    Metadata     *meta;          // cold: name, reflection, trait list
+    Metadata     *meta;          // cold: name, reflection, trait list, link info
     void         *vtbl[];        // inline trailing array
 } Class;
 ```
@@ -222,7 +231,13 @@ means genuine polymorphism at that site.
 
 ## Allocation
 
-`new User()` in the request arena, bump pointer inline:
+Construction is compiler-generated code, one routine per class
+(classes.md, "Construction and teardown"). There is no generic
+allocate-and-walk-the-map runtime call; the map is read only by the GC.
+
+**Static `new User()`**, category known, the factory inlined into the
+call site — the object body zeroed in one store, then the typed slots
+that start non-zero stamped straight-line:
 
 ```llvm
 %cur  = load ptr, ptr @arena.bump
@@ -235,12 +250,14 @@ commit:
   store i64 RC1_PLUS_FLAGS, ptr %cur             ; header in one 8-byte store
   store ptr @class.User,
         ptr getelementptr(i8, ptr %cur, i64 8)
-  ; Only the traced runs need a defined initial state, and all-zero is
-  ; exactly what they need: a null pointer and a null-tagged Box. They
-  ; are contiguous, so this is one range store. Raw scalar slots are
-  ; left untouched — definite assignment or the init bitmap covers them
-  ; (classes.md, "Slot order").
-  call void @llvm.memset.p0.i64(ptr %runs, i8 0, i64 %runs_len, i1 false)
+  ; Body zeroed as one range: an all-zero Box is null (tag 0) and a null
+  ; pointer is PHP null, which is what untyped and nullable-pointer slots
+  ; must start as. The compiler knows the whole layout here, so it emits
+  ; this directly — it does not read traced_runs.
+  call void @llvm.memset.p0.i64(ptr %body, i8 0, i64 BODY_LEN, i1 false)
+  ; The few slots whose initial state is not zero, stamped straight-line:
+  store i8 TAG_UNINIT, ptr getelementptr(i8, ptr %cur, i64 U_OPT_TAG) ; a ?int
+  store ptr inttoptr(i64 1), ptr getelementptr(i8, ptr %cur, i64 U_REF) ; a typed ref, UNINIT
   call void @User__construct(ptr %cur, ...)      ; constructor known → direct
   ; Only for a class with a destructor, and only after __construct
   ; returns: this is what makes the object owe a __destruct at all
@@ -249,12 +266,22 @@ commit:
   br i1 %ok2, label %done, label %oom            ; false → raise memory-exhausted
 ```
 
-The refill path is a runtime call that **can report null** — allocation
-failure is an ordinary exception raised from the generated frame, not
-something the runtime throws (runtime/exceptions.md).
+**Dynamic `new $class`**, class in a register, one indirect call into
+the class's own factory — specialized code, not a map walk:
 
-Roughly five instructions per object on the fast path: an order of
-magnitude cheaper than `malloc`.
+```llvm
+%f = load ptr, ptr getelementptr(i8, ptr %class, i64 FACTORY_OFF)
+%o = call ptr %f(ptr %ctx, i32 %category)        ; allocate + initialize
+; %o is initialized; the caller emits __construct separately
+```
+
+The refill path inside the factory is a runtime call that **can report
+null** — allocation failure is an ordinary exception raised from the
+generated frame, not something the runtime throws
+(runtime/exceptions.md).
+
+Roughly five instructions per object on the inlined fast path: an order
+of magnitude cheaper than `malloc`.
 
 ---
 

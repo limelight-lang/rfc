@@ -109,26 +109,34 @@ order** — and the byte block last.
      byte block: init bits, packed bools
 ```
 
-Two things follow, and they are the reason for the grouping:
+The grouping has **one** beneficiary: the garbage collector. It holds
+only `obj`, reads `obj->class`, and must find the counted pointers
+without knowing the class statically. Grouping them into runs makes
+that a stride over a short list of `(offset, count)` pairs — HotSpot's
+`OopMapBlock`, .NET's `GCDesc` series — instead of a per-property flag
+test. Contiguous references also trace as a tight, prefetch-friendly
+loop. This is the trace map, `traced_runs`, and it is the **only**
+consumer that reads the layout as data at runtime; §"Construction and
+teardown" gives the other two consumers, which are code.
 
-- **Initialization is one range.** A counted pointer must start as
-  `NULL` or teardown would release garbage; a Box must start as the
-  `null` tag, which is tag value 0 ([values.md](values.md)). Both are
-  all-zero bit patterns, so the two runs are cleared by a single store
-  of a contiguous range. Raw scalars are **not** initialized at all:
-  the compiler proves them assigned before use, or the property is
-  tracked by the init bitmap.
+`traced_runs` is a **list** of pairs, not one range. A root class whose
+pointers lead the layout has exactly one; a subclass adds its own run
+after the parent's scalars, so at depth *d* there are up to *d* pairs.
+That is the normal shape — HotSpot and .NET both carry a list and
+merge adjacent runs only when a hierarchy happens to make them
+adjacent. The single-range case is the reward for a shallow hierarchy,
+not a guarantee. (The only layout that keeps one range at every depth
+is bidirectional — pointers left of the origin, scalars right, Bacon/
+Fink/Grove — and its signed offsets and interface-layout cost are why
+no production VM adopted it.)
 
-  Two slot kinds start as something other than zero and take one store
-  each after the range is cleared: a `?int` / `?float` property, whose
-  initial state is the `uninit` tag, and a pointer-typed property whose
-  initial state is the `UNINIT` sentinel `1` rather than `null`. Both
-  are typed properties, so the compiler knows which slots need the
-  stamp and emits them straight-line — no loop, no metadata read.
-- **GC tracing and teardown read ranges, not metadata.** The descriptor
-  carries `(offset, count)` pairs; the collector strides them. No
-  per-property flag is consulted on that path. This is HotSpot's
-  `OopMapBlock` and V8's `FixedBodyDescriptor`, for the same reason.
+**Initialization does not read this map.** At a `new` site the class is
+known, so the compiler emits the initializer as straight-line code:
+one store over the object body, then the few typed slots that start as
+something other than zero — a `?int` as the `uninit` tag, a pointer
+property as the `UNINIT` sentinel `1`. No loop, no `traced_runs` read.
+The map serves initialization only on the out-of-line path where the
+class is dynamic (§"Construction and teardown").
 
 Physical order therefore differs from declaration order. Declaration
 order remains observable — `serialize()`, `(array)`, `foreach` over an
@@ -150,8 +158,10 @@ takes it. (HotSpot gained the same rule in JDK 15, JDK-8237767.)
 
 **Consequence, stated because it is easy to violate**: an object may
 not be copied by "the size of its parent". A subclass field can live
-inside what looks like the parent's trailing padding. Cloning and
-copying always walk the *target* class's `prop_layout`.
+inside what looks like the parent's trailing padding. A copy is always
+sized by the *whole* object's `object_size` — `clone` is a
+`memcpy(object_size)` followed by a retain stride over `traced_runs`,
+never a per-property walk.
 
 ### The byte block
 
@@ -209,9 +219,88 @@ Per class, once, when it is linked:
    hole: that would break the contiguity of the runs.
 5. **Finish**: `layout_end` is the cursor, `object_size` is it rounded
    up to 8.
-6. **Record** the run table: the parent's `(offset, count)` pairs plus
-   at most one pair of this class's own, for each of the two traced
-   kinds.
+6. **Record** the trace map: the parent's `(offset, count)` pairs, plus
+   at most one new pair per traced kind for this class's own run. The
+   result is a list, one pair per class in the hierarchy that
+   contributed pointers or Boxes.
+
+---
+
+## Construction and Teardown
+
+The layout has three consumers, and they run at different frequencies,
+so each gets a different form.
+
+- **Construction** runs once per object. It is **code**: the compiler
+  emits an allocate-and-initialize routine per class.
+- **Teardown** runs once per object. It is **code**: the compiler emits
+  a destructor per class.
+- **Tracing** runs on every live object every collection cycle. It is
+  **data**: the GC strides `traced_runs`, with no indirect call per
+  object.
+
+Only the third reads the layout as data at runtime. The first two are
+compiled straight-line, so they never interpret a map. This retires the
+generic runtime interpreters an earlier design carried — an
+`ll_object_new` that read `object_size` and walked the map to
+initialize, and an `ll_object_die` that walked it to release.
+
+### The factory
+
+**Decision**: each class carries a pointer to a compiler-generated
+**factory**, `factory(ctx, category)`, which allocates an instance and
+initializes it in straight-line code — the object body in one store,
+then the few typed slots that start non-zero. The address of the arena
+lives in `ctx`; `category` selects among the four memory categories
+that one `ctx` can allocate into (`GcHeap`, request arena, long-lived,
+immortal), so it stays a parameter.
+
+A static `new User()` inlines the factory or calls it directly. A
+dynamic `new $class` reads `class->factory` and makes one indirect
+call — which runs specialized code, not a map walk. That is the whole
+reason the factory lives in the descriptor: the dynamic path.
+
+**There may be more than one factory, and only the canonical one is in
+the descriptor.** The others are link-time symbols the compiler calls
+where it knows the case:
+
+- **specialized by category** — where the category is a compile-time
+  constant, a variant taking only `(ctx)` with the category baked in,
+  so the four-way selection disappears;
+- **specialized by construction kind** — `clone` (copy an existing
+  instance: `memcpy(object_size)` then a retain stride over
+  `traced_runs`, not a fresh init), the Ghost/Proxy shims for lazy
+  objects, `unserialize` (fill from a stream).
+
+A new construction kind is a new generated symbol; the descriptor does
+not change. The canonical factory suffices for everything reached
+dynamically.
+
+### dispose — the internal destructor
+
+**Decision**: each class carries a pointer to `dispose(obj)`, a
+compiler-generated **internal** destructor. Every class has one, even
+without a user `__destruct`. It releases the counted fields in
+straight-line code — release slot 1, release slot 2, … — frees internal
+resources, and calls the user `__destruct` when the class has one.
+
+`dispose` is not `__destruct`. `__destruct` is the optional,
+side-effecting, resurrection-capable PHP destructor; `dispose` is the
+mandatory internal teardown that *invokes* it. The collector, holding a
+dead object, does `obj->class->dispose(obj)` — one indirect call into
+specialized code, the teardown analog of the factory. This is the
+`__dispose` named in "Deferred" as part of the metaclass model, made
+concrete.
+
+### Why tracing stays data
+
+Construction and teardown touch an object once in its life, so an
+indirect call into specialized code is cheap and wins on path length.
+Tracing touches every live object every cycle, so an indirect call per
+object is not affordable; the GC reads `traced_runs` and strides it
+itself. V8 uses a per-map visitor function and pays exactly that call;
+for our collector the map as data is the right form. Construction is
+code, teardown is code, tracing is data — each shaped to its frequency.
 
 ---
 
@@ -229,8 +318,12 @@ Hot part (touched by dispatch and property access):
 | `parent` | Parent class: inheritance chain for `instanceof`, `parent::`, vtable construction |
 | `object_size` | Allocation size for instances |
 | `layout_end` | First free byte, unrounded: where a subclass resumes laying out |
+| `factory` | Canonical constructor `factory(ctx, category)`: allocates and initializes an instance ("Construction and teardown") |
+| `dispose` | Internal destructor `dispose(obj)`: releases counted fields and runs `__destruct` if present |
 | `prop_layout` | Property table: name → (offset, slot kind, hook flags, declaration index) |
-| `traced_runs` | `(offset, count)` pairs for the counted-pointer and Box runs: what initialization, GC tracing and teardown stride |
+| `traced_runs` | List of `(offset, count)` pairs for the counted-pointer and Box runs: the trace map the GC strides |
+| `display` | Cohen display: ancestors root→self indexed by depth, for O(1) `instanceof` |
+| `destruct_slot` | Vtable slot of `__destruct`, or a sentinel when the class has none |
 | `interfaces` | Sorted array: interface id → itable pointer |
 | `methods` | Hashtable: name → method; slow path lookup, also the source for building subclass vtables |
 | `statics` | Pointer to this class's static block — its **own** declarations only (see below) |

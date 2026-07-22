@@ -61,22 +61,26 @@ simple and fully static:
 This is the expected case for FFI code: acquire, use within a known
 scope, release with the owner.
 
-### 2. Adapter wrapper (the fallback)
+### 2. `Box` attachment (the fallback)
 
 When the reference escapes to where static lifetime cannot be proven
 (stored into `mixed`, a container, captured by an escaping closure,
-returned into untyped code), the compiler materializes a
-**wrapper**: an ordinary managed object holding the raw pointer plus a
-release hook.
+returned into untyped code), the compiler attaches it through **`Box`**,
+the built-in wrapper class (entity kind 4, [classes.md](../classes.md);
+full model in [ffi.md](ffi.md)).
 
-- The wrapper is a normal tier-3 citizen: refcounted, boxable,
-  GC-visible; its drop invokes the declared release function.
-- The release hook comes from the declaration:
-  `#[FFI(free: 'lib_close')]`; absent a hook, the wrapper frees
-  nothing and only carries the pointer (borrowed foreign memory).
+- `Box` is a normal managed citizen: refcounted, GC-visible; its
+  teardown invokes the declared release hook.
+- The hook comes from the declaration: `#[FFI(free: 'lib_close')]`;
+  absent a hook, `Box` frees nothing and only carries the pointer
+  (borrowed foreign memory).
+- Two physical forms, the compiler's choice: a **hidden `RcHeader` at
+  −8** on the structure itself (`Box` points at the C data, offset 0
+  stays C-compatible), or a **separate** `Box` object pointing at a
+  headerless structure ([ffi.md](ffi.md), "Escape").
 - Analogy: PHP's `FFI\CData`, Rust's `Box<T>` around a raw pointer.
-  The difference is that the wrapper appears only where escape actually
-  happens; code that stays in tier 1–2 pays zero.
+  `Box` appears only where escape actually happens; code that stays in
+  tier 1–2 pays zero.
 
 ## Strings and arrays at the FFI boundary
 

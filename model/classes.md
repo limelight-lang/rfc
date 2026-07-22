@@ -32,9 +32,9 @@ Value representation for scalars, strings, and arrays is covered separately. Mem
 | 9 | Copy-on-write: counted in every memory category |
 | 10 | `__destruct` has already run (exactly-once guard) |
 | 11 | Transient mark: part of the escaped subgraph during arena reset |
-| 12 | The entity is an object (has a class pointer at +8) — a fast object/non-object test; the precise kind is bits 14–16 |
+| 12 | Carries a class pointer at +8 — set for an object (kind 0) and a lazy object (kind 6, holding its target class); clear for string/array/reference/`Box`/`WeakRef`, which have no class pointer. A fast "is there a class at +8" test; the precise kind is bits 14–16 |
 | 13 | Live escapee: `refcount` currently holds the escape hold-count |
-| 14–16 | **Entity kind**: `0` object, `1` string, `2` array, `3` reference box, `4–7` reserved (closure is an object). Selects the free routine at teardown and the per-tag descriptor for a bare non-object pointer (below) |
+| 14–16 | **Entity kind**: `0` object, `1` string, `2` array, `3` reference box (a PHP `&` reference: `RcHeader \| Value`), `4` `Box` (built-in class wrapping a C struct), `5` `WeakRef` (built-in `WeakReference` class), `6` lazy object (Ghost/Proxy, uninitialized until first touch), `7` reserved (a plain closure is an object). Selects the free routine at teardown, and for a bare non-object pointer the per-tag descriptor (below) |
 | 17–31 | Position in the cycle collector's candidate buffer, as `index + 1`; zero means "position unknown" and costs a linear scan |
 
 ### Entity kind and non-object teardown
@@ -64,9 +64,30 @@ hold a bare pointer, so the kind selects the type's **singleton
 descriptor** ([strings.md](strings.md), [arrays.md](arrays.md)) whose
 `interfaces`/itable the conversion needs.
 
-`14–16` reserved codes `4–7` are room for later non-object kinds; the
-candidate index keeps 15 bits (32767 positions, ample against the ~10k
-buffer arm threshold).
+**`Box` and `WeakRef` (kinds 4–5) are singleton built-in classes and
+carry no class pointer** — the kind *is* the class, exactly as `string`
+resolves to the singleton `String`. A `Box` wraps a C struct to attach
+it to the managed world ([FFI](memory/ffi.md)); a `WeakRef` is
+`WeakReference`. There is only one class per kind, so `+8` holds no class
+pointer (8 bytes saved), methods are direct calls, and `get_class` /
+teardown / conversion resolve through the kind's singleton descriptor.
+Teardown by kind: a `Box` runs the wrapped struct's release hook, a
+`WeakRef` clears its side-table registration and never strong-releases
+its referent.
+
+**Lazy objects (kind 6, Ghost/Proxy) are the exception that keeps the
+class pointer** — because there the class is *not* fixed by the kind. A
+Ghost impersonates an arbitrary target class (`new LazyGhost(Money::class)`
+must satisfy `instanceof Money` and materialize a `Money`), so its `+8`
+holds the **target** class, not a "lazy" class. Kind 6 marks "not
+initialized yet"; the first touch materializes the instance and flips
+the kind 6 → 0 (object), with `+8` already pointing at the right class.
+Ghost-*capability* remains a **class** flag (a class opts in, beside the
+magic-method bits); this instance kind marks a live not-yet-touched
+instance.
+
+Code `7` remains reserved; the candidate index keeps 15 bits (32767
+positions, ample against the ~10k buffer arm threshold).
 
 The retain/release fast path is a single branch covering both arenas and immortal objects, with one exception:
 

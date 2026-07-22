@@ -27,6 +27,12 @@ into proper RFCs when picked up.
   migration ([arrays.md](model/arrays.md)).
 - **Closures** — capture (by-value / by-ref), `$this` binding,
   first-class callable syntax.
+- **Reference box representation** — revisit how a PHP `&` reference is
+  represented (today: entity kind `3`, `RcHeader | Value`,
+  [values.md](model/values.md)). Open question raised during the
+  object-layout rework, deliberately deferred — reconsider whether the
+  box is the right shape, how it interacts with the entity-kind field
+  and the typed-slot reference, and its cost. Not urgent.
 - **`__destruct` is not run for cyclically-dead objects** — a real
   divergence from PHP, where Zend does run it. The difficulty is
   structural rather than incidental: Bacon–Rajan finds cyclic garbage by

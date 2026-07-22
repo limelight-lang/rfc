@@ -129,13 +129,13 @@ needs a design decision, deferred deliberately.
   `escape_lose`. The escapee is pinned forever. Needs a decrement path
   for headerless static destinations
   ([strategies.md](model/gc/strategies.md), [arenas.md](model/memory/arenas.md)).
-- **`mixed` → interface conversion on a `string`/`array`** — the
-  conversion table still routes via `obj->class`, which a non-object has
-  not got. The intended path (kind field → the type's singleton
-  descriptor → its `interfaces`/itable) is now stated in the flags
-  section but not written into the conversion machinery
-  ([classes.md](model/classes.md) "Fat interface references" /
-  "Extension interfaces").
+- **`mixed` → interface conversion on a `string`/`array`** — **resolved
+  2026-07-22**. Split by Known/unknown: a statically-known `string`/`array`
+  (the common case) dispatches through the compiler-hardwired singleton
+  descriptor/vtable — no `obj->class` read, nothing to break; only a
+  genuinely open `mixed` resolves at runtime via the entity-kind field →
+  singleton descriptor → its `interfaces`/itable. Written into
+  [classes.md](model/classes.md), entity-kind section.
 - **`deep_clone` / `thread_move` atomicity on failure mid-copy** —
   allocation can fail partway through a large, possibly-cyclic graph
   copy; the identity map then holds a half-built cyclic subgraph that
@@ -184,7 +184,7 @@ documents** (2026-07-22); what remains open is at the end.
   ([arena-reset.md](model/memory/arena-reset.md) Step 1). Any residual is
   the general "arena reset runs destructors" behaviour, not FFI.
 
-**Still open:**
+**Still open — deferred to the future interop pass, not near-term:**
 
 - **Boxing a struct with a live `#[Borrow]` field → UAF** (deferred;
   direction agreed 2026-07-22, to confirm and write into ffi.md). Model

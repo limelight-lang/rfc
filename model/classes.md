@@ -68,6 +68,16 @@ hold a bare pointer, so the kind selects the type's **singleton
 descriptor** ([strings.md](strings.md), [arrays.md](arrays.md)) whose
 `interfaces`/itable the conversion needs.
 
+This runtime path is only for a **genuinely unknown** value. When the type
+is statically known — a typed `string`/`array`, or a `mixed` the compiler
+has already proven — the value is in the **Known** group: the compiler
+hardwires the type's singleton-descriptor address, and usually the vtable
+slot and target method with it, exactly as for a known object class ("Why
+the class pointer lives in the body" below). `"str"->foo()` on a known
+string is a direct call — no `obj->class`, no kind switch, no itable
+search. The kind-field resolution runs **only** where the type survives to
+runtime as an open `mixed`.
+
 **`Box` and `WeakRef` (kinds 4–5) are singleton built-in classes and
 carry no class pointer** — the kind *is* the class, exactly as `string`
 resolves to the singleton `String`. A `Box` wraps a C struct to attach

@@ -124,6 +124,56 @@ justify an extra dependent load on every dispatch and a global table on
 the hottest path. Full removal of the pointer is heavier still — it
 breaks GC scanning and `mixed` storage, per the reasoning above.
 
+### Rejected: moving the class out of the object body
+
+A whole family of designs for removing the 8-byte class pointer from the
+object was worked through and **rejected**. Recording it here because the
+reasoning is the valuable part — the designs are seductive and will be
+proposed again.
+
+- **Fat references everywhere** — carry `{ptr, class}` (and
+  `{itbl, ptr, class}` for interfaces) not just in registers but in
+  every heap slot, so the class rides the reference and the body drops
+  it. This loses in aggregate. References outnumber objects in any
+  reachable heap (edges ≥ nodes), and references *dominate* heap memory:
+  V8 measured tagged values at ~70% of the heap, and halving reference
+  width gave up to −43% heap ([v8.dev/blog/pointer-compression]). A
+  per-reference class word widens the dominant cost to save the smaller
+  per-object one; for shared objects (the norm — most heap types are
+  aliased) it is a net loss. Every mainstream dynamic runtime — JVM,
+  .NET, CPython, V8, Ruby, Zend — keeps the class word *in the object*;
+  none moved it into references, and those fighting header size (JVM
+  Lilliput) *compress* the class word rather than relocate it.
+
+- **Final-class optimization** — drop the class from the body only for
+  `final` classes with no interfaces, since their exact type is known
+  statically. It works and keeps references thin, but it creates a hole:
+  a `final` object placed into an `object`/`mixed`/interface slot loses
+  its static type, and the collector, arriving by a bare pointer, cannot
+  recover the real class to trace its fields. Closing the hole needs
+  either escape analysis or class-in-the-polymorphic-slot, and it makes
+  the GC, `traced_runs`, and the compiler carry per-kind slot cases. The
+  saving (8 bytes on the subset of final objects that never escape to an
+  untyped context) does not pay for that complexity. Devirtualization of
+  `final` calls stands on its own and is kept; only the body-shrink is
+  dropped.
+
+- **Type-from-address** — store the class nowhere, recover it from the
+  object's address by segregating each class into its own memory pool
+  (Go's span-based approach). It is the cleanest of the three and has no
+  hole, but it forces per-class/per-size memory segregation and turns
+  every "what class is this" from one `obj->class` load into an
+  address→pool→class chain, on the GC's hottest path. Not worth it here.
+
+**Conclusion.** The class pointer stays in the object body for every
+object. The fat `{ptr, class}` / `{itbl, ptr, class}` reference exists
+**only** in registers and on the stack (the calling convention), where
+the class is already at hand and no body load is on the path. The one
+change that *did* survive this analysis is orthogonal: strings and
+arrays are not objects at all (no class pointer; identified by tag —
+[values.md](values.md), [strings.md](strings.md), [arrays.md](arrays.md)),
+so the question never applies to them.
+
 **No object table.** Objects are referenced only by direct pointers: there is no analog of Zend's object store with handles. PHP 7 itself moved object access from handles to direct pointers for performance; the store's remaining duties are covered differently in Limelight: object enumeration by linear Immix block scanning (see [heap-design.md](../gc/heap-design.md)), shutdown/arena-reset destructors by the has-destructor flag bit, weak references by side tables. Non-moving GC means object addresses are stable for the object's lifetime, so `spl_object_id()` can be derived from the address.
 
 ### Slot kinds

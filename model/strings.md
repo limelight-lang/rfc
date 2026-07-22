@@ -51,10 +51,11 @@ long-lived arena as immortal entities: one string = one address, equality
 
 ## Mutability Modes: `StringInterface`, Two Classes
 
-**Revised decision**: COW and mutable strings are not one class with a
-mode bit — they are **two distinct final classes** behind a shared
-`StringInterface`, because their memory layouts are genuinely different,
-not just flag-different:
+**Revised decision**: COW and mutable strings share the `string` entity
+kind but have genuinely different memory layouts, so they are two
+**physical representations** selected by a sub-mode bit in the string
+header (not two class descriptors — a string carries no class pointer),
+presented to the language behind a shared `StringInterface`:
 
 - **COW string (default)** — the layout above: bytes inline after the
   header. Fixed size once allocated; a write with `refcount > 1`
@@ -73,17 +74,25 @@ carrying RC. The exception is the FFI boundary, where a foreign buffer
 may be viewed as a string without copying; see
 [zero-abstraction.md](memory/zero-abstraction.md).
 
-### Freeze: builder → immutable, a class-pointer swap
+### Freeze: builder → immutable, a mode-bit flip
+
+A string carries **no class pointer** (it is a non-object entity, kind =
+`string` in the header flags, [classes.md](classes.md)). So the two
+representations above are not two class descriptors reached through an
+instance pointer — they are **one entity kind with a sub-mode bit** in
+the string header: COW-inline, mutable-builder, or frozen-immutable. The
+`StringInterface` split is a language-level abstraction; physically it is
+this mode bit plus the layout it implies.
 
 "Freezing" a builder into an immutable string (mentioned as a future
-operation in docs/memory-manager.md) changes the object's physical class
-from the mutable-string class to the immutable-string class — the same
-class-pointer-swap mechanism as Ghost objects
-([classes.md](classes.md#lazy-objects-ghost-and-proxy)), and the same
-`!invariant.load` conflict: the mutable-string class must carry the same
-opt-in "not invariant" flag Ghost-capable classes carry, since its
-instances' class pointer can change post-construction. The immutable
-side never swaps, so it keeps the full optimization.
+operation in docs/memory-manager.md) is therefore a **mode-bit flip**,
+not a class-pointer swap: there is no class pointer to swap, and the
+Ghost-object `!invariant.load` machinery does not apply here (it guards a
+class-pointer load that a string never performs — string methods are
+direct calls to the final `String`, devirtualized, with no vtable in the
+entity). The free routine reads the same mode bit to pick teardown: a
+frozen/COW string frees only its inline block, a builder also frees its
+out-of-line `Buffer.data`.
 
 ---
 

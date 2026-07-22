@@ -32,13 +32,41 @@ Value representation for scalars, strings, and arrays is covered separately. Mem
 | 9 | Copy-on-write: counted in every memory category |
 | 10 | `__destruct` has already run (exactly-once guard) |
 | 11 | Transient mark: part of the escaped subgraph during arena reset |
-| 12 | The entity is an object (has a class pointer at +8) |
+| 12 | The entity is an object (has a class pointer at +8) — a fast object/non-object test; the precise kind is bits 14–16 |
 | 13 | Live escapee: `refcount` currently holds the escape hold-count |
-| 14–31 | Position in the cycle collector's candidate buffer, as `index + 1`; zero means "position unknown" and costs a linear scan |
+| 14–16 | **Entity kind**: `0` object, `1` string, `2` array, `3` reference box, `4–7` reserved (closure is an object). Selects the free routine at teardown and the per-tag descriptor for a bare non-object pointer (below) |
+| 17–31 | Position in the cycle collector's candidate buffer, as `index + 1`; zero means "position unknown" and costs a linear scan |
 
-Nothing is reserved: bits 14–31 are the candidate index, so a new
-per-object flag needs either a freed bit or a *class* flag, which has
-room.
+### Entity kind and non-object teardown
+
+**Decision**: the kind field (bits 14–16) is what makes a **bare heap
+pointer self-describing** for freeing. An object frees through
+`obj->class->dispose`, reachable from its `class` at +8; a string, array
+or reference box has no `class`, so its free routine is selected by the
+kind field instead — one `flags` load (already loaded at free time for
+the category dispatch) and a small switch: object → `dispose`, string →
+free-string, array → free-array (release element Boxes, then the
+storage), reference → free the box.
+
+This is why an entity's kind lives on the **entity**, not on each list
+slot that references it: the release-at-reset list, the cycle-candidate
+buffer and every teardown path hold bare pointers, and would otherwise
+each need an extra word per entry to say what they point at. The kind
+bit costs ~3 bits once per entity, in a word that is read at free time
+anyway; a per-entry tag would cost 8 bytes per *reference*, of which
+there are far more than entities. (The candidate buffer never even needs
+the switch: it holds only objects and arrays, which bit 12 already
+separates.)
+
+The same field answers "what type is this non-object" for a `mixed` →
+interface conversion on a `string`/`array`: the Box tag is gone once you
+hold a bare pointer, so the kind selects the type's **singleton
+descriptor** ([strings.md](strings.md), [arrays.md](arrays.md)) whose
+`interfaces`/itable the conversion needs.
+
+`14–16` reserved codes `4–7` are room for later non-object kinds; the
+candidate index keeps 15 bits (32767 positions, ample against the ~10k
+buffer arm threshold).
 
 The retain/release fast path is a single branch covering both arenas and immortal objects, with one exception:
 

@@ -122,13 +122,16 @@ needs a design decision, deferred deliberately.
   release/acquire. One extra store per boxed write, `rc-satb` only. Written
   into [satb.md](model/gc/satb.md), [values.md](model/values.md).
 - **`escape_lose` for a thread-local static block holding an arena
-  escapee** — storing an arena object into `Foo::$bar` counts the escape
-  (`gain`), but the decrement has no caller: `release` is a no-op for the
-  arena category, and a static block has no `dispose` and is on no
-  holder-teardown path, so an overwrite or thread exit never runs
-  `escape_lose`. The escapee is pinned forever. Needs a decrement path
-  for headerless static destinations
-  ([strategies.md](model/gc/strategies.md), [arenas.md](model/memory/arenas.md)).
+  escapee** — **resolved 2026-07-22**. Static blocks get a **teardown at
+  thread exit** (the counterpart of the static initializer): a per-thread
+  registry of initialized blocks, walked LIFO, each block's reference slots
+  dropped via the store barrier's `drop` — a request-arena escapee runs
+  `escape_lose`, a heap reference releases and cascades (`__destruct`
+  runs). The headerless block is fine (`drop` acts on the displaced entity;
+  `owner_cat` is a compile-time constant). Full teardown on every thread
+  exit, including the process's last thread. Written into
+  [classes.md](model/classes.md), "Teardown at thread exit". (An overwrite
+  mid-request was already handled by the store barrier's `drop`.)
 - **`mixed` → interface conversion on a `string`/`array`** — **resolved
   2026-07-22**. Split by Known/unknown: a statically-known `string`/`array`
   (the common case) dispatches through the compiler-hardwired singleton

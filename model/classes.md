@@ -798,6 +798,41 @@ A worker thread that ends releases its static blocks and everything they
 root; a long-lived worker still accumulates within its own lifetime, and
 an explicit cycle collector covers that as it does any other cycle.
 
+### Teardown at thread exit
+
+The counterpart of the static initializer above, and where a static
+block's roots are actually released. Without it a worker pool accumulates
+their graphs forever: the escape hold-count a static places on a
+request-arena object has no other decrement point — an overwrite
+mid-request is the store barrier's `drop`
+([strategies.md](gc/strategies.md)), thread exit is the other end
+([arenas.md](memory/arenas.md)).
+
+- **Registry.** Each thread appends a block to a thread-local list the
+  first time it initializes that block — one append per class-block per
+  thread, beside the initializer that already runs there.
+- **Order.** The list is walked in **reverse initialization order** (LIFO),
+  as C++ tears down function-local statics: a later block may have been
+  initialized against an earlier one.
+- **Per block**, the compiler-emitted teardown walks the block's reference
+  slots — the same `traced_runs` the collector uses — and runs `drop` on
+  each, exactly the store barrier's `drop` micro-op: a request-arena
+  escapee decrements its escape hold-count (`escape_lose`), a heap
+  reference releases and cascades, an immortal/long-lived one is a no-op.
+  The block is headerless, which does not matter: `drop` operates on the
+  displaced entity, and the destination's `owner_cat` (long-lived) is a
+  compile-time constant.
+- **`__destruct` runs** wherever a release drives a refcount to zero —
+  these are the shutdown destructors of the thread's end of life, in
+  refcount-determined order.
+- **Every thread exit does this in full**, including the process's last
+  thread, because PHP runs destructors at end of life and their side
+  effects must fire. Only the raw memory-free of that final teardown is
+  redundant (the OS reclaims the address space regardless); the destructor
+  pass is not skipped, so observable behaviour is unchanged. Actors are the
+  reserved exception above — their static state follows the actor, not the
+  thread.
+
 ---
 
 ## Interface Tables (itables)

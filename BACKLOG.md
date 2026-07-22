@@ -113,14 +113,14 @@ into proper RFCs when picked up.
 Raised by an adversarial review after the object-layout rework. Each
 needs a design decision, deferred deliberately.
 
-- **Torn 16-byte Box read in the concurrent marker (`rc-satb`)** — a
-  `store_box` writes the 16-byte Box non-atomically (payload, then tag)
-  while the background marker reads the same slot to trace it, so the
-  marker can see new payload + old tag and treat an `int` as an object
-  pointer. The "one writer" invariant guards writers, not a concurrent
-  reader. Needs a decision: a 16-byte atomic store/read on the marking
-  path, a marker that reads tag-then-payload with a re-check, or another
-  scheme ([satb.md](model/gc/satb.md), [values.md](model/values.md)).
+- **Torn 16-byte Box read in the concurrent marker (`rc-satb`)** —
+  **resolved 2026-07-22**. A **writing lock** in the Box `flags` byte (bit
+  2): `store_box` on the rc-satb path sets it, writes the payload, then
+  writes the final tag and clears it (release order); the marker skips a
+  slot whose `WRITING` bit is set (safe — the deletion barrier already
+  captured the old value). Single writer, so no CAS — plain
+  release/acquire. One extra store per boxed write, `rc-satb` only. Written
+  into [satb.md](model/gc/satb.md), [values.md](model/values.md).
 - **`escape_lose` for a thread-local static block holding an arena
   escapee** — storing an arena object into `Foo::$bar` counts the escape
   (`gain`), but the decrement has no caller: `release` is a no-op for the
@@ -143,12 +143,12 @@ needs a design decision, deferred deliberately.
   leaves the source half-destroyed. The ownership model is already
   reserved; the rollback/atomicity of a partially-applied graph op is
   the unaddressed part ([classes.md](model/classes.md) lifecycle family).
-- **Backed enum with a string value as an immortal singleton** — an
-  enum case is an immortal object; a backed case carries a `value`, and
-  for a string case that is a counted heap entity. An immortal object's
-  never-decremented reference to a counted string leaks it unless the
-  string is itself immortal/interned. State the constraint when enums
-  are written (also listed under enums above).
+- **Backed enum with a string value as an immortal singleton** —
+  **resolved 2026-07-22**. The value string is itself **immortal** (memory
+  category `11`), so retain/release are no-ops on it and there is no
+  counted reference to leak — immortality is a known, flagged state (the
+  category bits). Constraint to enforce when enums are written: a backed
+  string value is allocated immortal/interned, like the case itself.
 
 ## FFI document — review findings
 

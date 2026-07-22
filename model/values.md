@@ -48,8 +48,9 @@ storage format of one kind of property. See
 ```
 +0   payload   8 B   union { i64, f64, ptr }
 +8   type      1 B   type tag
-+9   flags     1 B   bit 0 refcounted; bit 1 undef (property slots only)
-+10  reserved  6 B   alignment; not usable as per-slot state — the
++9   flags     1 B   bit 0 refcounted; bit 1 undef (property slots only);
+                     bit 2 writing (rc-satb concurrent-marking lock, below)
++10  reserved  5 B   alignment; not usable as per-slot state — the
                      store barrier writes all 16 bytes of the Box
 ```
 
@@ -97,6 +98,14 @@ into semantics. Here it cannot flow: the flag is confined to property
 slots and reading one throws, and the bitmap is separate metadata.
 Hashtable holes remain a separate, container-internal marker
 ([arrays.md](arrays.md)), unrelated to this.
+
+The **writing** flag (bit 2) is the concurrent-marking lock: because a
+16-byte Box is published as two stores (payload, then tag), a background
+marker reading the slot could otherwise catch a torn pair and trace a
+non-pointer as a pointer. It is set and cleared only by `store_box` on the
+`rc-satb` strategy and read only by that strategy's marker; every other
+build leaves the bit permanently clear. The mechanism is in
+[satb.md](gc/satb.md), "Torn 16-byte Box reads".
 
 All pointer payloads point to entities that begin with the common
 `RcHeader` (refcount + flags at offset 0, see [classes.md](classes.md)).

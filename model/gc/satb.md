@@ -78,6 +78,40 @@ drop(ctx, owner_cat, old):
   the opposite of the intent: the queue keeps snapshot references
   **alive** for this epoch.
 
+## Torn 16-byte Box reads: the writing lock
+
+The deletion barrier keeps the *snapshot* correct; a separate, lower-level
+hazard is reading a single slot mid-write. `store_ptr` publishes one 8-byte
+pointer — atomic on a 64-bit target, so the marker reads either the old or
+the new pointer, never a mix. `store_box` publishes a **16-byte** Box
+(payload + tag) as two stores, so a marker reading that slot concurrently
+could see a torn pair — an old `object` tag over a payload that is already a
+bare `int` — and trace a non-pointer as a pointer.
+
+The fix is a **writing lock** in the Box's own `flags` byte (bit 2,
+[values.md](../values.md)). `store_box` on this strategy brackets the
+payload write with it:
+
+```
+store_box (rc-satb):
+    set WRITING in the +8 word            # tag/flags word; marker will skip
+    write payload (+0)
+    write final tag, clear WRITING (+8)    # release order
+```
+
+The marker reads the +8 word (acquire); if `WRITING` is set it **skips the
+slot**. Skipping is safe under SATB: the displaced old value was already
+pushed to the queue by the deletion barrier before the store began, so it
+stays live this epoch, and the new value is either freshly allocated black
+or caught next epoch. No torn misread is possible, because the pointer tag
+is published only in the final store, after the payload.
+
+A single writer owns the slot (the store-barrier invariant), so **no CAS is
+needed** — plain release/acquire ordering suffices, and the lock is a bit,
+not a lock word. Cost: one extra store per boxed write, and only in the
+`rc-satb` build; every other strategy leaves the bit clear and pays
+nothing.
+
 ## Epoch protocol
 
 ```

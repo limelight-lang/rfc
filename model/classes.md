@@ -52,24 +52,77 @@ This implements the immortal-object and arena-scoping optimizations from [arc-op
 
 ## Object Layout
 
+`LLObject` — the in-memory object, the entity a Box with tag `object`
+points at:
+
 ```
-+0   refcounted header                      (8 B)
-+8   class: pointer to Class descriptor     (8 B)
-+16  declared property slots, fixed offsets
++0   RcHeader   8 B   the common entity header (refcount + flags), so an
+                      object is a valid Box pointer target like any entity
++8   class      8 B   pointer to the Class descriptor
++16  property slots, fixed offsets ("Slot kinds")
 ```
 
-An object instance contains only per-instance state: refcount, flags, and property values. Everything shared between instances (name, methods, interfaces, reflection metadata) lives in the Class descriptor, reached through the single `class` pointer.
+An object instance holds only per-instance state: refcount, flags, and
+property values. Everything shared between instances (name, methods,
+interfaces, reflection metadata) lives in the Class descriptor, reached
+through the single `class` pointer. The header is **16 bytes** before
+the first property.
 
-The class pointer is required at runtime because PHP is dynamically typed:
+### Why the class pointer lives in the body
 
-- `$obj->foo()` on an untyped receiver: the vtable can only be found through the object itself
-- `instanceof`, `get_class()`: read the pointer directly
-- GC scanning: the property layout (which slots hold references) is described by the class
-- destruction: `__destruct` is found through the class
+A value's type is needed at runtime in exactly one situation, and known
+in the other:
 
-Declared properties occupy fixed slots at offsets computed at class link time. `$this->x` with a known type compiles to a load/store at a constant offset, no hashtable involved.
+1. **The compiler knows the type** (`Foo $x`, or a proven `mixed`):
+   dispatch goes through the statically-known vtable, and the class is
+   not read from the object at all.
+2. **The compiler does not know the type**: the class must be in memory.
 
-**Class references are full 8-byte pointers (final decision).** Compressed class ids (u32 index into a global class table, as in the JVM) were considered and rejected: the 4 saved bytes per object do not justify an extra dependent load on every dispatch and a global table on the hottest path. Simpler and more flexible.
+For the second case, *where* in memory follows **who holds the
+reference**:
+
+- **In the calling convention** — a register/stack value typed `object`
+  or an interface — the class travels beside the pointer as a fat
+  reference `{ptr, class}` (the same `iface_ref` shape used for
+  interface dispatch). The class is in hand with no load from the
+  object.
+- **In the heap** — release, GC scanning, graph traversal all hold a
+  bare heap reference, not a typed variable, and the fat pair does not
+  reach them (the collector walks memory, not registers). So the class
+  lives in the **body**, `obj->class`, reachable from the bare pointer.
+
+Two facts make the body the right home rather than fattening every heap
+reference to `{ptr, class}`:
+
+- **The size math.** For an object with *K* references, class-in-body
+  costs `16 + 8K` (a body carrying the class, plus K bare 8-byte refs);
+  class-in-every-reference costs `8 + 16K`. The difference is `8(K−1)`
+  — equal at one reference, worse for every shared object, and objects
+  in PHP are usually shared. Fattening also doubles the width of every
+  object reference, which is worse for cache.
+- **The Box cannot carry the pair.** A Box is 16 bytes with an 8-byte
+  payload — one pointer, no room for `{ptr, class}`. A `mixed` holding
+  an object stores just the pointer and recovers the class from
+  `obj->class`. Carrying the pair would force the Box to 24 bytes, paid
+  on *every* Box including those holding an `int` or a `string` — absurd
+  for how large the `mixed` world is. So `mixed` needs the class in the
+  body regardless; once it is there for `mixed`, no heap reference needs
+  to be fat.
+
+So the class pointer stays in the object body. The fat `{ptr, class}`
+reference exists only in registers and on the stack, where the class is
+already at hand; in the heap an object reference is always a single
+8-byte pointer, and the four runtime consumers — dynamic dispatch on an
+`object`-typed receiver, `instanceof` / `get_class`, GC scanning (the
+property layout that says which slots are references), and teardown
+(`dispose`) — read the class from `obj->class`.
+
+**Class references are full 8-byte pointers (final decision).**
+Compressed class ids (u32 index into a global class table, as in the
+JVM) were considered and rejected: the 4 saved bytes per object do not
+justify an extra dependent load on every dispatch and a global table on
+the hottest path. Full removal of the pointer is heavier still — it
+breaks GC scanning and `mixed` storage, per the reasoning above.
 
 **No object table.** Objects are referenced only by direct pointers: there is no analog of Zend's object store with handles. PHP 7 itself moved object access from handles to direct pointers for performance; the store's remaining duties are covered differently in Limelight: object enumeration by linear Immix block scanning (see [heap-design.md](../gc/heap-design.md)), shutdown/arena-reset destructors by the has-destructor flag bit, weak references by side tables. Non-moving GC means object addresses are stable for the object's lifetime, so `spl_object_id()` can be derived from the address.
 

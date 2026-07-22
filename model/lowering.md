@@ -70,8 +70,10 @@ typedef struct Class {
     InterfaceEntry *interfaces;  // sorted by interface_id
     uint32_t      interface_count;
     MethodTable  *methods;       // interned name → method (slow path)
-    void         *statics;       // pointer to the static block (classes.md);
-                                 // laid out like an object, not a Value array
+    uint32_t      statics_tls;   // TLS offset/index of the static block
+                                 // (classes.md): thread-local, laid out like
+                                 // an object, not a Value array — not a pointer,
+                                 // since each thread's block is at its own address
     void        **static_vtbl;   // own table only if this class overrides an
                                  // inherited static method; otherwise = parent's
     Metadata     *meta;          // cold: name, reflection, trait list, link info

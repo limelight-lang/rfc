@@ -366,7 +366,7 @@ Hot part (touched by dispatch and property access):
 | `destruct_slot` | Vtable slot of `__destruct`, or a sentinel when the class has none |
 | `interfaces` | Sorted array: interface id → itable pointer |
 | `methods` | Hashtable: name → method; slow path lookup, also the source for building subclass vtables |
-| `statics` | Pointer to this class's static block — its **own** declarations only (see below) |
+| `statics` | TLS offset of this class's thread-local static block — its **own** declarations only (see below) |
 | `static_vtbl` | Static-method table pointer; own table only when the class overrides an inherited static method, otherwise points to the parent's table (see below) |
 | `vtbl[]` | **Inline trailing array** of code pointers |
 
@@ -457,36 +457,57 @@ Note on compilation order: a subclass is always linked with full knowledge of it
 
 ### The static block
 
-**Decision**: a class's static properties live in a **static block** —
-one contiguous region per class, laid out by the object layout
-algorithm above, whose lifetime is the program's. It is not part of the
-descriptor: the descriptor is immortal and read-mostly, and the thing
-inline caches depend on is that it never changes.
+**Decision**: static properties are **thread-local**. A class's static
+block — one contiguous region per class, laid out by the object layout
+algorithm above — exists **once per thread**, in that thread's TLS. It
+is not part of the descriptor: the descriptor is immortal and shared
+across threads, and the block is per-thread mutable state, which is
+exactly what must not sit inside a structure inline caches assume never
+changes.
 
-For a class the compiler knows, the block is **emitted into the binary
-image**. The unwritten-data section is zero-filled by the OS lazily,
-page by page, on first touch, so a class the program never uses costs
-address space and nothing else, and start-up does no work at all. Its
-address is a link-time constant, which makes `Foo::$bar` a load at a
-fixed address — no base, no dependent load. Allocating the block at
-link time instead would make the address a runtime value and put an
-extra dependent load on every static access.
+Thread-local is the decision, not an option, and it buys share-nothing:
+no two threads see the same static cell, so `Foo::$bar` needs no lock
+and no atomics, and the whole class of static-property data race is
+gone by construction. It also matches how PHP is deployed — a worker
+owns its request — made intrinsic rather than left to a process model.
 
-A class born at runtime (`eval`, a plugin, JIT code from outside the
-unit) gets its block from long-lived memory instead, reached through
-the descriptor's pointer. One mechanism, and the common case is free.
+**Access is TLS-relative.** The descriptor does not hold a pointer to
+the block — it could not, since every thread's block is at a different
+address. It holds a **TLS offset/index**, and a thread resolves
+`Foo::$bar` as *its* TLS base + that offset + the field offset. For a
+class compiled into the image the TLS offset is a link-time constant, so
+the access is the platform's normal thread-local load (an `fs`/`gs`-
+relative load on the usual targets — the same fast-TLS path the heap
+already uses); a class loaded later (`eval`, autoload, a plugin) gets a
+dynamic TLS slot resolved at load.
 
 Inside, the block is an object: the same slot kinds, the same three
 runs with counted pointers first, the same `traced_runs`, the same
-single range store for initialization.
+zero-fill for the slots that start at zero.
 
-**The form of access is the compiler's choice, not a property of the
-block.** An absolute address commits statics to one copy per process,
-which is right while a request owns a thread and wrong once it does
-not; a TLS-indexed base gives per-thread statics at the cost of one
-load. The runtime never encodes an address, so this stays a decision
-rather than a constraint — the same rule as memory strategies
-([heap-slot-allocation.md](memory/heap-slot-allocation.md)).
+### Initializing the block, per thread
+
+A thread's TLS region starts zeroed, which is the *correct* start only
+for slots whose initial value is zero: a `null` pointer or Box, a `0`
+scalar, a clear init-bitmap bit. Everything else needs code. A
+`public static int $n = 5` holds a non-zero scalar; `public static array
+$m = ['a' => 1]` and `public static string $s = 'x'` hold counted heap
+entities that cannot pre-exist in TLS at all. So each class carries a
+**compiler-generated static initializer** that stamps these — the
+static analog of the instance factory.
+
+It runs **per thread**, when the class first becomes usable *in that
+thread*: at thread start-up for classes compiled into the image, at
+class load for classes loaded later. Each thread runs it once and builds
+its own copy of the counted defaults. So start-up does no work for the
+zero-start slots the OS zero-fills, and a class with non-zero static
+defaults pays for exactly those, once per thread that uses it.
+
+A running constant initializer (PHP 8.1 `new` in a constant expression)
+is *not* stamped here — it stays lazy, evaluated on first access in the
+thread through its init-bitmap bit ("Constants" below), because it may
+run arbitrary code and observe order that eager stamping would fix too
+early.
 
 ### Statics do not inherit by prefix
 
@@ -516,15 +537,19 @@ bit to different effect with no extra runtime check.
 
 ### GC roots
 
-Static blocks are a permanent root set. The compiler already emits a
-class table — reflection and `class_exists` need one — so the collector
-walks it and takes each class's block pointer and `traced_runs`. There
-is no runtime root registration; the root set is known at link time.
+Static blocks are a root set **per thread**: a thread's collector walks
+its own TLS blocks, and never another thread's — share-nothing again.
+The compiler already emits a class table (reflection and `class_exists`
+need one), so tracing takes each class's static TLS offset and
+`traced_runs` from it; there is no runtime root registration, the set is
+known at link time.
 
-**The cost, stated because it is real**: a static block lives as long
-as the program, so a cycle held by a static property is never
-collected. In PHP-FPM the death of the process after each request
-disposed of that; here nothing does.
+Because the block is thread-local, its lifetime is the **thread's**, not
+the program's — so the cycle-held-by-a-static problem is disposed of by
+thread exit, the way PHP-FPM disposed of it by process exit per request.
+A worker thread that ends releases its static blocks and everything they
+root; a long-lived worker still accumulates within its own lifetime, and
+an explicit cycle collector covers that as it does any other cycle.
 
 ---
 

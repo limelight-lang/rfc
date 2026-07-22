@@ -108,6 +108,48 @@ into proper RFCs when picked up.
   [ir-integration-research.md](interop/ir-integration-research.md)
   is the natural backend for the C side; Rust via `rustc` subprocess.
 
+## Object model — open questions from the layout rework (to discuss)
+
+Raised by an adversarial review after the object-layout rework. Each
+needs a design decision, deferred deliberately.
+
+- **Torn 16-byte Box read in the concurrent marker (`rc-satb`)** — a
+  `store_box` writes the 16-byte Box non-atomically (payload, then tag)
+  while the background marker reads the same slot to trace it, so the
+  marker can see new payload + old tag and treat an `int` as an object
+  pointer. The "one writer" invariant guards writers, not a concurrent
+  reader. Needs a decision: a 16-byte atomic store/read on the marking
+  path, a marker that reads tag-then-payload with a re-check, or another
+  scheme ([satb.md](model/gc/satb.md), [values.md](model/values.md)).
+- **`escape_lose` for a thread-local static block holding an arena
+  escapee** — storing an arena object into `Foo::$bar` counts the escape
+  (`gain`), but the decrement has no caller: `release` is a no-op for the
+  arena category, and a static block has no `dispose` and is on no
+  holder-teardown path, so an overwrite or thread exit never runs
+  `escape_lose`. The escapee is pinned forever. Needs a decrement path
+  for headerless static destinations
+  ([strategies.md](model/gc/strategies.md), [arenas.md](model/memory/arenas.md)).
+- **`mixed` → interface conversion on a `string`/`array`** — the
+  conversion table still routes via `obj->class`, which a non-object has
+  not got. The intended path (kind field → the type's singleton
+  descriptor → its `interfaces`/itable) is now stated in the flags
+  section but not written into the conversion machinery
+  ([classes.md](model/classes.md) "Fat interface references" /
+  "Extension interfaces").
+- **`deep_clone` / `thread_move` atomicity on failure mid-copy** —
+  allocation can fail partway through a large, possibly-cyclic graph
+  copy; the identity map then holds a half-built cyclic subgraph that
+  refcounting alone cannot tear down, and `thread_move` additionally
+  leaves the source half-destroyed. The ownership model is already
+  reserved; the rollback/atomicity of a partially-applied graph op is
+  the unaddressed part ([classes.md](model/classes.md) lifecycle family).
+- **Backed enum with a string value as an immortal singleton** — an
+  enum case is an immortal object; a backed case carries a `value`, and
+  for a string case that is a counted heap entity. An immortal object's
+  never-decremented reference to a counted string leaks it unless the
+  string is itself immortal/interned. State the constraint when enums
+  are written (also listed under enums above).
+
 ## Deferred optimizations
 
 - **No zeroing by default, anywhere** — the memory manager must not

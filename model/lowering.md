@@ -250,14 +250,13 @@ commit:
   store i64 RC1_PLUS_FLAGS, ptr %cur             ; header in one 8-byte store
   store ptr @class.User,
         ptr getelementptr(i8, ptr %cur, i64 8)
-  ; Body zeroed as one range: an all-zero Box is null (tag 0) and a null
-  ; pointer is PHP null, which is what untyped and nullable-pointer slots
-  ; must start as. The compiler knows the whole layout here, so it emits
-  ; this directly — it does not read traced_runs.
+  ; Body zeroed as one range: an all-zero Box is null (tag 0), a null
+  ; pointer is PHP null, a zero scalar is 0, and a clear init-bitmap bit
+  ; is uninitialized — every uninitialized slot's correct start, and the
+  ; bitmap's, in one store. No sentinel or tag to stamp.
   call void @llvm.memset.p0.i64(ptr %body, i8 0, i64 BODY_LEN, i1 false)
-  ; The few slots whose initial state is not zero, stamped straight-line:
-  store i8 TAG_UNINIT, ptr getelementptr(i8, ptr %cur, i64 U_OPT_TAG) ; a ?int
-  store ptr inttoptr(i64 1), ptr getelementptr(i8, ptr %cur, i64 U_REF) ; a typed ref, UNINIT
+  ; Then the properties that carry a default value:
+  store i64 1, ptr getelementptr(i8, ptr %cur, i64 U_COUNT)  ; public int $count = 1
   call void @User__construct(ptr %cur, ...)      ; constructor known → direct
   ; Only for a class with a destructor, and only after __construct
   ; returns: this is what makes the object owe a __destruct at all

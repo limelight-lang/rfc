@@ -52,8 +52,9 @@ drop(ctx, owner_cat, old)              # old is an entity; no slot
   and publishes the slot. The `ptr` form writes 8 bytes; the `box` form
   writes the whole 16-byte `Value` (a caller stamping the tag afterwards
   would leave the slot torn for the length of the call — one slot, one
-  writer). The `ptr` form treats a slot value of `0` (PHP `null`) and
-  `1` (the `UNINIT` sentinel) as non-entities: it counts only `new > 1`.
+  writer). A pointer slot holds either `0` (PHP `null`, no entity) or a
+  real entity pointer — there is no sentinel — so the `ptr` form counts
+  simply when the pointer is non-null.
 - `drop` takes the entity the slot **held**, not the slot. Releasing,
   un-counting an escape, and running teardown all operate on the
   displaced entity's header, so `drop` does not depend on the slot's

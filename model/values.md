@@ -65,50 +65,24 @@ arithmetic speed. Zend reached the same conclusion; 16 bytes it is.
 | `object` | pointer → Object ([classes.md](classes.md)) |
 | `resource` | pointer |
 | `reference` | pointer → reference box (below) |
-| `uninit` | — (a **slot state**, not a value; see the restriction below) |
 
 The `refcounted` flag in the Box duplicates what the tag implies so that
 retain/release on Box copy is a single bit test, with no tag decoding.
 
-### `uninit` is a slot state, and only a slot state
-
-**Decision**: the tag space carries `uninit`, and it is confined to
-**property slots**. It is the Box's equivalent of the sentinel pointer
-`1` that already encodes the same state in a pointer slot: the storage
-says "nothing has been written here yet", in the room the storage
-already has.
-
-The restriction is the whole design, and it is what separates this from
-Zend's `IS_UNDEF`:
-
-- A Box tagged `uninit` may exist **only** in a property slot. Never in
-  a local, a parameter, a return value, an array element, or a
-  reference box.
-- Reading such a slot throws `Error`, per PHP semantics for
-  uninitialized typed properties. The read decodes the tag anyway, so
-  the check costs nothing.
-- Therefore it cannot escape into a value context: the only operation
-  that could carry it out of the slot is the one that throws.
+There is deliberately **no `undef` / `uninit` tag**. The uninitialized
+state of a property is not encoded in the slot at all — not as a Box tag
+and not as a sentinel pointer. It lives in a separate per-object init
+bitmap, and only for the properties that need it (below,
+"Uninitialized properties"). An all-zero slot is therefore always a
+clean value: `null` for a pointer or an untyped Box, and object
+initialization stays a single zero-fill of the body.
 
 `IS_UNDEF` in Zend is a general VM value that flows through locals and
-hashtables, and that generality is what makes it an implementation
-detail leaking into semantics. Here it is a state of one storage site,
-with the language never able to observe it as a type: `gettype()`,
-`is_*()` and every other reflection of "what is this" are unreachable
-for it, because reading the slot throws first.
-
+hashtables, which is what makes it an implementation detail leaking
+into semantics. Here there is no such value: the bitmap is metadata
+beside the slot, never a value inside it, so it cannot flow anywhere.
 Hashtable holes remain a separate, container-internal marker
-([arrays.md](arrays.md)), invisible to the language and unrelated to
-this tag.
-
-**`null` keeps tag value 0, and `uninit` does not.** An all-zero Box is
-`null`, which is what an untyped property must start as and what makes
-object initialization a single range store
-([classes.md](classes.md), "Slot order"). A `?int` property starts as
-`uninit` instead, so its slot takes one explicit tag store after that
-range is cleared. Untyped properties are the common case in real PHP
-and pay nothing; nullable scalar properties pay one store each at
-construction. The reverse numbering would invert that trade.
+([arrays.md](arrays.md)), unrelated to this.
 
 All pointer payloads point to entities that begin with the common
 `RcHeader` (refcount + flags at offset 0, see [classes.md](classes.md)).
@@ -129,8 +103,10 @@ the function signature.
 
 - **Pointer `T`** (`?object`, `?string`, `?array`): **niche
   optimization**: null is the null pointer, size stays 8 bytes (exactly
-  as `Option<&T>` in Rust). No tag exists, because none is needed —
-  this is not a wrapper, it is the pointer.
+  as `Option<&T>` in Rust). No tag and no sentinel — this is not a
+  wrapper, it is the pointer. Its uninitialized state, if the property
+  can have one, is a bit in the init bitmap, not a reserved pointer
+  value.
 - **Scalar `T`** (`?int`, `?float`): the **Box**, with the compiler
   knowing statically that only two tags can occur.
 
@@ -161,52 +137,51 @@ have taken 9. Classes with many nullable scalar properties pay it. That
 is the trade for not carrying a third representation through every path
 that touches a value.
 
-- **Uninitialized typed properties**: **Decision**: the `UNINIT` state
-  never widens a slot. It is encoded in-slot where that is free, and in
-  a per-object sidecar **init bitmap** otherwise.
+### Uninitialized properties
 
-  | Slot | `UNINIT` encoding | Cost |
-  |------|-------------------|------|
-  | `?object`, `?string`, `?array` | sentinel pointer `1` (the null pointer already means PHP `null`) | free |
-  | non-nullable pointer | null pointer | free |
-  | `?int`, `?float`, untyped / `mixed` | the `uninit` tag (the tag byte already exists) | free |
-  | non-nullable scalar | bit in the init bitmap; the slot itself is zero-initialized | ~free (bits usually fit the object's alignment padding) |
+**Decision**: the uninitialized state is not stored in the slot. It is
+tracked by a single per-object **init bitmap**, one bit per property,
+and a class carries one only when it declares properties that can be
+uninitialized.
 
-  Every boxed slot therefore encodes the state in itself, and the
-  bitmap is left serving one case: raw scalar slots, which have no room
-  to say anything but their own value.
+**Which properties.** The criterion is the declaration, not the type: a
+property **declared without an initializer** can be uninitialized and
+gets a bit; a property **with a default** (`= 1`, `= null`, `= ''`)
+starts with that value and is never uninitialized, so it gets no bit
+and no check. This holds regardless of whether the property is typed or
+`mixed`, instance or static. The bitmap therefore costs bits only for
+the properties that genuinely have the state, and the common
+default-carrying property pays nothing.
 
-  The bitmap exists only in classes that have non-nullable scalar
-  properties escaping definite-assignment analysis; where the analysis
-  proves initialization (e.g. constructor promotion), no state is
-  materialized at all.
+The slot itself is always a clean zero at construction — `null` for a
+pointer or Box, `0` for a raw scalar — so initialization is one
+zero-fill, with no per-slot sentinel or tag to stamp. A clear bit, also
+zero, means uninitialized; the zero-fill sets both at once.
 
-  The bitmap is **not consulted on ordinary reads**: the hot path pays
-  nothing. It is maintained and queried only by operations explicitly
-  about initialization state:
+The bitmap is consulted **only** by operations that are about
+initialization state, and a property that carries no bit is never
+checked:
 
-  - a write to a tracked property sets its bit (one `or` store);
-  - `unset()` clears the bit, so `unset()` + `isset()` behave as in PHP;
-  - `isset()` and `ReflectionProperty::isInitialized()` read the bit;
-  - `get_object_vars()`, `(array)` casts, `var_dump()`, `serialize()`
-    and `foreach` over an object skip properties whose bit is clear,
-    matching PHP's skipping of uninitialized properties. Lazy-proxy
-    patterns (à la Doctrine) that probe state via reflection work
-    unchanged.
+- reading a tracked property tests its bit; a clear bit throws `Error`,
+  exactly PHP's behavior for an uninitialized typed property;
+- a write sets the bit (one `or` store);
+- `unset()` clears it, so `unset()` + `isset()` behave as in PHP;
+- `isset()` and `ReflectionProperty::isInitialized()` read it;
+- `get_object_vars()`, `(array)` casts, `var_dump()`, `serialize()` and
+  `foreach` over an object skip properties whose bit is clear, matching
+  PHP's skipping of uninitialized properties. Lazy-proxy patterns (à la
+  Doctrine) that probe state via reflection work unchanged.
 
-  For every in-slot-encoded kind — the pointer rows and the boxed rows
-  — reading `UNINIT` throws `Error` per PHP semantics; the read decodes
-  the slot anyway, so the check is free.
+The read check is paid **only where the state exists** — a property the
+compiler proves always assigned (constructor promotion, definite
+assignment) or that carries a default has no bit and reads with no
+check at all. So `Error`-on-uninitialized-read matches PHP without
+putting a test on every typed read; the test rides only the properties
+that can actually be uninitialized.
 
-  **Deliberate deviation**, now down to one row: directly reading an
-  uninitialized **non-nullable scalar** property yields `0` / `0.0`
-  instead of throwing `Error`. Guarding that would put a bitmap test on
-  every escaping `int $x` read, which is exactly the cost this design
-  refuses. The bit is still maintained, so every operation that is
-  *about* initialization — `isset()`, reflection, `serialize()`,
-  `foreach` — answers correctly; only the direct read is unguarded.
-
-  `UNINIT` is a slot state, never a language-level type.
+This state is metadata, never a language-level type: `gettype()`,
+`is_*()` and every other value reflection are unreachable for it,
+because a read of a clear-bit property throws before any of them runs.
 
 ### References into unboxed slots
 

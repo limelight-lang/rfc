@@ -85,7 +85,7 @@ object where the type is not known statically.
 |---|---|---|
 | `int`, `float` | raw `i64` / `f64`, no tag | 8 / 8 |
 | declared class type, `string`, `array` | bare pointer | 8 / 8 |
-| `?T` for pointer-shaped `T` | the same pointer; `NULL` is PHP `null`, `1` is `UNINIT` (niche) | 8 / 8 |
+| `?T` for pointer-shaped `T` | the same pointer; `NULL` is PHP `null` (niche). Uninitialized, if possible, is an init-bitmap bit ([values.md](values.md)) | 8 / 8 |
 | `?int`, `?float` | Box — a nullable scalar has no representation of its own ([values.md](values.md)) | 16 / 8 |
 | `bool` | a byte, or a bit in the byte block (below) | 1 / 1 |
 | untyped / `mixed` | Box | 16 / 8 |
@@ -131,12 +131,13 @@ Fink/Grove — and its signed offsets and interface-layout cost are why
 no production VM adopted it.)
 
 **Initialization does not read this map.** At a `new` site the class is
-known, so the compiler emits the initializer as straight-line code:
-one store over the object body, then the few typed slots that start as
-something other than zero — a `?int` as the `uninit` tag, a pointer
-property as the `UNINIT` sentinel `1`. No loop, no `traced_runs` read.
-The map serves initialization only on the out-of-line path where the
-class is dynamic (§"Construction and teardown").
+known, so the compiler emits the initializer as straight-line code: one
+zero-fill over the object body (which sets every uninitialized slot to a
+clean `null`/`0` and every init-bitmap bit to clear at once), then the
+stores for properties that carry a default value. No slot needs a
+sentinel or tag; no loop; no `traced_runs` read. The map serves
+initialization only on the out-of-line path where the class is dynamic
+(§"Construction and teardown").
 
 Physical order therefore differs from declaration order. Declaration
 order remains observable — `serialize()`, `(array)`, `foreach` over an
@@ -503,12 +504,13 @@ folded at the use site and needs no storage at all.
 
 A constant whose initializer must run (PHP 8.1 allows `new` in constant
 expressions) needs a slot and a "not yet computed" state. That state is
-the **`uninit` tag** ([values.md](values.md)), already carried for
-uninitialized property slots: the constant's slot starts `uninit`, and
-the first access sees it and runs the initializer. Reading an
-uninitialized *property* throws while reading an unevaluated *constant*
-initializes it, and the compiler knows which slot it is emitting for,
-so the difference costs no runtime check.
+a bit in the static block's init bitmap ([values.md](values.md)), the
+same mechanism uninitialized properties use: the constant's slot starts
+zero with its bit clear, and the first access sees the clear bit and
+runs the initializer. Where an uninitialized *property* with a clear
+bit throws, an unevaluated *constant* with a clear bit initializes; the
+compiler knows which slot it is emitting for, so the two read the same
+bit to different effect with no extra runtime check.
 
 ### GC roots
 

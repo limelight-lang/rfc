@@ -27,6 +27,13 @@ The mixed world is large in real PHP code, so the Box is not an edge case;
 but every type declaration the programmer writes moves storage into the
 unboxed contract for free.
 
+**Terminology — "Box" has two contexts.** This *value* Box (a 16-byte
+tagged value, PHP's `zval` in spirit) is a different thing from the
+built-in **`Box` class** (entity kind 4, [classes.md](classes.md),
+[ffi.md](memory/ffi.md)) that wraps a raw `#[FFI]` C structure for the
+managed world. One word, two contexts — a value box here, a raw-struct box
+there; they share nothing but the name.
+
 **In an object, a Box appears only where the property has no declared
 type.** A declared property occupies its machine representation and
 nothing more — a bare pointer for an object or string, eight raw bytes

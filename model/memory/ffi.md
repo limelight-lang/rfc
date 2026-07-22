@@ -173,6 +173,10 @@ managed object's property is such an attachment, so a foreign-typed
 property holds a `Box`, not a bare struct — there is no separate
 "owned-foreign" property slot kind.
 
+**Terminology note.** This raw-struct `Box` is a different thing from the
+*value* Box of [values.md](../values.md) — the 16-byte tagged cell for
+`mixed`. Same word, two contexts; they share nothing but the name.
+
 ---
 
 ## Strings and arrays at the boundary

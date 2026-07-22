@@ -186,15 +186,24 @@ documents** (2026-07-22); what remains open is at the end.
 
 **Still open:**
 
-- **Boxing a struct with a live `#[Borrow]` field → UAF.** The runtime
-  anchor mechanism for a borrow with no lifetime syntax is asserted, not
-  specified; a boxed struct can outlive the owner its `#[Borrow]` pointer
-  aliases. Needs a design decision.
+- **Boxing a struct with a live `#[Borrow]` field → UAF** (deferred;
+  direction agreed 2026-07-22, to confirm and write into ffi.md). Model
+  `#[Borrow]` as a `Box` sub-kind carrying a **don't-free** flag — but that
+  alone only rules out the double-free, not the dangling read. PHP cannot
+  fabricate a raw borrow: it always originates from a foreign call or a
+  `#[Borrow]`-view of managed memory, so the only hazard is boxing an
+  already-obtained borrow that then outlives its source. Leaning: at the box
+  point, a borrow into **managed** memory makes the `Box` keep its owner
+  alive (retain the `RcHeader` holder); a borrow into **raw C** memory
+  (nothing to retain) is **not boxable** and raises a runtime exception there
+  — no compile error, accept-every-program intact.
 - **Smaller contradictions:** owned-copy `string` field vs "nothing to
   free" (who frees the copy); "reading a C string copies" vs the zero-copy
   borrowed view (which a two-representation managed string cannot express);
-  nested inline `#[FFI]` pointer-field ownership; the name "Box" colliding
-  with the 16-byte Value Box; no memory-category value for foreign memory.
+  nested inline `#[FFI]` pointer-field ownership; no memory-category value
+  for foreign memory. (The "Box" name collision is **accepted, not
+  renamed** — two contexts, value-box vs raw-struct box, clarified in
+  values.md and ffi.md.)
 
 ## Deferred optimizations
 

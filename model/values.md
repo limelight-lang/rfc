@@ -178,7 +178,16 @@ state, and an untracked property is never checked:
   `Error`, exactly PHP's behavior for an uninitialized typed property;
 - a write clears the state (stores the value; for a raw slot, sets the
   bit);
-- `unset()` restores it, so `unset()` + `isset()` behave as in PHP;
+- `unset()` returns the property **to** uninitialized, through whatever
+  marker the slot has: a non-nullable pointer is stored `NULL` (a
+  pointer can always be reset this way, its marker is free), a
+  bitmap-tracked `?T`/scalar has its bit cleared, a Box gets its `undef`
+  flag. A raw scalar that carries no bit — one the compiler proved
+  always-assigned, where `0` is a real value and there is nothing to
+  clear — cannot be expressed as uninitialized; `unset()` on it is a
+  **compile-time warning**, since the state it asks for does not exist.
+  After a valid `unset()`, `isset()` reads false and a plain read throws
+  (or reaches `__get` where the class defines one), matching PHP;
 - `isset()` and `ReflectionProperty::isInitialized()` read it;
 - `get_object_vars()`, `(array)` casts, `var_dump()`, `serialize()` and
   `foreach` over an object skip properties that read uninitialized,

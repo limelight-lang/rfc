@@ -64,9 +64,12 @@ typedef struct Class {
                                  // __destruct if present
     PropLayout   *prop_layout;   // name → (offset, slot kind, hook flags,
                                  //         declaration index)
-    Run          *traced_runs;   // LIST of (offset, count) pairs — the GC trace
-                                 // map; one pair per hierarchy level with pointers
-    uint32_t      traced_run_count;
+    Run          *ptr_runs;      // (offset,count) list — counted-pointer runs,
+                                 // stride 8, skip NULL (GC trace, clone, dispose)
+    uint32_t      ptr_run_count;
+    Run          *box_runs;      // (offset,count) list — Box runs, stride 16,
+                                 // skip when the refcounted flag is clear
+    uint32_t      box_run_count;
     struct Class **display;      // Cohen display, indexed by depth (instanceof)
     uint32_t      display_len;
     uint32_t      destruct_slot; // vtbl slot of __destruct, or NO_DESTRUCT_SLOT
@@ -105,7 +108,7 @@ static inline void ll_retain(RcHeader *h) {
 // this way; an arena object's count reaching zero means nothing.
 static inline bool ll_release(RcHeader *h) {
     if ((h->flags & LL_MEMCAT_MASK) && !(h->flags & LL_COW)) return false;
-    if (h->flags & LL_MEMCAT_MASK == LL_IMMORTAL) return false;
+    if ((h->flags & LL_MEMCAT_MASK) == LL_IMMORTAL) return false;
     if (--h->refcount == 0)
         return (h->flags & LL_MEMCAT_MASK) == LL_GCHEAP;
     // Non-zero decrement of a heap *object* → possible cycle root.

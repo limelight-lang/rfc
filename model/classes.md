@@ -282,6 +282,26 @@ is bidirectional — pointers left of the origin, scalars right, Bacon/
 Fink/Grove — and its signed offsets and interface-layout cost are why
 no production VM adopted it.)
 
+**Two lists, by run kind.** A counted-pointer run and a Box run are
+walked differently — a pointer element is 8 bytes and "empty" is `NULL`,
+a Box element is 16 bytes and "empty" is the `refcounted` flag clear —
+so a single flat list of `(offset, count)` could not tell a strider
+which stride and which skip-test to use. `traced_runs` is therefore
+**two typed lists**: pointer runs (stride 8, skip `NULL`) and Box runs
+(stride 16, skip by flag). A typed class's Box list is usually empty.
+
+**Every stride null-checks.** A counted-pointer slot can hold `NULL` at
+any time — an uninitialized non-nullable pointer starts `NULL`, and
+`unset()` returns any pointer slot to `NULL` ([values.md](values.md)) —
+and no analysis excludes it, because `unset()` is always reachable. So
+**every** consumer that strides the pointer runs — `clone`'s retain
+stride, `deep_clone`/`thread_*`, the GC trace, `dispose`'s release — must
+skip `NULL` before touching the slot. This is one predicted-taken branch
+per pointer (the pointer is almost always non-null), not a defeat of the
+grouping; the run is still contiguous and prefetch-friendly, it is just
+not literally branch-free. The store barrier already skips `NULL` in its
+`ptr` form; the stride consumers do the same, explicitly.
+
 **Initialization does not read this map.** At a `new` site the class is
 known, so the compiler emits the initializer as straight-line code: one
 zero-fill over the object body — which makes every raw slot `null`/`0`
@@ -513,7 +533,7 @@ Hot part (touched by dispatch and property access):
 | `factory` | Canonical constructor `factory(ctx, category)`: allocates and initializes an instance ("Construction and teardown") |
 | `dispose` | Internal destructor `dispose(obj)`: releases counted fields and runs `__destruct` if present |
 | `prop_layout` | Property table: name → (offset, slot kind, hook flags, declaration index) |
-| `traced_runs` | List of `(offset, count)` pairs for the counted-pointer and Box runs: the trace map the GC strides |
+| `traced_runs` | The trace map the GC strides: **two** typed lists of `(offset, count)` — pointer runs (stride 8, skip `NULL`) and Box runs (stride 16, skip by flag) |
 | `display` | Cohen display: ancestors root→self indexed by depth, for O(1) `instanceof` |
 | `destruct_slot` | Vtable slot of `__destruct`, or a sentinel when the class has none |
 | `interfaces` | Sorted array: interface id → itable pointer |

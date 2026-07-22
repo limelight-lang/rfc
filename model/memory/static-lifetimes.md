@@ -29,7 +29,7 @@ Assigned **per allocation site**, conservatively: any doubt demotes.
 | Tier | Proof | Emitted code |
 |---|---|---|
 | **1 (Local)** | object never escapes the function | stack (or arena-inline) allocation, direct drop at death point, **zero RC** |
-| **2 (Scheduled)** | object escapes, but every alias is known and the death point X is statically certain | heap/arena allocation, direct `ll_object_die` at X, **zero RC** |
+| **2 (Scheduled)** | object escapes, but every alias is known and the death point X is statically certain | heap/arena allocation, a direct call to the class's `dispose` at X, **zero RC** |
 | **3 (Dynamic)** | anything unproven | runtime ARC + the active strategy's cycle collection |
 
 Tier 2 is the new rung: escape alone no longer condemns an object to

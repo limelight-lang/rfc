@@ -40,32 +40,36 @@ Cases that fall through to the dynamic barrier:
 
 ### 2. Category Barrier Fallback (runtime)
 
-Emitted through the unified store barrier slot
-([strategies.md](../gc/strategies.md)), the same hook that carries ARC
-operations and any strategy barrier.
+Composed into the store barrier's micro-operations
+([strategies.md](../gc/strategies.md)), alongside the ARC operations and
+any strategy barrier.
 
-The barrier compares the 2-bit category fields of the stored value and
-the destination's owner — one XOR + test on flags words that the
-retain path has already loaded. Same category (the overwhelmingly
-common case): no extra work. On the dangerous direction (arena value
-into a longer-lived container) it **only counts the escape** — a
-hold-count in the escapee's own header, plus one append to the arena's
-escapee list on the 0 → 1 transition ([arenas.md](arenas.md)). The
-holder's slot is never recorded, precisely so that a holder dying before
-reset cannot dangle it. Nothing is copied at the store. The fate of
-escaped objects is decided lazily at arena death, per 64 KB block —
-retention in place or evacuation ([arena-reset.md](arena-reset.md)).
-The reverse direction (heap value into an arena container) goes to the
-release-at-reset list ([arenas.md](arenas.md)).
+The barrier compares the stored value's 2-bit category field against the
+destination's, where the destination category is **`owner_cat`, a
+parameter the compiler supplies** (not a load from the owner's flags,
+which do not exist for every destination). Same category (the
+overwhelmingly common case): no extra work. On the dangerous direction
+(arena value into a longer-lived container) it **only counts the
+escape** — a hold-count in the escapee's own header, plus one append to
+the arena's escapee list on the 0 → 1 transition
+([arenas.md](arenas.md)). The holder's slot is never recorded, precisely
+so that a holder dying before reset cannot dangle it. Nothing is copied
+at the store. The fate of escaped objects is decided lazily at arena
+death, per 64 KB block — retention in place or evacuation
+([arena-reset.md](arena-reset.md)). The reverse direction (heap value
+into an arena container) goes to the release-at-reset list
+([arenas.md](arenas.md)).
 
 ### Slot category resolution
 
-(Closes what an earlier revision left open.) The destination category
-is read from the containing entity's header flags — a slot's lifetime
-*is* its owner's lifetime. Slots with no owning entity (globals,
-static properties) are long-lived by definition and known at compile
-time: the compiler emits those stores with the destination category as
-a constant, no runtime lookup at all.
+(Closes what an earlier revision left open.) `owner_cat` is always a
+compiler-supplied parameter — a slot's lifetime *is* its owner's, and
+the compiler knows it at the store site. A slot in a heap or arena
+object takes its owner's category; a slot with no owning entity (a
+global, a thread-local static block, which has no `RcHeader` at all) is
+long-lived by construction. Either way the destination category reaches
+the barrier as a value, never a runtime load from a header that may not
+be there.
 
 ---
 

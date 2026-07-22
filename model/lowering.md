@@ -37,12 +37,15 @@ typedef struct Object {
 typedef struct Node {
     RcHeader      rc;            // +0
     struct Class *cls;           // +8
-    struct Node  *next;          // +16  ┐ counted-pointer run
-    struct Node  *prev;          // +24  ┘ NULL = null, 1 = UNINIT
-    Value         meta;          // +32    untyped → Box
-    int64_t       id;            // +48    not initialized at all
-    uint8_t       ok;            // +56
-} Node;                          // object_size 64
+    struct Node  *next;          // +16  ┐ counted-pointer run. next: Node
+    struct Node  *prev;          // +24  ┘ (non-null) → NULL means uninitialized;
+                                 //        prev: ?Node → NULL is php null,
+                                 //        uninitialized is an init-bitmap bit
+    Value         meta;          // +32    untyped → Box (undef flag if uninit)
+    int64_t       id;            // +40    id: int, uninitialized via bitmap bit
+    uint8_t       ok;            // +48    ok: bool
+    uint8_t       init_bits;     // +49    prev + id tracked here (fits padding)
+} Node;                          // object_size 56
 
 typedef struct InterfaceEntry {
     uint32_t interface_id;
@@ -98,7 +101,7 @@ static inline void ll_retain(RcHeader *h) {
 }
 
 // Returns "this entity just died", it does not free: the caller runs
-// the three-phase teardown (ll_object_die). Only GcHeap entities die
+// the three-phase teardown (obj->class->dispose). Only GcHeap entities die
 // this way; an arena object's count reaching zero means nothing.
 static inline bool ll_release(RcHeader *h) {
     if ((h->flags & LL_MEMCAT_MASK) && !(h->flags & LL_COW)) return false;

@@ -57,18 +57,23 @@ The GC (Immix + MMTK) operates only on the **general heap** — it never scans o
 
 ## Cross-Arena References
 
-**Decision**: every reference store is a **category barrier**. When a
-reference to entity S is stored into a longer-lived container D (object
-slot, array element, captured variable), the memory categories of the two
-are compared — 2 bits in each flags word, one XOR + test, and the flags
-are already loaded by retain. Same category (the overwhelmingly common
-case): no extra work. Different categories: escape handling.
+**Decision**: every reference store carries a **category barrier**. When
+a reference to entity S is stored into a longer-lived container D (object
+slot, array element, captured variable), the two memory categories are
+compared: S's from its own flags word, and **D's from `owner_cat`, a
+parameter the compiler supplies** ([strategies.md](../gc/strategies.md)).
+It is passed rather than loaded because the destination may have no
+header at all — a thread-local static block is a legal target and
+carries no `RcHeader`. Same category (the overwhelmingly common case):
+no extra work. Different categories: escape handling.
 
-The category barrier is the strategy-independent layer of the **unified
-store barrier slot** ([strategies.md](../gc/strategies.md)): the
-compiler emits one hook per reference store, and the barrier composes
-there with ARC operations and, in the `rc-satb` build, the SATB
-deletion barrier ([satb.md](../gc/satb.md)). One door, not two.
+The category barrier is the strategy-independent layer of the store
+barrier's micro-operations ([strategies.md](../gc/strategies.md)):
+`store_ptr` / `store_box` publish the new reference and `drop` releases
+the displaced one, each composing the category barrier with the ARC
+operations and, in the `rc-satb` build, the SATB deletion barrier
+([satb.md](../gc/satb.md)). One door, split by slot width and by
+new-vs-old, not a second door.
 
 ### The dangerous direction: longer-lived ← shorter-lived
 
@@ -142,8 +147,9 @@ last resort, not the first.
 
 **Completeness contract**: "the escape count is a complete registry
 of external references" holds only because every reference store in
-generated code goes through `ll_ref_store`. Native code at the FFI
-boundary writes memory directly, past the barrier. The contract is
+generated code goes through the store barrier (`store_ptr` / `store_box`,
+and `drop` on the displaced value). Native code at the FFI boundary
+writes memory directly, past the barrier. The contract is
 therefore: FFI/native code must either mutate managed containers
 through the provided accessor API (which invokes the barrier
 internally) or refrain from storing managed references into

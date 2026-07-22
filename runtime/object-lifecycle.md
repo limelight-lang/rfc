@@ -79,10 +79,15 @@ off the list".
 
 ## Creation: `new`
 
-The compiler emits allocation inline (bump pointer, see
-[lowering.md](../model/lowering.md)) whenever the class and memory
-category are statically known; `ll_object_new` is the out-of-line runtime
-path used otherwise. Both do the same steps:
+The factory constructor is **compiler-generated per class**, not a
+generic runtime routine ([classes.md](../model/classes.md),
+"Construction and Teardown"). The compiler emits it inline (bump
+pointer, see [lowering.md](../model/lowering.md)) when the class and
+category are statically known; the dynamic path (`new $class`) makes one
+indirect call through the descriptor's `factory` pointer. There is no
+generic `ll_object_new` that reads `object_size` and walks a layout map
+to initialize — construction is straight-line code specialized to the
+class.
 
 ```rust
 #[repr(C)]
@@ -91,53 +96,58 @@ pub struct RcHeader {
     flags: u32,
 }
 
+// LLObject: 16-byte header, then property slots at their laid-out
+// offsets ([classes.md], "Slot kinds"). Each slot is the machine
+// representation of its declared type — a raw i64, a bare pointer, a
+// 16-byte Box only for mixed — never one uniform Box per property.
 #[repr(C)]
 pub struct Object {
     rc: RcHeader,           // +0
     class: *const Class,    // +8
-    // property slots follow at +16, per class prop_layout
+    // property slots follow at +16
 }
 
-#[no_mangle]
-pub extern "C" fn ll_object_new(ctx: *mut LLContext, class: &Class, cat: MemCat) -> *mut Object {
-    let mem = match cat {
-        MemCat::RequestArena => request_arena().bump(class.object_size),
-        MemCat::GcHeap       => gc_alloc(class.object_size),
-        MemCat::LongLived    => long_lived_arena().alloc(class.object_size),
-    };
-    let obj = mem as *mut Object;
-    unsafe {
-        // header in one store: refcount = 1 (the off-by-one encoding is
-        // deferred), flags = memory category + ENTITY_OBJECT. NOT
-        // HAS_DESTRUCTOR, and not the class's flag word: that flag means
-        // "this object owes a __destruct", which is not true yet.
-        (*obj).rc = RcHeader::new(cat, ENTITY_OBJECT);
-        (*obj).class = class;
-        class.init_props(obj);          // defaults / UNINIT discriminants
-    }
-    obj
-    // the __construct call is emitted by the compiler at the call
-    // site: the class is known there, so it is a direct call
-    //
-    // Tracking the destructor is NOT done here. An arena object with a
-    // `__destruct` is registered only once `__construct` has returned
-    // successfully — see "Two constructors" above: an object whose
-    // constructor threw must never have its `__destruct` run, so a
-    // record created by the factory would be a record demanding exactly
-    // the thing that is forbidden.
-}
+// The descriptor carries a pointer to this class's factory and to its
+// dispose; both are emitted by the compiler against the class's layout.
+//   Class { …, factory: *const (), dispose: *const (), traced_runs, … }
+
+// What `Foo`'s generated factory does — the shape, not a generic body:
+//   fn Foo__factory(ctx, category) -> *mut Object {
+//     let obj = allocate(ctx, category, FOO_OBJECT_SIZE); // per category
+//     obj.rc = RcHeader::new(category, ENTITY_OBJECT); // NOT HAS_DESTRUCTOR
+//     obj.class = &FOO_CLASS;
+//     // straight-line init: zero-fill the body, then the explicit stores
+//     // (defaults, and a Box `undef` flag on a mixed slot without a
+//     // default). No init_props, no map walk, no UNINIT discriminant.
+//     obj
+//   }
+// The __construct call is emitted by the compiler at the call site (the
+// class is known there, so it is a direct call). Registering the
+// destructor is NOT done in the factory: an arena object with a
+// `__destruct` is recorded only once `__construct` returns successfully
+// ("Two constructors" above), so a record created by the factory would
+// demand exactly the __destruct that must never run.
 
 // Emitted after `__construct` returns, and only for a class that has a
 // destructor. Sets HAS_DESTRUCTOR on the header and, for an arena
 // object, writes the destructor-log record. False means the record could
-// not be written: the creation fails with memory-exhausted, which is the
-// same observable outcome as a constructor that threw.
+// not be written: the creation fails with memory-exhausted, the same
+// observable outcome as a constructor that threw.
 pub extern "C" fn ll_object_constructed(ctx: *mut LLContext, obj: *mut Object) -> bool;
 ```
 
 ---
 
 ## Teardown: Three Phases
+
+Teardown is the class's compiler-generated **`dispose`**
+([classes.md](../model/classes.md), "dispose — the internal
+destructor"), the counterpart of the factory. The collector or the
+release path holds a bare object and calls `obj->class->dispose(obj)` —
+one indirect call into straight-line code. `dispose` does **not** read
+`prop_layout` at runtime; the releases below are emitted per class,
+slot by slot. Only the GC reads layout as data, through `traced_runs`.
+The three phases are the shape every class's `dispose` has.
 
 Triggered when the refcount reaches zero (or the cycle collector proves
 the object garbage).
@@ -178,16 +188,17 @@ Decided entirely by the memory category bits:
 | Long-lived | per its lifecycle policy |
 
 ```rust
-pub extern "C" fn ll_object_die(obj: *mut Object) {
-    let class = unsafe { &*(*obj).class };
-
+// The shape of every class's generated `dispose`. `Foo__dispose` inlines
+// this for Foo's specific counted slots — there is no `refcounted_slots()`
+// walk at runtime; the compiler knew the slots and emitted the releases.
+fn Foo__dispose(obj: *mut Object) {
     // Phase 1: pre-destructor, exactly once, resurrection-aware.
     // The test is the object's own HAS_DESTRUCTOR flag, not the class:
     // a class may declare __destruct while this object never completed
     // construction, and such an object must not run it.
     if flags_test(obj, HAS_DESTRUCTOR) && !flags_test_and_set(obj, DESTRUCTED) {
         refcount(obj) += 1;               // guard: a transient $this ref
-        call_vtbl_slot(obj, class.destruct_slot());
+        call_user_destruct(obj);          // Foo's __destruct, known here
         refcount(obj) -= 1;               // drop the guard, no re-entry
         if refcount(obj) > 0 {
             return;                       // resurrected: abort teardown
@@ -201,19 +212,15 @@ pub extern "C" fn ll_object_die(obj: *mut Object) {
     // free it, and then phase 3 would free it again.
     forget_candidate(obj);
 
-    // Phase 2: drop, release children and internal structures
-    for slot in class.prop_layout.refcounted_slots() {
-        // A holder going away is a `lose` for every request-arena
-        // escapee it referenced — the same event as the store barrier
-        // overwriting the slot. Heap children fall through to the
-        // ordinary release below. (The cycle collector owes this too,
-        // when it frees a holder without coming through here.)
-        if is_request_arena(prop_ptr(obj, slot)) {
-            escape_lose(prop_ptr(obj, slot));
-        }
-        ll_release(prop_ptr(obj, slot));
-    }
-    if let Some(dyn_props) = dynamic_props(obj) { free_hashtable(dyn_props); }
+    // Phase 2: drop, emitted per counted slot (Foo has, say, two).
+    // A holder going away is a `lose` for every request-arena escapee it
+    // referenced — the same event as the store barrier's `drop` on an
+    // overwrite. Heap children fall through to the ordinary release.
+    // (The cycle collector owes this same bookkeeping when it frees a
+    // holder without coming through here.)
+    drop_slot(obj, FOO_NEXT_OFFSET);      // e.g. `Foo $next`
+    drop_slot(obj, FOO_DATA_OFFSET);      // e.g. `array $data`
+    if FOO_HAS_DYNAMIC_PROPS { free_hashtable(dynamic_props(obj)); }
     if flags(obj) & WEAK != 0 { weak_table_clear(obj); }
 
     // Phase 3: memory, by category
@@ -222,6 +229,9 @@ pub extern "C" fn ll_object_die(obj: *mut Object) {
         _ => {}                           // arenas: reset reclaims
     }
 }
+// drop_slot is the `drop` micro-op of the store barrier
+// (gc/strategies.md): escape_lose if the child is a request-arena
+// escapee, then release, then teardown if that was the last reference.
 ```
 
 ### Arena reset and destructors

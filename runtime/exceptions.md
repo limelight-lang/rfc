@@ -635,13 +635,20 @@ something else (`ll_release` returns "the entity died",
 `ll_gc_collect_cycles` returns a count). Those are the only candidates
 for a `pending` check, and there are seven:
 
+The entry-point names below predate the object-model rework: the store
+barrier is now the `store_*` / `drop` micro-ops
+([../model/gc/strategies.md](../model/gc/strategies.md)) and teardown is
+the class's `dispose` ([../model/classes.md](../model/classes.md)). The
+allocation analysis is unchanged — the operations still allocate exactly
+where the rows say.
+
 | Entry point | Allocates | Answer |
 |---|---|---|
-| `ll_ref_store` | arena escape / release-at-reset log | funded (below) |
+| store barrier (`store_*`) | arena escape / release-at-reset log | funded (below) |
 | `ll_object_constructed` | arena destructor log | folded into construction failure (below); it has a channel — `false` — precisely because of it |
 | `ll_arena_reserve` | a block, best-effort | deferred: the next `alloc` reports |
 | `ll_arena_reset` | fixpoint working memory | **on the list** |
-| `ll_object_die` | transitively: user `__destruct`, releases, reentrant stores | decomposes into the rows above |
+| `dispose` | transitively: user `__destruct`, releases, reentrant stores | decomposes into the rows above |
 | `ll_release` | cycle-collector candidate buffer | refusable (below) |
 | `ll_thread_init` | the thread heap | deferred: the next allocation reports null |
 

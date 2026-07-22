@@ -44,23 +44,27 @@ hide `X`, so that is the step that gets instrumented.
 
 ## The deletion barrier
 
-The strategy hook installed into the unified store barrier slot
-([strategies.md](strategies.md)):
+The strategy hook composed into the store barrier's micro-operations
+([strategies.md](strategies.md), `store_ptr` / `store_box` / `drop`).
+The SATB step rides the **`drop`** operation — the one that sees the
+displaced `old` — and the publish rides `store_*`:
 
 ```
-ll_ref_store(ctx, owner, slot, old_entity, new_value):
-    retain(new_value)                    # ARC layer, before anything else
-    category_barrier(owner, new_value)   # always: arenas (escape / release log)
-    if marking_active and old_entity is heap ref:
-        satb_queue.push(old_entity)      # "this was in the snapshot: trace it"
-    *slot = new_value                    # published as a whole Value...
-    release(old_entity)                  # ...before the displaced value dies
+store_*(ctx, owner_cat, slot, new):
+    retain(new)                          # ARC layer, before anything else
+    category_barrier(owner_cat, new)     # arenas (escape / release log); owner_cat is a param
+    *slot = new                          # publish: 8 bytes (ptr) or 16 (box)
+
+drop(ctx, owner_cat, old):
+    if marking_active and old is heap ref:
+        satb_queue.push(old)             # "this was in the snapshot: trace it"
+    release(old)                         # ...after the slot was published by store_*
 ```
 
-- The barrier is the **only** writer of the slot, and it writes the
-  whole `Value` before releasing the displaced one: teardown runs user
-  code, and user code that collects must not see an edge the refcount
-  has already given up.
+- The publish happens in `store_*` before `drop` releases the displaced
+  one — teardown runs user code, and user code that collects must not
+  see an edge the refcount has already given up. An initializing store
+  is `store_*` alone (no `old`, no `drop`, no SATB push).
 - The queue push is performed **by the mutator thread itself** into a
   **thread-local** SATB queue: no cross-thread writes, no locks. The
   marker drains full queue segments. This respects the rule that only

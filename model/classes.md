@@ -509,6 +509,33 @@ thread through its init-bitmap bit ("Constants" below), because it may
 run arbitrary code and observe order that eager stamping would fix too
 early.
 
+### Actors are the exception (reserved)
+
+Thread-local is correct for the thread-owns-a-request world. **Actors
+break the assumption it rests on**: an actor is not bound to a thread —
+the scheduler runs it on whatever pool thread is free and it may migrate
+between messages ([actors.md](../runtime/actors.md)). Plain thread-local
+statics would then leak across the isolation boundary: an actor would
+see the static cells of whatever thread it currently runs on, shared
+with every other actor that thread also hosts — the opposite of the
+share-nothing that thread-local was meant to give.
+
+The direction, not yet specified: static state of an **actor** class
+belongs to the **actor**, not the thread, and follows the actor exactly
+as its allocation arena already does — mounted into the accessed TLS
+base when the scheduler places the actor on a thread, so the same
+TLS-relative access keeps working while what it resolves to travels with
+the actor ([actors.md](../runtime/actors.md), "the allocation context
+follows the actor, not the thread").
+
+**Reserved, to design with the actor runtime**: whether a *non-actor*
+class's statics, touched from inside an actor, are per-thread (and thus
+shared between actors on that thread — a hole in isolation) or are
+pulled into the actor's set too; and how the compiler tells the two
+cases apart at a static access site. Named here so thread-local statics
+are understood as the non-actor rule, with actors a known exception, not
+an oversight.
+
 ### Statics do not inherit by prefix
 
 **This is where statics differ from objects.** In PHP a subclass that

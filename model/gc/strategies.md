@@ -28,50 +28,82 @@ can sit behind the contract (see the registry below).
 Every strategy plugs into the same four interfaces. Nothing else in the
 runtime or the generated code knows which strategy is active.
 
-### 1. The unified store barrier slot
+### 1. The store barrier, as micro-operations
 
-The compiler emits every reference store through a single hook:
+A reference store is not one hook. It is composed from small operations
+the compiler picks per site, because the slot's kind and whether a
+previous value exists are both known at compile time. The old single
+`ll_ref_store(ctx, owner, slot: *Value, old, new: Value)` assumed every
+slot was a 16-byte `Value` and every store overwrote a live one; neither
+holds under the object layout ([classes.md](../classes.md)): a typed
+reference is a bare 8-byte pointer, and an initializing store has no
+previous value to release.
+
+**Two operations, not one.** Publishing a new reference and dropping the
+old one are separate:
 
 ```
-ll_ref_store(ctx, dst_owner, slot: *Value, old_entity, new_value: Value)
+store_ptr(ctx, owner_cat, slot, new)   # slot is *pointer, 8 bytes
+store_box(ctx, owner_cat, slot, new)   # slot is *Value,   16 bytes
+drop(ctx, owner_cat, old)              # old is an entity; no slot
 ```
 
-The two value arguments are deliberately asymmetric. `new_value` is the
-whole 16-byte `Value` and the barrier writes it — one slot has one
-writer, and a caller stamping the tag afterwards would leave the slot
-torn for the length of the call. `old_entity` is only the entity the
-slot currently holds (null when it holds a scalar), because that is all
-the counting needs and the caller already has it loaded.
+- `store_*` retains `new`, applies the cross-arena category check,
+  and publishes the slot. The `ptr` form writes 8 bytes; the `box` form
+  writes the whole 16-byte `Value` (a caller stamping the tag afterwards
+  would leave the slot torn for the length of the call — one slot, one
+  writer). The `ptr` form treats a slot value of `0` (PHP `null`) and
+  `1` (the `UNINIT` sentinel) as non-entities: it counts only `new > 1`.
+- `drop` takes the entity the slot **held**, not the slot. Releasing,
+  un-counting an escape, and running teardown all operate on the
+  displaced entity's header, so `drop` does not depend on the slot's
+  kind at all — there is one `drop` for both forms.
 
-`dst_owner` is the entity containing `slot`: a slot has no header of
-its own, so the destination's category is read from its owner's flags —
-and the generated code has the owner in a register anyway (it just
-computed `slot` from it). `ctx` supplies the arena whose escape and
-release-at-reset logs the barrier writes: one mounted arena per executing
-context, kept correct by the compiler (actor arenas are unreachable
-from outside, so an escape-creating store always runs with the owner's
-arena mounted).
+**Composition follows the site:**
 
-Its body is composed at build time from up to three layers:
+- **Initializing store** (a fresh slot, in a factory or after `new`):
+  `store_*` only. There is no old value, so no `drop` — the release
+  path is not emitted at all, which is the point of the split.
+- **Overwriting store** (a live slot): `store_*` then `drop(old)`.
+  The order is the invariant, not a comment: the slot is published
+  before the old value is released, because releasing runs `__destruct`,
+  which may collect and read the slot, and must see the new value
+  (audit C1). The split makes that ordering fall out of the composition.
+
+**`owner_cat` is a parameter, not read from the owner.** The
+destination's memory category decides the cross-arena direction, and
+the compiler knows it — so it is passed, not loaded from `owner->flags`.
+This is what lets a **static block** be a store destination: it has no
+`RcHeader` (it lives for the program in the image, [classes.md](../classes.md)),
+and none is needed, because its category (long-lived) is a compile-time
+constant. Where `owner_cat` is a constant the escape direction is often
+statically impossible, so the compiler emits a **specialized** form with
+the category check gone — a heap-to-heap store is then retain + publish
++ release, nothing more. `ctx` still supplies the arena whose escape and
+release-at-reset logs a full store writes.
+
+Each operation is still composed at build time from up to three layers:
 
 | Layer | Owner | Present |
 |---|---|---|
-| Category barrier (cross-arena check, escape count + release log) | arenas, strategy-independent | always ([arenas.md](../memory/arenas.md)) |
-| RC operations (`retain(new)` / `release(old)`) | ARC | in every RC-based strategy, after compiler pairing elimination |
+| Category barrier (cross-arena check, escape count + release log) | arenas, strategy-independent | in the full form; gone where `owner_cat` makes it impossible ([arenas.md](../memory/arenas.md)) |
+| RC operations (`retain(new)` in `store`, `release(old)` in `drop`) | ARC | in every RC-based strategy, after compiler pairing elimination |
 | Strategy hook (e.g. SATB deletion barrier) | active strategy | only if the strategy defines one |
 
-The slot is the *only* door through which any strategy observes
-reference mutation. Strategies with no hook (NoGC, pure RC,
-stop-the-thread tracing) contribute zero instructions to it.
+The slot is still the *only* door through which any strategy observes
+reference mutation; splitting the write from the release does not add a
+second door, it separates two things that were always distinct. Strategies
+with no hook (NoGC, pure RC, stop-the-thread tracing) contribute zero
+instructions.
 
 Objects whose lifetime the compiler schedules statically (tiers 1–2 of
 [static-lifetimes.md](../memory/static-lifetimes.md)) bypass the
 strategy entirely: no RC layer, no strategy hook; only the category
 barrier remains where a cross-arena store is possible.
 
-The COW check ([values.md](../values.md)) is *not* part of this slot:
-it guards entity mutation, not reference stores, and is orthogonal to
-the strategy.
+The COW check ([values.md](../values.md)) is *not* part of this: it
+guards entity mutation, not reference stores, and is orthogonal to the
+strategy.
 
 ### 2. Safepoints
 
@@ -106,7 +138,8 @@ strategy scans or collects arena objects.
 Strategies consume, not define, the object model:
 
 - `RcHeader` flags and refcount ([object-lifecycle.md](../../runtime/object-lifecycle.md))
-- class `prop_layout.refcounted_slots()` for tracing object children
+- the class's `traced_runs` — the list of `(offset, count)` pointer and
+  Box runs — for tracing object children ([classes.md](../classes.md))
 - the three-phase teardown (`__destruct` with resurrection check →
   drop → memory release). A strategy that proves an object garbage may
   free it directly instead of entering teardown — today's `rc-trace`

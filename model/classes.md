@@ -338,6 +338,21 @@ sized by the *whole* object's `object_size` — `clone` is a
 `memcpy(object_size)` followed by a retain stride over `traced_runs`,
 never a per-property walk.
 
+**Two slots the retain stride is not enough for**, because a `memcpy`
+duplicates the *pointer* where the copy needs its own entity:
+
+- the **dynamic-properties** hidden slot (below): it is a pointer to a
+  per-object hashtable, so `memcpy` + retain would make the clone and
+  the original share one table — a mutation through either is visible in
+  both, and both dispose paths would free it. `clone` gives the copy an
+  independent hashtable (a deep copy of the table, itself shallow in its
+  values under the usual COW recursion). This slot is not in
+  `traced_runs`; `clone` handles it specially, as does `dispose`.
+- the **weak side-table** bit: the copy is a new object with no weak
+  references yet, so the `WEAK` flag is cleared on the clone and no
+  side-table entry is created — a `WeakReference` to the original must
+  not resolve to the copy.
+
 ### The byte block
 
 One trailing region of the object holds everything that is smaller than
@@ -645,13 +660,26 @@ owns its request — made intrinsic rather than left to a process model.
 
 **Access is TLS-relative.** The descriptor does not hold a pointer to
 the block — it could not, since every thread's block is at a different
-address. It holds a **TLS offset/index**, and a thread resolves
-`Foo::$bar` as *its* TLS base + that offset + the field offset. For a
-class compiled into the image the TLS offset is a link-time constant, so
-the access is the platform's normal thread-local load (an `fs`/`gs`-
-relative load on the usual targets — the same fast-TLS path the heap
-already uses); a class loaded later (`eval`, autoload, a plugin) gets a
-dynamic TLS slot resolved at load.
+address. It holds a **TLS handle**, and a thread resolves `Foo::$bar` as
+*its* TLS base + that handle + the field offset.
+
+The handle has two forms, because static TLS and dynamically-loaded TLS
+are addressed differently. For a class compiled into the image the
+handle is a **link-time-constant offset**, and the access is the
+platform's normal `fs`/`gs`-relative load (the fast-TLS path the heap
+already uses). A class loaded later (`eval`, autoload, a plugin) lives
+in **dynamic TLS**, addressed by a `(module, offset)` pair through the
+DTV, not a flat offset — so the descriptor's handle is a small tagged
+union (flat offset *or* dynamic slot), and late-class access takes the
+`__tls_get_addr`-style path, not the fast one. A `uint32_t` offset alone
+cannot encode the dynamic case; the field is sized for the union.
+
+The per-thread root walk (below) reads each class's handle to find the
+block. A thread that never touched a given late-loaded class has **no
+block allocated** for it, so the walk must treat an unallocated dynamic
+slot as an empty root set (nothing to trace), not fault on it — image
+classes always have their block (BSS-backed, zero-filled), late classes
+only after first use in the thread.
 
 Inside, the block is an object: the same slot kinds, the same three
 runs with counted pointers first, the same `traced_runs`, the same
@@ -922,6 +950,24 @@ whose every slot runs the initializer then rewrites `class` back to the
 real descriptor before retrying the call. After first touch, the object
 is indistinguishable from an eagerly-constructed instance: zero ongoing
 cost.
+
+The shim must carry the **same `traced_runs`, `display`,
+`destruct_slot` and `dispose`** as the real class, not only its
+`object_size`. A ghost can be traced or torn down before it is ever
+touched — the collector reaches it through `obj->class` = the shim — and
+its body is zero-filled, i.e. every slot reads as uninitialized (a
+`NULL` pointer, a clear init bit), which the stride's `NULL`-skip
+handles. So the shim traces and frees exactly as the real class would
+for an all-uninitialized instance; a `dispose` on an untouched ghost
+runs no user `__destruct` (its `HAS_DESTRUCTOR` is unset until the
+constructor completes) and releases nothing (all slots `NULL`). Entity
+kind is `6` (lazy) until first touch, then `0` (object) — see the flags
+layout above.
+
+A `clone` of an *untouched* ghost must not copy the shim pointer as an
+ordinary field (that would make the copy a second ghost that re-runs
+`__construct` on first touch). Cloning forces materialization first,
+then clones the real instance.
 
 **Conflict**: this contradicts the `!invariant.load` annotation on the
 class-pointer load ([lowering.md](lowering.md)), which assumes "an

@@ -240,6 +240,21 @@ At end of request the arena runs only phase 1 for tracked objects (the
 `track_destructor` list), then resets the bump pointer; phases 2–3 are
 unnecessary, children living in the same arena die with it.
 
+**Weak references need one more step.** A `WeakReference` to a
+request-arena object does not bump the escape hold-count (a weak edge is
+not ownership, [arenas.md](../model/memory/arenas.md)), so the arena
+object is not promoted and dies at reset — but skipping phase 2 skips
+the `weak_table_clear` that phase 2 would run, leaving the weak
+side-table pointing at reclaimed bump memory. `$weak->get()` would then
+return a dangling pointer into reused arena pages. So the arena must
+also clear the weak side-table for its objects at reset: an object that
+takes a weak reference while it lives in an arena is registered on a
+per-arena weak list (as `__destruct` objects are on `track_destructor`),
+and reset walks that list clearing each side-table entry before the
+pages are reused. An arena with no weak-referenced objects pays nothing.
+(A runtime mechanism, noted in BACKLOG; the rule is stated here so weak
+references and arenas are specified together, not each in isolation.)
+
 ---
 
 ## Cross-arena references

@@ -150,6 +150,58 @@ needs a design decision, deferred deliberately.
   string is itself immortal/interned. State the constraint when enums
   are written (also listed under enums above).
 
+## FFI document — review findings (to resolve)
+
+An adversarial review of [ffi.md](model/memory/ffi.md) found the first
+draft has two hard contradictions with the committed model and several
+holes. The document is marked "under review" until these are settled.
+
+- **Hidden `RcHeader` at −8 breaks the offset-0 invariant** (critical).
+  The runtime reads `RcHeader` at offset 0 of any entity
+  ([classes.md](model/classes.md), [values.md](model/values.md));
+  a Box pointing at the C data with the header at −8 makes `release`,
+  the GC trace, the category fast-path and the kind switch all read C
+  fields as header bits. The bias cannot be detected locally (the flag
+  that says "−8-biased" lives at −8). Decision needed: drop the
+  hidden-header form and keep only the separate `Box` wrapper, or find a
+  scheme that does not violate offset-0. (Raised because `RcHeader`-in-Box
+  was attractive; it does not survive the invariant.)
+- **"Mandatory owner or compile error" contradicts accept-every-program**
+  (critical). [static-lifetimes.md](model/memory/static-lifetimes.md)
+  makes the bottom rung a runtime fallback, never a compile error; FFI
+  bolts on a Rust-style reject, and has no tier-3 fallback because ARC
+  needs an `RcHeader` a headerless struct lacks. Decide: a runtime
+  fallback for un-anchored foreign values, or an explicit exception to
+  the accept-every-program rule for `#[FFI]`.
+- **Arena-owned foreign struct leaks the free hook.** A managed object
+  owning a C struct in a request arena is freed in its `dispose`, but
+  arena reset runs only phase 1 for `track_destructor` objects, and a
+  `#[FFI(free:)]` hook is not a user `__destruct`, so `dispose` never
+  runs and the hook never fires. Needs a per-arena owned-foreign list
+  walked at reset — the exact treatment the weak+arena UAF already got
+  ([object-lifecycle.md](runtime/object-lifecycle.md)).
+- **No slot kind for a foreign-typed property.** An owned/`#[Ptr]`
+  foreign pointer must be excluded from `traced_runs` (no header to
+  trace) yet visited by `dispose` (to run the free hook); an inline
+  `#[FFI]` struct is raw bytes dispose currently never visits. Needs an
+  explicit "owned foreign" slot kind, out of both traced lists and in
+  the dispose free sequence ([classes.md](model/classes.md) "Slot kinds").
+- **Class-less kind-4 Box has nowhere to store a per-type free hook.**
+  The hook is per-FFI-type but the Box descriptor is one shared
+  singleton, so the hook must be an instance field at a fixed offset the
+  Box body never defines; the hidden-header form has no body at all.
+- **Boxing a struct with a live `#[Borrow]` field → UAF**, and the
+  runtime anchor mechanism for a borrow with no lifetime syntax is
+  asserted, not specified (worst-case parameter borrows would force a
+  compile error, see F2).
+- **Smaller contradictions:** owned-copy `string` field vs "no hook =
+  nothing to free" (who frees the copy); "reading a C string copies" vs
+  the zero-copy borrowed view (which a two-representation managed string
+  cannot express); nested inline `#[FFI]` pointer-field ownership;
+  `#[FFI(free:)]` built on the deferred interop machinery with no
+  calling-convention/failure/unwind spec; the name "Box" colliding with
+  the 16-byte Value Box; no memory-category value for foreign memory.
+
 ## Deferred optimizations
 
 - **No zeroing by default, anywhere** — the memory manager must not

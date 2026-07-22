@@ -1,5 +1,13 @@
 # FFI: Pure C Structures, Ownership, and Attributes
 
+> **Under review.** A first-pass adversarial review found two hard
+> contradictions with the committed model and several holes — the
+> hidden-`RcHeader`-at-−8 Box form (breaks the offset-0 invariant), the
+> mandatory-owner-or-compile-error rule (contradicts accept-every-program),
+> the arena-owned free-hook leak, and the missing owned-foreign slot
+> kind. They are logged in [BACKLOG.md](../../BACKLOG.md), "FFI document —
+> review findings," and must be settled before this document is relied on.
+
 ## Scope
 
 How Limelight represents **pure C structures** — foreign data with

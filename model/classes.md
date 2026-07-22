@@ -261,20 +261,57 @@ call — which runs specialized code, not a map walk. That is the whole
 reason the factory lives in the descriptor: the dynamic path.
 
 **There may be more than one factory, and only the canonical one is in
-the descriptor.** The others are link-time symbols the compiler calls
-where it knows the case:
+the descriptor.** The others are members of the lifecycle family below.
 
-- **specialized by category** — where the category is a compile-time
-  constant, a variant taking only `(ctx)` with the category baked in,
-  so the four-way selection disappears;
-- **specialized by construction kind** — `clone` (copy an existing
-  instance: `memcpy(object_size)` then a retain stride over
-  `traced_runs`, not a fresh init), the Ghost/Proxy shims for lazy
-  objects, `unserialize` (fill from a stream).
+### The lifecycle operation family
 
-A new construction kind is a new generated symbol; the descriptor does
-not change. The canonical factory suffices for everything reached
-dynamically.
+**Decision**: allocation, teardown, and every whole-object copy or move
+are **compiler-generated methods per class**, specialized to the class's
+layout. They are one family, built the same way; which of them the
+descriptor carries a pointer to is decided per operation by whether a
+*dynamic* (class-in-a-register) path needs it.
+
+| Operation | What it does | In descriptor? |
+|---|---|---|
+| `factory(ctx, category)` | allocate + initialize | yes — `new $class` |
+| `dispose(obj)` | release counted fields, run `__destruct` | yes — the collector holds only `obj` |
+| `clone(obj)` | shallow copy: `memcpy(object_size)` + retain stride over `traced_runs` | maybe — `clone` on a dynamic type |
+| `deep_clone(obj)` | recursive copy of the whole graph | maybe |
+| `thread_clone(obj, dst)` | copy into another thread | maybe |
+| `thread_move(obj, dst)` | move into another thread, source gives up ownership | maybe |
+
+Two rules shape the whole family:
+
+- **Recursion is through the same operation on the field's type.**
+  `deep_clone` of an object copies its scalar slots and calls
+  `deep_clone` on each counted child; `thread_move` copies scalars and
+  calls `thread_move` on each child. A resource-holding type (a socket,
+  a file descriptor) is not memcpy-able across threads — it carries its
+  own implementation of these hooks (`dup` the fd for `thread_clone`,
+  hand it over and null the source for `thread_move`), and the parent's
+  generated operation calls it like any other field. **How the compiler
+  decides a field needs the hook is the compiler's business and not part
+  of the runtime model** — the runtime only sees the generated call.
+
+- **A graph copy needs an identity map.** `deep_clone`, `thread_clone`
+  and `thread_move` walk a graph that may have cycles and shared nodes,
+  so they thread an old→new map (as `unserialize` does), not a plain
+  recursion. The map is a runtime structure; the per-field dispatch is
+  still compiled.
+
+The specialized-by-category factory (category a compile-time constant,
+signature just `(ctx)`, the four-way selection gone) and the
+Ghost/Proxy shims for lazy objects and `unserialize` are members of the
+same family. A new operation is a new generated symbol; adding one does
+not change the descriptor unless it needs the dynamic path.
+
+**Reserved, semantics not yet decided**: whether `deep_clone`
+copies COW entities (strings, arrays) eagerly or leaves them shared to
+separate on first write; and the ownership model `thread_move` /
+`thread_clone` target (share-nothing deep copy, à la actors, versus
+transfer of ownership with atomic counting). These arrive with
+multi-threading; they are named here so the family is open to them, not
+specified.
 
 ### dispose — the internal destructor
 
@@ -684,6 +721,6 @@ Resolved design questions live in the sections above. Intentionally postponed:
 
 - **Optimistic devirtualization of `static::` call sites** with patching on subclass load: JIT phase.
 - **Interning of runtime-built name strings** (intern on first use vs hash-only matching): decide during stdlib work.
-- **Class-as-object model (metaclass)**: representing the class itself as an object implementing a runtime interface: `__new` as the allocator, `__dispose`, reflection entry point (see the design story). Needs full design before inclusion: interaction with the memory manager and the immutable-after-link guarantee that inline caches rely on.
+- **Class-as-object model (metaclass)**: representing the class itself as an object implementing a runtime interface: `__new` as the allocator, `__dispose`, reflection entry point (see the design story). The allocator and destructor are concrete as the `factory` / `dispose` of the lifecycle family ("Construction and Teardown"); what stays deferred is exposing the class *as an object*. Needs full design before inclusion: interaction with the memory manager and the immutable-after-link guarantee that inline caches rely on.
 
 Lowering of this model to concrete C structures and LLVM IR is specified in [lowering.md](lowering.md).

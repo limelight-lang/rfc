@@ -157,8 +157,10 @@ use:
 %b  = load %Value, ptr %p3, align 8
 
 ; $this->ok   where the compiler packed this class's bools: bit 3 of
-;             the byte block at offset 65 (the plain form is a byte load)
-%p4 = getelementptr inbounds i8, ptr %obj, i64 65
+;             the byte block at offset 56 — in this variant the block
+;             takes the place of the standalone `ok` byte shown in the
+;             struct above (the plain form is that byte load)
+%p4 = getelementptr inbounds i8, ptr %obj, i64 56
 %w  = load i8, ptr %p4
 %s  = lshr i8 %w, 3
 %v2 = trunc i8 %s to i1

@@ -49,7 +49,12 @@ storage format of one kind of property. See
 +0   payload   8 B   union { i64, f64, ptr }
 +8   type      1 B   type tag
 +9   flags     1 B   bit 0 refcounted; bit 1 undef (property slots only);
-                     bit 2 writing (rc-satb concurrent-marking lock, below)
+                     bit 2 writing (rc-satb concurrent-marking lock, below);
+                     bits 3-7 reserved, unassigned. This is the cheapest
+                     spare room in the Box: the byte is already loaded and
+                     tested on every Box copy (the refcounted bit), so a
+                     future per-value boolean costs nothing to read here,
+                     unlike one placed in the reserved bytes at +10
 +10  reserved  6 B   bytes 10..15, through the end of the Box: alignment
                      padding, not usable as per-slot state — the store
                      barrier writes all 16 bytes of the Box

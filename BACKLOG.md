@@ -215,6 +215,20 @@ documents** (2026-07-22); what remains open is at the end.
 
 ## Deferred optimizations
 
+- **Box bytes 10..15 are unspent** — the value Box carries six bytes of
+  alignment padding after `flags` ([values.md](model/values.md), "Box
+  Layout"). PHP's `zval` uses exactly that span for `u1.v.u.extra` and
+  `u2`; Limelight leaves it empty. The store barrier writes all 16 bytes,
+  which rules out *per-slot* state there, but not data that travels with
+  the value and is rewritten on every store. Candidates, cheapest first:
+  memory-category / lifetime bits, so `retain`/`release` can decide
+  without dereferencing the target's `RcHeader` — the same trick the
+  existing `refcounted` bit plays with the tag; a cached class id for
+  object payloads, so a type check need not touch the object; inline
+  storage for short strings (payload plus padding gives 14 bytes), the
+  largest prize and its own design. Deliberately unspent for now: the Box
+  is the most pervasive structure in the runtime, reclaiming the bytes
+  later would be a format break, and there are no measurements yet.
 - **No zeroing by default, anywhere** — the memory manager must not
   clear memory it hands out, and object creation must not clear property
   slots as a matter of course. Zeroing is work proportional to the

@@ -50,8 +50,9 @@ storage format of one kind of property. See
 +8   type      1 B   type tag
 +9   flags     1 B   bit 0 refcounted; bit 1 undef (property slots only);
                      bit 2 writing (rc-satb concurrent-marking lock, below)
-+10  reserved  5 B   alignment; not usable as per-slot state — the
-                     store barrier writes all 16 bytes of the Box
++10  reserved  6 B   bytes 10..15, through the end of the Box: alignment
+                     padding, not usable as per-slot state — the store
+                     barrier writes all 16 bytes of the Box
 ```
 
 The `undef` flag (bit 1) marks a Box property slot as uninitialized. A

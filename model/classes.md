@@ -4,7 +4,7 @@
 
 Defines the low-level representation of PHP classes and objects: object layout, class descriptors, method dispatch (vtables and interface tables), and property access including PHP 8.4 property hooks.
 
-Value representation for scalars, strings, and arrays is covered separately. Memory categories and GC coordination are defined in [arenas.md](memory/arenas.md) and [heap-design.md](../gc/heap-design.md).
+Value representation for scalars, strings, and arrays is covered separately. Memory categories and GC coordination are defined in [arenas.md](memory/arenas.md) and [heap-design.md](gc/heap-design.md).
 
 ---
 
@@ -24,7 +24,7 @@ Value representation for scalars, strings, and arrays is covered separately. Mem
 | Bits | Meaning |
 |------|---------|
 | 0–1 | Memory category: `00` GC heap, `01` request arena, `10` long-lived, `11` immortal |
-| 2–3 | GC state: `LIVE` / `SCANNING` / `DEAD`, the CAS handoff field (see [heap-design.md](../gc/heap-design.md)). Idle for arena-category entities — no strategy ever sees them — so arena reset borrows these two bits (and the color bits below) as the transient mark for its escaped-subgraph trace, cleared when a survivor is promoted ([arena-reset.md](memory/arena-reset.md)) |
+| 2–3 | GC state: `LIVE` / `SCANNING` / `DEAD`, the CAS handoff field (see [heap-design.md](gc/heap-design.md)). Idle for arena-category entities — no strategy ever sees them — so arena reset borrows these two bits (and the color bits below) as the transient mark for its escaped-subgraph trace, cleared when a survivor is promoted ([arena-reset.md](memory/arena-reset.md)) |
 | 4–5 | Cycle collector color |
 | 6 | Cycle collector buffered bit |
 | 7 | Has weak references (side table exists) |
@@ -243,7 +243,7 @@ arrays are not objects at all (no class pointer; identified by tag —
 [values.md](values.md), [strings.md](strings.md), [arrays.md](arrays.md)),
 so the question never applies to them.
 
-**No object table.** Objects are referenced only by direct pointers: there is no analog of Zend's object store with handles. PHP 7 itself moved object access from handles to direct pointers for performance; the store's remaining duties are covered differently in Limelight: object enumeration by linear Immix block scanning (see [heap-design.md](../gc/heap-design.md)), shutdown/arena-reset destructors by the `DESTRUCTOR_PENDING` flag bit, weak references by side tables. Non-moving GC means object addresses are stable for the object's lifetime, so `spl_object_id()` can be derived from the address.
+**No object table.** Objects are referenced only by direct pointers: there is no analog of Zend's object store with handles. PHP 7 itself moved object access from handles to direct pointers for performance; the store's remaining duties are covered differently in Limelight: object enumeration by linear Immix block scanning (see [heap-design.md](gc/heap-design.md)), shutdown/arena-reset destructors by the `DESTRUCTOR_PENDING` flag bit, weak references by side tables. Non-moving GC means object addresses are stable for the object's lifetime, so `spl_object_id()` can be derived from the address.
 
 ### Slot kinds
 
@@ -975,7 +975,7 @@ Monomorphic IC per call site / property access site: cache the pair (class point
 
 Two already-made decisions make ICs unusually cheap in Limelight:
 
-1. **Non-moving GC** ([heap-design.md](../gc/heap-design.md)): object and class addresses never change; a cached class pointer cannot be invalidated by relocation.
+1. **Non-moving GC** ([heap-design.md](gc/heap-design.md)): object and class addresses never change; a cached class pointer cannot be invalidated by relocation.
 2. **Classes are immutable after link**: PHP has no runtime monkey-patching of class methods. A conditionally-declared class (`if (...) { class A {} }`) produces a distinct descriptor at link time. Consequently ICs never require an invalidation mechanism.
 
 ---

@@ -18,7 +18,7 @@ everything else.
 | MMTK (a GC backend, [heap-design.md](../model/gc/heap-design.md)) | Native: `VMBinding` is a Rust trait | Through a C wrapper |
 | Memory safety of a large long-lived codebase | Yes (unsafe islands are localized) | No |
 | LLVM API (IR emission, JIT engine) | Bindings (inkwell/llvm-sys), lag behind LLVM | First-class, native |
-| In-memory compilation of interop snippets ([ir-integration-research.md](../../interop/ir-integration-research.md)) | Impossible (`librustc_driver` is closed) | Clang supports it, already in the interop plan |
+| In-memory compilation of interop snippets ([ir-integration-research.md](../interop/ir-integration-research.md)) | Impossible (`librustc_driver` is closed) | Clang supports it, already in the interop plan |
 | LLVM version choice | Dictated by rustc (e.g. Rust 1.85 = LLVM 19) | Free |
 | Bitcode for cross-inlining into PHP code | Yes | Yes |
 
@@ -42,7 +42,7 @@ Clang).
 ### The single-LLVM-version rule
 
 All bitcode participants must share one LLVM version
-([ir-integration-research.md](../../interop/ir-integration-research.md),
+([ir-integration-research.md](../interop/ir-integration-research.md),
 hard blockers). Since rustc pins its own LLVM, **rustc's LLVM version
 dictates the project's LLVM version**: the C++ layer, the JIT, and Clang
 are all built against it. This is a build-system rule, enforced in CI.

@@ -17,6 +17,9 @@ No product code lives here — this is the specification, see
 - **Project conventions (branches, commits, PRs)** → [WORKFLOW.md](WORKFLOW.md)
 - **Pitfalls already hit** → [POSTMORTEM.md](POSTMORTEM.md)
 - **Diagrams / schemas** → [design/](design/)
+- **Repository utilities** → [tools/](tools/README.md) — `linkcheck.php`
+  verifies every cross-reference and anchor resolves; run it after moving a
+  document or rewording a heading
 
 ## Active initiative
 

@@ -45,11 +45,13 @@ typedef struct Node {
     struct Node  *prev;          // +24  ┘ (non-null) → NULL means uninitialized;
                                  //        prev: ?Node → NULL is php null,
                                  //        uninitialized is an init-bitmap bit
-    Value         meta;          // +32    untyped → Box (undef flag if uninit)
-    int64_t       id;            // +40    id: int, uninitialized via bitmap bit
-    uint8_t       ok;            // +48    ok: bool
-    uint8_t       init_bits;     // +49    prev + id tracked here (fits padding)
-} Node;                          // object_size 56
+    Value         meta;          // +32    untyped → Box, 16 bytes (undef flag
+                                 //        if uninit); spans +32..+47
+    int64_t       id;            // +48    id: int, uninitialized via bitmap bit
+    uint8_t       ok;            // +56    ok: bool
+    uint8_t       init_bits;     // +57    prev + id tracked here (fits padding)
+} Node;                          // object_size 64 (58 bytes of content,
+                                 //        rounded up to 8-byte alignment)
 
 typedef struct InterfaceEntry {
     uint32_t interface_id;

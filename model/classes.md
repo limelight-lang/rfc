@@ -287,7 +287,7 @@ arrays are not objects at all (no class pointer; identified by tag —
 [values.md](values.md), [strings.md](strings.md), [arrays.md](arrays.md)),
 so the question never applies to them.
 
-**No object table.** Objects are referenced only by direct pointers: there is no analog of Zend's object store with handles. PHP 7 itself moved object access from handles to direct pointers for performance; the store's remaining duties are covered differently in Limelight: object enumeration by linear Immix block scanning (see [heap-design.md](gc/heap-design.md)), shutdown/arena-reset destructors by the `DESTRUCTOR_PENDING` flag bit, weak references by side tables. Non-moving GC means object addresses are stable for the object's lifetime, so `spl_object_id()` can be derived from the address.
+**No object table.** Objects are referenced only by direct pointers: there is no analog of Zend's object store with handles. PHP 7 itself moved object access from handles to direct pointers for performance; the store's remaining duties are covered differently in Limelight: object enumeration by linear Immix block scanning (see [heap-design.md](gc/heap-design.md)), shutdown/arena-reset destructors by the `DESTRUCTOR_PENDING` flag bit, weak references by side tables. Non-moving GC means a direct-pointer object's address is stable for its lifetime, so `spl_object_id()` can be derived from it; a movable-proxy target's identity is instead its proxy's stable address ("The Proxy family" above).
 
 ### Slot kinds
 
@@ -1019,7 +1019,7 @@ Monomorphic IC per call site / property access site: cache the pair (class point
 
 Two already-made decisions make ICs unusually cheap in Limelight:
 
-1. **Non-moving GC** ([heap-design.md](gc/heap-design.md)): object and class addresses never change; a cached class pointer cannot be invalidated by relocation.
+1. **Non-moving GC** ([heap-design.md](gc/heap-design.md)): class descriptors and direct-pointer objects never move, so a cached class pointer cannot be invalidated by relocation (a movable-proxy target keeps the same class-pointer value regardless).
 2. **Classes are immutable after link**: PHP has no runtime monkey-patching of class methods. A conditionally-declared class (`if (...) { class A {} }`) produces a distinct descriptor at link time. Consequently ICs never require an invalidation mechanism.
 
 ---

@@ -74,6 +74,60 @@ class TrieNode {                     // all nodes of all tries live
   blocks that actually carry survivors, but a shared region is still a
   commitment: choose it for populations that live and die together.
 
+## The region as an allocator class: custom allocation, freeing, traversal
+
+A `#[Region]` is an **allocator class**: an object that owns memory and
+governs the objects it creates. By default it inherits the arena
+discipline wholesale — bump allocation, release-at-reset, escape counting
+([arenas.md](arenas.md)) — and binds a *named* collector from the build's
+strategy set (above). The generalization is that a region may also supply
+its **own** allocation, freeing, and GC traversal, instead of only
+selecting from the menu.
+
+- **Allocation / freeing.** A region may replace bump-and-reset with its
+  own policy: a free list, a size-class pool (a shared region already is
+  the per-class pool [heap-slot-allocation.md](heap-slot-allocation.md)
+  reserves), or a slotmap that hands out keys instead of pointers so its
+  backing store can be compacted. That last is the only form of object
+  movement the runtime has, safe for the same reason as a movable proxy
+  ([../classes.md](../classes.md), "The Proxy family"): access goes
+  through the region's key/handle, so relocation invalidates no raw
+  pointer.
+- **Traversal.** To collect its contents — and to let the global
+  collector learn which general-heap objects a region keeps alive — the
+  collector needs the *outgoing references* of the region's objects. The
+  compiler generates a default traversal from each object's layout; a
+  region may override it (skip fields it manages by hand, walk a custom
+  structure, report a summarized root set). This per-region traversal is
+  the genuinely new capability: Verona/Zig/Ada give custom allocation and
+  bulk release, but not a user-supplied GC walk.
+
+**The traversal safety contract is over-approximation.** A custom
+traversal must report a **superset** of the live outgoing references, and
+only references the objects actually hold — never a fabricated address.
+Over-reporting keeps a dead object alive one extra cycle (harmless);
+under-reporting frees a still-referenced object, a use-after-free, and is
+forbidden. This is the discipline the arena's release-at-reset list and
+SATB marking already rely on ([../gc/satb.md](../gc/satb.md)): erring
+toward *more* live is always safe, erring toward *less* never is. The
+runtime does **not** verify a hand-written traversal — honoring the
+contract is the author's responsibility, and a traversal that
+under-reports is undefined behavior (a use-after-free). That unsafety is
+accepted deliberately for now, to be revisited separately (Open
+questions); the compiler-generated default traversal is always safe by
+construction, so only a hand-written override carries the risk.
+
+**A region's contents are `gc_state = OWNED`.** The global collector
+skips them ([../gc/heap-design.md](../gc/heap-design.md)); the region's
+own collector, driven by its own traversal and free rules, is solely
+responsible for them, and its outgoing references into the general heap
+enter the global marker as roots ([../gc/satb.md](../gc/satb.md)),
+published the way an actor publishes its arena roots
+([../../runtime/actors.md](../../runtime/actors.md)). The compiler wires
+this: allocation inside the region's methods routes to the region's
+allocator, collection calls the region's traversal, and reset calls its
+free rules.
+
 ## What a region is not
 
 A region is the **memory half of an actor**. Actor = region + mailbox
@@ -121,5 +175,10 @@ region's death statically when the owner's lifetime is proven.
 - **Nested regions**: a region created while another region's context
   is mounted; likely just a stack of contexts, but promotion targets
   need a rule.
-- **Attribute name**: `#[Region]` vs `#[Arena]`; kept `#[Region]` for
-  the Verona association.
+- **Attribute name**: `#[Region]` vs `#[Arena]` vs `#[Allocator]`; kept
+  `#[Region]` for the Verona association, but the concept is an
+  *allocator class* and the spelling may move to `#[Allocator]`.
+- **Custom-traversal verification**: the compiler-generated default
+  traversal over-approximates by construction; a hand-written override
+  needs a check (or a restricted form) that it cannot under-report live
+  references. Open.

@@ -10,6 +10,32 @@ in one line; **cost** if any.
 
 ---
 
+### 2026-07-24 — A `#[Region]` is an allocator class: it may supply its own alloc, free, and GC traversal
+
+A `#[Region]` ([regions.md](../model/memory/regions.md)) is the runtime's
+**allocator class**: an object that owns memory and governs the objects
+it creates. Beyond binding a named collector, a region may supply its own
+allocation and free policy and — the new capability — its own **GC
+traversal** of its objects. Its contents are `gc_state = OWNED`; the
+global collector skips them and the region's own collector handles them.
+- **Why:** unifies arenas, per-class pools, slotmap/movable containers,
+  and custom allocators under one first-class object — matching Verona
+  regions and Zig/Ada custom allocators, and adding a user-supplied GC
+  walk those do not have (the novel part). Movement stays confined to a
+  region's key/handle store (the only relocation the runtime does).
+- **Traversal safety contract:** over-approximation — a custom traversal
+  must report a superset of live outgoing references and only references
+  the object actually holds, never a fabricated address. Over-report is
+  harmless (one extra cycle); under-report is a use-after-free and is
+  forbidden — the same rule as release-at-reset and SATB marking. The
+  runtime does not verify a hand-written traversal; that unsafety is
+  accepted for now and revisited separately.
+- **Deferred:** verifying/restricting a hand-written traversal so it
+  cannot under-report; the attribute spelling (`#[Region]` vs
+  `#[Allocator]`); explicit `reset()`/`pack()` lifecycle.
+- **Written:** [regions.md](../model/memory/regions.md), "The region as
+  an allocator class".
+
 ### 2026-07-24 — Proxy is the runtime's one indirection; movement is opt-in through it
 
 Box (kind 4), WeakRef (kind 5), and Ghost/lazy (kind 6) are unified as

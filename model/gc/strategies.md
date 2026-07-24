@@ -190,9 +190,14 @@ elephc's model; `rc-trace` is the Zend architecture done right
    calibrated) but *fired* only at a clean point (see [Triggering:
    arm vs fire](#triggering-arm-vs-fire) below). At the fire point the
    thread is parked at a safepoint; the marker traces the general heap
-   from roots; unmarked refcounted islands are cycles and are freed
-   through normal teardown. The pause is proportional to the *live
-   general heap*, which arenas keep small.
+   from the **complete** root set (stacks + globals + live arenas' heap
+   references, [satb.md](satb.md)) and frees the unmarked remainder
+   through normal teardown. That remainder *is* the cycles ("islands")
+   only because refcounting has already reaped every acyclic object; it
+   is not a candidate-buffer trial deletion, so an object held alive from
+   outside the heap (an arena slot) survives by being a root, not by its
+   refcount. The pause is proportional to the *live general heap*, which
+   arenas keep small.
 
 Because the mutator is parked while marking runs, `rc-trace` needs
 **no store-barrier hook, no snapshot, no mark-phase coordination**:

@@ -134,6 +134,14 @@ nothing.
                 garbage → three-phase teardown, deferred-free honored
 ```
 
+SWEEP frees by mark bit, not by refcount: an object survives only by
+being reachable from the **complete** root set (stacks + globals + live
+arenas' heap references, above). "Cycle garbage" names the unmarked
+remainder — valid only because refcounting has already reclaimed every
+acyclic object — and is not a candidate-buffer trial deletion. So an
+object held alive from an arena slot survives by being a root, never by
+its refcount alone.
+
 Floating garbage (died during MARK) stays until the next epoch: the
 standard SATB cost, bounded by epoch length.
 

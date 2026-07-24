@@ -100,9 +100,12 @@ store_box (rc-satb):
 ```
 
 The marker reads the +8 word (acquire); if `WRITING` is set it **skips the
-slot**. Skipping is safe under SATB: the displaced old value was already
-pushed to the queue by the deletion barrier before the store began, so it
-stays live this epoch, and the new value is either freshly allocated black
+slot**. Skipping is safe under SATB: the displaced old value is pushed to the
+queue by the deletion barrier in the `drop(old)` the store runs right
+after it (the `store_*`+`drop` order is the invariant,
+[strategies.md](strategies.md)), and that pair sits between safepoints, so
+MARK cannot terminate before `old` is queued; it stays live this epoch,
+and the new value is either freshly allocated black
 or caught next epoch. No torn misread is possible, because the pointer tag
 is published only in the final store, after the payload.
 

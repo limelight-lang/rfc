@@ -109,6 +109,50 @@ positions, ample against the ~10k buffer arm threshold) — the two bits
 freed by removing the old class-pointer flag and the arena-reset mark
 return here.
 
+### The Proxy family: Box, WeakRef, Ghost, and movable handles are one pattern
+
+Kinds 4–6 are not three unrelated built-ins but three instances of one
+shape, the **Proxy**: an indirection standing in for a target that
+intercepts every access to it, paying one dereference to attach an effect
+the target and its callers never see. This is the Gang-of-Four *Proxy*
+taxonomy directly — a *virtual proxy* (materialize on first touch) is the
+**Ghost/lazy** object (kind 6); a *smart reference* (do work on access) is
+the **WeakRef** (kind 5, an access that can go dead) and the **Box**
+(kind 4, wrapping a foreign struct into the managed world,
+[ffi.md](memory/ffi.md)); a *movable handle* is a fourth effect (below).
+PHP 8.4's own lazy-objects feature already names its two strategies
+*Ghost* and *Proxy*; the movable handle is the classic engine handle
+(V8 `Local`, Zend's pre-7 object store), an indirection whose only job is
+to keep a client reference stable while the runtime relocates the target.
+
+Two properties follow from the shape and hold for every member:
+
+- **Identity rides the proxy, not the target.** The proxy's own address
+  is the stable identity, so `spl_object_id` stays address-derived (see
+  "No object table" below) even for a movable proxy whose target moves. A
+  *ghost* keeps one identity (it materializes in place); a *proxy*
+  forwarding to a separate real instance carries an identity distinct from
+  it — the ghost-vs-proxy split PHP 8.4 documents.
+- **The cost is one pointer-chase per access, and it is opt-in.** Only an
+  object placed behind a proxy pays it; everything else is reached by a
+  direct pointer, the PHP-7 choice this runtime keeps for the common case.
+
+**Movement is a proxy effect, and the only one.** The general heap is
+strictly non-moving ([heap-design.md](gc/heap-design.md)); an object
+relocates *only* behind a **movable proxy** (or inside an
+extract-to-access container), where every access already goes through the
+handle, so relocation invalidates no raw pointer. This confines the
+compactor, forwarding, and identity work to an opt-in pool instead of
+taxing the whole runtime with read barriers and global pinning — the
+reason a global moving collector is rejected ([DECISIONS](../dev/DECISIONS.md)).
+An address that escapes through FFI pins its target (or extraction
+copies), just as a non-proxied object never moves at all.
+
+*Deferred, not decided:* because Box, WeakRef, and Ghost are one family,
+their three kind codes (4–6) may later be consolidated to reclaim kind
+bits (kind `7` is still reserved). Not done — the kinds stay distinct
+until a consolidation is designed.
+
 The retain/release fast path is a single branch covering both arenas and immortal objects, with one exception:
 
 ```

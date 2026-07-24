@@ -10,6 +10,34 @@ in one line; **cost** if any.
 
 ---
 
+### 2026-07-24 — Proxy is the runtime's one indirection; movement is opt-in through it
+
+Box (kind 4), WeakRef (kind 5), and Ghost/lazy (kind 6) are unified as
+instances of one **Proxy** pattern — a surrogate that intercepts all
+access to a target for one dereference — and a fourth effect, a movable
+handle, joins them. Object movement exists **only** behind a movable
+proxy (or an extract-to-access container); the general heap stays strictly
+non-moving.
+- **Why:** fragmentation is handled without a global moving collector.
+  Confining relocation to an opt-in proxy pool keeps the common path on
+  direct pointers (no read barrier, no global pinning) and localizes the
+  compactor; identity rides the stable proxy, so `spl_object_id` stays
+  address-derived. The shape is the GoF taxonomy (virtual proxy = Ghost,
+  smart reference = WeakRef, handle = movable), and PHP 8.4 already names
+  its lazy strategies Ghost and Proxy. No mainstream language unifies
+  weak + lazy + movable under one primitive, so this consolidates known
+  effects rather than inventing.
+- **Rejected:** a global moving/compacting collector — read barriers plus
+  pinning for FFI-escaped addresses plus header identity-hash, all to move
+  objects the FFI load often pins anyway (see the non-moving research).
+  The committed fragmentation answer is the movable proxy, not arena-reset
+  sparse-block evacuation, which stays deferred.
+- **Cost:** one pointer-chase per access on proxied objects; a scoped
+  compactor for the movable-proxy pool if/when built.
+- **Deferred:** consolidating kinds 4–6 (one family) to reclaim
+  entity-kind bits — noted, not designed.
+- **Written:** [classes.md](../model/classes.md), "The Proxy family".
+
 ### 2026-07-24 — Captured heap objects carry `gc_state = OWNED`, skipped by the collector
 
 A general-heap object (category `00`) captured by an arena/actor stays

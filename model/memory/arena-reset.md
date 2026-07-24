@@ -165,7 +165,11 @@ Evacuation is legal **only at this moment** — and, as written, not yet
 legal at all: it needs the references to a moved escapee fixed up, and
 the barrier records how many there are, never where (see the note under
 "Escapees"). What follows describes the intended mechanism; the runtime
-implements retention only. The escapee registry is complete exactly at
+implements retention only — and stays that way by choice: per
+[DECISIONS](../../dev/DECISIONS.md) (2026-07-24) the committed answer to
+fragmentation is the **movable proxy** ([classes.md](../classes.md),
+"The Proxy family"), not sparse-block evacuation, which is kept below as
+a described-but-shelved option rather than a planned phase. The escapee registry is complete exactly at
 arena death, and there is no live stack. The instant a block is retained, its objects
 become ordinary heap objects: stores of references to them are no
 longer logged anywhere, completeness is gone, and the non-moving

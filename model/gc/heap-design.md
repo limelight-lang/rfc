@@ -8,7 +8,7 @@
 
 ## Object Movement: Non-Moving
 
-**Decision**: Limelight uses a non-moving GC. Objects are never relocated after allocation. Memory addresses are stable for the lifetime of an object.
+**Decision**: Limelight uses a non-moving GC. An object reached by a direct pointer is never relocated after allocation; its address is stable for the object's lifetime. The one exception is an object held behind a **movable proxy** or inside a memory-managing container ([classes.md](../classes.md), "The Proxy family"): there every access already goes through the handle, so the target may relocate without invalidating a raw pointer. That is the only movement the runtime performs.
 
 **Why:**
 - No statepoints, no `gc.relocate`, no stack maps required: significant reduction in LLVM IR complexity

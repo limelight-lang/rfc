@@ -117,7 +117,8 @@ nothing.
 ```
 1. TRIGGER      threshold on cycle-candidate bytes (calibrate; cf. Zend 10K roots)
 2. SNAPSHOT     brief all-threads safepoint:
-                  - scan stacks + globals → initial gray set
+                  - scan stacks + globals + live-arena heap roots
+                    → initial gray set (arena transport: below)
                   - set marking_active
                 (bounded by root count, not heap size; this is the only pause)
 3. MARK         background marker traces from gray set;
@@ -151,6 +152,19 @@ Both coordination mechanisms defined in
 
 ## Interaction with arenas
 
+- **A live arena's references into the general heap are roots.** An
+  arena object is not scanned (next bullet), so a heap object reachable
+  *only* from an arena slot is invisible to a stacks+globals-only trace
+  and would be swept while live — a use-after-free at reset. The arena's
+  *release-at-reset* list ([arenas.md](../memory/arenas.md)) is exactly
+  that registry and is a root source. Transport depends on the arena's
+  thread: a same-thread arena (request / ordinary) is read directly at
+  the SNAPSHOT safepoint; an actor arena on another thread publishes its
+  list via the mailbox handshake
+  ([../../runtime/actors.md](../../runtime/actors.md)), entering as a
+  gray source during MARK. **Provisional — not fully worked out; see
+  [DECISIONS](../../dev/DECISIONS.md) (2026-07-24) and re-verify at
+  implementation.**
 - Arena objects are invisible to the marker (contract:
   [strategies.md](strategies.md)); the category barrier already logs
   arena escapes independently of the epoch.

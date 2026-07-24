@@ -167,15 +167,19 @@ same road as everything else: **a system message in the mailbox**
   the actor itself knows is safe — flushing its SATB buffer in the
   reply. Mark termination = every actor has replied. A parked actor is
   woken by the message like by any other.
-- Roots need no stop either: the release-at-reset list
-  ([arenas.md](../model/memory/arenas.md)) is an append-only registry
-  of every general-heap reference the arena holds, readable by the
-  marker up to a watermark while the actor runs. It over-approximates
-  (a stale entry keeps an object alive one extra cycle) — safe for
-  marking. Stack-only references are covered by allocate-black plus the
-  SATB deletion barrier; mailbox contents are scannable shared
-  structures. (Completeness of this root story to be re-verified at
-  implementation time.)
+- Roots travel the same road: the actor's release-at-reset list
+  ([arenas.md](../model/memory/arenas.md)) — an append-only registry of
+  every general-heap reference the arena holds — is **published in the
+  handshake reply** at the message boundary, not read out of the running
+  actor. It over-approximates (a stale entry keeps an object alive one
+  extra cycle) — safe for marking. References created after the reply
+  are covered by allocate-black plus the SATB deletion barrier; mailbox
+  contents are scannable shared structures. This keeps the marker out of
+  a running actor's memory, matching ORCA's message-based protocol
+  (above) and the cooperative-safepoint norm of production concurrent
+  collectors (Go, HotSpot, DLG). **Provisional — the root story is not
+  fully worked out; see [DECISIONS](../dev/DECISIONS.md) (2026-07-24) and
+  re-verify at implementation.**
 - The queue stays the only door — for the collector too: no poll
   safepoints, no external inspection of a running actor's state.
 

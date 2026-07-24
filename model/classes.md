@@ -24,7 +24,7 @@ Value representation for scalars, strings, and arrays is covered separately. Mem
 | Bits | Meaning |
 |------|---------|
 | 0–1 | Memory category: `00` GC heap, `01` request arena, `10` long-lived, `11` immortal |
-| 2–3 | GC state: `LIVE` / `SCANNING` / `DEAD`, the CAS handoff field (see [heap-design.md](gc/heap-design.md)). Idle for arena-category entities — no strategy ever sees them — so arena reset borrows these two bits (and the color bits below) as the transient mark for its escaped-subgraph trace, cleared when a survivor is promoted ([arena-reset.md](memory/arena-reset.md)) |
+| 2–3 | GC state: `LIVE` / `SCANNING` / `DEAD` / `OWNED`, the CAS handoff field (see [heap-design.md](gc/heap-design.md)). `OWNED` marks a category-`00` heap object captured by an arena/actor: both handoff CAS's start from `LIVE`, so an `OWNED` object fails both and the collector skips it (owner handles its lifetime; re-armed to `LIVE` on escape to shared). Idle for arena-category entities — no strategy ever sees them — so arena reset borrows these two bits (and the color bits below) as the transient mark for its escaped-subgraph trace, cleared when a survivor is promoted ([arena-reset.md](memory/arena-reset.md)) |
 | 4–5 | Cycle collector color |
 | 6 | Cycle collector buffered bit |
 | 7 | Has weak references (side table exists) |

@@ -10,6 +10,32 @@ in one line; **cost** if any.
 
 ---
 
+### 2026-07-24 — Captured heap objects carry `gc_state = OWNED`, skipped by the collector
+
+A general-heap object (category `00`) captured by an arena/actor stays
+physically in the heap but is marked with a fourth `gc_state` value,
+`OWNED`. Both CAS handoffs start from `LIVE`
+([heap-design.md](../model/gc/heap-design.md)), so an `OWNED` object
+fails both and is skipped by collector and mutator alike; its lifetime is
+the owning arena's responsibility until it escapes to shared and is
+re-armed to `LIVE`.
+- **Why:** a transferable object is allocated in the general heap for a
+  zero-copy handoff ([actors.md](../runtime/actors.md)) but is owned by
+  one actor at a time. The collector must not touch a captured object;
+  saying so with `gc_state` costs zero new bits (2-bit field, only 3
+  values used) and needs no new collector branch — a non-`LIVE` state
+  already fails the handoff CAS. It also makes the "needs no atomic
+  counts" claim exact: the single owner is the sole writer of `refcount`.
+- **Rejected:** a dedicated flag bit (the flags word is full, bits 0–31
+  all assigned); a fifth `mem_category` (2 bits, all four values used);
+  reusing entity-kind `7` (conflates identity with collectability).
+- **Cost:** `heap-design.md` state field is now four-valued; `classes.md`
+  flags table and `actors.md` updated.
+- **Not fully worked out.** The escape event that flips `OWNED → LIVE`
+  (an object becoming reachable by ≥2 actors) rides the existing
+  escape/category machinery; its exact trigger and the in-transit
+  A→queue→B ownership window are not yet pinned. Provisional.
+
 ### 2026-07-24 — The marker's root set includes live arenas' heap references
 
 The concurrent marker's roots are `stacks + globals` **plus every live

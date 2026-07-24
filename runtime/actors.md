@@ -116,9 +116,12 @@ The compiler computes, per allocation site, whether the object is
 **actor-local** or **will be transferred** to another actor. A proven
 transferable object is allocated **directly in the general heap**, not
 in the actor's arena: the eventual move is then a pointer handoff
-through the queue, with no copy and no block reparenting. Ownership
-still transfers wholly (sender's bindings die), so serial access is
-preserved and the object needs no atomic counts.
+through the queue, with no copy and no block reparenting. The object
+stays a general-heap resident (category `00`) but is marked
+`gc_state = OWNED` while captured, so the concurrent collector skips it
+([heap-design.md](../model/gc/heap-design.md)) and exactly one arena
+owns it at a time. That single owner is the sole writer of its
+`refcount`, so the object needs no atomic counts.
 
 This is the same discipline as arena-promotion
 ([arena-promotion.md](../model/memory/arena-promotion.md)): static

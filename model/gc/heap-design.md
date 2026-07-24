@@ -89,7 +89,7 @@ are complementary, not alternatives.
 
 ### Protocol
 
-Each object has an atomic state field with at least three values: `LIVE`, `SCANNING`, `DEAD`.
+Each object has an atomic state field with four values: `LIVE`, `SCANNING`, `DEAD`, and `OWNED`. The handoff below is between `LIVE` objects. `OWNED` marks a heap object captured by an arena/actor; because both CAS operations start from `LIVE`, an `OWNED` object fails both and is skipped by collector and mutator alike — its lifetime is the owner's until it escapes to shared and is re-armed to `LIVE`.
 
 ```
 Mutator (deleting):              GC (scanning):

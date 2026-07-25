@@ -192,6 +192,26 @@ https://arxiv.org/abs/2210.17175
 
 **Results**: outperforms both G1 and Shenandoah in throughput and latency on DaCapo benchmarks.
 
+### Perceus: compile-time precise RC (PLDI 2021)
+
+Microsoft Research, implemented in Koka. The compiler emits `dup`/`drop`
+*precisely*, so a program is **garbage free**: an object is freed at its last
+use, not at scope exit. Formalized in a linear resource calculus with a
+soundness and garbage-free proof. Two optimizations ride on that precision:
+**drop specialization** (emit the exact decrements instead of calling a
+generic drop) and **reuse analysis** (when an object dies where a same-sized
+one is constructed, write in place and never call the allocator), which is
+what makes the "functional but in-place" (FBIP) style possible.
+
+**Bearing on Limelight:** the most developed published form of this project's
+central bet — that the compiler can pair and cancel retain/release
+([arc-optimizations.md](../memory/arc-optimizations.md)). It leans on
+guarantees PHP does not have (explicit control flow, no arbitrary aliasing,
+immutability by default), so it cannot be taken wholesale; **reuse analysis**
+is the transferable part, and is the slot-level analogue of what an arena
+does at block level. It belongs to the compiler, not to `ll-model` — read it
+before designing the ARC optimizations.
+
 ### Tradeoff Summary
 
 | Strategy | Cycle Safety | Pause Times | Throughput Overhead | Complexity |
@@ -241,6 +261,20 @@ https://www.steveblackburn.org/pubs/papers/immix-pldi-2008.pdf
 
 **Performance**: 7–25% improvement over canonical algorithms in the original paper across 20 JVM benchmarks.
 
+### Whippet / Nofl
+
+https://github.com/wingo/whippet — Andy Wingo (Igalia), MIT, C, no
+dependencies, embedded into the host runtime's source tree rather than linked.
+Ships four collectors; the interesting one is `mmc`, built on **Nofl** ("no
+free list"), a precise Immix that keeps mark bytes in a side table and treats
+evacuation as strictly optional, so it also works with conservative roots. In
+production use by Guile.
+
+**Why not the foundation here:** the same two costs as MMTK — it wants to own
+the heap, and it wants roots enumerated — plus it is C, while the strategy
+contract already reserves the ready-made slot for MMTK
+([strategies.md](strategies.md)).
+
 ### Boehm-Demers-Weiser GC
 
 Conservative mark-sweep for C/C++. Not recommended for Limelight: it cannot move objects, cannot compact, and throws away the precise type information available in LLVM IR. Suitable for retrofitting GC into legacy C codebases, not for a new precise runtime.
@@ -272,6 +306,51 @@ Proprietary. **Loaded Value Barrier (LVB)**: self-healing read barrier that repa
 ### Oilpan / cppgc (V8/Chromium)
 
 A C++ GC library available standalone. Requires explicit `Member<T>` smart pointers and objects inheriting from `GarbageCollected<T>`. Precise for heap references, conservative for stack. Incremental marking interleaved with the event loop. Thread-local heaps allow concurrent mutators. Available at https://github.com/oilpan-gc/cppgc.
+
+### Arborescent GC (ISMM 2025)
+
+Immediate cycle reclamation with no separate collector phase. The algorithm
+keeps a **spanning forest** inside the program's own reference graph — every
+object carries a parent and a coparent field — and on edge removal checks
+locally whether a subtree just lost its last path from a root, freeing it at
+once, cycles included. Descends from dynamic single-source reachability
+(Even–Shiloach). Université de Montréal; evaluated on their own Ribbit system.
+
+**Bearing on Limelight:** it attacks the one weakness of `rc-trace` — cyclic
+garbage survives until the next collection, so a cyclic object's `__destruct`
+is deferred by an unbounded amount. Against it: roughly two words per object
+(read from a summary of the PDF, not verified against the text), which cancels
+the compacted 8-byte `RcHeader`; multithreading is stated as unimplemented;
+the evaluation is synthetic. Watch, do not adopt.
+
+### Concurrent Deferred Partial Tracing (PLDI 2026)
+
+"Revisiting Partial Tracing for Safe, Efficient, and Concurrent Garbage
+Collection in Unmanaged Languages", Kim, Park, Kwon & Kang (KAIST).
+
+Partial tracing (PT) is the fourth quadrant of Bacon's taxonomy and the exact
+dual of deferred reference counting: **DRC counts heap edges and traces the
+roots; PT counts the roots and traces the heap.** Counting roots buys precise
+root identification with no stack maps and no conservative scanning; tracing
+the heap from the objects whose root count is non-zero collects cycles as a
+side effect, with no weak references and no separate cycle collector. PT was
+long dismissed as too slow, because roots mutate constantly. The paper removes
+that in two steps: *Concurrent PT* introduces **phase consensus**, letting
+collector and mutators agree on a phase change without suspending anyone and
+eliminating most refcount updates during traversal; *Concurrent Deferred PT*
+then replaces atomic root updates with a hazard-pointer mechanism behind a
+phase barrier. Reported to match manual RCU / hazard-pointer schemes and to
+beat both BDWGC and CIRC.
+
+**Bearing on Limelight:** their starting position is ours — no stack maps, no
+safepoints, cycles still to collect — which is exactly why `rc-trace` collects
+from a candidate buffer instead of from roots. PT would delete the heap-edge
+counting the store barrier exists for and hand back cycles for free; the price
+is that a heap object dies at trace time rather than at its last release,
+which is the `__destruct` timing PHP promises. Arenas make the traced heap
+small, so the cost model is friendlier here than in a general runtime. Read
+before designing `rc-satb`; a `pt` entry in the strategy registry is plausible.
+Benchmark artifact on Zenodo.
 
 ---
 
@@ -322,6 +401,9 @@ Targeting the LXR architecture, implemented incrementally via MMTK.
 | Zhao et al., PLDI 2022 | LXR: ARC + Immix + SATB |
 | LLVM Statepoints docs | Precise GC in LLVM IR |
 | Nofl, arxiv 2025 | Immix refinement for compact objects |
+| Reinking, Xie et al., PLDI 2021 | Perceus: compile-time precise RC, drop specialization, reuse analysis |
+| Arborescent GC, ISMM 2025 | Immediate cycle reclamation via a spanning forest |
+| Kim et al., PLDI 2026 | Partial tracing: count the roots, trace the heap; concurrent, no stack maps |
 
 ---
 
@@ -338,6 +420,11 @@ Targeting the LXR architecture, implemented incrementally via MMTK.
 - [Immix paper, PLDI 2008](https://www.steveblackburn.org/pubs/papers/immix-pldi-2008.pdf)
 - [LXR paper, arxiv](https://arxiv.org/abs/2210.17175)
 - [Nofl: A Precise Immix, arxiv 2025](https://arxiv.org/html/2503.16971)
+- [Whippet GC (Nofl-based `mmc`)](https://github.com/wingo/whippet)
+- [Perceus, PLDI 2021 (PDF)](https://xnning.github.io/papers/perceus.pdf)
+- [Arborescent GC, ISMM 2025](https://dl.acm.org/doi/10.1145/3735950.3735953)
+- [Revisiting Partial Tracing, PLDI 2026](https://dl.acm.org/doi/10.1145/3808310)
+- [Partial Tracing artifact and benchmarks (Zenodo)](https://zenodo.org/records/19597312)
 - [LLVM Statepoints](https://releases.llvm.org/8.0.0/docs/Statepoints.html)
 - [Oilpan / cppgc — V8 Blog](https://v8.dev/blog/oilpan-library)
 - [ZGC vs Shenandoah 2025](https://www.javacodegeeks.com/2025/04/zgc-vs-shenandoah-ultra-low-latency-gc-for-java.html)

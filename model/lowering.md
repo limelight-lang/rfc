@@ -318,6 +318,15 @@ generated frame, not something the runtime throws
 Roughly five instructions per object on the inlined fast path: an order
 of magnitude cheaper than `malloc`.
 
+The header store and the zero-fill `memset` are one instruction each
+whatever the class size. The parts that scale with the field count — the
+non-zero-default stamps here, and every counted-field release in the
+generated `dispose` — are unrolled only up to a threshold; a class with
+many such fields emits a loop over `traced_runs` (for `dispose`) or a
+small `(offset, default)` init table (for `factory`) instead, per
+[classes.md](classes.md), "Generated body shape: unrolled for a small
+class, a loop for a large one".
+
 ---
 
 ## Optimization Summary

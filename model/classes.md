@@ -583,6 +583,40 @@ specialized code, the teardown analog of the factory. This is the
 `__dispose` named in "Deferred" as part of the metaclass model, made
 concrete.
 
+### Generated body shape: unrolled for a small class, a loop for a large one
+
+**Decision**: the counted-field strides of a generated lifecycle
+operation — `dispose`'s releases, the retain strides of
+`clone`/`deep_clone`/`thread_*`, and the non-zero-default stamps of
+`factory` — are emitted **unrolled** for a class with few counted fields,
+and **as a loop over `traced_runs`** once the count crosses a threshold.
+The RFC's "straight-line code, release slot 1, release slot 2, …" above is
+the small-class shape, not an unconditional one.
+
+**Why unroll the common case.** These bodies run once per object, so path
+length is what counts, and a class carries a handful of counted fields far
+more often than dozens. Unrolled, `dispose` is `release(a); release(b); …`
+with no loop counter and no `traced_runs` load, the releases free to
+schedule and to cancel against a matching retain (the ARC optimizer). It
+is the same straight-line shape the factory's construction path already
+has.
+
+**Why loop the large case.** Code size is paid per class *per operation* —
+a class with dozens of counted fields would emit those dozens of
+instructions in `dispose`, again in `clone`, again in each `thread_*`,
+bloating the instruction cache for an object whose own work dwarfs a loop
+counter. Past the threshold the loop is a few instructions total, and it
+reads the **same `traced_runs` the GC strides** — so a large class needs
+no second teardown map: the trace map serves both the data consumer (the
+GC, inline) and the looped code consumer (`dispose`, behind its indirect
+call).
+
+**The threshold is a codegen tuning parameter, not a model constant.** It
+is calibrated against real workloads once the pipeline can run them, like
+every other size threshold here; the crossover is on the order of a few
+tens of counted fields. The model fixes the two body shapes and the rule
+that chooses between them, not the number.
+
 ### Why tracing stays data
 
 Construction and teardown touch an object once in its life, so an
@@ -592,6 +626,10 @@ object is not affordable; the GC reads `traced_runs` and strides it
 itself. V8 uses a per-map visitor function and pays exactly that call;
 for our collector the map as data is the right form. Construction is
 code, teardown is code, tracing is data — each shaped to its frequency.
+The one qualification is code size: past a field-count threshold the
+generated body loops over `traced_runs` rather than unrolling ("Generated
+body shape" above), converging on the trace's own form — but still reached
+by the indirect call the trace never pays.
 
 ---
 

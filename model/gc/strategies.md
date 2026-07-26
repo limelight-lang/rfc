@@ -111,7 +111,22 @@ strategy.
 Tracing strategies must observe thread stacks in a consistent state.
 The compiler inserts **poll safepoints** (load a global flag + branch,
 ~1–3 cycles) at function entries and loop back-edges. At a safepoint
-the thread's roots are enumerable.
+the thread is in a state the runtime can reason about: no half-built
+object, no reference in flight.
+
+**A safepoint does not by itself make roots enumerable.** It is a point
+in time, not a map of the frame: nothing about the poll says which slots
+hold references. Only a strategy that declines to *count* stack
+references needs that map, and it must then pay for one — the compiler
+spilling every live reference into a per-frame list before each poll,
+which is Fil-C's arrangement and the real cost, the poll itself being
+the cheap half. `rc-satb` owes that mechanism and does not have it
+([satb.md](satb.md)). `rc-walk` owes nothing: a frame's reference is
+counted like any other, so it appears in the refcount and never among
+the heap-internal edges, and the frame is a root by arithmetic
+([rc-walk.md](rc-walk.md)). The choice is paid once either way — count
+the locals and never read the stack, or skip the counts and be able to
+read it.
 
 The poll has a second duty that is not about tracing at all: it refills
 the block reserve the store barrier's log growth draws on

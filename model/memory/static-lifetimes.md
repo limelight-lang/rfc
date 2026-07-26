@@ -72,6 +72,66 @@ boundaries.
 This subsumes classic ARC pairing elimination: a retain/release pair
 is just a move the analysis failed to name.
 
+### What may own a borrow
+
+A borrow is only as safe as whatever the analysis nominated as its
+owner. The rule, and it is not the obvious one:
+
+**The owner must be a reference the cycle collector treats as a root —
+a frame slot, an arena slot, a static block, an immortal, an FFI
+handle. A field of a heap object never qualifies.**
+
+Three cases show why, in order of increasing subtlety.
+
+*Ordinary ARC already forbids the first.* The owner dies before the
+borrow does:
+
+```php
+$node = $graph->head;   // borrow; retain elided, $graph owns it
+unset($graph);          // owner dead
+$node->run();           // borrow outlives its owner
+```
+
+If `$graph` held the last reference, `head` dies on the spot by plain
+refcounting and `$node` dangles. No collector involved; any ARC
+compiler must emit the retain or postpone the drop.
+
+*The second is the one the collector adds.* The owner is a heap field,
+and the analysis reasons — correctly, for refcounting — that the object
+stays alive because a live object references it:
+
+```php
+$x = $obj->other;   // borrow; retain elided, $obj->other owns it
+$obj = null;        // $obj sits in a cycle: its count never reaches
+                    // zero, so plain ARC keeps it alive forever
+$x->run();
+```
+
+Under refcounting alone the reasoning holds and the cycle simply leaks.
+Under a cycle collector it does not: the collector finds the ring, frees
+`$obj` and `other` together, and `$x` dangles. **What the compiler
+proved is liveness-by-refcount, and that is strictly weaker than
+liveness.** This is why the owner has to be a root and not merely alive.
+
+*The third shows how narrow the problem is.* Anything that leaves the
+frame is counted by construction, because leaving means a store and
+every store goes through the barrier:
+
+```php
+$x = $obj->other;
+$f = function () use ($x) { $x->run(); };   // capture is a store: +1
+```
+
+So an uncounted borrow can only ever live in a frame slot, and both it
+and its owner are decided by one compilation of one function. The
+obligation is a within-frame property, not a whole-program one.
+
+**The acyclic flag does not relax this.** An acyclic holder cannot be a
+cycle member ([../gc/rc-walk.md](../gc/rc-walk.md), "The compiler's
+acyclic flag"), but it can still be garbage *held by* a cycle, and it
+dies in the cascade the moment the collector frees that cycle. Its field
+is therefore no safer an owner than any other.
+
 ## Drop Point Policy
 
 Where does the scheduled drop go: end of scope (Zend-observable

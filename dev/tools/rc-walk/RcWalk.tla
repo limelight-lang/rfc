@@ -3,22 +3,29 @@
 (* Source of truth: rfc/model/gc/rc-walk-model.md (alphabets, state    *)
 (* vector, invariants) and rc-walk.md (the protocol, as amended        *)
 (* 2026-07-26: condemned entities never die on the ordinary path,      *)
-(* acquittal clears bytes and tears deferred deaths, weak components). *)
+(* acquittal clears bytes and tears deferred deaths, weak components,  *)
+(* guard-aware re-verify, non-reentrant drain).                        *)
 (*                                                                     *)
 (* The mutator plays a fixed script; the only nondeterminism is WHERE  *)
-(* its steps land between collector micro-steps — the collisions that  *)
-(* matter, not free-play.  ScriptName = "free" restores the unbounded  *)
-(* mutator for offline exhaustion runs.                                *)
+(* its steps land between collector micro-steps.  The Phase 4 drain is *)
+(* phased (test -> guard -> destructors -> verify -> sever/free) so    *)
+(* destructor scenarios — resurrection, allocation, re-entrancy — are  *)
+(* expressible.  Slot s1 is the one entity with a destructor body,     *)
+(* selected by DtorName; DESTRUCTOR_RAN is the dran set.               *)
 EXTENDS Naturals, FiniteSets, Sequences
 
-CONSTANTS ByteOnly,   \* Phase 3 = byte re-read only, no Phase 4
-          NonTotal,   \* walker may omit a row while edges into it exist
-          NoDefer,    \* freed slots reusable during an epoch
-          NoSever,    \* Phase 4 un-guards without severing
-          OldDeath,   \* pre-fix rule: condemned entities die normally
-          NoAlloc,    \* free mode only: disable MNew
-          ScriptName, \* which mutator script runs (see Scripts below)
-          InitShape   \* "migration" | "garbage" | "heldchild"
+CONSTANTS ByteOnly,       \* Phase 3 = byte re-read only, no Phase 4
+          NonTotal,       \* walker may omit a row while edges into it exist
+          NoDefer,        \* freed slots reusable during an epoch
+          NoSever,        \* Phase 4 un-guards without severing
+          OldDeath,       \* pre-fix rule: condemned entities die normally
+          ReentrantDrain, \* pre-fix rule: a checkpoint inside the drain
+                          \* picks the in-progress message up again
+          NoAlloc,        \* free mode only: disable MNew
+          DtorName,       \* s1's destructor body: "none"|"resurrect"|"alloc"
+          ScriptName,     \* which mutator script runs (see Scripts below)
+          InitShape       \* "migration"|"garbage"|"heldchild"|"garland"
+                          \* |"pair"|"pair2"
 
 Slots   == 1..3
 Fields  == 1..2
@@ -27,10 +34,6 @@ NoRef   == 0
 Absent  == 99
 NotRead == 99
 
-(* Scripts: action = <<name, args...>>.                                *)
-(*   load  fr src f | drop fr | storeval dst f fr | storenull dst f    *)
-(*   borrowu fr src f (bind WITHOUT retain — the uncounted borrow)     *)
-(*   new fr                                                            *)
 TheScript ==
   CASE ScriptName = "selfloop"   -> <<<<"load",2,1,1>>, <<"drop",1>>,
                                      <<"storeval",2,1,2>>, <<"storeval",2,2,2>>>>
@@ -47,18 +50,21 @@ TheScript ==
 
 VARIABLES occ, rcnt, eb, cb, fld,      \* heap
           frame, mpc,                  \* mutator + script counter
+          gcnt, dran,                  \* Phase 4 guards, DESTRUCTOR_RAN
           cpc, snap, wtodo, wfld,      \* collector: phase, snapshot, walk
           crc, cedg,                   \* collector-private snapshot arrays
           comp, msg, workS, workE,     \* candidate component, message, work
           bad                          \* drain touched a non-live slot
 
-vars == <<occ, rcnt, eb, cb, fld, frame, mpc, cpc, snap, wtodo, wfld,
-          crc, cedg, comp, msg, workS, workE, bad>>
+vars == <<occ, rcnt, eb, cb, fld, frame, mpc, gcnt, dran, cpc, snap,
+          wtodo, wfld, crc, cedg, comp, msg, workS, workE, bad>>
 
 heapVars == <<occ, rcnt, eb, cb, fld>>
 colVars  == <<cpc, snap, wtodo, wfld, crc, cedg, comp, msg, workS, workE>>
+dtorVars == <<gcnt, dran>>
 
 EpochActive == cpc # "idle"
+DrainPhases == {"drain_dtor", "drain_verify"}
 DieMode == IF EpochActive /\ ~NoDefer THEN "parked" ELSE "free"
 
 (* ------------------------- ground truth --------------------------- *)
@@ -71,21 +77,12 @@ TrueRC(s) == Cardinality({fr \in Frames : frame[fr] = s})
            + Cardinality({<<t, f>> \in Slots \X Fields : fld[t][f] = s})
 
 (* --------------------- death and zombification -------------------- *)
-(* A release cascade: least fixpoint = what refcounting actually      *)
-(* frees.  Under the 2026-07-26 rule a condemned entity never dies on *)
-(* this path: it drops to rc = 0 but stays live — a "zombie" owned by *)
-(* the drain (or by the acquittal that clears its byte).  OldDeath    *)
-(* restores the pre-fix semantics for the F5 reachability runs.       *)
 
 MayDie(c, cbF) == OldDeath \/ ~cbF[c]
 
 EdgesIntoF(flF, D, c) ==
   Cardinality({<<s, f>> \in D \X Fields : flF[s][f] = c})
 
-(* Effects of a simultaneous loss of counted refs, over explicit      *)
-(* rc/fld/cb snapshots (so store actions can pre-apply the retain and *)
-(* the field write).  Zombies fall out automatically: they lose the   *)
-(* count but stay out of D, keep fields, stay live.                   *)
 LossEffect(loss, rcF, flF, cbF) ==
   LET Grow(D) == D \cup {c \in Slots :
                    /\ occ[c] = "live" /\ MayDie(c, cbF)
@@ -104,30 +101,27 @@ ApplyRec(R) == /\ occ' = R.occ /\ rcnt' = R.rcnt /\ fld' = R.fld /\ cb' = R.cb
 
 OneLoss(t) == [s \in Slots |-> IF s = t THEN 1 ELSE 0]
 
-(* Acquittal / drop duties: clear the members' bytes, then tear down  *)
-(* zombie members (rc = 0, still live) — their deaths were deferred.  *)
-TearRec(K) ==
+(* Acquittal / drop duties over an explicit count snapshot: clear the  *)
+(* members' bytes, then tear down zombie members (rc = 0, live).       *)
+TearRec(K, rcF) ==
   LET cb1 == [s \in Slots |-> IF s \in K THEN FALSE ELSE cb[s]]
-      Z == {m \in K : occ[m] = "live" /\ rcnt[m] = 0}
+      Z == {m \in K : occ[m] = "live" /\ rcF[m] = 0}
       loss == [c \in Slots |->
                  IF c \in Z THEN 0 ELSE EdgesIntoF(fld, Z, c)]
       Grow(D) == D \cup {c \in Slots \ Z :
                    /\ occ[c] = "live" /\ MayDie(c, cb1)
-                   /\ rcnt[c] = loss[c] + EdgesIntoF(fld, D \cup Z, c)}
+                   /\ rcF[c] = loss[c] + EdgesIntoF(fld, D \cup Z, c)}
       D == Grow(Grow(Grow({})))
       gone == Z \cup D
       lost(c) == loss[c] + EdgesIntoF(fld, D, c)
   IN [occ  |-> [s \in Slots |-> IF s \in gone THEN DieMode ELSE occ[s]],
-      rcnt |-> [s \in Slots |-> IF s \in gone THEN 0 ELSE rcnt[s] - lost(s)],
+      rcnt |-> [s \in Slots |-> IF s \in gone THEN 0 ELSE rcF[s] - lost(s)],
       fld  |-> [s \in Slots |-> IF s \in gone THEN [f \in Fields |-> NoRef]
                                                ELSE fld[s]],
       cb   |-> [s \in Slots |-> IF s \in gone \/ lost(s) > 0 THEN FALSE
                                                              ELSE cb1[s]]]
 
 (* --------------------- mutator operations ------------------------- *)
-(* Op* carry only guards and heap/frame effects; script vs free mode  *)
-(* is decided in Next.  Checkpoint-borne work (MAck, MDrain) is       *)
-(* reactive and always available — it is not a script step.           *)
 
 FrameHolds(s) == \E fr \in Frames : frame[fr] = s
 
@@ -142,6 +136,8 @@ OpNew(fr) ==
        /\ cb'   = [cb EXCEPT ![s] = FALSE]
        /\ fld'  = [fld EXCEPT ![s] = [f \in Fields |-> NoRef]]
        /\ frame' = [frame EXCEPT ![fr] = s]
+       /\ dran' = dran \ {s}
+  /\ UNCHANGED gcnt
 
 OpLoad(fr, src, f) ==
   /\ FrameHolds(src) /\ frame[fr] = NoRef /\ fld[src][f] # NoRef
@@ -149,15 +145,13 @@ OpLoad(fr, src, f) ==
        /\ frame' = [frame EXCEPT ![fr] = t]
        /\ rcnt' = [rcnt EXCEPT ![t] = @ + 1]
        /\ cb'   = [cb EXCEPT ![t] = FALSE]
-  /\ UNCHANGED <<occ, eb, fld>>
+  /\ UNCHANGED <<occ, eb, fld>> /\ UNCHANGED dtorVars
 
 OpBorrowU(fr, src, f) ==
   /\ FrameHolds(src) /\ frame[fr] = NoRef /\ fld[src][f] # NoRef
   /\ frame' = [frame EXCEPT ![fr] = fld[src][f]]
-  /\ UNCHANGED heapVars
+  /\ UNCHANGED heapVars /\ UNCHANGED dtorVars
 
-(* store(dst.f, y): retain new, WRITE THE FIELD, then release old —   *)
-(* the release is last (F7 fix), computed on the updated field state. *)
 OpStoreVal(dst, f, fr) ==
   /\ FrameHolds(dst) /\ frame[fr] # NoRef
   /\ LET new == frame[fr]
@@ -172,7 +166,7 @@ OpStoreVal(dst, f, fr) ==
                                         ELSE OneLoss(old)
              IN /\ ApplyRec(LossEffect(loss, rc1, fl1, cb1))
                 /\ UNCHANGED eb
-  /\ UNCHANGED frame
+  /\ UNCHANGED frame /\ UNCHANGED dtorVars
 
 OpStoreNull(dst, f) ==
   /\ FrameHolds(dst) /\ fld[dst][f] # NoRef
@@ -180,16 +174,16 @@ OpStoreNull(dst, f) ==
          fl1 == [fld EXCEPT ![dst][f] = NoRef]
      IN /\ ApplyRec(LossEffect(OneLoss(old), rcnt, fl1, cb))
         /\ UNCHANGED eb
-  /\ UNCHANGED frame
+  /\ UNCHANGED frame /\ UNCHANGED dtorVars
 
 OpDrop(fr) ==
   /\ frame[fr] # NoRef
   /\ ApplyRec(LossEffect(OneLoss(frame[fr]), rcnt, fld, cb))
   /\ frame' = [frame EXCEPT ![fr] = NoRef]
-  /\ UNCHANGED eb
+  /\ UNCHANGED eb /\ UNCHANGED dtorVars
 
 MutFree ==
-  /\ ScriptName = "free"
+  /\ ScriptName = "free" /\ cpc \notin DrainPhases
   /\ \/ \E fr \in Frames : (~NoAlloc /\ OpNew(fr)) \/ OpDrop(fr)
      \/ \E fr \in Frames, s \in Slots, f \in Fields : OpLoad(fr, s, f)
      \/ \E s \in Slots, f \in Fields, fr \in Frames : OpStoreVal(s, f, fr)
@@ -197,7 +191,8 @@ MutFree ==
   /\ UNCHANGED mpc /\ UNCHANGED colVars /\ UNCHANGED bad
 
 MutScript ==
-  /\ ScriptName # "free" /\ mpc <= Len(TheScript)
+  /\ ScriptName # "free" /\ cpc \notin DrainPhases
+  /\ mpc <= Len(TheScript)
   /\ LET a == TheScript[mpc] IN
        CASE a[1] = "load"      -> OpLoad(a[2], a[3], a[4])
          [] a[1] = "drop"      -> OpDrop(a[2])
@@ -218,31 +213,28 @@ CTrigger ==
   /\ crc'  = [s \in Slots |-> Absent]
   /\ cedg' = [s \in Slots |-> [f \in Fields |-> NotRead]]
   /\ cpc' = "walk" /\ comp' = {} /\ msg' = {} /\ workS' = {} /\ workE' = {}
-  /\ UNCHANGED heapVars /\ UNCHANGED <<frame, mpc>> /\ UNCHANGED bad
+  /\ UNCHANGED heapVars /\ UNCHANGED <<frame, mpc>>
+  /\ UNCHANGED dtorVars /\ UNCHANGED bad
 
 CWalkClassify(s) ==
   /\ cpc = "walk" /\ s \in wtodo
-  /\ \/ (* free / dying / zombie: occupancy test *)
-        /\ rcnt[s] = 0
+  /\ \/ /\ rcnt[s] = 0
         /\ wtodo' = wtodo \ {s}
         /\ UNCHANGED <<eb, crc, wfld>>
-     \/ (* new: stamp and skip (allocate-black) *)
-        /\ rcnt[s] > 0 /\ eb[s] \in {"zero", "cur"}
+     \/ /\ rcnt[s] > 0 /\ eb[s] \in {"zero", "cur"}
         /\ eb' = [eb EXCEPT ![s] = "cur"]
         /\ wtodo' = wtodo \ {s}
         /\ UNCHANGED <<crc, wfld>>
-     \/ (* mature: record the row, queue the field reads *)
-        /\ rcnt[s] > 0 /\ eb[s] = "old"
+     \/ /\ rcnt[s] > 0 /\ eb[s] = "old"
         /\ crc' = [crc EXCEPT ![s] = rcnt[s]]
         /\ wfld' = wfld \cup {<<s, f>> : f \in Fields}
         /\ wtodo' = wtodo \ {s}
         /\ UNCHANGED eb
-     \/ (* NonTotal breakage: mature row silently omitted             *)
-        /\ NonTotal
+     \/ /\ NonTotal
         /\ rcnt[s] > 0 /\ eb[s] = "old"
         /\ wtodo' = wtodo \ {s}
         /\ UNCHANGED <<eb, crc, wfld>>
-  /\ UNCHANGED <<occ, rcnt, cb, fld, frame, mpc>>
+  /\ UNCHANGED <<occ, rcnt, cb, fld, frame, mpc>> /\ UNCHANGED dtorVars
   /\ UNCHANGED <<cpc, snap, cedg, comp, msg, workS, workE, bad>>
 
 CWalkField(s, f) ==
@@ -251,7 +243,7 @@ CWalkField(s, f) ==
          valid == v # NoRef /\ v \in snap /\ rcnt[v] > 0
      IN cedg' = [cedg EXCEPT ![s][f] = IF valid THEN v ELSE NoRef]
   /\ wfld' = wfld \ {<<s, f>>}
-  /\ UNCHANGED heapVars /\ UNCHANGED <<frame, mpc>>
+  /\ UNCHANGED heapVars /\ UNCHANGED <<frame, mpc>> /\ UNCHANGED dtorVars
   /\ UNCHANGED <<cpc, snap, wtodo, crc, comp, msg, workS, workE, bad>>
 
 (* --------------------- collector: diff & mark --------------------- *)
@@ -280,7 +272,7 @@ CDiff ==
             /\ comp' = CompOf(s)
             /\ workS' = CompOf(s)
             /\ cpc' = "condemn"
-  /\ UNCHANGED heapVars /\ UNCHANGED <<frame, mpc>>
+  /\ UNCHANGED heapVars /\ UNCHANGED <<frame, mpc>> /\ UNCHANGED dtorVars
   /\ UNCHANGED <<snap, wtodo, wfld, crc, cedg, msg, workE, bad>>
 
 (* ------------------ collector: condemn & re-check ----------------- *)
@@ -290,7 +282,7 @@ CCondemn(s) ==
   /\ cb' = [cb EXCEPT ![s] = TRUE]
   /\ workS' = workS \ {s}
   /\ cpc' = IF workS = {s} THEN "await_ack" ELSE "condemn"
-  /\ UNCHANGED <<occ, rcnt, eb, fld, frame, mpc>>
+  /\ UNCHANGED <<occ, rcnt, eb, fld, frame, mpc>> /\ UNCHANGED dtorVars
   /\ UNCHANGED <<snap, wtodo, wfld, crc, cedg, comp, msg, workE, bad>>
 
 MAck ==
@@ -299,11 +291,10 @@ MAck ==
   /\ workS' = comp
   /\ workE' = IF ByteOnly THEN {}
               ELSE {p \in RecordedEdges : cedg[p[1]][p[2]] \in comp}
-  /\ UNCHANGED heapVars /\ UNCHANGED <<frame, mpc>>
+  /\ UNCHANGED heapVars /\ UNCHANGED <<frame, mpc>> /\ UNCHANGED dtorVars
   /\ UNCHANGED <<snap, wtodo, wfld, crc, cedg, comp, msg, bad>>
 
-(* Acquittal: clear bytes, tear deferred deaths, drop the component.  *)
-Acquit == /\ ApplyRec(TearRec(comp)) /\ UNCHANGED eb
+Acquit == /\ ApplyRec(TearRec(comp, rcnt)) /\ UNCHANGED eb
           /\ cpc' = "flush" /\ comp' = {} /\ workS' = {} /\ workE' = {}
           /\ UNCHANGED <<snap, wtodo, wfld, crc, cedg, msg>>
 
@@ -321,7 +312,7 @@ CRecheckCnt(s) ==
              ELSE /\ workS' = comp /\ cpc' = "recheck_byte"
                   /\ UNCHANGED workE
           /\ UNCHANGED <<snap, wtodo, wfld, crc, cedg, comp, msg>>
-  /\ UNCHANGED <<frame, mpc>> /\ UNCHANGED bad
+  /\ UNCHANGED <<frame, mpc>> /\ UNCHANGED dtorVars /\ UNCHANGED bad
 
 CRecheckEdge(p) ==
   /\ cpc = "recheck_edge" /\ p \in workE
@@ -333,7 +324,7 @@ CRecheckEdge(p) ==
              THEN cpc' = "recheck_byte" /\ workS' = comp
              ELSE cpc' = "recheck_edge" /\ UNCHANGED workS
           /\ UNCHANGED <<snap, wtodo, wfld, crc, cedg, comp, msg>>
-  /\ UNCHANGED <<frame, mpc>> /\ UNCHANGED bad
+  /\ UNCHANGED <<frame, mpc>> /\ UNCHANGED dtorVars /\ UNCHANGED bad
 
 CRecheckByte(s) ==
   /\ cpc = "recheck_byte" /\ s \in workS
@@ -348,9 +339,8 @@ CRecheckByte(s) ==
                   /\ UNCHANGED msg
              ELSE /\ workS' = {} /\ cpc' = "wait_drain" /\ msg' = comp
           /\ UNCHANGED <<snap, wtodo, wfld, crc, cedg, comp, workE>>
-  /\ UNCHANGED <<frame, mpc>> /\ UNCHANGED bad
+  /\ UNCHANGED <<frame, mpc>> /\ UNCHANGED dtorVars /\ UNCHANGED bad
 
-(* byte_only draft: the collector frees on its own verdict            *)
 CFreeDirect(s) ==
   /\ cpc = "free_direct" /\ s \in workS
   /\ occ'  = [occ EXCEPT ![s] = "free"]
@@ -358,29 +348,89 @@ CFreeDirect(s) ==
   /\ fld'  = [fld EXCEPT ![s] = [f \in Fields |-> NoRef]]
   /\ workS' = workS \ {s}
   /\ cpc' = IF workS = {s} THEN "flush" ELSE "free_direct"
-  /\ UNCHANGED <<eb, cb, frame, mpc>>
+  /\ UNCHANGED <<eb, cb, frame, mpc>> /\ UNCHANGED dtorVars
   /\ UNCHANGED <<snap, wtodo, wfld, crc, cedg, comp, msg, workE, bad>>
 
 (* --------------------- mutator: the Phase-4 drain ----------------- *)
-(* Atomic on the mutator's thread.  Exact test guard-aware by         *)
-(* construction (the guard is not modelled as a count change since    *)
-(* the drain is one action).  A non-live member marks corruption      *)
-(* (reachable only under OldDeath / NoDefer).  A zombie member        *)
-(* (live, rc = 0) balances 0 = 0 and is torn down here, exactly once. *)
+(* Phased: exact test -> guard -> destructor steps -> guard-aware     *)
+(* verify -> sever/free (or acquit).  While a drain phase is active   *)
+(* the mutator's own script is blocked: the thread is inside the      *)
+(* drain.  s1 is the one entity with a destructor body (DtorName).    *)
 
 IndegK(K, m) == Cardinality({<<s, f>> \in K \X Fields : fld[s][f] = m})
 
-MDrain ==
+MDrainStart ==
   /\ cpc = "wait_drain" /\ msg # {}
   /\ LET K == msg
          pass == \A m \in K : rcnt[m] = IndegK(K, m)
      IN IF ~pass
-        THEN (* drop the message whole: bytes cleared, zombies torn *)
-             /\ ApplyRec(TearRec(K)) /\ UNCHANGED eb /\ UNCHANGED bad
+        THEN (* drop whole: bytes cleared, deferred deaths torn *)
+             /\ ApplyRec(TearRec(K, rcnt)) /\ UNCHANGED eb
+             /\ msg' = {} /\ comp' = {} /\ cpc' = "flush"
+             /\ UNCHANGED dtorVars /\ UNCHANGED bad
         ELSE IF \E m \in K : occ[m] # "live"
         THEN /\ bad' = TRUE /\ UNCHANGED heapVars
-        ELSE IF NoSever
-        THEN /\ UNCHANGED heapVars /\ UNCHANGED bad
+             /\ msg' = {} /\ comp' = {} /\ cpc' = "flush"
+             /\ UNCHANGED dtorVars
+        ELSE (* guard every member: a real +1 on the count *)
+             /\ rcnt' = [s \in Slots |-> IF s \in K THEN rcnt[s] + 1
+                                                    ELSE rcnt[s]]
+             /\ gcnt' = [s \in Slots |-> IF s \in K THEN 1 ELSE gcnt[s]]
+             /\ cpc' = "drain_dtor"
+             /\ UNCHANGED <<occ, eb, cb, fld>>
+             /\ UNCHANGED <<msg, comp>> /\ UNCHANGED dran /\ UNCHANGED bad
+  /\ UNCHANGED <<frame, mpc>>
+  /\ UNCHANGED <<snap, wtodo, wfld, crc, cedg, workS, workE>>
+
+(* One destructor step per member; only s1 has a body.  A resurrect   *)
+(* stores the member into a free frame slot (a counted reference); an *)
+(* alloc carves a slot into fr2.  Everything else is a no-op.         *)
+MDtorRun(m) ==
+  /\ cpc = "drain_dtor" /\ m \in msg /\ m \notin dran
+  /\ dran' = dran \cup {m}
+  /\ IF m = 1 /\ DtorName = "resurrect" /\ frame[2] = NoRef
+     THEN /\ frame' = [frame EXCEPT ![2] = m]
+          /\ rcnt' = [rcnt EXCEPT ![m] = @ + 1]
+          /\ cb'   = [cb EXCEPT ![m] = FALSE]
+          /\ UNCHANGED <<occ, eb, fld>>
+     ELSE IF m = 1 /\ DtorName = "alloc" /\ frame[2] = NoRef
+     THEN \E s \in Slots :
+            /\ occ[s] \in {"virgin", "free"}
+            /\ occ'  = [occ EXCEPT ![s] = "live"]
+            /\ rcnt' = [rcnt EXCEPT ![s] = 1]
+            /\ eb'   = [eb EXCEPT ![s] = "zero"]
+            /\ cb'   = [cb EXCEPT ![s] = FALSE]
+            /\ fld'  = [fld EXCEPT ![s] = [f \in Fields |-> NoRef]]
+            /\ frame' = [frame EXCEPT ![2] = s]
+     ELSE UNCHANGED heapVars /\ UNCHANGED frame
+  /\ UNCHANGED mpc /\ UNCHANGED gcnt
+  /\ UNCHANGED colVars /\ UNCHANGED bad
+
+(* The pre-fix hazard (F8): the allocation above is a checkpoint      *)
+(* inside the drain; a re-entrant allocator picks the in-progress     *)
+(* message up again and re-runs the test.  The guards make every      *)
+(* member mismatch, so the nested entry drops the message the outer   *)
+(* drain is still working on — and the outer guards leak forever.     *)
+MReenterDrain ==
+  /\ ReentrantDrain /\ cpc = "drain_dtor" /\ msg # {}
+  /\ DtorName = "alloc" /\ frame[2] # NoRef   \* the nested checkpoint
+  /\ ApplyRec(TearRec(msg, rcnt)) /\ UNCHANGED eb
+  /\ msg' = {} /\ comp' = {} /\ cpc' = "flush"
+  /\ UNCHANGED <<frame, mpc>> /\ UNCHANGED dtorVars
+  /\ UNCHANGED <<snap, wtodo, wfld, crc, cedg, workS, workE, bad>>
+
+MDrainVerify ==
+  /\ cpc = "drain_dtor" /\ msg # {} /\ msg \subseteq dran
+  /\ LET K == msg
+         pass == \A m \in K : rcnt[m] - gcnt[m] = IndegK(K, m)
+         unguarded == [s \in Slots |-> rcnt[s] - gcnt[s]]
+     IN IF ~pass \/ NoSever
+        THEN (* acquit (or the no_sever bug): un-guard; on acquit the *)
+             (* bytes clear and deferred deaths tear                  *)
+             /\ IF NoSever /\ pass
+                THEN /\ rcnt' = unguarded /\ UNCHANGED <<occ, fld, cb>>
+                ELSE ApplyRec(TearRec(K, unguarded))
+             /\ UNCHANGED eb
         ELSE (* sever member fields, free members, cascade outside    *)
              LET fl1 == [s \in Slots |-> IF s \in K
                                          THEN [f \in Fields |-> NoRef]
@@ -406,10 +456,11 @@ MDrain ==
                 /\ cb'   = [s \in Slots |->
                               IF s \in gone \/ lost(s) > 0 THEN FALSE
                                                            ELSE cb1[s]]
-                /\ UNCHANGED eb /\ UNCHANGED bad
+                /\ UNCHANGED eb
+  /\ gcnt' = [s \in Slots |-> IF s \in msg THEN 0 ELSE gcnt[s]]
   /\ msg' = {} /\ comp' = {} /\ cpc' = "flush"
-  /\ UNCHANGED <<frame, mpc>>
-  /\ UNCHANGED <<snap, wtodo, wfld, crc, cedg, workS, workE>>
+  /\ UNCHANGED <<frame, mpc>> /\ UNCHANGED dran
+  /\ UNCHANGED <<snap, wtodo, wfld, crc, cedg, workS, workE, bad>>
 
 (* -------------------------- epoch close --------------------------- *)
 
@@ -422,14 +473,16 @@ CFlush ==
   /\ crc'  = [s \in Slots |-> Absent]
   /\ cedg' = [s \in Slots |-> [f \in Fields |-> NotRead]]
   /\ comp' = {} /\ msg' = {} /\ workS' = {} /\ workE' = {}
-  /\ UNCHANGED <<rcnt, cb, fld, frame, mpc>> /\ UNCHANGED bad
+  /\ UNCHANGED <<rcnt, cb, fld, frame, mpc>> /\ UNCHANGED dtorVars
+  /\ UNCHANGED bad
 
 (* ----------------------------- spec ------------------------------- *)
 
 Next ==
   \/ MutFree \/ MutScript
-  \/ CTrigger \/ CDiff \/ CFlush \/ MAck \/ MDrain
-  \/ \E s \in Slots : CWalkClassify(s) \/ CCondemn(s)
+  \/ CTrigger \/ CDiff \/ CFlush \/ MAck
+  \/ MDrainStart \/ MDrainVerify \/ MReenterDrain
+  \/ \E s \in Slots : CWalkClassify(s) \/ CCondemn(s) \/ MDtorRun(s)
                       \/ CRecheckCnt(s) \/ CRecheckByte(s) \/ CFreeDirect(s)
   \/ \E s \in Slots, f \in Fields : CWalkField(s, f)
   \/ \E p \in Slots \X Fields : CRecheckEdge(p)
@@ -440,6 +493,7 @@ InitCol ==
   /\ cedg = [s \in Slots |-> [f \in Fields |-> NotRead]]
   /\ comp = {} /\ msg = {} /\ workS = {} /\ workE = {}
   /\ bad = FALSE /\ mpc = 1
+  /\ gcnt = [s \in Slots |-> 0] /\ dran = {}
 
 CycleChildFld ==
   [s \in Slots |->
@@ -447,21 +501,18 @@ CycleChildFld ==
      ELSE IF s = 2 THEN [f \in Fields |-> IF f = 1 THEN 1 ELSE NoRef]
      ELSE [f \in Fields |-> NoRef]]
 
-(* migration: live cycle s1<->s2 (f1), child s1.f2 = s3, fr1 holds s1 *)
 InitMigration ==
   /\ occ = [s \in Slots |-> "live"] /\ fld = CycleChildFld
   /\ frame = [fr \in Frames |-> IF fr = 1 THEN 1 ELSE NoRef]
   /\ rcnt = [s \in Slots |-> IF s = 1 THEN 2 ELSE 1]
   /\ eb = [s \in Slots |-> "old"] /\ cb = [s \in Slots |-> FALSE]
 
-(* garbage: same shape, frame empty — everything is dead already      *)
 InitGarbage ==
   /\ occ = [s \in Slots |-> "live"] /\ fld = CycleChildFld
   /\ frame = [fr \in Frames |-> NoRef]
   /\ rcnt = [s \in Slots |-> 1]
   /\ eb = [s \in Slots |-> "old"] /\ cb = [s \in Slots |-> FALSE]
 
-(* heldchild: garbage cycle s1<->s2, s2.f2 = s3, fr1 holds s3         *)
 InitHeldChild ==
   /\ occ = [s \in Slots |-> "live"]
   /\ fld = [s \in Slots |->
@@ -472,8 +523,6 @@ InitHeldChild ==
   /\ rcnt = [s \in Slots |-> IF s = 3 THEN 2 ELSE 1]
   /\ eb = [s \in Slots |-> "old"] /\ cb = [s \in Slots |-> FALSE]
 
-(* garland: garbage ring s1<->s2 linked to a garbage self-ring s3 —   *)
-(* the weak-grouping shape: one component, one epoch                  *)
 InitGarland ==
   /\ occ = [s \in Slots |-> "live"]
   /\ fld = [s \in Slots |->
@@ -484,7 +533,6 @@ InitGarland ==
   /\ rcnt = [s \in Slots |-> IF s = 3 THEN 2 ELSE 1]
   /\ eb = [s \in Slots |-> "old"] /\ cb = [s \in Slots |-> FALSE]
 
-(* pair: live cycle held from the frame, s3 virgin — allocate-black   *)
 InitPair ==
   /\ occ = [s \in Slots |-> IF s = 3 THEN "virgin" ELSE "live"]
   /\ fld = [s \in Slots |->
@@ -496,10 +544,24 @@ InitPair ==
   /\ eb = [s \in Slots |-> IF s = 3 THEN "zero" ELSE "old"]
   /\ cb = [s \in Slots |-> FALSE]
 
+(* pair2: garbage cycle s1<->s2, s3 virgin, frame empty — the shape   *)
+(* for destructor scenarios: the cycle drains, s1's destructor acts   *)
+InitPair2 ==
+  /\ occ = [s \in Slots |-> IF s = 3 THEN "virgin" ELSE "live"]
+  /\ fld = [s \in Slots |->
+              IF s = 1 THEN [f \in Fields |-> IF f = 1 THEN 2 ELSE NoRef]
+              ELSE IF s = 2 THEN [f \in Fields |-> IF f = 1 THEN 1 ELSE NoRef]
+              ELSE [f \in Fields |-> NoRef]]
+  /\ frame = [fr \in Frames |-> NoRef]
+  /\ rcnt = [s \in Slots |-> IF s = 3 THEN 0 ELSE 1]
+  /\ eb = [s \in Slots |-> IF s = 3 THEN "zero" ELSE "old"]
+  /\ cb = [s \in Slots |-> FALSE]
+
 Init == /\ CASE InitShape = "migration" -> InitMigration
              [] InitShape = "garbage"   -> InitGarbage
              [] InitShape = "garland"   -> InitGarland
              [] InitShape = "pair"      -> InitPair
+             [] InitShape = "pair2"     -> InitPair2
              [] OTHER                   -> InitHeldChild
         /\ InitCol
 
@@ -515,26 +577,29 @@ TypeOK ==
   /\ cb \in [Slots -> BOOLEAN]
   /\ fld \in [Slots -> [Fields -> Slots \cup {NoRef}]]
   /\ frame \in [Frames -> Slots \cup {NoRef}]
+  /\ gcnt \in [Slots -> 0..2] /\ dran \subseteq Slots
 
-(* T4, continuous: whatever the frame can reach is live.              *)
 SafeHeap == \A s \in Reach : occ[s] = "live"
 
-(* The drain never runs against a freed or recycled slot.             *)
 NotBad == bad = FALSE
 
-(* I1 (sound configurations): counts are honest.  A zombie is honest: *)
-(* rc = 0 and nothing points at it.                                   *)
-I1Honest == \A s \in Slots : occ[s] = "live" => rcnt[s] = TrueRC(s)
+(* I1 with the Phase 4 guard as its own term, per the model. *)
+I1Honest == \A s \in Slots :
+              occ[s] = "live" => rcnt[s] = TrueRC(s) + gcnt[s]
 
-(* I2: no live field points at a non-live slot.                       *)
 I2NoDangling == \A s \in Slots, f \in Fields :
                   fld[s][f] # NoRef => occ[fld[s][f]] = "live"
 
-(* No live entity is ever posted (F6: does the filter ever let a      *)
-(* false post through?).  Expected to FAIL under NonTotal.            *)
-PostClean == msg \cap Reach = {}
+(* The filter never posts a live entity.  Scoped to the queue-waiting *)
+(* phase: during drain_dtor a destructor may legally resurrect a      *)
+(* member (that is what the re-verify exists for), so reachability of *)
+(* an in-drain member is not a filter failure.                        *)
+PostClean == cpc = "wait_drain" => msg \cap Reach = {}
 
-(* Liveness (script "none", garbage shape): garbage is collected.     *)
+(* Destructors run at most once per incarnation: a drained member is  *)
+(* in dran before anything of it is freed — checked structurally by   *)
+(* MDtorRun's guard; no separate invariant needed.                    *)
+
 EventuallyCollected == <>(\A s \in Slots : occ[s] \in {"free", "virgin"}
                                            \/ s \in Reach)
 =======================================================================

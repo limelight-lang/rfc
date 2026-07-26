@@ -500,27 +500,42 @@ Mechanical check of the replay: the spec (`dev/tools/rc-walk/RcWalk.tla`,
 TLC 2.19) plays each actor's alphabet with the mutator bound to a fixed
 per-scenario script; the only nondeterminism is where the mutator's
 steps land between collector micro-steps — the collisions, not
-free-play. All runs exhausted their state space (except where a
-violation stops the search); every number below is from the run.
+free-play. The Phase 4 drain is phased (test → guard → destructor
+steps → guard-aware verify → sever/free) so destructor scenarios are
+expressible; the guard is a real `+1` and I1 carries it as its own
+term. All runs exhausted their state space (except where a violation
+stops the search); every state count below is from the final battery,
+and every run finishes in 1–3 s wall clock.
 
-| Run | Config | Expected | Result | Distinct states | Time |
-|---|---|---|---|---|---|
-| self-loop kill | `byte_only` | frees live entity | **SafeHeap violated** ✓ | 5 501 | 1.3 s |
-| self-loop | sound | safe | pass, incl. `PostClean` | 5 852 | 1.5 s |
-| borrow (review's finding 1) | `byte_only` | frees live entity | **SafeHeap violated** ✓ | 819 | 1.1 s |
-| borrow | sound | safe | pass, incl. `PostClean` | 813 | 1.0 s |
-| migrate (null the old home) | sound | safe | pass, incl. `PostClean` | 1 227 | 1.1 s |
-| uncounted borrow | sound gates | frees live entity | **SafeHeap violated** ✓ | 512 | 1.0 s |
-| quiet | `no_sever` | cycle never freed | **liveness violated** ✓ | 290 | 1.5 s |
-| quiet | sound | garbage collected | pass (liveness) | 167 | 1.1 s |
-| held child | `non_total` | false post, no free | **PostClean violated** ✓ / SafeHeap passes ✓ | 295 / 296 | 1 s each |
-| held child | `non_total` + `byte_only` | frees live entity | **SafeHeap violated** ✓ | 284 | 1.0 s |
-| borrow-drop | `OldDeath` (pre-F5-fix) | premise probe | pass — premise unreachable here | 1 326 | 1.0 s |
-| borrow-drop | current rule | safe | pass, full invariants | 1 326 | 1.1 s |
-| borrow-drop-alloc | `no_defer` + `OldDeath` | premise probe | pass — premise unreachable here | 1 503 | 1.0 s |
-| borrow-drop-alloc | `no_defer`, current rule | safe | pass, full invariants | 1 503 | 1.1 s |
-| garland (ring + linked self-ring) | sound, quiet | whole garland collected (weak grouping) | pass (liveness) | 175 | 1.4 s |
-| allocate-black (virgin slot filled mid-walk) | sound | newcomer never judged | pass, full invariants | 692 | 1.0 s |
+| Run | Config | Expected | Result | Distinct states |
+|---|---|---|---|---|
+| self-loop kill | `byte_only` | frees live entity | **SafeHeap violated** ✓ | 5 509 |
+| self-loop | sound | safe | pass, incl. `PostClean` | 5 852 |
+| borrow (review's finding 1) | `byte_only` | frees live entity | **SafeHeap violated** ✓ | 819 |
+| borrow | sound | safe | pass, incl. `PostClean` | 817 |
+| migrate (null the old home) | sound | safe | pass, incl. `PostClean` | 1 235 |
+| uncounted borrow | sound gates | frees live entity | **SafeHeap violated** ✓ | 520 |
+| quiet | `no_sever` | cycle never freed | **liveness violated** ✓ | 321 |
+| quiet | sound | garbage collected | pass (liveness) | 175 |
+| held child | `non_total` | false post, no free | **PostClean violated** ✓ / SafeHeap passes ✓ | 299 / 300 |
+| held child | `non_total` + `byte_only` | frees live entity | **SafeHeap violated** ✓ | 284 |
+| borrow-drop | `OldDeath` (pre-F5-fix) | premise probe | pass — premise unreachable here | 1 352 |
+| borrow-drop | current rule | safe | pass, full invariants | 1 352 |
+| borrow-drop-alloc | `no_defer` + `OldDeath` | premise probe | pass — premise unreachable here | 1 603 |
+| borrow-drop-alloc | `no_defer`, current rule | safe | pass, full invariants | 1 603 |
+| garland (ring + linked self-ring) | sound, quiet | whole garland collected (weak grouping) | pass (liveness) | 183 |
+| allocate-black (virgin slot filled mid-walk) | sound | newcomer never judged | pass, full invariants | 692 |
+| destructor resurrects its member mid-drain | sound | re-verify acquits, member survives | pass, full invariants | 72 |
+| destructor allocates mid-drain | sound (non-reentrant) | allocation served, no nested pickup | pass, liveness + invariants | 77 |
+| destructor allocates mid-drain | `reentrant_drain` (F8 hazard) | nested pickup wedges collection | **liveness violated** ✓ | 437 |
+
+One assertion was corrected while building the destructor rows:
+`PostClean` originally said "a message never contains a reachable
+entity", which the resurrection scenario legitimately violates
+mid-drain — resurrection is what the re-verify exists for. It is
+scoped to the queue-waiting phase: *the filter* never posts a live
+entity; what a destructor then does to the posted member is the
+drain's business.
 
 Readings:
 

@@ -272,6 +272,16 @@ cursor. The cursor only bounds the scan; the epoch byte, not the cursor,
 decides maturity — a free-list pop hands out slots far below any cursor
 mid-epoch, so a cursor test alone misclassifies every reused slot.
 
+> *Amended 2026-07-27 (build step 3):* the implementation snapshots **no
+> cursor at all**. Reading it soundly would make the mutator's bump
+> increment a relaxed-atomic store, which measured **+14% on larson**
+> (`ll-model/dev/BENCHMARKS.md`) — a per-allocation cost this design
+> exists to refuse. The zeroed-slot-headers commissioning rule already
+> makes the full-block scan sound: a virgin slot reads refcount 0 and
+> skips on the occupancy test, exactly like a freed one. The extra
+> virgin-tail scan is collector-side work — the side this collector
+> always chooses to pay on.
+
 Enumerate the snapshotted blocks in address order. Per slot, a three-way
 classification, entirely collector-side:
 

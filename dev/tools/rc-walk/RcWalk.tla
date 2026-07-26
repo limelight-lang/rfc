@@ -27,9 +27,9 @@ CONSTANTS ByteOnly,       \* Phase 3 = byte re-read only, no Phase 4
           InitShape       \* "migration"|"garbage"|"heldchild"|"garland"
                           \* |"pair"|"pair2"
 
-Slots   == 1..3
+Slots   == 1..4   \* s4: the "second home" / external-holder entity
 Fields  == 1..2
-Frames  == 1..2
+Frames  == 1..3
 NoRef   == 0
 Absent  == 99
 NotRead == 99
@@ -46,6 +46,12 @@ TheScript ==
                                      <<"drop",2>>, <<"new",1>>>>
     [] ScriptName = "uncounted"  -> <<<<"borrowu",2,1,2>>, <<"drop",1>>>>
     [] ScriptName = "allocstore" -> <<<<"new",2>>, <<"storeval",3,1,1>>>>
+    [] ScriptName = "migratekill" -> <<<<"load",2,1,2>>, <<"storenull",1,2>>,
+                                     <<"drop",1>>, <<"drop",2>>>>
+    [] ScriptName = "secondhome" -> <<<<"load",2,4,1>>, <<"load",3,1,2>>,
+                                     <<"storeval",4,2,3>>, <<"drop",3>>,
+                                     <<"storenull",1,2>>, <<"drop",2>>,
+                                     <<"storenull",4,1>>>>
     [] OTHER                     -> <<>>   \* "none", "free"
 
 VARIABLES occ, rcnt, eb, cb, fld,      \* heap
@@ -71,7 +77,7 @@ DieMode == IF EpochActive /\ ~NoDefer THEN "parked" ELSE "free"
 
 ReachStep(R) == R \cup ({fld[s][f] : s \in R, f \in Fields} \ {NoRef})
 Reach == LET R0 == {frame[fr] : fr \in Frames} \ {NoRef}
-         IN ReachStep(ReachStep(ReachStep(R0)))
+         IN ReachStep(ReachStep(ReachStep(ReachStep(R0))))
 
 TrueRC(s) == Cardinality({fr \in Frames : frame[fr] = s})
            + Cardinality({<<t, f>> \in Slots \X Fields : fld[t][f] = s})
@@ -87,7 +93,7 @@ LossEffect(loss, rcF, flF, cbF) ==
   LET Grow(D) == D \cup {c \in Slots :
                    /\ occ[c] = "live" /\ MayDie(c, cbF)
                    /\ rcF[c] = loss[c] + EdgesIntoF(flF, D, c)}
-      D == Grow(Grow(Grow({})))
+      D == Grow(Grow(Grow(Grow({}))))
       lost(c) == loss[c] + EdgesIntoF(flF, D, c)
   IN [dead |-> D,
       occ  |-> [s \in Slots |-> IF s \in D THEN DieMode ELSE occ[s]],
@@ -111,7 +117,7 @@ TearRec(K, rcF) ==
       Grow(D) == D \cup {c \in Slots \ Z :
                    /\ occ[c] = "live" /\ MayDie(c, cb1)
                    /\ rcF[c] = loss[c] + EdgesIntoF(fld, D \cup Z, c)}
-      D == Grow(Grow(Grow({})))
+      D == Grow(Grow(Grow(Grow({}))))
       gone == Z \cup D
       lost(c) == loss[c] + EdgesIntoF(fld, D, c)
   IN [occ  |-> [s \in Slots |-> IF s \in gone THEN DieMode ELSE occ[s]],
@@ -126,7 +132,7 @@ TearRec(K, rcF) ==
 FrameHolds(s) == \E fr \in Frames : frame[fr] = s
 
 OpNew(fr) ==
-  /\ cpc \notin {"await_ack", "wait_drain"}   \* checkpoint-first
+  /\ cpc \notin {"await_ack", "wait_drain", "wait_acquit"} \* checkpoint-first
   /\ frame[fr] = NoRef
   /\ \E s \in Slots :
        /\ occ[s] \in {"virgin", "free"}
@@ -240,7 +246,10 @@ CWalkClassify(s) ==
 CWalkField(s, f) ==
   /\ cpc = "walk" /\ <<s, f>> \in wfld
   /\ LET v == fld[s][f]
-         valid == v # NoRef /\ v \in snap /\ rcnt[v] > 0
+         (* occupancy AND maturity: the epoch-byte clause (2026-07-26) *)
+         (* keeps the allocate-black skip total — an edge into a new  *)
+         (* or reused slot is not recorded                            *)
+         valid == v # NoRef /\ v \in snap /\ rcnt[v] > 0 /\ eb[v] = "old"
      IN cedg' = [cedg EXCEPT ![s][f] = IF valid THEN v ELSE NoRef]
   /\ wfld' = wfld \ {<<s, f>>}
   /\ UNCHANGED heapVars /\ UNCHANGED <<frame, mpc>> /\ UNCHANGED dtorVars
@@ -256,13 +265,13 @@ Universe == Rows \cup {cedg[p[1]][p[2]] : p \in RecordedEdges}
 Roots == {s \in Universe : Vval(s) > Inn(s)}
 MarkStep(M) == M \cup {cedg[p[1]][p[2]] :
                          p \in {q \in RecordedEdges : q[1] \in M}}
-Marked == MarkStep(MarkStep(MarkStep(Roots)))
+Marked == MarkStep(MarkStep(MarkStep(MarkStep(Roots))))
 Unmarked == Universe \ Marked
 Linked(a, b) == \E p \in RecordedEdges :
                   \/ p[1] = a /\ cedg[p[1]][p[2]] = b
                   \/ p[1] = b /\ cedg[p[1]][p[2]] = a
 CompGrow(S) == S \cup {c \in Unmarked : \E a \in S : Linked(a, c)}
-CompOf(s) == CompGrow(CompGrow(CompGrow({s})))   \* weak connectivity
+CompOf(s) == CompGrow(CompGrow(CompGrow(CompGrow({s}))))   \* weak connectivity
 
 CDiff ==
   /\ cpc = "walk" /\ wtodo = {} /\ wfld = {}
@@ -294,9 +303,13 @@ MAck ==
   /\ UNCHANGED heapVars /\ UNCHANGED <<frame, mpc>> /\ UNCHANGED dtorVars
   /\ UNCHANGED <<snap, wtodo, wfld, crc, cedg, comp, msg, bad>>
 
-Acquit == /\ ApplyRec(TearRec(comp, rcnt)) /\ UNCHANGED eb
-          /\ cpc' = "flush" /\ comp' = {} /\ workS' = {} /\ workE' = {}
-          /\ UNCHANGED <<snap, wtodo, wfld, crc, cedg, msg>>
+(* Acquittal is a message (2026-07-26, second audit): the collector   *)
+(* touches nothing — the owning thread's next checkpoint clears the   *)
+(* bytes and tears deferred deaths on its own thread (MAcquitDrain).  *)
+Acquit == /\ UNCHANGED heapVars
+          /\ cpc' = "wait_acquit" /\ msg' = comp
+          /\ workS' = {} /\ workE' = {}
+          /\ UNCHANGED <<snap, wtodo, wfld, crc, cedg, comp>>
 
 CRecheckCnt(s) ==
   /\ cpc = "recheck_cnt" /\ s \in workS
@@ -350,6 +363,15 @@ CFreeDirect(s) ==
   /\ cpc' = IF workS = {s} THEN "flush" ELSE "free_direct"
   /\ UNCHANGED <<eb, cb, frame, mpc>> /\ UNCHANGED dtorVars
   /\ UNCHANGED <<snap, wtodo, wfld, crc, cedg, comp, msg, workE, bad>>
+
+(* The mutator drains an acquittal message: clear the members' bytes, *)
+(* tear members whose deaths were deferred — race-free on its thread. *)
+MAcquitDrain ==
+  /\ cpc = "wait_acquit" /\ msg # {}
+  /\ ApplyRec(TearRec(msg, rcnt)) /\ UNCHANGED eb
+  /\ msg' = {} /\ comp' = {} /\ cpc' = "flush"
+  /\ UNCHANGED <<frame, mpc>> /\ UNCHANGED dtorVars
+  /\ UNCHANGED <<snap, wtodo, wfld, crc, cedg, workS, workE, bad>>
 
 (* --------------------- mutator: the Phase-4 drain ----------------- *)
 (* Phased: exact test -> guard -> destructor steps -> guard-aware     *)
@@ -443,7 +465,7 @@ MDrainVerify ==
                  Grow(D) == D \cup {c \in Slots \ K :
                               /\ occ[c] = "live" /\ MayDie(c, cb1)
                               /\ rcnt[c] = loss[c] + EdgesIntoF(fl1, D, c)}
-                 D == Grow(Grow(Grow({})))
+                 D == Grow(Grow(Grow(Grow({}))))
                  gone == K \cup D
                  lost(c) == loss[c] + EdgesIntoF(fl1, D, c)
              IN /\ occ'  = [s \in Slots |-> IF s \in gone THEN DieMode
@@ -481,7 +503,7 @@ CFlush ==
 Next ==
   \/ MutFree \/ MutScript
   \/ CTrigger \/ CDiff \/ CFlush \/ MAck
-  \/ MDrainStart \/ MDrainVerify \/ MReenterDrain
+  \/ MDrainStart \/ MDrainVerify \/ MReenterDrain \/ MAcquitDrain
   \/ \E s \in Slots : CWalkClassify(s) \/ CCondemn(s) \/ MDtorRun(s)
                       \/ CRecheckCnt(s) \/ CRecheckByte(s) \/ CFreeDirect(s)
   \/ \E s \in Slots, f \in Fields : CWalkField(s, f)
@@ -502,66 +524,88 @@ CycleChildFld ==
      ELSE [f \in Fields |-> NoRef]]
 
 InitMigration ==
-  /\ occ = [s \in Slots |-> "live"] /\ fld = CycleChildFld
+  /\ occ = [s \in Slots |-> IF s = 4 THEN "virgin" ELSE "live"]
+  /\ fld = CycleChildFld
   /\ frame = [fr \in Frames |-> IF fr = 1 THEN 1 ELSE NoRef]
-  /\ rcnt = [s \in Slots |-> IF s = 1 THEN 2 ELSE 1]
-  /\ eb = [s \in Slots |-> "old"] /\ cb = [s \in Slots |-> FALSE]
+  /\ rcnt = [s \in Slots |-> IF s = 4 THEN 0 ELSE IF s = 1 THEN 2 ELSE 1]
+  /\ eb = [s \in Slots |-> IF s = 4 THEN "zero" ELSE "old"]
+  /\ cb = [s \in Slots |-> FALSE]
 
 InitGarbage ==
-  /\ occ = [s \in Slots |-> "live"] /\ fld = CycleChildFld
+  /\ occ = [s \in Slots |-> IF s = 4 THEN "virgin" ELSE "live"]
+  /\ fld = CycleChildFld
   /\ frame = [fr \in Frames |-> NoRef]
-  /\ rcnt = [s \in Slots |-> 1]
-  /\ eb = [s \in Slots |-> "old"] /\ cb = [s \in Slots |-> FALSE]
+  /\ rcnt = [s \in Slots |-> IF s = 4 THEN 0 ELSE 1]
+  /\ eb = [s \in Slots |-> IF s = 4 THEN "zero" ELSE "old"]
+  /\ cb = [s \in Slots |-> FALSE]
 
 InitHeldChild ==
-  /\ occ = [s \in Slots |-> "live"]
+  /\ occ = [s \in Slots |-> IF s = 4 THEN "virgin" ELSE "live"]
   /\ fld = [s \in Slots |->
               IF s = 1 THEN [f \in Fields |-> IF f = 1 THEN 2 ELSE NoRef]
               ELSE IF s = 2 THEN [f \in Fields |-> IF f = 1 THEN 1 ELSE 3]
               ELSE [f \in Fields |-> NoRef]]
   /\ frame = [fr \in Frames |-> IF fr = 1 THEN 3 ELSE NoRef]
-  /\ rcnt = [s \in Slots |-> IF s = 3 THEN 2 ELSE 1]
-  /\ eb = [s \in Slots |-> "old"] /\ cb = [s \in Slots |-> FALSE]
+  /\ rcnt = [s \in Slots |-> IF s = 4 THEN 0 ELSE IF s = 3 THEN 2 ELSE 1]
+  /\ eb = [s \in Slots |-> IF s = 4 THEN "zero" ELSE "old"]
+  /\ cb = [s \in Slots |-> FALSE]
 
 InitGarland ==
-  /\ occ = [s \in Slots |-> "live"]
+  /\ occ = [s \in Slots |-> IF s = 4 THEN "virgin" ELSE "live"]
   /\ fld = [s \in Slots |->
               IF s = 1 THEN [f \in Fields |-> IF f = 1 THEN 2 ELSE NoRef]
               ELSE IF s = 2 THEN [f \in Fields |-> IF f = 1 THEN 1 ELSE 3]
-              ELSE [f \in Fields |-> IF f = 1 THEN 3 ELSE NoRef]]
+              ELSE IF s = 3 THEN [f \in Fields |-> IF f = 1 THEN 3 ELSE NoRef]
+              ELSE [f \in Fields |-> NoRef]]
   /\ frame = [fr \in Frames |-> NoRef]
-  /\ rcnt = [s \in Slots |-> IF s = 3 THEN 2 ELSE 1]
-  /\ eb = [s \in Slots |-> "old"] /\ cb = [s \in Slots |-> FALSE]
+  /\ rcnt = [s \in Slots |-> IF s = 4 THEN 0 ELSE IF s = 3 THEN 2 ELSE 1]
+  /\ eb = [s \in Slots |-> IF s = 4 THEN "zero" ELSE "old"]
+  /\ cb = [s \in Slots |-> FALSE]
 
 InitPair ==
-  /\ occ = [s \in Slots |-> IF s = 3 THEN "virgin" ELSE "live"]
+  /\ occ = [s \in Slots |-> IF s \in {3, 4} THEN "virgin" ELSE "live"]
   /\ fld = [s \in Slots |->
               IF s = 1 THEN [f \in Fields |-> IF f = 1 THEN 2 ELSE NoRef]
               ELSE IF s = 2 THEN [f \in Fields |-> IF f = 1 THEN 1 ELSE NoRef]
               ELSE [f \in Fields |-> NoRef]]
   /\ frame = [fr \in Frames |-> IF fr = 1 THEN 1 ELSE NoRef]
   /\ rcnt = [s \in Slots |-> IF s = 1 THEN 2 ELSE IF s = 2 THEN 1 ELSE 0]
-  /\ eb = [s \in Slots |-> IF s = 3 THEN "zero" ELSE "old"]
+  /\ eb = [s \in Slots |-> IF s \in {3, 4} THEN "zero" ELSE "old"]
   /\ cb = [s \in Slots |-> FALSE]
 
 (* pair2: garbage cycle s1<->s2, s3 virgin, frame empty — the shape   *)
 (* for destructor scenarios: the cycle drains, s1's destructor acts   *)
 InitPair2 ==
-  /\ occ = [s \in Slots |-> IF s = 3 THEN "virgin" ELSE "live"]
+  /\ occ = [s \in Slots |-> IF s \in {3, 4} THEN "virgin" ELSE "live"]
   /\ fld = [s \in Slots |->
               IF s = 1 THEN [f \in Fields |-> IF f = 1 THEN 2 ELSE NoRef]
               ELSE IF s = 2 THEN [f \in Fields |-> IF f = 1 THEN 1 ELSE NoRef]
               ELSE [f \in Fields |-> NoRef]]
   /\ frame = [fr \in Frames |-> NoRef]
-  /\ rcnt = [s \in Slots |-> IF s = 3 THEN 0 ELSE 1]
-  /\ eb = [s \in Slots |-> IF s = 3 THEN "zero" ELSE "old"]
+  /\ rcnt = [s \in Slots |-> IF s \in {3, 4} THEN 0 ELSE 1]
+  /\ eb = [s \in Slots |-> IF s \in {3, 4} THEN "zero" ELSE "old"]
   /\ cb = [s \in Slots |-> FALSE]
+
+(* secondhome: live ring s1<->s2 held by s4 (s4.f1 = s1), child      *)
+(* s1.f2 = s3, fr1 holds s4 — the 4-entity near-false-post shape the  *)
+(* second audit named; F = 3 gives the borrow chain room              *)
+InitSecondHome ==
+  /\ occ = [s \in Slots |-> "live"]
+  /\ fld = [s \in Slots |->
+              IF s = 1 THEN [f \in Fields |-> IF f = 1 THEN 2 ELSE 3]
+              ELSE IF s = 2 THEN [f \in Fields |-> IF f = 1 THEN 1 ELSE NoRef]
+              ELSE IF s = 4 THEN [f \in Fields |-> IF f = 1 THEN 1 ELSE NoRef]
+              ELSE [f \in Fields |-> NoRef]]
+  /\ frame = [fr \in Frames |-> IF fr = 1 THEN 4 ELSE NoRef]
+  /\ rcnt = [s \in Slots |-> IF s = 1 THEN 2 ELSE 1]
+  /\ eb = [s \in Slots |-> "old"] /\ cb = [s \in Slots |-> FALSE]
 
 Init == /\ CASE InitShape = "migration" -> InitMigration
              [] InitShape = "garbage"   -> InitGarbage
              [] InitShape = "garland"   -> InitGarland
              [] InitShape = "pair"      -> InitPair
              [] InitShape = "pair2"     -> InitPair2
+             [] InitShape = "secondhome" -> InitSecondHome
              [] OTHER                   -> InitHeldChild
         /\ InitCol
 
@@ -572,7 +616,7 @@ FairSpec == Spec /\ WF_vars(Next)
 
 TypeOK ==
   /\ occ \in [Slots -> {"virgin", "live", "free", "parked"}]
-  /\ rcnt \in [Slots -> 0..9]
+  /\ rcnt \in [Slots -> 0..12]
   /\ eb \in [Slots -> {"zero", "cur", "old"}]
   /\ cb \in [Slots -> BOOLEAN]
   /\ fld \in [Slots -> [Fields -> Slots \cup {NoRef}]]
@@ -595,6 +639,9 @@ I2NoDangling == \A s \in Slots, f \in Fields :
 (* member (that is what the re-verify exists for), so reachability of *)
 (* an in-drain member is not a filter failure.                        *)
 PostClean == cpc = "wait_drain" => msg \cap Reach = {}
+
+(* I4, the checkable half: a virgin slot has never been stamped.      *)
+I4Virgin == \A s \in Slots : occ[s] = "virgin" => eb[s] = "zero"
 
 (* Destructors run at most once per incarnation: a drained member is  *)
 (* in dran before anything of it is freed — checked structurally by   *)

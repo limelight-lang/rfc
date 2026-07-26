@@ -199,7 +199,8 @@ Every reachable state must satisfy:
   except the Phase 4 guard and never writes a field except in the sever
   step.
 - **I6 — one verdict outstanding.** An epoch does not end, and the next
-  does not begin, while a posted component is undrained.
+  does not begin, while any verdict message — confirmation *or
+  acquittal* (2026-07-26: acquittals are messages too) — is undrained.
 
 ## 6. Theorems
 

@@ -526,8 +526,10 @@ and every run finishes in 1–3 s wall clock.
 | garland (ring + linked self-ring) | sound, quiet | whole garland collected (weak grouping) | pass (liveness) | 183 |
 | allocate-black (virgin slot filled mid-walk) | sound | newcomer never judged | pass, full invariants | 692 |
 | destructor resurrects its member mid-drain | sound | re-verify acquits, member survives | pass, full invariants | 72 |
-| destructor allocates mid-drain | sound (non-reentrant) | allocation served, no nested pickup | pass, liveness + invariants | 77 |
-| destructor allocates mid-drain | `reentrant_drain` (F8 hazard) | nested pickup wedges collection | **liveness violated** ✓ | 437 |
+| destructor allocates mid-drain | sound (non-reentrant) | allocation served, no nested pickup | pass, liveness + invariants | 112 |
+| destructor allocates mid-drain | `reentrant_drain` (F8 hazard) | nested pickup wedges collection | **liveness violated** ✓ | 832 |
+| migrate-then-kill (child dies after its home is nulled) | sound | safe; probes the deferred-death drain half | pass, full invariants | 1 954 |
+| **second home** (4 entities, 3 frame slots, 7-action migration through a second heap home — the audit's nearest-to-false-post shape) | sound | safe, no false post | pass, full invariants incl. `PostClean` | **35 202** |
 
 One assertion was corrected while building the destructor rows:
 `PostClean` originally said "a message never contains a reachable
@@ -632,6 +634,53 @@ headers invariant** (manager commissions blocks with zeroed headers;
 factory publishes the header last, one 8-byte store) instead of being
 screened; heavy checker runs are **fuel-bounded** (mutator limited to a
 fixed action budget per epoch, the bound stated with every result).
+
+## Second adversarial audit (2026-07-26, fresh context)
+
+A second independent auditor attacked the amended design, the spec's
+fidelity, and the battery's substance. Verdicts and what changed:
+
+- **B1 (design-changing, confirmed and fixed): the acquittal duties
+  ran on the wrong thread.** The same-day draft had the collector
+  clear bytes and tear deferred deaths itself — destructors and
+  releases on the collector thread, plus an unfixable byte-clear race
+  minting permanently invisible zombies. **Resolution: an acquittal is
+  a message too** — the owning thread's checkpoint performs both
+  duties, race-free; every condemned component now ends in exactly one
+  mutator-side message, and the collector's shared-memory writes are
+  back to stamps and condemnation bytes (I5 restored). Design, model
+  (I6) and spec all updated; the battery re-ran green through the
+  message path.
+- **A8 (design-changing, confirmed and fixed): the allocate-black skip
+  was not total.** Child validation tested occupancy but not maturity,
+  so an edge into a mid-epoch newcomer or reused slot was recorded
+  while its row was skipped — `0 − 1 < 0` inside the sound design.
+  **Resolution: the epoch-byte clause** — an edge is recorded only if
+  the target reads an older epoch. Design and spec updated.
+- **Re-check filter canonised**: the document described two
+  non-equivalent filters in one sentence (recompute `RC − IN` vs
+  any-change-acquits). Snapshot comparison is now canon — simpler,
+  strictly more acquittal-prone, and the filter the battery actually
+  verified.
+- **Battery substance fixes**: the two runs named after F5 provably
+  explored identical graphs (nothing died in their script) — a
+  migrate-then-kill scenario was added; the audit's 4-entity
+  near-false-post shape was inexpressible in a 3-slot spec — the spec
+  now has 4 slots and 3 frame slots, and that exact shape **passed
+  exhaustively (35 202 states, all invariants)**, the strongest F6
+  evidence to date; every sound configuration now checks the full
+  invariant set (the earlier liveness configs checked none), plus
+  `I4Virgin`.
+- **Honest limits the audit put on record, still standing**: all
+  results are sequential-consistency results — the design's relaxed
+  atomics and its one fence are not modelled; the destructor alphabet
+  is two bodies on one slot, far narrower than the model's "arbitrary
+  M-sequence", so the abstraction lemma does not hold for the spec;
+  re-entrancy is modelled as message theft (liveness kill), while real
+  re-entrancy could also resume the outer drain over a torn message —
+  a safety shape the spec understates; DC0's "never enqueued twice"
+  has no spec counterpart (the parked population is a set); ordinary
+  cascade deaths run no destructor in the model.
 
 **Unreplayed scenarios the pass accepted as gaps** (open items for
 the checker or a later pass): a destructor that resurrects a member

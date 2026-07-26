@@ -268,3 +268,32 @@ the edits, each stamped with this date.
   optional offline run.
 - **Cost:** one condemned-byte test on the reaching-zero path; a
   header-zeroing pass when commissioning non-fresh blocks.
+
+### 2026-07-26 — rc-walk: second-audit resolutions (acquittal message, total skip, canonical filter)
+
+A second fresh-context audit attacked the same-day amendments and the
+checker; two design changes and one canonisation came out of it.
+- **An acquittal is a message.** The collector performs no acquittal
+  cleanup itself: the owning thread's checkpoint clears condemned
+  bytes and tears deferred deaths. Every condemned component ends in
+  exactly one mutator-side message (confirm or acquit); the epoch
+  waits for all of them.
+- **Why:** the draft ran destructors/releases on the collector thread
+  and had a byte-clear race that minted permanently invisible zombies
+  (rc = 0 reads as free; destructor never runs; children pinned
+  forever).
+- **The allocate-black skip is total**: child-pointer validation also
+  requires the target's epoch byte to read an older epoch, else the
+  edge is dropped (conservative). Closes row-absent/edge-present
+  arising in the sound design.
+- **Phase 3 filter canonised as snapshot comparison** (any observed
+  change acquits); the "recompute RC − IN" reading is retired —
+  comparison is simpler, strictly more acquittal-prone, and is what
+  the TLC battery verifies.
+- **Checker**: 4 slots / 3 frame slots; the audit's 4-entity
+  near-false-post shape passed exhaustively (35 202 states, full
+  invariants) — strongest F6 evidence so far. Battery is 22 scenarios,
+  all matching expectations; SC-memory-only and narrow-destructor
+  limits recorded in rc-walk-proof.md.
+- **Cost:** acquitted components keep their bytes until the owner's
+  next checkpoint; one more message kind on the queue.

@@ -311,7 +311,15 @@ until the instant it is a fully formed new entity, and the three-way
 classification never meets bytes that lie.
 
 **A child pointer is validated before it is dereferenced**: it must land
-in a snapshotted entity block, on a slot boundary, occupied. The
+in a snapshotted entity block, on a slot boundary, occupied, **and the
+target's epoch byte must read as an older epoch** (added 2026-07-26,
+second audit). Without the epoch-byte clause the allocate-black skip is
+not total: a slot reused mid-epoch passes the occupancy test, its
+in-edge gets recorded while its row is skipped, and the difference
+reads `0 − 1 < 0` — a live newcomer judged a non-root inside the sound
+design, violating "skipping must be total". Dropping the edge instead
+is the conservative direction: the newcomer's holders are already in
+its `RC`, so it and its targets stay rooted. The
 walker races the mutator, so it can read a torn 16-byte Box — a stale
 `object` tag over a payload that is already an integer — or a slot
 mid-initialization; validation makes the worst case a phantom edge or a
@@ -359,9 +367,14 @@ Phase 4, where it can be had race-free.
    preceded the checkpoint is visible to the collector. (The soft-handshake
    idiom FUGC is built on.)
 3. **Re-check**: re-read each member's refcount and each recorded in-edge
-   source slot, recompute `RC − IN` over the candidate set, then re-read
-   the bytes. A changed count, a moved edge, or a cleared byte acquits the
-   whole component.
+   source slot against the walk's snapshot, then re-read the bytes. **Any
+   difference acquits the whole component**: a changed count, a moved
+   edge, a cleared byte. The filter is snapshot comparison, not a
+   recomputation of `RC − IN` (canonised 2026-07-26: comparison is
+   simpler, strictly more acquittal-prone — drift that happens to
+   preserve the balance still acquits — and it is the filter the TLC
+   battery verified; an earlier draft of this step described both
+   filters in one breath).
 
 The windows dovetail. A touch *before* the condemnation is invisible to
 the byte — it cleared a byte that was already 0, and the write of 1 then
@@ -372,13 +385,25 @@ to miss — survives the filter and is caught in Phase 4. One touched member
 acquits the component, because the verdict is per-component and so is the
 proof.
 
-Anything acquitted is dropped — and an acquittal, here or at the
-drain, has two duties (2026-07-26, consequences of the
-condemned-never-die rule): **clear the dropped members' condemned
-bytes**, so a later ordinary death does not defer to a drain that is
-no longer coming, and **tear down any member whose count already
-reached zero while condemned** — its death was deferred and this is
-the last hand that can run it. The component is re-judged next epoch.
+**An acquittal is a message too** (2026-07-26, second audit — this
+replaces the same-day draft that had the collector perform the
+cleanup itself). The condemned-never-die rule leaves two duties behind
+every dropped verdict: clear the members' condemned bytes, so a later
+ordinary death does not defer to a drain that is no longer coming, and
+tear down any member whose count already reached zero while
+condemned — its deferred death has no other hand left to run it. Both
+duties are **mutator work** — the tear runs destructors and releases —
+so the collector must not perform them: it posts an *acquittal
+message*, and the owning thread's next checkpoint clears the bytes and
+tears the deferred deaths on its own thread, race-free, under the same
+shelter as the drain. Every condemned component therefore ends in
+exactly one mutator-side message — confirm or acquit — and the
+collector's writes to shared memory remain exactly two: stamps and
+condemnation bytes. (The collector-side draft had an unfixable race:
+its byte-clear could lose against a concurrent release that still saw
+the condemned byte, minting a zombie after the cleanup had already
+scanned — permanently invisible at `rc = 0`, destructor never run, its
+children pinned forever.) The component is re-judged next epoch.
 
 ### Phase 4 — VERIFY and RELEASE (mutator thread, by message)
 
@@ -402,7 +427,10 @@ Counted references account exactly, so the equality says every reference
 to every member comes from inside the component — garbage by the central
 identity, and nothing can unsay it while the check holds the thread. Any
 mismatch drops the message whole. A falsely posted component costs one
-verification pass — never a destructor, never a free.
+verification pass — never a destructor and never a free *of a live
+member*; the drop still performs the acquittal duties, and tearing a
+member that died while condemned runs the destructor that death
+already owed.
 
 **A condemned entity never dies on the ordinary path** (decided
 2026-07-26; replaces the first draft's false claim that a dead member
@@ -469,8 +497,9 @@ drain. Without the queue a slot could be freed and recycled mid-epoch,
 and the Phase 4 equality could balance by coincidence on an object that
 was never judged. That is a soundness role — the queue is not optional.
 
-**The epoch ends only after the drain is acknowledged.** The queue flush,
-block retirement and the next walk all wait for it. This closes two holes
+**The epoch ends only after every verdict message — confirmation or
+acquittal — is acknowledged.** The queue flush, block retirement and the
+next walk all wait for them. This closes two holes
 at once: a posted message can never name a slot recycled underneath it,
 and the collector can never condemn the same entity twice with two
 messages in flight — at most one epoch's verdict is outstanding, ever.

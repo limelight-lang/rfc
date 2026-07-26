@@ -472,7 +472,16 @@ first undo it; rc-walk's counts are already real:
    guards; children outside the component die ordinarily, destructors and
    all. Then un-guard through `ll_release`: every member reaches a true
    zero and takes the ordinary free path (`dispose` finds the fields
-   already null and `DESTRUCTOR_RAN` already set).
+   already null and `DESTRUCTOR_RAN` already set). *Amended 2026-07-26
+   (build step 2):* the drops of severed **external** children are
+   deferred until after the members are freed, so between sever and free
+   no user code runs at all. The exact test already proves an external
+   `__destruct` could not name a member; the deferral makes the
+   no-resurrected-hollow-member property structural rather than
+   proof-dependent — the property survives weak references and FFI,
+   where the proof does not. (CPython reaches the same safety from the
+   other side: PEP 442 requires a finalized object to tolerate cleared
+   referents.)
 
 The first draft said "un-guard and let ordinary teardown decide". That was
 wrong twice: without severing, a pure cycle's members keep
@@ -599,7 +608,15 @@ the two together leave unbought.
   borrow".
 - **Weak references.** Deferred. The planned shape is a side entry per
   weakly referenced target, so a `WeakRef` counts the entry and never the
-  target, and Phase 4 nulls the entry — no reverse map needed.
+  target, and Phase 4 nulls the entry — no reverse map needed. One
+  obligation is binding on that design (2026-07-26): **every weak entry
+  naming a confirmed member is nulled before the drain runs any user
+  code** — a weak load is the one channel that can hand a destructor a
+  pointer counted references cannot account for, and the drain's safety
+  argument ("no external reference to a member exists" — the exact test)
+  holds only in the counted world. CPython closes the identical window
+  the same way: PEP 442 clears weak references to cyclic garbage before
+  any finalizer runs.
 - **Huge objects** in OS-direct block runs are outside the pool regions and
   cannot be enumerated by the registry. Cycles through them are not
   collected; the edge is skipped, which is conservative.

@@ -22,6 +22,25 @@ the minimum configuration: slots `s1..s3`, fields `f1, f2`, frame
 > The full DC1/DC2 kills (stale reads, `byte_only`), DC0 and DC3 need
 > condemnation and mid-epoch allocation — they become forceable, and
 > owed, at build step 3.
+>
+> **Runtime coverage as of build step 3** (2026-07-26, `ll-model`
+> `src/collector.rs` / `src/epoch.rs`): the forceable timelines are
+> forced against the **sound** design — the collector's walk is split
+> into a count pass and a field pass precisely so a test can interleave
+> mutator actions in DC1's window. Covered:
+> `dc1_a_stale_count_masked_by_self_loops_is_caught_twice` (the
+> machine-found 15-action trace, caught by the Phase 3 count re-read
+> and, driven past the filter, by the Phase 4 exact test —
+> independently); `dc0_a_death_while_condemned_confirms_balanced_and_`
+> `tears_once` (the `0 = 0` confirm, exactly-once probed through the
+> free list) plus the acquittal half
+> (`an_acquittal_tears_deferred_deaths_and_clears_the_rest`);
+> `dc3_a_deferred_death_keeps_its_slot_out_of_circulation` (the premise
+> is unreachable: a deferred death never touches the free list before
+> its drain). The **kills themselves** — a broken variant freeing a
+> live entity — stay the TLC battery's job by design: in a real heap a
+> use-after-free has no deterministic observable to assert on, so a
+> runtime kill test would be a flake generator, not evidence.
 
 ## DC0 — dead member balances `0 = 0`: double teardown (CURRENT DESIGN)
 

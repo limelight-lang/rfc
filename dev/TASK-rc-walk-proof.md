@@ -1,5 +1,16 @@
 # Task — model-check rc-walk with TLA+/TLC
 
+> **Status: DONE (2026-07-26).** Every deliverable shipped: the spec and
+> configs in `dev/tools/rc-walk/` (run, `tla2tools.jar` vendored), all
+> five broken variants killed with traces plus the reentrant-drain kill,
+> the 22-run battery and its limits in
+> [../model/gc/rc-walk-proof.md](../model/gc/rc-walk-proof.md), README
+> and INDEX entries, linkcheck clean. Follow-on: the danger cases now
+> have runtime embodiments — see the status note in
+> [../model/gc/rc-walk-danger-cases.md](../model/gc/rc-walk-danger-cases.md).
+> Kept as the brief for re-running or extending the battery (relaxed
+> memory, wider destructor alphabet — deferred until design freeze).
+
 > A standalone brief. Hand this to a fresh session; it needs no other
 > context than the documents it names.
 

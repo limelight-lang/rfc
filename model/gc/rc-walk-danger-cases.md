@@ -13,6 +13,16 @@ Notation as in [rc-walk-proof.md](rc-walk-proof.md). Shapes reference
 the minimum configuration: slots `s1..s3`, fields `f1, f2`, frame
 `fr1, fr2`.
 
+> **Runtime coverage as of build step 2** (2026-07-26, `ll-model`
+> `src/walk.rs`, commit `96dd965`): the synchronous embodiments exist —
+> DC1's arithmetic seed (`self_edges_do_not_mask_an_external_reference`),
+> DC2's sound half (`an_unwalked_holder_roots_its_gc_heap_child`), DC5's
+> runtime witness (`a_self_loop_is_collected`, doc-noted), and DC4 as a
+> recorded revert-check (severing disabled → the pure-cycle test fails).
+> The full DC1/DC2 kills (stale reads, `byte_only`), DC0 and DC3 need
+> condemnation and mid-epoch allocation — they become forceable, and
+> owed, at build step 3.
+
 ## DC0 — dead member balances `0 = 0`: double teardown (CURRENT DESIGN)
 
 *From scenario 7, finding F5. The only case in this file that targets

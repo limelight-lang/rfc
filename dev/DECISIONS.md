@@ -10,6 +10,79 @@ in one line; **cost** if any.
 
 ---
 
+### 2026-07-25 — A safepoint is a moment, not a root map; and rc-walk's checkpoints live in the allocator
+
+Two corrections that turned out to be one. A poll safepoint says *when*,
+not *what*: it makes roots enumerable only for a strategy that also pays
+the compiler to publish them. Counting a frame's references is the
+alternative payment, and `rc-walk` has already made it, so it never reads
+a stack. Separately, the checkpoints `rc-walk` does need — the handshake
+ack and the Phase 4 drain — belong in the **memory manager**, not in
+compiler-inserted polls.
+- **Why:** the allocator is called constantly, already owns the numbers
+  that decide whether collection is worth doing, and is the natural place
+  to choose the moment. It also dissolves the parked-thread problem: a
+  thread inside a syscall or an FFI call reaches no checkpoint, but it
+  allocates nothing and mutates nothing, so nobody waits on it. A compute
+  loop that releases without allocating is bounded by the live heap at
+  epoch start.
+- **Rejected:** marking entry to and exit from foreign code so the runtime
+  can ack for a blocked thread (FUGC's move) — two writes on every call
+  out, and PHP calls out constantly.
+- **Cost:** [strategies.md](../model/gc/strategies.md) §2 reworded; the
+  obligation to publish roots now sits explicitly with `rc-satb`, which
+  does not have the mechanism. Compiler polls stay in the project for
+  their other duty, raising an exception after a failed reserve refill.
+
+### 2026-07-25 — A borrow's owner must be a root, not merely something alive
+
+When the compiler elides a `retain` because some other reference keeps the
+object alive, that other reference must be one the cycle collector counts
+as a **root**: a frame slot, an arena slot, a static, an immortal, an FFI
+handle. A field of a heap object never qualifies.
+- **Why:** liveness-by-refcount is strictly weaker than liveness. `$x =
+  $obj->other; $obj = null;` with `$obj` in a cycle is sound under plain
+  refcounting (the ring merely leaks) and unsound the moment a collector
+  frees the ring. The narrow scope is the good news: anything that leaves
+  the frame is stored, every store is counted, so an uncounted borrow can
+  only live in a frame slot and the obligation is a within-frame property.
+- **Rejected:** relaxing the rule for holders of acyclic classes. An
+  acyclic holder cannot be a cycle *member*, but it can be garbage held
+  *by* a cycle and dies in the cascade that frees it.
+- **Cost:** none to the collector; it constrains the borrow analysis of
+  [static-lifetimes.md](../model/memory/static-lifetimes.md), where the
+  rule and its three worked cases now live ("What may own a borrow").
+
+### 2026-07-25 — The cycle collector's licence to skip, and the acyclic-class flag that spends it
+
+`rc-walk` operates under two standing permissions: it **may skip** (a
+missed cycle is memory not yet reclaimed, never a wrong answer) and it
+**may be slow** (its cost is off the mutator's path, so collector time
+buys mutator instructions at any exchange rate). The skip lemma makes the
+first safe: omitting an entity from the walk only removes in-edges, so
+`RC − IN` grows and its targets are pinned as roots. The first thing that
+licence buys is the **acyclic-class flag** — a class whose node lies on no
+cycle of the class-reference graph is skipped entirely, in the walk and as
+an edge target.
+- **Why:** skipping is recall-only in both directions, so an *unsound*
+  flag can only leak, never free a live entity — the analysis can ship
+  imprecise and tighten later. Bacon and Rajan compute the same flag for
+  the Recycler and report the candidate population falling by roughly an
+  order of magnitude.
+- **Rejected:** a per-object dynamic version (an object currently holding
+  only scalars is acyclic in fact) — it needs a re-check on every store,
+  which is the per-operation mutator cost the strategy exists to avoid; a
+  header bit — bits are scarce and a collector-side class load is free.
+- **Cost:** skipping must be **total**. An edge recorded into an entity
+  whose `rc[]` row was omitted reads as a negative derived root and frees
+  a live object. Recall loss is bounded by one epoch, since an acyclic
+  entity dies on the ordinary path once its holder does. The analysis
+  needs a closed class set: a field typed `T` reaches every subclass of
+  `T`, so anything registered later (`eval`, late autoload, an
+  FFI-installed descriptor) is cyclic by default.
+- Written up in [rc-walk.md](../model/gc/rc-walk.md), "The compiler's
+  acyclic flag".
+
 ### 2026-07-24 — A `#[Region]` is an allocator class: it may supply its own alloc, free, and GC traversal
 
 A `#[Region]` ([regions.md](../model/memory/regions.md)) is the runtime's
@@ -138,3 +211,60 @@ declared total.
 - Fixed in [values.md](../model/values.md), "Box Layout". What to put in
   those six bytes is deliberately deferred, see [BACKLOG.md](../BACKLOG.md),
   "Deferred optimizations".
+
+### 2026-07-25 — rc-walk checker: TLA+/TLC, not PHP or SPIN
+
+The rc-walk interleaving checker (`TASK-rc-walk-proof.md`) is a TLA+
+spec model-checked by TLC, resolving the choice `rc-walk-model.md` §11
+left open.
+- **Why:** the state space is finite by construction, so the right
+  search is full breadth-first exploration with sound deduplication and
+  no depth bound — exactly what TLC does, and what kills all three traps
+  the thrown-away hand-rolled checker hit (depth-bounded memoisation,
+  tight bounds, minimal counterexamples come free). The `R*` oracle is a
+  transitive closure, native in TLA+; T5 is a liveness property under
+  fairness, which TLC checks and a hand-rolled enumerator realistically
+  cannot. Java verified present on the working machine.
+- **Rejected:** PHP enumerator (hand-rolled DFS re-creates the traps);
+  SPIN/Promela (the `R*` oracle would need embedded C); Coq/Isabelle
+  theorem proving for the unbounded claim (weeks of work against a
+  design still moving — revisit if the design freezes).
+- **Cost:** one external toolchain (`tla2tools.jar`, pinned); TLC
+  counterexample traces must be translated by hand into the adversarial
+  harness tests `rc-walk-model.md` §11 describes.
+- State-space accounting that informed this:
+  [rc-walk-states.md](../model/gc/rc-walk-states.md).
+
+### 2026-07-26 — rc-walk: resolutions from the scenario-replay findings
+
+The scenario replay and TLC runs (`rc-walk-proof.md`, findings F1–F9)
+were resolved in one pass; `rc-walk.md` and `rc-walk-model.md` carry
+the edits, each stamped with this date.
+- **Condemned entities never die on the ordinary path** (F5): a
+  release reaching zero on a condemned entity defers teardown to the
+  drain — exactly-once teardown, destructor deferred past the last
+  release is accepted semantics. Replaces the vacuous dead-member
+  acquittal claim.
+- **Phase 2 groups by weak connectivity**: linked garbage dies in one
+  epoch; one touched member acquits the whole group for an epoch.
+- **Masquerade closed, not screened**: the manager commissions blocks
+  with zeroed slot headers (free for fresh OS commits; explicit pass
+  for recycled or lazily-decommitted memory), and the object factory
+  publishes the header last as one 8-byte store. `ll_object_new`
+  reorder lands with build-order step 1.
+- **Drain is non-reentrant** via the allocator's own mid-drain state
+  (F8); **re-verify discounts the guard** (F1); **M3 releases last**,
+  a compiler obligation (F7); **frame slots represent external
+  holders**, §11 corrected to 3 heap entities (F9); **T5 carries an
+  explicit fairness premise** and the stalled-epoch case is accepted
+  without a fallback (F2).
+- **Checker runs are scenario-scripted**: the free mutator blows the
+  state space past 30M states without exhausting. Each run binds the
+  mutator to a fixed 2–4-action script (the danger-case shapes); the
+  only nondeterminism is the placement of those actions between
+  collector micro-steps. Runs land at 10²–10⁴ states and seconds of
+  wall clock; the claim is per-scenario, stated with every result.
+  Free-mode exhaustion remains available (`ScriptName = "free"`) as an
+  optional offline run.
+- **Cost:** one condemned-byte test on the reaching-zero path; a
+  header-zeroing pass when commissioning non-fresh blocks.

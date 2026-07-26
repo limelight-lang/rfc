@@ -20,6 +20,9 @@ No product code lives here — this is the specification, see
 - **Repository utilities** → [tools/](tools/README.md) — `linkcheck.php`
   verifies every cross-reference and anchor resolves; run it after moving a
   document or rewording a heading
+- **rc-walk model checker** → [tools/rc-walk/](tools/rc-walk/README.md) —
+  TLA+/TLC scenario battery for the collector; results in
+  [../model/gc/rc-walk-proof.md](../model/gc/rc-walk-proof.md)
 
 ## Active initiative
 
@@ -33,4 +36,3 @@ checker exists.
 ## Not yet present (deferred on purpose)
 
 - `dev/BENCHMARKS.md` — no code to measure yet.
-- `dev/tools/` — no utilities yet.

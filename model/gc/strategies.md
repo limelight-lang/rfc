@@ -200,19 +200,23 @@ elephc's model; `rc-trace` is the Zend architecture done right
 2. **Arenas absorb the bulk.** Request-scoped objects carry no
    refcounts and die in O(1) at arena reset; the tracer never sees
    them.
-3. **Stop-the-thread tracing collects cycles only.** *Armed* by a
-   threshold (candidate-root buffer fill, as Zend's 10K, to be
-   calibrated) but *fired* only at a clean point (see [Triggering:
-   arm vs fire](#triggering-arm-vs-fire) below). At the fire point the
-   thread is parked at a safepoint; the marker traces the general heap
-   from the **complete** root set (stacks + globals + live arenas' heap
-   references, [satb.md](satb.md)) and frees the unmarked remainder
-   through normal teardown. That remainder *is* the cycles ("islands")
-   only because refcounting has already reaped every acyclic object; it
-   is not a candidate-buffer trial deletion, so an object held alive from
-   outside the heap (an arena slot) survives by being a root, not by its
-   refcount. The pause is proportional to the *live general heap*, which
-   arenas keep small.
+3. **Cycle collection finds islands only, and enumerates no roots —
+   ever.** (Superseded 2026-07-26: an earlier draft of this item had the
+   marker trace "from the complete root set — stacks + globals"; that is
+   renounced. The collector runs off the mutator's thread and no such
+   set is ever built.) Every external hold — a stack local, a static, an
+   arena slot, an FFI handle — is already *counted*, so "referenced from
+   outside" is **computed**, `RC − IN > 0` over the walked heap, never
+   scanned ([rc-walk.md](rc-walk.md), "The central identity"). Two
+   mechanisms implement the stage in the crate today, and neither
+   enumerates anything: candidate-buffer trial deletion (`gc.rs`,
+   Bacon–Rajan as Zend does it — suspects come from non-zero decrements,
+   *armed* by buffer fill, *fired* only at a clean point, see
+   [Triggering](#triggering-arm-vs-fire)), and the whole-heap
+   synchronous walk (`walk::collect_cycles`, rc-walk build step 2 —
+   computed roots over the entity blocks, the shape the concurrent
+   collector grows from). Cost is proportional to the *walked live
+   heap*, which arenas keep small.
 
 Because the mutator is parked while marking runs, `rc-trace` needs
 **no store-barrier hook, no snapshot, no mark-phase coordination**:

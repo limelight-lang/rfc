@@ -197,11 +197,15 @@ is evacuated now or carried until its stragglers die; there is no
 
 ### Retention (dense blocks)
 
-- Free lines within retained blocks are meant to be recyclable through
-  normal line-level allocation, the blocks donated to the general heap
-  rather than held as a private reserve. **Not built:** the runtime
-  stamps a retained block and keeps it out of the pool, and nothing
-  reuses it yet.
+- **Line recycling is dropped** (2026-07-25, superseding this bullet's
+  earlier "free lines are meant to be recyclable"): Immix is out of the
+  plan entirely — no line allocator, no reuse of a retained block's
+  holes. The runtime stamps a retained block, keeps it out of the pool,
+  and the accepted cost is that the block's memory stays out of
+  circulation while its survivors live. What made Immix look necessary
+  dissolved elsewhere: a walking collector reads correct memory through
+  entity-block segregation (`rc-walk.md`), and a size-class heap cannot
+  suffer CMS-style "no contiguous run" fragmentation for small objects.
 - Survivors do **not** arrive without refcount history. Promotion
   rebuilds an exact count — external hold-count, plus internal
   arena → arena edges, plus one compensating retain per heap entity the
@@ -224,12 +228,14 @@ is evacuated now or carried until its stragglers die; there is no
   headers was considered and rejected: it would add an indirection to
   every retain for the benefit of a rare reset-time event.
 - **Why carrying stragglers is acceptable**: retention damage is
-  bounded by the straggler's own lifetime. A short-lived escapee (a
-  session entry living minutes) frees its lines when it dies, and the
-  emptied block returns to the pool; under steady load the retained
-  blocks form a bounded stationary population, not unbounded accretion.
-  Only unpredictably long-lived stragglers keep blocks forever — exactly
-  the ones sparse-block evacuation exists for.
+  bounded by the straggler's own lifetime — under steady load the
+  retained blocks form a bounded stationary population, not unbounded
+  accretion. (With line recycling dropped, note the honest limit:
+  today nothing returns even a fully-emptied retained block to the
+  pool — the survivors' free path is a no-op. Reclaiming the
+  all-survivors-dead block is a small future mechanism, deliberately
+  not Immix.) Only unpredictably long-lived stragglers keep blocks
+  forever — exactly the ones sparse-block evacuation exists for.
 - **Phasing**: retention is the safe default and the whole of the first
   implementation — no copying, no identity machinery, no reference
   fixup. Sparse-block evacuation is purely additive and can land later.

@@ -518,6 +518,9 @@ violation stops the search); every number below is from the run.
 | borrow-drop | `OldDeath` (pre-F5-fix) | premise probe | pass — premise unreachable here | 1 326 | 1.0 s |
 | borrow-drop | current rule | safe | pass, full invariants | 1 326 | 1.1 s |
 | borrow-drop-alloc | `no_defer` + `OldDeath` | premise probe | pass — premise unreachable here | 1 503 | 1.0 s |
+| borrow-drop-alloc | `no_defer`, current rule | safe | pass, full invariants | 1 503 | 1.1 s |
+| garland (ring + linked self-ring) | sound, quiet | whole garland collected (weak grouping) | pass (liveness) | 175 | 1.4 s |
+| allocate-black (virgin slot filled mid-walk) | sound | newcomer never judged | pass, full invariants | 692 | 1.0 s |
 
 Readings:
 

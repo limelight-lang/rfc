@@ -42,6 +42,7 @@ TheScript ==
     [] ScriptName = "dc3"        -> <<<<"load",2,1,2>>, <<"drop",1>>,
                                      <<"drop",2>>, <<"new",1>>>>
     [] ScriptName = "uncounted"  -> <<<<"borrowu",2,1,2>>, <<"drop",1>>>>
+    [] ScriptName = "allocstore" -> <<<<"new",2>>, <<"storeval",3,1,1>>>>
     [] OTHER                     -> <<>>   \* "none", "free"
 
 VARIABLES occ, rcnt, eb, cb, fld,      \* heap
@@ -471,8 +472,34 @@ InitHeldChild ==
   /\ rcnt = [s \in Slots |-> IF s = 3 THEN 2 ELSE 1]
   /\ eb = [s \in Slots |-> "old"] /\ cb = [s \in Slots |-> FALSE]
 
+(* garland: garbage ring s1<->s2 linked to a garbage self-ring s3 —   *)
+(* the weak-grouping shape: one component, one epoch                  *)
+InitGarland ==
+  /\ occ = [s \in Slots |-> "live"]
+  /\ fld = [s \in Slots |->
+              IF s = 1 THEN [f \in Fields |-> IF f = 1 THEN 2 ELSE NoRef]
+              ELSE IF s = 2 THEN [f \in Fields |-> IF f = 1 THEN 1 ELSE 3]
+              ELSE [f \in Fields |-> IF f = 1 THEN 3 ELSE NoRef]]
+  /\ frame = [fr \in Frames |-> NoRef]
+  /\ rcnt = [s \in Slots |-> IF s = 3 THEN 2 ELSE 1]
+  /\ eb = [s \in Slots |-> "old"] /\ cb = [s \in Slots |-> FALSE]
+
+(* pair: live cycle held from the frame, s3 virgin — allocate-black   *)
+InitPair ==
+  /\ occ = [s \in Slots |-> IF s = 3 THEN "virgin" ELSE "live"]
+  /\ fld = [s \in Slots |->
+              IF s = 1 THEN [f \in Fields |-> IF f = 1 THEN 2 ELSE NoRef]
+              ELSE IF s = 2 THEN [f \in Fields |-> IF f = 1 THEN 1 ELSE NoRef]
+              ELSE [f \in Fields |-> NoRef]]
+  /\ frame = [fr \in Frames |-> IF fr = 1 THEN 1 ELSE NoRef]
+  /\ rcnt = [s \in Slots |-> IF s = 1 THEN 2 ELSE IF s = 2 THEN 1 ELSE 0]
+  /\ eb = [s \in Slots |-> IF s = 3 THEN "zero" ELSE "old"]
+  /\ cb = [s \in Slots |-> FALSE]
+
 Init == /\ CASE InitShape = "migration" -> InitMigration
              [] InitShape = "garbage"   -> InitGarbage
+             [] InitShape = "garland"   -> InitGarland
+             [] InitShape = "pair"      -> InitPair
              [] OTHER                   -> InitHeldChild
         /\ InitCol
 

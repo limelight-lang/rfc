@@ -123,8 +123,9 @@ flags:  0-1    memory category (heap / arena / long-lived / immortal)
         11     IS_ESCAPEE
         12-14  entity kind — what a bare pointer points at
         15-31  strategy-owned: rc-trace — candidate index (15-31);
-               rc-walk — epoch byte (16-23) + condemned byte (24-31),
-               bit 15 unused
+               rc-walk — epoch byte (16-23); bits 15, 24-31 unused
+               (the condemned byte, 24-31, retired by the eager-death
+               amendment 2026-07-27 — condemnation is collector-private)
 ```
 
 Load-bearing invariants:

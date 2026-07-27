@@ -59,6 +59,25 @@ teardown**, so every free the death performs observes the epoch in
 program order. The second home remains the compiler's poll
 (`ll_gc_maybe_collect`).
 
+**The death-branch checkpoint acks; pickup rides teardown's exit**
+(review finding, 2026-07-27 — found attacking the eager-death
+amendment, but opened by the checkpoint move itself). Between the
+death's committing zero store and its dispose, the dying entity is in
+a state no user code may observe: committed dead, weak cell not yet
+nulled. A checkpoint that picks up a verdict message there runs drain
+destructors — user code — and a destructor holding a `WeakRef` to the
+dying entity gets a strong reference to it (`get()` retains whatever
+the cell holds): resurrection after commit, or a second teardown when
+the drain's own release reaches zero first — DC0 through the front
+door. So the checkpoint is split: the **death branch acks the
+handshake only** (that is the part whose before-teardown position is
+load-bearing — the activity bit is observed before this death's
+frees); **message pickup and the parked flush run at the exit of the
+outermost dispose**, when the entity is whole again — dead and
+disposed, or resurrected and live. The poll and the explicit batched
+checkpoint pick up as before: they run between operations, where
+nothing is mid-commit.
+
 **Batched releases.** Lowering may emit a run of releases at a scope
 exit. For that it emits one explicit `ll_gc_checkpoint()` for the run,
 then releases each reference with `ll_release_batch` — `ll_release`
@@ -75,11 +94,23 @@ compute or pure-allocation loop — reaches no checkpoint, so once a
 message is posted **the epoch waits for that thread's next death or
 poll**: the ack and the drain ride checkpoints, and the epoch cannot
 end before the drain. Deferred memory stays parked for the duration —
-bounded in volume (it can only hold what already existed, so the queue
-cannot exceed the live heap at epoch start) but unbounded in time.
-Deliberately left without a fallback: no fairness mechanism is worth a
-per-operation cost, and the memory returns at the thread's first
-death or poll.
+and (corrected 2026-07-27, worst-case review of the eager-death
+amendment) it is bounded only by **churn rate × epoch duration**, not
+by the live heap: every mid-epoch death parks, including entities
+allocated after the epoch opened, and every buffer free parks with
+them. The old "cannot exceed the live heap at epoch start" bound was
+derived under the F5 deferral and did not survive it. A long walk
+followed by a checkpoint-free stall can therefore park a multiple of
+the live heap. Deliberately still without a mutator-side fallback: no
+fairness mechanism is worth a per-operation cost, and the memory
+returns at the thread's first death or poll. Two collector-side
+bounding mechanisms are recorded in `BACKLOG.md` — an epoch abort on
+a parked-volume watermark (sound while nothing is posted: the
+identity obligation only runs from walk to drain of posted messages)
+and a young-free exemption (an entity whose epoch byte reads
+0/current at free time is in no snapshot row and no component; its
+slot appears recyclable at the cost of one byte test on the cold
+parked path) — both unbuilt, both needing their own proof pass.
 
 ## The central identity: roots are derived, not enumerated
 
@@ -230,26 +261,29 @@ only kinds 0 and 6 carry a class pointer there, and reaching for
   totally: conservative, and cycles through FFI wrappers go uncollected
   (see "What this design does not solve").
 
-## The two header bytes
+## The one header byte
 
 Deleting the candidate buffer (bits 15-31 today) and the cycle-collector
 colour bits (4-6, now collector-private) frees the top half of the flags
-word. The collector claims two byte-addressable pieces of it; the
-mutator's whole obligation to both is one masking operation.
+word. The collector claims one byte-addressable piece of it; the
+mutator's obligation to it is zero.
 
-**The condemned byte — object offset 7, bits 24-31.** The collector's
-verdict, three-valued.
+> *Amended 2026-07-27 (the eager-death amendment).* Until this date the
+> design claimed a second byte — the **condemned byte** at offset 7,
+> the collector's three-valued verdict, tested by the mutator on the
+> reaching-zero path (the F5 deferral) and cleared by drain duties.
+> Eager death (Phase 4 below) removed the deferral, and with it the
+> byte's last reader: the Phase 3 filter re-reads counts and edge
+> sources, not bytes (the narrow mutator had already ended the
+> byte-clearing filter), and the death path no longer consults the
+> collector at all. Condemnation is now **collector-private state**;
+> the collector's only write to shared memory is the epoch stamp, and
+> bits 24-31 return to the free pool
+> ([layouts.md](../layouts.md) amended).
 
-- The **collector** writes 1 into that byte to condemn an entity.
-- The **mutator** does not touch it on the hot paths (amended
-  2026-07-27, "The narrow mutator" below; the original design had every
-  `retain`/`release` clear it as an early acquittal filter). It is read,
-  in the word the release already loaded, only on the reaching-zero
-  path — the F5 deferral test — whose cold branch writes **2**, the
-  deferred-death marker the drain duties key on.
-
-The refcount occupies bytes 0-3. Different addresses, plain stores on both
-sides — **no atomic read-modify-write anywhere**.
+The refcount occupies bytes 0-3, the collector's byte sits at offset 6.
+Different addresses, plain stores on both sides — **no atomic
+read-modify-write anywhere**.
 
 **The epoch byte — object offset 6, bits 16-23.** The collector's maturity
 stamp, and the answer to a question no bump cursor can answer: did this
@@ -270,15 +304,10 @@ writes a slot no stamp has met yet. The collector pays one byte store
 per new entity per epoch; the mutator pays zero, per allocation and per
 operation.
 
-**The byte is a filter, not the safety gate.** A mutator whole-word store
-that clobbers a concurrent condemnation reads back as 0 and the verdict is
-dropped — conservative. The reverse race — a touch landing just before the
-collector's write of 1 — leaves the byte reading 1 with the touch
-invisible, so the byte alone can *confirm falsely*. That is why
-confirmation never frees anything: Phase 3 only decides what is worth
-posting, and the exact test runs race-free in Phase 4. A lost update in
-either direction can cost a wasted message or a missed epoch, never a live
-entity.
+**No byte is a safety gate.** Phase 3 only decides what is worth
+posting, and the exact test runs race-free in Phase 4; a lost or stale
+read anywhere in the marking machinery can cost a wasted message or a
+missed epoch, never a live entity.
 
 One demand on codegen: the header word is read by another thread, so the
 mutator's header load/store and every collector access compile as
@@ -304,28 +333,11 @@ only*. No flags store, no byte clear, no whole-word reconstruction.
 
 Why this is sound — the clear was a filter, never the gate:
 
-- A condemned entity that stays live simply carries its byte to the
-  drain. The Phase 4 exact test recomputes liveness from **current**
-  fields on the owning thread; an outside reference shows up as
-  `refcount > in-component in-degree`, the message is dropped whole,
-  and the drop runs the acquittal duties — which clear the members'
-  bytes (`walk.rs, drain_confirmed`). Every posted component ends in
-  exactly one byte-clearing drain in either outcome, so byte hygiene
-  never depended on the hot-path clear.
-- The reaching-zero path still reads the byte it already loaded — the
-  F5 deferral (a condemned entity never dies on the ordinary path) is
-  untouched, and it now **mints the deferred-death marker**: the cold
-  F5 branch stores the full word with the condemned byte set to **2**
-  ("death deferred") and the count at zero. The acquittal duties tear
-  exactly the members reading byte 2 — never a slot that died
-  ordinarily before the condemnation landed and was parked, whose byte
-  reads 1 over a refcount of 0. (Review finding, 2026-07-27: the
-  original duties keyed on `rc == 0` alone, which could tear such a
-  corpse — its class word already overwritten by the parked-free
-  link. The marker is the discriminator, and it must precede or
-  accompany this amendment.) The exact test gates the same way: a
-  member at `rc 0` without the marker died ordinarily — the message is
-  dropped without tracing that member's edges.
+- A condemned entity that stays live is caught without any byte. The
+  Phase 4 exact test recomputes liveness from **current** fields on
+  the owning thread; an outside reference shows up as
+  `refcount > in-component in-degree` and the message is dropped
+  whole.
 - What is lost is only the filter's earliness. A component touched
   after condemnation either shows a count difference and is dropped —
   at the re-check or at the drain — or was touched-and-restored (ABA),
@@ -333,19 +345,20 @@ Why this is sound — the clear was a filter, never the gate:
   equality at drain time proves every reference is in-component right
   then. Transient borrows no longer buy an epoch of acquittal;
   destructors of borrowed-then-abandoned cycles run one epoch earlier.
-- **The collector's panic path owes acquittals.** The hot-path clear
-  used to self-heal a byte stranded by a collector that condemned and
-  then died before posting; with it gone, `Epoch`'s unwind path must
-  post an Acquit for every condemned-but-unposted component, or a
-  later ordinary death of such an entity defers to a drain that never
-  comes — a permanent zombie.
 - A bonus the original design listed as a caveat: with no flags-half
   stores on the mutator's *counted* hot paths, retain/release can no
-  longer bury the collector's concurrent epoch stamps or condemnation
-  bytes. Whole-word flag updates remain on cold mutator paths (weak
-  bit, destructor bits, the dispose guard) and on the factory's
-  initializing store; those races stay conservative-direction, as
-  before.
+  longer bury the collector's concurrent epoch stamps. Whole-word flag
+  updates remain on cold mutator paths (weak bit, destructor bits, the
+  dispose guard) and on the factory's initializing store; those races
+  stay conservative-direction, as before.
+
+The same day's second amendment finished the movement: the reaching-zero
+path originally kept one byte test — the F5 deferral, whose cold branch
+minted a deferred-death marker for the drain duties to key on. **Eager
+death** (Phase 4) deleted the deferral, the marker, and the byte itself;
+the death branch now carries the checkpoint test and nothing else. The
+history is kept in [rc-walk-proof.md](rc-walk-proof.md) (F5) and
+[rc-walk-danger-cases.md](rc-walk-danger-cases.md) (DC0).
 
 The mixed-size access pair this creates — the mutator's 4-byte counter
 store against the collector's 8-byte word loads and 1-byte stores —
@@ -465,51 +478,46 @@ The walk read a moving graph, so every component is a hypothesis. Phase 3
 filters hypotheses cheaply; it does not prove them — proof belongs to
 Phase 4, where it can be had race-free.
 
-1. **Condemn**: write 1 into the condemned byte of every member of every
-   candidate component.
-2. **Handshake**: raise the request flag; the mutator's next trip through
-   the allocator runs a callback — a release fence and an ack — and
-   continues. Nobody parks. After the ack, every mutator write that
-   preceded the checkpoint is visible to the collector. (The soft-handshake
-   idiom FUGC is built on.)
+1. **Condemn**: mark every member of every candidate component in the
+   collector's private tables. *Amended 2026-07-27 (eager death): this
+   step used to write 1 into a shared condemned byte; the byte is gone.
+   Nothing is written to shared memory — the heap does not know a
+   verdict exists.*
+2. **Handshake**: raise the request flag; the mutator's next checkpoint
+   runs a callback — a release fence and an ack — and continues. Nobody
+   parks. After the ack, every mutator write that preceded the
+   checkpoint is visible to the collector. (The soft-handshake idiom
+   FUGC is built on.)
 3. **Re-check**: re-read each member's refcount and each recorded in-edge
-   source slot against the walk's snapshot, then re-read the bytes. **Any
-   difference acquits the whole component**: a changed count, a moved
-   edge, a cleared byte. The filter is snapshot comparison, not a
-   recomputation of `RC − IN` (canonised 2026-07-26: comparison is
-   simpler, strictly more acquittal-prone — drift that happens to
-   preserve the balance still acquits — and it is the filter the TLC
-   battery verified; an earlier draft of this step described both
-   filters in one breath).
+   source slot against the walk's snapshot. **Any difference acquits the
+   whole component**: a changed count, a moved edge. The filter is
+   snapshot comparison, not a recomputation of `RC − IN` (canonised
+   2026-07-26: comparison is simpler, strictly more acquittal-prone —
+   drift that happens to preserve the balance still acquits — and it is
+   the filter the TLC battery verified; an earlier draft of this step
+   described both filters in one breath).
 
-The windows dovetail. A touch *before* the condemnation is invisible to
-the byte — it cleared a byte that was already 0, and the write of 1 then
-buried the evidence — but the post-handshake re-read sees its effect on
-the counts and slots. A touch *after* the condemnation clears the byte.
-The residue — a touch after the ack whose effects the racy re-read happens
-to miss — survives the filter and is caught in Phase 4. One touched member
-acquits the component, because the verdict is per-component and so is the
-proof.
+A touch *before* the handshake shows in the re-read counts and slots.
+The residue — a touch after the ack whose effects the racy re-read
+happens to miss — survives the filter and is caught in Phase 4. One
+touched member acquits the component, because the verdict is
+per-component and so is the proof.
 
-**An acquittal is a message too** (2026-07-26, second audit — this
-replaces the same-day draft that had the collector perform the
-cleanup itself). The condemned-never-die rule leaves two duties behind
-every dropped verdict: clear the members' condemned bytes, so a later
-ordinary death does not defer to a drain that is no longer coming, and
-tear down any member whose count already reached zero while
-condemned — its deferred death has no other hand left to run it. Both
-duties are **mutator work** — the tear runs destructors and releases —
-so the collector must not perform them: it posts an *acquittal
-message*, and the owning thread's next checkpoint clears the bytes and
-tears the deferred deaths on its own thread, race-free, under the same
-shelter as the drain. Every condemned component therefore ends in
-exactly one mutator-side message — confirm or acquit — and the
-collector's writes to shared memory remain exactly two: stamps and
-condemnation bytes. (The collector-side draft had an unfixable race:
-its byte-clear could lose against a concurrent release that still saw
-the condemned byte, minting a zombie after the cleanup had already
-scanned — permanently invisible at `rc = 0`, destructor never run, its
-children pinned forever.) The component is re-judged next epoch.
+**An acquittal is collector-private** (amended 2026-07-27; from
+2026-07-26 to this date it was a mutator-side message, because the
+condemned-never-die rule left two duties behind every dropped verdict:
+clearing the members' condemned bytes and tearing any member whose
+death had been deferred to the drain). Eager death dissolved both
+duties — there are no bytes to clear and no deferred deaths to tear; a
+member that dies while condemned dies whole, on the ordinary path, at
+the natural point. A dropped hypothesis is now dropped in the
+collector's own tables: no message, no checkpoint work, and the
+component is re-judged next epoch. Only confirmations are posted, and
+the collector's writes to shared memory are exactly one kind — epoch
+stamps. (The zombie race that once forced the message-based acquittal —
+a collector-side byte-clear losing against a concurrent release that
+still saw the byte — is not repaired but removed: there is no byte and
+no deferral left for a race to strand.)
 
 ### Phase 4 — VERIFY and RELEASE (mutator thread, by message)
 
@@ -524,9 +532,26 @@ inside the drain. One thread-local mid-drain bit closes the recursion:
 the nested entry acks a pending handshake, but never picks up a
 message.
 
+**The corpse rule: the drain header-scans before it trusts.** Per
+member, the refcount word is read **first**; only when every member
+reads `refcount > 0` does the drain touch any field. A member reading
+zero is a corpse — it died ordinarily since the verdict was posted, its
+teardown is complete, its free is queued — and its presence drops the
+message whole, before any field is traced and before any guard is
+written. A corpse must never be trusted past its first eight bytes:
+the slot is parked, so bytes 0-7 still hold the final header
+(refcount 0); the class word survives too — **parking is out-of-band**
+(review finding, 2026-07-27: the first draft threaded an in-slot park
+link through bytes 8-15, which is exactly the class word the walker
+dereferences one pass after reading the header — a wild read under
+the walker's feet; the park list lives beside the slots, and nothing
+writes a parked slot until the post-epoch flush) — but the fields
+beyond are teardown residue, and the drain has no business reading
+them.
+
 **The exact test.** The drain runs on the mutator's own thread, so nothing
 races it: this is the one place a verdict can be checked against the true
-graph at zero coordination cost. Before anything else, per component:
+graph at zero coordination cost. Per component:
 every member's `refcount` equals its in-component in-degree, recomputed
 from the members' **current** fields.
 Counted references account exactly, so the equality says every reference
@@ -534,26 +559,34 @@ to every member comes from inside the component — garbage by the central
 identity, and nothing can unsay it while the check holds the thread. Any
 mismatch drops the message whole. A falsely posted component costs one
 verification pass — never a destructor and never a free *of a live
-member*; the drop still performs the acquittal duties, and tearing a
-member that died while condemned runs the destructor that death
-already owed.
+member*; a drop leaves nothing behind to clean, because acquittal
+carries no duties (Phase 3).
 
-**A condemned entity never dies on the ordinary path** (decided
-2026-07-26; replaces the first draft's false claim that a dead member
-always reads a mismatching in-degree — under I1 a dead member's
-in-degree is always zero and `0 = 0` would balance, finding F5,
-[rc-walk-proof.md](rc-walk-proof.md)). A release that reaches zero on
-an entity whose condemned byte is set skips teardown: the count stays
-zero and the entity now belongs to the drain, which finds it balanced
-(`0 = 0`), runs its still-unrun destructor, severs and frees it —
-exactly once, merely later. The release observes the byte in the header
-word it already loaded, *before* its own masking clears it. Deferring
-`__destruct` past the last release for these entities is accepted
-semantics. A death *before* the condemnation is caught earlier, by the
-Phase 3 count re-read. One consequence for the acquittal path: a
-dropped message must still tear down any member whose count reached
-zero while condemned — its death was deferred to exactly this drain —
-and clear the dropped members' condemned bytes (see Phase 3).
+**Every death takes the ordinary path — eager death** (amended
+2026-07-27; replaces "a condemned entity never dies on the ordinary
+path", decided 2026-07-26 against finding F5,
+[rc-walk-proof.md](rc-walk-proof.md)). A release reaching zero
+mid-epoch tears down immediately, condemned or not — `__destruct` on
+the owning thread at the natural point, then weak notification, sever,
+free (the canonical dispose order: during its own destructor the
+object is still alive and `get()` must still produce it) — with the
+free **queued, not recycled** (deferred release below). F5's
+danger was never the death itself; it was the drain meeting the corpse
+and acting on it — `0 = 0` balances, the guard resurrects the slot, the
+free path runs a second time (DC0). The deferral rule kept the corpse
+out of posted components; eager death admits the corpse and defangs it
+instead: the parked slot preserves identity, the corpse rule above
+refuses the whole message on sight, and the double teardown is
+unreachable because the drain never acts on a component containing one.
+What the exchange buys is the destructor contract this runtime exists
+to honour — `__destruct` runs at the natural death point, on the owner
+thread, for **every** refcount death; the previous rule's "deferred
+past the last release" semantics is gone. The only destructors that run
+later than their last release are cycle members' — their counts never
+reach zero before the drain, which is the collector's purpose, not a
+deferral. What it costs is latency: a component that partially died
+between posting and drain waits an epoch for its survivors to be
+re-judged — the collector's currency, spent on the collector's side.
 
 Then the discipline `run_cyclic_destructors` (`gc.rs`) already proves,
 minus its restore step — `rc-trace` verifies by trial deletion and must
@@ -602,7 +635,8 @@ While a walk is in flight, memory released by ordinary refcount death is
 **queued rather than recycled** — the GC activity bit of
 [heap-design.md](heap-design.md), which must cover raw buffer frees as
 well as entity slots (the walker chases array storage). The entity dies
-normally and on time, `__destruct` included; only reuse waits, so the
+normally and on time, `__destruct` included — since the eager-death
+amendment with no condemned-entity exception; only reuse waits, so the
 walker cannot read a slot that has become a different object underneath
 it.
 
@@ -612,12 +646,29 @@ drain. Without the queue a slot could be freed and recycled mid-epoch,
 and the Phase 4 equality could balance by coincidence on an object that
 was never judged. That is a soundness role — the queue is not optional.
 
-**The epoch ends only after every verdict message — confirmation or
-acquittal — is acknowledged.** The queue flush, block retirement and the
-next walk all wait for them. This closes two holes
+**The epoch ends only after every posted confirmation is
+acknowledged** (acquittals post nothing since the eager-death
+amendment). The queue flush, block retirement and the next walk all
+wait for them. This closes two holes
 at once: a posted message can never name a slot recycled underneath it,
 and the collector can never condemn the same entity twice with two
 messages in flight — at most one epoch's verdict is outstanding, ever.
+
+**The same gate binds the collector's unwind path** (review finding,
+2026-07-27). An epoch abandoned by a panic owes no acquittals since
+the amendment — there is no mutator-side state to heal — but it must
+still wait for its posted confirmations to be acked before releasing
+the deferral window: releasing early lets the next epoch open over an
+undrained queue, putting two epochs' verdicts in flight. The unwind
+may block until the owning thread's next checkpoint; a dying
+collector thread is the one place this design accepts a wait.
+
+A parked slot is **not written until the flush**: the park list is
+out-of-band (no in-slot link — see the corpse rule above for what the
+in-slot draft broke), so a walker that read a header one pass earlier
+and now chases the class word, or follows a stale pointer, lands on
+an intact corpse — refcount 0, class word live, fields nulled — never
+on repurposed bytes.
 
 This is one load and a predicted branch on the free path, active only
 during an epoch.
@@ -628,7 +679,7 @@ during an epoch.
 |---|---|
 | `retain` / `release` | nothing beyond the counter itself: one header load (the flags tests need it anyway), one narrow 4-byte counter store — no flags store, no masking (narrow-mutator amendment, 2026-07-27) |
 | allocation | nothing — slot classification (free / new / mature) is collector-side, from the refcount word and the epoch byte |
-| memory release | one flag test while an epoch is in flight; on the reaching-zero path only, one test of the condemned byte (in the word already loaded) and the checkpoint test |
+| memory release | one flag test while an epoch is in flight; on the reaching-zero path only, the checkpoint test (the condemned-byte test is gone with the byte — eager-death amendment, 2026-07-27) |
 | per epoch | a handful of handshake acks — one callback each, at a checkpoint |
 | per confirmed component | the Phase 4 drain: one verification pass plus the frees it would have performed anyway |
 | everything else | nothing |
@@ -685,8 +736,9 @@ fixed.
 The first draft validated with a second mechanism — `GetWriteWatch` /
 soft-dirty — claiming it "costs the mutator nothing; the MMU already
 tracks it". Both halves failed inspection. It was load-bearing, not
-complementary: the condemned byte cannot testify about the window before
-the condemnation (the write of 1 buries the evidence), so dirty pages were
+complementary: the condemned byte of that draft could not testify about
+the window before the condemnation (the write of 1 buried the evidence),
+so dirty pages were
 the only cover for the walk-to-condemn window — soundness, not recall. And
 it is not free: a Linux soft-dirty reset write-protects the PTEs, costing
 a TLB flush per reset and one write fault per touched page per epoch, paid
@@ -699,7 +751,7 @@ the two together leave unbought.
 ## What this design does not solve
 
 - **Uncounted borrows.** A `retain` the ARC optimiser elided is invisible:
-  no count, no cleared byte — and no trace in the Phase 4 exact test
+  no count — and no trace in the Phase 4 exact test
   either, which balances *counted* references only. If the covering
   reference lives in an object that turns out to be cyclic garbage, the
   borrowed entity is freed under a live local. The rule the optimiser must
@@ -766,7 +818,7 @@ the two together leave unbought.
    then the full Phase 4 drain — exact test included — inline. No
    collector thread, no filter: a whole-heap leak detector and the exact
    test's correctness harness.
-3. The collector thread, the epoch and condemned bytes, the handshake
+3. The collector thread, the epoch byte, the handshake
    filter, the message queue and the epoch/drain ordering, the
    deferred-free bit extended to buffers.
 4. Weak references.

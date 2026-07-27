@@ -10,6 +10,62 @@ in one line; **cost** if any.
 
 ---
 
+### 2026-07-27 — Eager-death review: ack-only death checkpoint, out-of-band parking, unwind waits for acks
+
+Two fresh-context adversarial passes over the eager-death amendment
+surfaced two BLOCKERs that predate it, plus one spec gap; all three are
+now design rules.
+- **The death-branch checkpoint acks only; message pickup and the
+  parked flush ride the outermost dispose's exit.** Between the
+  committing zero store and dispose, the dying entity is
+  committed-dead with a live weak cell; a drain destructor's
+  `WeakRef::get()` there returns a strong reference to it —
+  resurrection after commit, or double teardown (DC0 through the
+  front door). Opened by the 2026-07-27 checkpoint move to the death
+  branch, universal since eager death.
+- **Parking is out-of-band.** The in-slot park link at bytes 8-15
+  overwrote the class word mid-epoch, under a walker that reads the
+  header in one pass and dereferences `+8` in the next — a wild read.
+  A parked slot is now never written until the post-epoch flush;
+  corpses stay intact (header 0, class live, fields nulled).
+- **The epoch's unwind path waits for posted confirmations** before
+  releasing the deferral window, or the next epoch opens over an
+  undrained queue — two epochs' verdicts in flight.
+- **Corrected in passing:** the F2 volume claim ("parked memory cannot
+  exceed the live heap at epoch start") was derived under the F5
+  deferral and is false under eager death — the true bound is churn
+  rate × epoch duration. Two collector-side bounding mechanisms
+  (epoch-abort watermark, young-free exemption) recorded in BACKLOG.
+- **Cost:** parking allocates (a side list, cold path, epoch-only);
+  drain latency moves from the death's checkpoint to its dispose exit
+  (microseconds, same event).
+
+### 2026-07-27 — Eager death: every refcount death tears down at the natural point; the condemned byte is retired
+
+A release reaching zero mid-epoch now runs full teardown immediately —
+`__destruct` on the owner thread, weak notify, sever, free — with only
+the memory parked (the existing deferred queue); the F5 deferral, the
+deferred-death marker and the shared condemned byte are deleted, and
+condemnation becomes collector-private. The drain header-scans first
+and drops any message containing an `rc = 0` member (the corpse rule),
+which closes DC0 without acting on the corpse. Acquittals post no
+message — both drain duties (byte clears, deferred-death tears)
+dissolved with the mechanisms they served.
+- **Why:** the deferral traded destructor timeliness — the one
+  userland-visible semantic — for drain simplicity; the parked slot
+  already guarantees corpse identity, so refusing the message is as
+  safe as preventing the corpse, and the mutator's death path drops
+  its last collector test.
+- **Rejected:** keeping the byte as a Phase 3 filter (after the narrow
+  mutator nothing writes it but the collector — it carried no
+  information); zeroing corpse payloads (a torn ValueBox for the
+  walker; the parked slot makes stale pointers safe to follow, so
+  nothing needs zeroing).
+- **Cost:** a component that partially dies between posting and drain
+  waits an epoch for its survivors' re-judging; the TLA+ battery
+  models the pre-amendment protocol until re-derived (noted in
+  rc-walk-model.md and the tools README).
+
 ### 2026-07-27 — The weak cell is the canonical WeakReference; a per-thread table delivers death
 
 Weak references designed ([weak-references.md](../model/weak-references.md)):

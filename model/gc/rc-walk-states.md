@@ -7,6 +7,10 @@
 > checking is feasible and with what tool. Every number here is derived,
 > not measured; the only number that matters — the count of *reachable*
 > states — cannot be derived on paper and is explicitly not asserted.
+>
+> *Note (2026-07-27):* counts follow the pre-amendment model; the
+> eager-death amendment removes the condemned factor (×2 per slot) —
+> see the banner note in [rc-walk-model.md](rc-walk-model.md).
 
 ## 1. Configuration
 

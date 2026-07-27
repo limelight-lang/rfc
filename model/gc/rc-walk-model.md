@@ -4,6 +4,19 @@
 > written to be *executed*: every actor's action set is complete, so an
 > exhaustive checker over the state vector below explores every
 > interleaving the real system can produce. Nothing here is implemented.
+>
+> *Note (2026-07-27, eager-death amendment):* this model and the TLC
+> battery built on it describe the **pre-amendment** protocol — a
+> shared condemned byte, the F5 death deferral, message-based
+> acquittals with drain duties. The shipped protocol since the
+> amendment has none of these ([rc-walk.md](rc-walk.md)): condemnation
+> is collector-private, every death is eager, the drain drops on any
+> `rc = 0` member (the corpse rule), acquittals post nothing.
+> Re-deriving the model is deferred with the rest of the checker work
+> (after design freeze); until then the battery is evidence for the
+> superseded rule set, not the current one — except where a scenario
+> exercises machinery the amendment kept (walk, filter, exact test,
+> sever, deferred queue), which is most of it.
 
 ## 0. What is being optimised
 

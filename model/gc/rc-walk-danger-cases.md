@@ -58,13 +58,20 @@ the design as written, not a stripped variant.*
   free path runs **again** → slot enqueued to the deferred queue a
   second time.
 - **Assert:** a slot is never enqueued for free twice.
-- **Fix on record (2026-07-26):** a condemned entity never dies on the
-  ordinary path — a release reaching zero on a condemned entity skips
-  teardown and leaves the entity to the drain, which tears it down
-  exactly once ([rc-walk.md](rc-walk.md), Phase 4). This case becomes
-  the regression test for that rule: with the rule, the premise state
-  (dead, already-torn-down member inside a posted component) is
-  unreachable; without it, the double enqueue above.
+- **Fix on record (2026-07-26, superseded):** a condemned entity never
+  dies on the ordinary path — a release reaching zero on a condemned
+  entity skips teardown and leaves the entity to the drain, which tears
+  it down exactly once. Under that rule the premise state (dead,
+  already-torn-down member inside a posted component) was unreachable.
+- **Fix on record (2026-07-27, eager death — current):** the deferral
+  is gone; every death tears down at the natural point and the corpse
+  stays parked. The premise is now *reachable* and *harmless*: the
+  drain header-scans every member first and **drops the message whole
+  on any `rc = 0` member**, before tracing a field or writing a guard
+  ([rc-walk.md](rc-walk.md), Phase 4, the corpse rule). The regression
+  test flips accordingly: force the corpse into a posted component and
+  assert the drain drops without touching it — no guard write, no
+  second enqueue, survivors re-judged next epoch.
 
 ## DC1 — stale count masked by self-loops, under `byte_only`
 

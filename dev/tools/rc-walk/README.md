@@ -10,6 +10,12 @@ it must reproduce are
 Toolchain: Java (tested on 19.0.1) + `tla2tools.jar` (TLC2 2.19,
 2024-08-08, from the official tlaplus GitHub releases; vendored here).
 
+> **Protocol drift (2026-07-27):** both specs model the pre-amendment
+> protocol; the eager-death amendment (rc-walk.md) retired the condemned
+> byte, the F5 death deferral and message-based acquittals. See the
+> banner note in rc-walk-model.md; re-derivation is deferred to the
+> checker-extensions work after design freeze.
+
 ## Files
 
 - `RcWalk.tla` — the model: three actors, the 2026-07-26 protocol

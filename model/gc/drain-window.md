@@ -7,6 +7,15 @@
 > Code anchors: `epoch.rs` (`post_verdict`, `checkpoint_attend`,
 > `OUTSTANDING_VERDICTS`), `collector.rs` (`recheck_and_post`,
 > `can_close`), `walk.rs` (`drain_confirmed`, `acquit_condemned`).
+>
+> *Note (2026-07-27, eager-death amendment):* acquittals no longer
+> post — only confirmations cross the queue — and the drain performs
+> no byte clears (the condemned byte is gone,
+> [rc-walk.md](rc-walk.md)). The proof and the model describe the
+> pre-amendment protocol; the amendment only **removes** collector
+> accesses and drain messages, so every link holds a fortiori. The
+> spec's `MAcquitDrain` action models a message that no longer exists;
+> re-derivation is deferred with the rest of the checker work.
 
 ## The claim
 

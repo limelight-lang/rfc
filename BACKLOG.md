@@ -19,6 +19,21 @@ into proper RFCs when picked up.
   [buffers.md](model/memory/buffers.md); only the mode thresholds and
   the critical-mode search bound *K* remain to calibrate against real
   workloads.
+- **rc-walk: epoch abort on a parked-volume watermark** — under eager
+  death the parked queue is bounded by churn × epoch duration, not by
+  the live heap ([rc-walk.md](model/gc/rc-walk.md), F2 correction
+  2026-07-27). While nothing is posted the collector can abandon the
+  epoch, drop its private tables and release the deferral window at
+  zero mutator cost; the identity obligation only runs from walk to
+  drain of posted messages. Needs its own proof pass and a watermark
+  calibrated on real churn.
+- **rc-walk: young-free exemption from parking** — an entity whose
+  epoch byte reads 0/current at free time is in no snapshot row and no
+  posted component, so recycling its slot immediately appears sound
+  (a reused slot re-reads as new and is skipped; child validation
+  drops edges to it). One byte test on the cold parked path; removes
+  most churn parking. Needs a proof pass (interaction with the
+  epoch-byte wrap and with buffer frees).
 
 ## Model — remaining documents
 

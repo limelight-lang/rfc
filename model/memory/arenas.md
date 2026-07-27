@@ -15,7 +15,7 @@ The number and types of arenas is not fixed. The architecture supports multiple 
 | Immortal | Global | None — immortality flag, all retain/release ignored |
 | Long-lived | Long-lived arena | Minimal RC or explicit free |
 | Request-scoped | Request arena | None — entire arena reset at end of request |
-| General | GC heap (Immix) | Deferred ARC + Biased RC + escape analysis |
+| General | GC heap (size-class block heap) | ARC + escape analysis; cycles per the active strategy |
 
 ---
 
@@ -51,7 +51,7 @@ Objects that never die: `null`, `true`, `false`, small integers, permanently int
 
 ## Relationship to GC
 
-The GC (Immix + MMTK) operates only on the **general heap** — it never scans or collects request arena or long-lived arena objects. This dramatically reduces GC pressure: most objects (request-scoped) are invisible to the GC entirely.
+The collector — whichever strategy the build selects ([strategies.md](../gc/strategies.md)) — operates only on the **general heap** — it never scans or collects request arena or long-lived arena objects. This dramatically reduces GC pressure: most objects (request-scoped) are invisible to the GC entirely.
 
 ---
 

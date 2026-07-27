@@ -401,7 +401,7 @@ Four things any design has to answer, and none of them are small:
 
 Verdict: plausible, but it is a **GcHeap design item, not a `Heap` one**, and
 it should be scoped by the GC win rather than the allocation win. Revisit
-when the Immix-shaped `GcHeap` is designed ([heap-design.md](model/gc/heap-design.md));
+when the `GcHeap` is designed ([heap-design.md](model/gc/heap-design.md));
 by then the vertical slice should also say how much dispatch survives
 compilation, which decides point 3.
 

@@ -288,7 +288,7 @@ arrays are not objects at all (no class pointer; identified by tag —
 [values.md](values.md), [strings.md](strings.md), [arrays.md](arrays.md)),
 so the question never applies to them.
 
-**No object table.** Objects are referenced only by direct pointers: there is no analog of Zend's object store with handles. PHP 7 itself moved object access from handles to direct pointers for performance; the store's remaining duties are covered differently in Limelight: object enumeration by linear Immix block scanning (see [heap-design.md](gc/heap-design.md)), shutdown/arena-reset destructors by the `DESTRUCTOR_PENDING` flag bit, weak references by side tables. Non-moving GC means a direct-pointer object's address is stable for its lifetime, so `spl_object_id()` can be derived from it; a movable-proxy target's identity is instead its proxy's stable address ("The Proxy family" above).
+**No object table.** Objects are referenced only by direct pointers: there is no analog of Zend's object store with handles. PHP 7 itself moved object access from handles to direct pointers for performance; the store's remaining duties are covered differently in Limelight: object enumeration by linear block scanning (see [heap-design.md](gc/heap-design.md)), shutdown/arena-reset destructors by the `DESTRUCTOR_PENDING` flag bit, weak references by side tables. Non-moving GC means a direct-pointer object's address is stable for its lifetime, so `spl_object_id()` can be derived from it; a movable-proxy target's identity is instead its proxy's stable address ("The Proxy family" above).
 
 ### Slot kinds
 

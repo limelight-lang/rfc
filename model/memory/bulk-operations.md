@@ -64,11 +64,13 @@ allocator call per object.
   issues one reservation per size — "one vector per class" falls out
   of that grouping as the degenerate case, but the mechanism is
   size-based, which is strictly more general.
-- **Contiguity is best effort, and honest about it.** Request-arena
-  cells come from one bump advance — a guaranteed contiguous run. Heap
-  cells prefer the size-class block's virgin bump tail (contiguous),
-  then fall back to free-list pops from the same block (same 64 KB,
-  not adjacent). No promise ever spans blocks.
+- **Contiguity is best effort, and honest about it — in every
+  category.** Request-arena cells come from one bump advance, which is
+  contiguous only as far as the current block's remaining space; a run
+  that does not fit splits at the block boundary, and blocks are not
+  adjacent. Heap cells prefer the size-class block's virgin bump tail
+  (contiguous), then fall back to free-list pops from the same block
+  (same 64 KB, not adjacent). No promise ever spans blocks, anywhere.
 - **Construction consumes a cell** through a factory variant that
   takes the cell instead of allocating —
   `ll_object_new_in(cell, class, category)`-shaped. Stamp and

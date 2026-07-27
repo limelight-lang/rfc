@@ -64,7 +64,9 @@ exit. For that it emits one explicit `ll_gc_checkpoint()` for the run,
 then releases each reference with `ll_release_batch` — `ll_release`
 minus the checkpoint test — so the run pays the test once, not per
 reference. The unbatched `ll_release` stays checkpointing, so naive
-FFI callers keep the protocol alive without knowing it exists.
+FFI callers keep the protocol alive without knowing it exists. The
+single-call vector form of the same contract is
+`ll_release_vector` (`model/memory/bulk-operations.md`).
 
 The arrangement's accepted limit (2026-07-26, finding F2 in
 [rc-walk-proof.md](rc-walk-proof.md), reshaped 2026-07-27): a thread

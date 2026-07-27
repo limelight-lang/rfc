@@ -14,3 +14,4 @@ Covers memory regions, allocation strategies, arena/pool design, and the interfa
 - [ffi.md](ffi.md) — pure C structures: the mandatory owner model, field/type mapping (where `string` is a C string), `Box` attachment, the attribute catalog
 - [regions.md](regions.md) — `#[Region]`: instance-owned arenas with a per-region GC binding; the allocator class (custom allocation/free/traversal); the memory half of an actor
 - [arc-optimizations.md](arc-optimizations.md) — refcount elimination strategies (partly superseded by static-lifetimes.md)
+- [bulk-operations.md](bulk-operations.md) — vector release and entity-cell reservation: one call per batch, best-effort contiguous placement; design only

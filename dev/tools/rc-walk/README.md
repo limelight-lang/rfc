@@ -18,6 +18,10 @@ Toolchain: Java (tested on 19.0.1) + `tla2tools.jar` (TLC2 2.19,
   store releases last), broken-variant switches, scenario scripts.
 - `SC_*.cfg` — the scenario battery, one run each: a fixed mutator
   script, interleaved every possible way with the collector.
+- `DrainWindow.tla` + `DW_*.cfg` — the drain-exclusivity window
+  ([drain-window.md](../../../model/gc/drain-window.md)): a separate
+  tiny spec (sound run: 23 states), one sound config and three kills,
+  one per link of the proof.
 - `run_all.ps1` — legacy free-mode batch runner (expensive; the
   scenario battery replaced it for routine use).
 

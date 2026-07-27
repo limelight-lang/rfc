@@ -354,6 +354,11 @@ bytes, relaxed atomics, no read-modify-write. Miri cannot see
 mixed-size races (`ll-model/dev/WORKFLOW.md`); the stepped forcing
 tests and the TSO argument carry this, as they already did.
 
+The drain itself never races the collector at all: from a component's
+posted verdict to its acked drain the collector provably performs no
+access to that component — the **drain-exclusivity window**, proven
+and TLC-checked in [drain-window.md](drain-window.md) (2026-07-27).
+
 ## The algorithm
 
 ### Phase 1 — WALK (collector thread, no synchronisation)

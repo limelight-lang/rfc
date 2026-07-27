@@ -50,13 +50,34 @@ for (i in 0..count)
 ## Cell reservation
 
 ```c
-size_t ll_entity_reserve(size_t size, size_t count, void **out_cells);
+size_t ll_entity_reserve(size_t size, size_t count,
+                         void **out_cells, size_t *contiguous_len);
 void   ll_entity_cells_return(void *const *cells, size_t count);
 ```
 
 Reserve up to `count` cells of one entity size, best-effort
 contiguous, and hand construction a ready pointer instead of an
 allocator call per object.
+
+**The parameters are a request; the manager decides.** `count` is what
+the compiler wants, never what it is owed: the manager may return
+fewer, or zero — refusal is an answer, not an error, and the caller's
+fallback is always the ordinary factory. `contiguous_len` reports how
+many of the *leading* cells form one adjacent run (stride = the slot
+size): the compiler may zero-fill that run with one store sequence and
+treat the tail cells individually. The policy behind the decision —
+how far to go for cells, when to refuse — lives in the manager and can
+change without touching the ABI; the first policy is deliberately
+tame: serve from the size class's block already on hand (virgin bump
+tail first — the contiguous part — then its free list), draw at most
+**one** fresh block from the pool, and never force region growth for a
+speculative reservation.
+
+**The request arena needs no reservation ABI at all.** One bump
+allocation of `count × size` *is* the contiguous run there — the
+compiler already has that mechanism, and arena cells need no return
+(reset reclaims the run like any arena garbage). The cell machinery
+below is the heap's.
 
 - **Cells are keyed by size class, not by class.** A cell carries no
   identity until the factory stamps it, so two classes of equal slot
@@ -65,12 +86,13 @@ allocator call per object.
   of that grouping as the degenerate case, but the mechanism is
   size-based, which is strictly more general.
 - **Contiguity is best effort, and honest about it — in every
-  category.** Request-arena cells come from one bump advance, which is
-  contiguous only as far as the current block's remaining space; a run
-  that does not fit splits at the block boundary, and blocks are not
-  adjacent. Heap cells prefer the size-class block's virgin bump tail
-  (contiguous), then fall back to free-list pops from the same block
-  (same 64 KB, not adjacent). No promise ever spans blocks, anywhere.
+  category.** A bump run anywhere is contiguous only as far as the
+  current block's remaining space; a run that does not fit splits at
+  the block boundary, and blocks are not adjacent. Heap cells prefer
+  the size-class block's virgin bump tail (contiguous, reported via
+  `contiguous_len`), then fall back to free-list pops from the same
+  block (same 64 KB, not adjacent). No promise ever spans blocks,
+  anywhere.
 - **Construction consumes a cell** through a factory variant that
   takes the cell instead of allocating —
   `ll_object_new_in(cell, class, category)`-shaped. Stamp and
@@ -110,12 +132,22 @@ None that is new, which is the point:
 - Frame teardown compiles to one `ll_release_vector` instead of a
   release ladder.
 
-## Open questions before implementation
+## Who decides what
 
-1. Batch thresholds — below what N is the loop of inline releases
-   cheaper than the call? A measurement, not a guess.
-2. Whether the heap should offer a guaranteed-contiguous multi-slot
-   carve (a bump-tail claim API) for reservations that must not
-   fragment, and what it does when the tail is short.
-3. Whether `ll_release_vector` should sort by block to batch free-list
-   pushes — measurable only with real call sites.
+The former open questions resolve into a split of authority, not into
+research items:
+
+- **Batch thresholds are the compiler's parameter.** Below whatever N
+  its own measurement favours, it emits inline releases; the manager
+  is indifferent to the choice.
+- **How hard to try is the manager's policy.** Refuse, serve short,
+  draw a block or not — parameterised inside the manager, revisable
+  without ABI change. The caller's contract is only: the answer may be
+  any number from 0 to `count`, and `contiguous_len` of the answer is
+  honest.
+- **Physical order belongs to the manager.** `ll_release_vector` runs
+  destructors in vector order — that is program-visible and fixed —
+  but the physical recycling behind them is the manager's to batch,
+  reorder or defer (it already defers wholesale during an rc-walk
+  epoch). Whether sorting frees by block pays is its internal
+  measurement to make, invisible to the contract.

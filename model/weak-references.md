@@ -205,7 +205,7 @@ committed, its cell reads null before any user code can run.**
 
 Two smaller pins the sites imply:
 
-- **Every entity kind honours bit 7 at death.** A `Box` (kind 4) or a
+- **Every entity kind honours bit 7 at death.** A `FFIBox` (kind 4) or a
   lazy object (kind 6) is a legal `WeakReference` target, so the
   weak-notify test lives in the generic entity death switch, not in
   the object arm alone.

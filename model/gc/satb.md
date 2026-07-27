@@ -78,17 +78,17 @@ drop(ctx, owner_cat, old):
   the opposite of the intent: the queue keeps snapshot references
   **alive** for this epoch.
 
-## Torn 16-byte Box reads: the writing lock
+## Torn 16-byte ValueBox reads: the writing lock
 
 The deletion barrier keeps the *snapshot* correct; a separate, lower-level
 hazard is reading a single slot mid-write. `store_ptr` publishes one 8-byte
 pointer — atomic on a 64-bit target, so the marker reads either the old or
-the new pointer, never a mix. `store_box` publishes a **16-byte** Box
+the new pointer, never a mix. `store_box` publishes a **16-byte** ValueBox
 (payload + tag) as two stores, so a marker reading that slot concurrently
 could see a torn pair — an old `object` tag over a payload that is already a
 bare `int` — and trace a non-pointer as a pointer.
 
-The fix is a **writing lock** in the Box's own `flags` byte (bit 2,
+The fix is a **writing lock** in the ValueBox's own `flags` byte (bit 2,
 [values.md](../values.md)). `store_box` on this strategy brackets the
 payload write with it:
 

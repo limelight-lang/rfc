@@ -10,12 +10,12 @@ contracts they plug into.
 
 ---
 
-## Two Contracts: Box and Unboxed
+## Two Contracts: ValueBox and Unboxed
 
 **Decision**: Limelight uses two value representations, chosen per storage
 site at compile time.
 
-1. **Box** — a 16-byte tagged value. Used where the static type is
+1. **ValueBox** — a 16-byte tagged value. Used where the static type is
    unknown: elements of mixed arrays, untyped parameters/locals/returns,
    `mixed`, dynamic properties.
 2. **Unboxed** — a raw `i64` / `f64` / pointer, no tag. Used where the
@@ -23,27 +23,27 @@ site at compile time.
    parameters, locals with inferred types. Arithmetic on unboxed values is
    native machine arithmetic.
 
-The mixed world is large in real PHP code, so the Box is not an edge case;
+The mixed world is large in real PHP code, so the ValueBox is not an edge case;
 but every type declaration the programmer writes moves storage into the
 unboxed contract for free.
 
-**Terminology — "Box" has two contexts.** This *value* Box (a 16-byte
-tagged value, PHP's `zval` in spirit) is a different thing from the
-built-in **`Box` class** (entity kind 4, [classes.md](classes.md),
-[ffi.md](memory/ffi.md)) that wraps a raw `#[FFI]` C structure for the
-managed world. One word, two contexts — a value box here, a raw-struct box
-there; they share nothing but the name.
+**Terminology.** The ValueBox (a 16-byte tagged value, PHP's `zval` in
+spirit) is a different thing from the built-in **`FFIBox` class**
+(entity kind 4, [classes.md](classes.md), [ffi.md](memory/ffi.md))
+that wraps a raw `#[FFI]` C structure for the managed world. Both were
+once called "Box"; the 2026-07-27 rename ([layouts.md](layouts.md))
+removed the collision, and the bare word is no longer used.
 
-**In an object, a Box appears only where the property has no declared
+**In an object, a ValueBox appears only where the property has no declared
 type.** A declared property occupies its machine representation and
 nothing more — a bare pointer for an object or string, eight raw bytes
-for an `int`. The Box is not the object's storage format; it is the
+for an `int`. The ValueBox is not the object's storage format; it is the
 storage format of one kind of property. See
 [classes.md](classes.md), "Slot kinds".
 
 ---
 
-## Box Layout
+## ValueBox Layout
 
 ```
 +0   payload   8 B   union { i64, f64, ptr }
@@ -51,21 +51,21 @@ storage format of one kind of property. See
 +9   flags     1 B   bit 0 refcounted; bit 1 undef (property slots only);
                      bit 2 writing (rc-satb concurrent-marking lock, below);
                      bits 3-7 reserved, unassigned. This is the cheapest
-                     spare room in the Box: the byte is already loaded and
-                     tested on every Box copy (the refcounted bit), so a
+                     spare room in the ValueBox: the byte is already loaded and
+                     tested on every ValueBox copy (the refcounted bit), so a
                      future per-value boolean costs nothing to read here,
                      unlike one placed in the reserved bytes at +10
-+10  reserved  6 B   bytes 10..15, through the end of the Box: alignment
++10  reserved  6 B   bytes 10..15, through the end of the ValueBox: alignment
                      padding, not usable as per-slot state — the store
-                     barrier writes all 16 bytes of the Box
+                     barrier writes all 16 bytes of the ValueBox
 ```
 
-The `undef` flag (bit 1) marks a Box property slot as uninitialized. A
-Box has the room in its own `flags` byte to carry this, so a `mixed` /
+The `undef` flag (bit 1) marks a ValueBox property slot as uninitialized. A
+ValueBox has the room in its own `flags` byte to carry this, so a `mixed` /
 untyped property tracks its uninitialized state **in the slot**, and the
 init bitmap below is left to the raw typed slots that have no such room.
-The flag is meaningful only in a property slot and is never set on a Box
-in a local, parameter, return, array element, or reference box — the
+The flag is meaningful only in a property slot and is never set on a ValueBox
+in a local, parameter, return, array element, or ReferenceBox — the
 same confinement `IS_UNDEF` lacks in Zend, which is why Zend's leaks
 into semantics and this does not.
 
@@ -83,18 +83,18 @@ arithmetic speed. Zend reached the same conclusion; 16 bytes it is.
 | `true` | — |
 | `int` | i64 |
 | `float` | f64 |
-| `string` | pointer → string entity ([strings.md](strings.md)) |
-| `array` | pointer → array entity ([arrays.md](arrays.md)) |
+| `string` | pointer → StringBox ([strings.md](strings.md)) |
+| `array` | pointer → ArrayBox ([arrays.md](arrays.md)) |
 | `object` | pointer → Object ([classes.md](classes.md)) |
 | `resource` | pointer |
-| `reference` | pointer → reference box (below) |
+| `reference` | pointer → ReferenceBox (below) |
 
-The `refcounted` flag in the Box duplicates what the tag implies so that
-retain/release on Box copy is a single bit test, with no tag decoding.
+The `refcounted` flag in the ValueBox duplicates what the tag implies so that
+retain/release on ValueBox copy is a single bit test, with no tag decoding.
 
 There is deliberately **no `undef` tag**. Uninitialized is not a type,
 so it does not take a tag value that `gettype` or a `switch` on the tag
-would have to reckon with. It is the `flags` bit above (for a Box slot)
+would have to reckon with. It is the `flags` bit above (for a ValueBox slot)
 or an init-bitmap bit (for a raw slot) — metadata beside the value,
 never a tag inside the value's type space.
 
@@ -106,12 +106,12 @@ Hashtable holes remain a separate, container-internal marker
 ([arrays.md](arrays.md)), unrelated to this.
 
 The **writing** flag (bit 2) is the concurrent-marking lock: because a
-16-byte Box is published as two stores (payload, then tag), a background
+16-byte ValueBox is published as two stores (payload, then tag), a background
 marker reading the slot could otherwise catch a torn pair and trace a
 non-pointer as a pointer. It is set and cleared only by `store_box` on the
 `rc-satb` strategy and read only by that strategy's marker; every other
 build leaves the bit permanently clear. The mechanism is in
-[satb.md](gc/satb.md), "Torn 16-byte Box reads".
+[satb.md](gc/satb.md), "Torn 16-byte ValueBox reads".
 
 All pointer payloads point to entities that begin with the common
 `RcHeader` (refcount + flags at offset 0, see [classes.md](classes.md)).
@@ -128,7 +128,7 @@ the function signature.
 ### Nullable types
 
 **Decision**: `?T` introduces **no third representation**. A pointer-shaped
-`T` uses its own null; a scalar `T` uses the Box.
+`T` uses its own null; a scalar `T` uses the ValueBox.
 
 - **Pointer `T`** (`?object`, `?string`, `?array`): **niche
   optimization**: null is the null pointer, size stays 8 bytes (exactly
@@ -136,12 +136,12 @@ the function signature.
   wrapper, it is the pointer. Its uninitialized state, if the property
   can have one, is a bit in the init bitmap, not a reserved pointer
   value.
-- **Scalar `T`** (`?int`, `?float`): the **Box**, with the compiler
+- **Scalar `T`** (`?int`, `?float`): the **ValueBox**, with the compiler
   knowing statically that only two tags can occur.
 
 An earlier revision specified a separate `Optional` construction,
 `{ u8 discriminant, T value }`, for the scalar case. It bought nothing:
-that is 16 bytes with alignment, exactly what the Box costs, and the
+that is 16 bytes with alignment, exactly what the ValueBox costs, and the
 unwrap is a one-byte compare either way, since a statically-known `?int`
 can only be tagged `null` or `int`. What it did cost was a third value
 representation, which every path handling a nullable scalar would have
@@ -151,7 +151,7 @@ workloads from having one representation less; the microbenchmark that
 regressed 23% did not save it.
 
 ```llvm
-; $x = $x + 5   where $x: ?int  — payload +0, tag +8 (Box layout)
+; $x = $x + 5   where $x: ?int  — payload +0, tag +8 (ValueBox layout)
 %t = load i8, ptr %x.tag
 br %t == TAG_NULL → %coerce, else → %add
 %add:                                  ; hot path
@@ -171,8 +171,8 @@ that touches a value.
 **Decision**: the uninitialized state is tracked by **where the slot has
 room to say it**, and only for properties that can actually have it.
 
-- **Box slot** (`mixed` / untyped): the `undef` flag bit in the Box
-  itself (above). A read decodes the Box anyway, so testing the bit is
+- **ValueBox slot** (`mixed` / untyped): the `undef` flag bit in the ValueBox
+  itself (above). A read decodes the ValueBox anyway, so testing the bit is
   part of that decode and costs nothing extra.
 - **Non-nullable pointer** (`Foo`, `string`, `array`): **`NULL` itself**.
   A non-nullable type can never legally hold null, so a null in the slot
@@ -203,7 +203,7 @@ state, and an untracked property is never checked:
 - `unset()` returns the property **to** uninitialized, through whatever
   marker the slot has: a non-nullable pointer is stored `NULL` (a
   pointer can always be reset this way, its marker is free), a
-  bitmap-tracked `?T`/scalar has its bit cleared, a Box gets its `undef`
+  bitmap-tracked `?T`/scalar has its bit cleared, a ValueBox gets its `undef`
   flag. A raw scalar that carries no bit — one the compiler proved
   always-assigned, where `0` is a real value and there is nothing to
   clear — cannot be expressed as uninitialized; `unset()` on it is a
@@ -218,7 +218,7 @@ state, and an untracked property is never checked:
 
 So `Error`-on-uninitialized-read matches PHP without a test on every
 typed read: the check rides only the properties that can be
-uninitialized, and for a Box slot it is free.
+uninitialized, and for a ValueBox slot it is free.
 
 This state is metadata, never a language-level type: `gettype()`,
 `is_*()` and every other value reflection are unreachable for it,
@@ -227,7 +227,7 @@ because the read throws before any of them runs.
 **Construction.** Most of it is the zero-fill. A non-nullable pointer's
 uninitialized marker is `NULL` (zero), and a bitmap-tracked slot's clear
 bit is zero, so the body zero-fill sets "uninitialized" for both for
-free. Only a Box slot's `undef` flag is *not* zero (an all-zero Box is
+free. Only a ValueBox slot's `undef` flag is *not* zero (an all-zero ValueBox is
 `null`), so a `mixed` property with no default takes one flag store
 after the zero-fill — the same shape as stamping any non-zero default,
 and only for that uncommon case.
@@ -248,7 +248,7 @@ does not use references pays nothing.
 
 ---
 
-## Reference Box (`&`)
+## ReferenceBox (`&`)
 
 A reference is a separate refcounted box containing one Value slot.
 Variables bound by `&` point to the same box. This is the only extra

@@ -28,7 +28,7 @@ typedef struct Object {
     struct Class *cls;           // +8
     // +16: property slots, each the machine representation of its
     // declared type (classes.md, "Slot kinds"). Laid out as three runs
-    // — counted pointers, Boxes, then the rest in declaration order —
+    // — counted pointers, ValueBoxes, then the rest in declaration order —
     // followed by the byte block (init bits, packed bools). There is no
     // uniform slot size and no per-slot tag.
     // Classes allowing dynamic properties have one extra hidden slot:
@@ -45,7 +45,7 @@ typedef struct Node {
     struct Node  *prev;          // +24  ┘ (non-null) → NULL means uninitialized;
                                  //        prev: ?Node → NULL is php null,
                                  //        uninitialized is an init-bitmap bit
-    Value         meta;          // +32    untyped → Box, 16 bytes (undef flag
+    Value         meta;          // +32    untyped → ValueBox, 16 bytes (undef flag
                                  //        if uninit); spans +32..+47
     int64_t       id;            // +48    id: int, uninitialized via bitmap bit
     uint8_t       ok;            // +56    ok: bool
@@ -73,7 +73,7 @@ typedef struct Class {
     Run          *ptr_runs;      // (offset,count) list — counted-pointer runs,
                                  // stride 8, skip NULL (GC trace, clone, dispose)
     uint32_t      ptr_run_count;
-    Run          *box_runs;      // (offset,count) list — Box runs, stride 16,
+    Run          *box_runs;      // (offset,count) list — ValueBox runs, stride 16,
                                  // skip when the refcounted flag is clear
     uint32_t      box_run_count;
     struct Class **display;      // Cohen display, indexed by depth (instanceof)
@@ -169,7 +169,7 @@ use:
 One GEP + load, essentially a C struct field access. The only additions
 are an uninitialized check where the property can be uninitialized and
 the compiler has not proven otherwise — a null compare for a
-non-nullable pointer, a bitmap-bit test for a `?T`/scalar, a Box `undef`
+non-nullable pointer, a bitmap-bit test for a `?T`/scalar, a ValueBox `undef`
 test folded into the tag decode — and the shift for a packed `bool`.
 None of these is emitted for a property with a default or a proven
 assignment. Hashtables are involved only for dynamic properties and
@@ -177,7 +177,7 @@ assignment. Hashtables are involved only for dynamic properties and
 
 Stores to a slot holding a counted reference go through the store
 barrier, which is chosen statically by slot kind: an 8-byte pointer
-slot and a 16-byte Box slot are two different entries.
+slot and a 16-byte ValueBox slot are two different entries.
 
 A hooked property (PHP 8.4) compiles to a call through the hook's vtable
 slot instead; `virtual` properties have no backing slot at all. The
@@ -284,13 +284,13 @@ commit:
   store i64 RC1_PLUS_FLAGS, ptr %cur             ; header in one 8-byte store
   store ptr @class.User,
         ptr getelementptr(i8, ptr %cur, i64 8)
-  ; Body zeroed as one range: an all-zero Box is null (tag 0), a null
+  ; Body zeroed as one range: an all-zero ValueBox is null (tag 0), a null
   ; pointer is PHP null, a zero scalar is 0, and a clear init-bitmap bit
   ; is uninitialized — every uninitialized slot's correct start, and the
   ; bitmap's, in one store. No sentinel or tag to stamp.
   call void @llvm.memset.p0.i64(ptr %body, i8 0, i64 BODY_LEN, i1 false)
   ; Then the explicit stores: defaults, and the undef flag on a mixed
-  ; slot with no default (an all-zero Box is null, not undefined).
+  ; slot with no default (an all-zero ValueBox is null, not undefined).
   store i64 1, ptr getelementptr(i8, ptr %cur, i64 U_COUNT)   ; public int $count = 1
   store i8 UNDEF, ptr getelementptr(i8, ptr %cur, i64 U_META_FLAGS) ; public $meta;
   call void @User__construct(ptr %cur, ...)      ; constructor known → direct

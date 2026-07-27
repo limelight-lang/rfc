@@ -172,7 +172,7 @@ population falling by roughly an order of magnitude.
 The flag lives in the **class descriptor**, not in the object header. The
 walker already loads the class to reach `traced_runs`, header bits are
 scarce, and a collector-side load is free by the trade at the top. Kinds
-that carry no class pointer — string, array, reference box — take it from
+that carry no class pointer — string, array, ReferenceBox — take it from
 their singleton descriptor ([classes.md](../classes.md), "Entity kind").
 
 **The walk skips an acyclic entity completely: no `rc[]` row, no out-edge
@@ -216,17 +216,17 @@ only kinds 0 and 6 carry a class pointer there, and reaching for
 
 - **Object (0), lazy object (6)** — traced through the class's
   `traced_runs`.
-- **Array (2)** — traced through the element Boxes in its storage. Arrays
+- **Array (2)** — traced through the element ValueBoxes in its storage. Arrays
   are the spine of the commonest PHP cycle, `object → array → object`; a
   collector that skips them is decorative. The storage is a raw buffer, so
   the deferred-free bit must cover **buffer** frees too — a mid-epoch grow
   must queue the old storage, or the walker chases freed memory
   ([heap-design.md](heap-design.md)).
-- **Reference box (3)** — one Value; traced.
+- **ReferenceBox (3)** — one Value; traced.
 - **String (1), WeakRef (5)** — no out-edge can close a ring (a `WeakRef`
   never strong-references its referent); their singleton descriptors carry
   the acyclic flag and the skip is total, by the rule above.
-- **`Box` (4)** — wraps a C struct the walker cannot trace. Skipped
+- **`FFIBox` (4)** — wraps a C struct the walker cannot trace. Skipped
   totally: conservative, and cycles through FFI wrappers go uncollected
   (see "What this design does not solve").
 
@@ -421,7 +421,7 @@ reads `0 − 1 < 0` — a live newcomer judged a non-root inside the sound
 design, violating "skipping must be total". Dropping the edge instead
 is the conservative direction: the newcomer's holders are already in
 its `RC`, so it and its targets stay rooted. The
-walker races the mutator, so it can read a torn 16-byte Box — a stale
+walker races the mutator, so it can read a torn 16-byte ValueBox — a stale
 `object` tag over a payload that is already an integer — or a slot
 mid-initialization; validation makes the worst case a phantom edge or a
 missed one, never a wild dereference. `rc-satb` closes the same tear with
@@ -645,7 +645,7 @@ Toward **false condemnation**, which must be caught: a duplicate edge from
 a reference read in both its old and new homes mid-migration; a dead
 entity's out-edges read racing the final decrement (the occupancy test
 closes the teardown window down to that one racy read); a
-phantom edge from a torn Box; a stale-low refcount read before a retain.
+phantom edge from a torn ValueBox; a stale-low refcount read before a retain.
 Everything in the second list survives at most to the Phase 3 re-check,
 and nothing survives the Phase 4 exact test. The honest claim is not "the
 walk is conservative" — it is "the walk may be wrong in both directions,
@@ -725,7 +725,7 @@ the two together leave unbought.
 - **Huge objects** in OS-direct block runs are outside the pool regions and
   cannot be enumerated by the registry. Cycles through them are not
   collected; the edge is skipped, which is conservative.
-- **Cycles through FFI wrappers.** A `Box` (kind 4) wraps a C struct the
+- **Cycles through FFI wrappers.** A `FFIBox` (kind 4) wraps a C struct the
   walker cannot trace, so it is skipped totally and a ring passing through
   one is never collected. Conservative; revisit if FFI-heavy workloads
   leak.

@@ -19,13 +19,13 @@ pluggable garbage collection instead of a one-size-fits-all VM heap.
 | Actors | `#[Actor]` classes own their arenas and execute serially; queues are the only door between actors. Collection runs per actor at message boundaries; each actor may bind its own GC | [actors](runtime/actors.md) |
 | Object model | C++-grade dispatch for PHP: inline-trailing vtables, COM-style itables, fat interface references, inline caches that never invalidate | [classes](model/classes.md), [lowering](model/lowering.md) |
 | Exceptions | Three channels — table-driven unwinding, an error-return channel, and a non-catchable bailout for fatals — with the **compiler** choosing, not the programmer. The return channel is also the portability floor: it needs no host support, which is what makes the embedded/WASM/JVM modes possible. Design has known open defects, listed in the document | [exceptions](runtime/exceptions.md) |
-| Values | 16-byte Box for the dynamic world, raw unboxed slots for declared types, COW as a per-object flag | [values](model/values.md), [strings](model/strings.md), [arrays](model/arrays.md) |
+| Values | 16-byte ValueBox for the dynamic world, raw unboxed slots for declared types, COW as a per-object flag | [values](model/values.md), [strings](model/strings.md), [arrays](model/arrays.md) |
 
 ## Document map
 
 ### `model/` — language and memory model
 
-- [values.md](model/values.md) — Box/unboxed contracts, Optional, `UNINIT`, COW protocol
+- [values.md](model/values.md) — ValueBox/unboxed contracts, Optional, `UNINIT`, COW protocol
 - [strings.md](model/strings.md) — string layout, string-as-class, interpolated template class
 - [arrays.md](model/arrays.md) — one `array` class, three storage strategies
 - [classes.md](model/classes.md) — object layout, class descriptors, vtables, itables, property access

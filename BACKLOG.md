@@ -27,7 +27,7 @@ into proper RFCs when picked up.
   migration ([arrays.md](model/arrays.md)).
 - **Closures** — capture (by-value / by-ref), `$this` binding,
   first-class callable syntax.
-- **Reference box representation** — revisit how a PHP `&` reference is
+- **ReferenceBox representation** — revisit how a PHP `&` reference is
   represented (today: entity kind `3`, `RcHeader | Value`,
   [values.md](model/values.md)). Open question raised during the
   object-layout rework, deliberately deferred — reconsider whether the
@@ -122,8 +122,8 @@ into proper RFCs when picked up.
 Raised by an adversarial review after the object-layout rework. Each
 needs a design decision, deferred deliberately.
 
-- **Torn 16-byte Box read in the concurrent marker (`rc-satb`)** —
-  **resolved 2026-07-22**. A **writing lock** in the Box `flags` byte (bit
+- **Torn 16-byte ValueBox read in the concurrent marker (`rc-satb`)** —
+  **resolved 2026-07-22**. A **writing lock** in the ValueBox `flags` byte (bit
   2): `store_box` on the rc-satb path sets it, writes the payload, then
   writes the final tag and clears it (release order); the marker skips a
   slot whose `WRITING` bit is set (safe — the deletion barrier already
@@ -178,24 +178,24 @@ documents** (2026-07-22); what remains open is at the end.
 [classes.md](model/classes.md)):
 
 - **Hidden `RcHeader` at −8** (was critical) — dropped. It never survives
-  the offset-0 invariant; a `Box` is always a **separate wrapper**, the
-  header on the `Box`, never at −8 of the C data.
+  the offset-0 invariant; a `FFIBox` is always a **separate wrapper**, the
+  header on the `FFIBox`, never at −8 of the C data.
 - **"Mandatory owner or compile error"** (was critical) — dropped. An
   un-anchored foreign value is a tier-3 case and falls to an
-  **auto-`Box`** (which supplies the missing `RcHeader`); no compile
+  **auto-`FFIBox`** (which supplies the missing `RcHeader`); no compile
   error, accept-every-program intact.
 - **No slot kind for a foreign-typed property** — dissolved. A foreign
-  value in a managed property is **always a `Box`** (the store is an
+  value in a managed property is **always a `FFIBox`** (the store is an
   escape); a managed object never holds a bare headerless struct, so there
   is no "owned-foreign" slot kind. Bare foreign lives only in
   proven-non-escaping tier-1 locals, freed by the compiler's scheduled
   `dispose`.
-- **Class-less kind-4 `Box` free-hook storage** — resolved. Freeing is the
-  wrapped class's `__destruct` lowered into its `dispose`; the `Box` body
+- **Class-less kind-4 `FFIBox` free-hook storage** — resolved. Freeing is the
+  wrapped class's `__destruct` lowered into its `dispose`; the `FFIBox` body
   carries the wrapped FFI type's descriptor (with that `dispose`) as an
   instance field. The separate `free:` attribute is removed.
 - **Arena-owned foreign free leak** — no longer FFI-specific. The foreign
-  value in an arena is a `Box`, an ordinary destructor-bearing managed
+  value in an arena is a `FFIBox`, an ordinary destructor-bearing managed
   object, so its C memory is freed by the standard destructor path,
   including arena reset's fixpoint over tracked dying objects
   ([arena-reset.md](model/memory/arena-reset.md) Step 1). Any residual is
@@ -205,12 +205,12 @@ documents** (2026-07-22); what remains open is at the end.
 
 - **Boxing a struct with a live `#[Borrow]` field → UAF** (deferred;
   direction agreed 2026-07-22, to confirm and write into ffi.md). Model
-  `#[Borrow]` as a `Box` sub-kind carrying a **don't-free** flag — but that
+  `#[Borrow]` as a `FFIBox` sub-kind carrying a **don't-free** flag — but that
   alone only rules out the double-free, not the dangling read. PHP cannot
   fabricate a raw borrow: it always originates from a foreign call or a
   `#[Borrow]`-view of managed memory, so the only hazard is boxing an
   already-obtained borrow that then outlives its source. Leaning: at the box
-  point, a borrow into **managed** memory makes the `Box` keep its owner
+  point, a borrow into **managed** memory makes the `FFIBox` keep its owner
   alive (retain the `RcHeader` holder); a borrow into **raw C** memory
   (nothing to retain) is **not boxable** and raises a runtime exception there
   — no compile error, accept-every-program intact.
@@ -218,14 +218,14 @@ documents** (2026-07-22); what remains open is at the end.
   free" (who frees the copy); "reading a C string copies" vs the zero-copy
   borrowed view (which a two-representation managed string cannot express);
   nested inline `#[FFI]` pointer-field ownership; no memory-category value
-  for foreign memory. (The "Box" name collision is **accepted, not
-  renamed** — two contexts, value-box vs raw-struct box, clarified in
-  values.md and ffi.md.)
+  for foreign memory. (The "ValueBox" name collision is **resolved by rename,
+  2026-07-27**: ValueBox vs FFIBox, canon in
+  [model/layouts.md](model/layouts.md).)
 
 ## Deferred optimizations
 
-- **Box bytes 10..15 are unspent** — the value Box carries six bytes of
-  alignment padding after `flags` ([values.md](model/values.md), "Box
+- **ValueBox bytes 10..15 are unspent** — the ValueBox carries six bytes of
+  alignment padding after `flags` ([values.md](model/values.md), "ValueBox
   Layout"). PHP's `zval` uses exactly that span for `u1.v.u.extra` and
   `u2`; Limelight leaves it empty. The store barrier writes all 16 bytes,
   which rules out *per-slot* state there, but not data that travels with
@@ -235,7 +235,7 @@ documents** (2026-07-22); what remains open is at the end.
   existing `refcounted` bit plays with the tag; a cached class id for
   object payloads, so a type check need not touch the object; inline
   storage for short strings (payload plus padding gives 14 bytes), the
-  largest prize and its own design. Deliberately unspent for now: the Box
+  largest prize and its own design. Deliberately unspent for now: the ValueBox
   is the most pervasive structure in the runtime, reclaiming the bytes
   later would be a format break, and there are no measurements yet.
 - **No zeroing by default, anywhere** — the memory manager must not

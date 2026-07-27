@@ -36,8 +36,8 @@ An `#[FFI]` class is an **unmanaged entity**:
 - **Invisible to memory management.** No retain/release, no cycle
   candidacy, no arena category bits. The GC strategy contract
   ([../gc/strategies.md](../gc/strategies.md)) never sees these objects.
-- **A raw `#[FFI]` reference never enters a Box** ([../values.md](../values.md)):
-  the Box requires a tag and lifetime rules the object cannot carry.
+- **A raw `#[FFI]` reference never enters a ValueBox** ([../values.md](../values.md)):
+  the ValueBox requires a tag and lifetime rules the object cannot carry.
   Only its wrapper (below) may enter the dynamic world.
 
 ## Lifetime: two compiler strategies
@@ -61,26 +61,26 @@ simple and fully static:
 This is the expected case for FFI code: acquire, use within a known
 scope, release with the owner.
 
-### 2. `Box` attachment (the fallback)
+### 2. `FFIBox` attachment (the fallback)
 
 When the reference escapes to where static lifetime cannot be proven
 (stored into `mixed`, a container, captured by an escaping closure,
-returned into untyped code), the compiler attaches it through **`Box`**,
+returned into untyped code), the compiler attaches it through **`FFIBox`**,
 the built-in wrapper class (entity kind 4, [classes.md](../classes.md);
 full model in [ffi.md](ffi.md)).
 
-- `Box` is a normal managed citizen: refcounted, GC-visible. It is a
+- `FFIBox` is a normal managed citizen: refcounted, GC-visible. It is a
   **separate wrapper**: the C structure stays truly headerless, and the
-  `Box` holds a pointer to it plus the wrapped FFI type's descriptor as
+  `FFIBox` holds a pointer to it plus the wrapped FFI type's descriptor as
   an instance field. There is no "hidden header on the struct" form — the
   offset-0 header invariant of [classes.md](../classes.md) forbids it: the
-  `RcHeader` lives on the `Box`, never at −8 of the C data.
+  `RcHeader` lives on the `FFIBox`, never at −8 of the C data.
 - Freeing is the FFI class's own `__destruct`, lowered by the compiler
-  into the type's `dispose`, which the `Box`'s teardown runs. A class with
-  no `__destruct` frees nothing and the `Box` only carries the pointer
+  into the type's `dispose`, which the `FFIBox`'s teardown runs. A class with
+  no `__destruct` frees nothing and the `FFIBox` only carries the pointer
   (borrowed foreign memory). There is no separate `free:` hook.
 - Analogy: PHP's `FFI\CData`, Rust's `Box<T>` around a raw pointer.
-  `Box` appears only where escape actually happens; code that stays in
+  `FFIBox` appears only where escape actually happens; code that stays in
   tier 1–2 pays zero.
 
 ## Strings and arrays at the FFI boundary
@@ -109,7 +109,7 @@ an ordinary managed entity (the COW rule generalizes: the view is
   itables. Methods on an `#[FFI]` class are allowed but always compile
   to direct calls (the class is implicitly final).
 - [../values.md](../values.md): raw `#[FFI]` references live only in
-  unboxed, statically typed slots; the Box may carry only the wrapper.
+  unboxed, statically typed slots; the ValueBox may carry only the wrapper.
 - [../../attributes.md](../../attributes.md): `#[FFI]` joins the
   attribute registry; plain PHP degradation contract: under Zend the
   attribute is inert and the class behaves as an ordinary object.

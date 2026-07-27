@@ -9,7 +9,7 @@ This includes object layouts, vtables, method dispatch tables, exception structu
 - [layouts.md](layouts.md) — the visual map: every byte layout (ValueBox, RcHeader, all entities) in one place, with the naming convention that separates ValueBox from FFIBox
 - [classes.md](classes.md) — object layout, class descriptors, vtables, itables, dispatch, extension interfaces
 - [lowering.md](lowering.md) — C structures and LLVM IR patterns for the class model
-- [values.md](values.md) — Box / unboxed value representation, COW protocol
+- [values.md](values.md) — ValueBox / unboxed value representation, COW protocol
 - [weak-references.md](weak-references.md) — WeakReference / WeakMap machinery: the canonical weak cell, the per-thread weak table, death notification
 - [strings.md](strings.md) — string layout, string-as-class, mutability modes, interpolated string class
 - [arrays.md](arrays.md) — three storage implementations, transitions

@@ -99,7 +99,7 @@ pub struct RcHeader {
 // LLObject: 16-byte header, then property slots at their laid-out
 // offsets ([classes.md], "Slot kinds"). Each slot is the machine
 // representation of its declared type — a raw i64, a bare pointer, a
-// 16-byte Box only for mixed — never one uniform Box per property.
+// 16-byte ValueBox only for mixed — never one uniform ValueBox per property.
 #[repr(C)]
 pub struct Object {
     rc: RcHeader,           // +0
@@ -117,7 +117,7 @@ pub struct Object {
 //     obj.rc = RcHeader::new(category, ENTITY_KIND_OBJECT); // kind 0; NOT DESTRUCTOR_PENDING
 //     obj.class = &FOO_CLASS;
 //     // straight-line init: zero-fill the body, then the explicit stores
-//     // (defaults, and a Box `undef` flag on a mixed slot without a
+//     // (defaults, and a ValueBox `undef` flag on a mixed slot without a
 //     // default). No init_props, no map walk, no UNINIT discriminant.
 //     obj
 //   }

@@ -155,7 +155,7 @@ Strategies consume, not define, the object model:
 
 - `RcHeader` flags and refcount ([object-lifecycle.md](../../runtime/object-lifecycle.md))
 - the class's `traced_runs` — the list of `(offset, count)` pointer and
-  Box runs — for tracing object children ([classes.md](../classes.md))
+  ValueBox runs — for tracing object children ([classes.md](../classes.md))
 - the three-phase teardown (`__destruct` with resurrection check →
   drop → memory release). A strategy that proves an object garbage may
   free it directly instead of entering teardown — today's `rc-trace`

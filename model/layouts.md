@@ -11,22 +11,23 @@ thing this document introduces itself is the naming convention below.
 
 ## Terminology
 
-The word "Box" alone is banned — it has meant two unrelated things
+The word "Box" alone is banned — it used to mean two unrelated things
 (the 16-byte tagged value of [values.md](values.md) and the FFI
 wrapper class of [ffi.md](memory/ffi.md)), and the collision caused
-real confusion. Every structure carries a full name:
+real confusion. The rename was applied across the whole RFC on
+2026-07-27; every structure carries a full name:
 
-| Name here | What it is | Called elsewhere |
+| Name | What it is | In code (until it catches up) |
 |---|---|---|
-| **ValueBox** | the 16-byte tagged *value*, no header, inline in a slot | "Box", `Value` ([values.md](values.md), `ll-model/src/value.rs`) |
-| **FFIBox** | entity kind 4 — wrapper attaching a raw C struct to the managed world | the built-in `Box` class ([ffi.md](memory/ffi.md), [classes.md](classes.md)), `EntityKind::Box` |
-| **StringBox** | entity kind 1 — the string | string entity ([strings.md](strings.md)) |
-| **ArrayBox** | entity kind 2 — the array | array entity ([arrays.md](arrays.md)) |
-| **ReferenceBox** | entity kind 3 — the `&` cell | reference box ([values.md](values.md)) |
-| Object, WeakRef, Lazy | entity kinds 0, 5, 6 | same everywhere |
+| **ValueBox** | the 16-byte tagged *value*, no header, inline in a slot | `Value` (`ll-model/src/value.rs`) |
+| **FFIBox** | entity kind 4 — wrapper attaching a raw C struct to the managed world | `EntityKind::Box` |
+| **StringBox** | entity kind 1 — the string | `EntityKind::String` |
+| **ArrayBox** | entity kind 2 — the array | `EntityKind::Array` |
+| **ReferenceBox** | entity kind 3 — the `&` cell | `EntityKind::Reference`, `src/reference.rs` |
+| Object, WeakRef, Lazy | entity kinds 0, 5, 6 | same |
 
-Sibling documents keep their local usage until renamed; this table is
-the bridge.
+Historical documents (`dev/DECISIONS.md`, `dev/POSTMORTEM.md`, the
+review records) keep the wording of their day.
 
 ---
 
@@ -36,7 +37,7 @@ Lives inline in its owner's slot: an untyped property, a local, an
 array element, a nullable scalar. It is copied freely and therefore
 carries **no refcount of its own** — the count lives in the entity the
 payload points to (see the last section). Normative:
-[values.md](values.md) "Box Layout".
+[values.md](values.md) "ValueBox Layout".
 
 ```
  +0                               +8    +9    +10
@@ -50,7 +51,7 @@ tag:    0 Null · 1 False · 2 True · 3 Int · 4 Float · 5 String
 flags:  bit 0 REFCOUNTED   payload is a counted entity pointer
         bit 1 UNDEF        property slot not initialized
         bit 2 WRITING      rc-satb store lock (satb.md, "Torn
-                           16-byte Box reads"); reserved elsewhere
+                           16-byte ValueBox reads"); reserved elsewhere
         bits 3-7           free
 ```
 
@@ -200,7 +201,7 @@ typed-slot:  │ RcHeader │ owner │ slot │ type │    &$obj->typedProp:
 
 The two variants are distinguished by a flag bit in the box's own
 header. Only code using `&` pays for any of this. Normative:
-[values.md](values.md) "Reference Box", "References into unboxed
+[values.md](values.md) "ReferenceBox", "References into unboxed
 slots".
 
 ### FFIBox — kind 4 (design; not built)

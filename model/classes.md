@@ -32,7 +32,7 @@ Value representation for scalars, strings, and arrays is covered separately. Mem
 | 9 | **`DESTRUCTOR_RAN`** — `__destruct` has already run (exactly-once guard) |
 | 10 | Copy-on-write: counted in every memory category |
 | 11 | Live escapee: `refcount` currently holds the escape hold-count |
-| 12–14 | **Entity kind**: `0` object, `1` string, `2` array, `3` reference box (a PHP `&` reference: `RcHeader \| Value`), `4` `Box` (built-in class wrapping a C struct), `5` `WeakRef` (built-in `WeakReference` class), `6` lazy object (Ghost/Proxy, uninitialized until first touch), `7` reserved (a plain closure is an object). Selects the free routine at teardown, and for a bare non-object pointer the per-tag descriptor (below) |
+| 12–14 | **Entity kind**: `0` object, `1` string, `2` array, `3` ReferenceBox (a PHP `&` reference: `RcHeader \| Value`), `4` `FFIBox` (built-in class wrapping a C struct), `5` `WeakRef` (built-in `WeakReference` class), `6` lazy object (Ghost/Proxy, uninitialized until first touch), `7` reserved (a plain closure is an object). Selects the free routine at teardown, and for a bare non-object pointer the per-tag descriptor (below) |
 | 15–31 | Position in the cycle collector's candidate buffer, as `index + 1`; zero means "position unknown" and costs a linear scan |
 
 ### Entity kind and non-object teardown
@@ -40,10 +40,10 @@ Value representation for scalars, strings, and arrays is covered separately. Mem
 **Decision**: the kind field (bits 12–14) is what makes a **bare heap
 pointer self-describing** for freeing. An object frees through
 `obj->class->dispose`, reachable from its `class` at +8; a string, array
-or reference box has no `class`, so its free routine is selected by the
+or ReferenceBox has no `class`, so its free routine is selected by the
 kind field instead — one `flags` load (already loaded at free time for
 the category dispatch) and a small switch: object → `dispose`, string →
-free-string, array → free-array (release element Boxes, then the
+free-string, array → free-array (release element ValueBoxes, then the
 storage), reference → free the box.
 
 This is why an entity's kind lives on the **entity**, not on each list
@@ -63,7 +63,7 @@ removed: the one path that asks (an unknown-type free or dispatch) is
 already switching on the kind, which subsumes the test.
 
 The same field answers "what type is this non-object" for a `mixed` →
-interface conversion on a `string`/`array`: the Box tag is gone once you
+interface conversion on a `string`/`array`: the ValueBox tag is gone once you
 hold a bare pointer, so the kind selects the type's **singleton
 descriptor** ([strings.md](strings.md), [arrays.md](arrays.md)) whose
 `interfaces`/itable the conversion needs.
@@ -78,20 +78,20 @@ string is a direct call — no `obj->class`, no kind switch, no itable
 search. The kind-field resolution runs **only** where the type survives to
 runtime as an open `mixed`.
 
-**`Box` and `WeakRef` (kinds 4–5) are singleton built-in classes and
+**`FFIBox` and `WeakRef` (kinds 4–5) are singleton built-in classes and
 carry no class pointer** — the kind *is* the class, exactly as `string`
-resolves to the singleton `String`. A `Box` wraps a C struct to attach
+resolves to the singleton `String`. A `FFIBox` wraps a C struct to attach
 it to the managed world ([FFI](memory/ffi.md)); a `WeakRef` is
 `WeakReference`. There is only one class per kind, so `+8` holds no class
 pointer (8 bytes saved), methods are direct calls, and `get_class` /
 teardown / conversion resolve through the kind's singleton descriptor.
-Teardown by kind: a `Box` runs the wrapped struct's `dispose` (the FFI
+Teardown by kind: a `FFIBox` runs the wrapped struct's `dispose` (the FFI
 class's lowered `__destruct`; [ffi.md](memory/ffi.md)), a `WeakRef` clears
 its weak-table registration and never strong-releases its referent
 (machinery: [weak-references.md](weak-references.md)). The
-`Box` kind is a single singleton, but it wraps *different* FFI types, each
+`FFIBox` kind is a single singleton, but it wraps *different* FFI types, each
 with its own layout and `dispose`; the wrapped type is therefore recorded
-in the `Box` **body** as an instance field (a descriptor pointer), not at
+in the `FFIBox` **body** as an instance field (a descriptor pointer), not at
 `+8` and not in the flags.
 
 **Lazy objects (kind 6, Ghost/Proxy) are the exception that keeps the
@@ -110,7 +110,7 @@ positions, ample against the ~10k buffer arm threshold) — the two bits
 freed by removing the old class-pointer flag and the arena-reset mark
 return here.
 
-### The Proxy family: Box, WeakRef, Ghost, and movable handles are one pattern
+### The Proxy family: FFIBox, WeakRef, Ghost, and movable handles are one pattern
 
 Kinds 4–6 are not three unrelated built-ins but three instances of one
 shape, the **Proxy**: an indirection standing in for a target that
@@ -118,7 +118,7 @@ intercepts every access to it, paying one dereference to attach an effect
 the target and its callers never see. This is the Gang-of-Four *Proxy*
 taxonomy directly — a *virtual proxy* (materialize on first touch) is the
 **Ghost/lazy** object (kind 6); a *smart reference* (do work on access) is
-the **WeakRef** (kind 5, an access that can go dead) and the **Box**
+the **WeakRef** (kind 5, an access that can go dead) and the **FFIBox**
 (kind 4, wrapping a foreign struct into the managed world,
 [ffi.md](memory/ffi.md)); a *movable handle* is a fourth effect (below).
 PHP 8.4's own lazy-objects feature already names its two strategies
@@ -149,7 +149,7 @@ reason a global moving collector is rejected ([DECISIONS](../dev/DECISIONS.md)).
 An address that escapes through FFI pins its target (or extraction
 copies), just as a non-proxied object never moves at all.
 
-*Deferred, not decided:* because Box, WeakRef, and Ghost are one family,
+*Deferred, not decided:* because FFIBox, WeakRef, and Ghost are one family,
 their three kind codes (4–6) may later be consolidated to reclaim kind
 bits (kind `7` is still reserved). Not done — the kinds stay distinct
 until a consolidation is designed.
@@ -166,12 +166,12 @@ This implements the immortal-object and arena-scoping optimizations from [arc-op
 
 ## Object Layout
 
-`LLObject` — the in-memory object, the entity a Box with tag `object`
+`LLObject` — the in-memory object, the entity a ValueBox with tag `object`
 points at:
 
 ```
 +0   RcHeader   8 B   the common entity header (refcount + flags), so an
-                      object is a valid Box pointer target like any entity
+                      object is a valid ValueBox pointer target like any entity
 +8   class      8 B   pointer to the Class descriptor
 +16  property slots, fixed offsets ("Slot kinds")
 ```
@@ -214,11 +214,11 @@ reference to `{ptr, class}`:
   — equal at one reference, worse for every shared object, and objects
   in PHP are usually shared. Fattening also doubles the width of every
   object reference, which is worse for cache.
-- **The Box cannot carry the pair.** A Box is 16 bytes with an 8-byte
+- **The ValueBox cannot carry the pair.** A ValueBox is 16 bytes with an 8-byte
   payload — one pointer, no room for `{ptr, class}`. A `mixed` holding
   an object stores just the pointer and recovers the class from
-  `obj->class`. Carrying the pair would force the Box to 24 bytes, paid
-  on *every* Box including those holding an `int` or a `string` — absurd
+  `obj->class`. Carrying the pair would force the ValueBox to 24 bytes, paid
+  on *every* ValueBox including those holding an `int` or a `string` — absurd
   for how large the `mixed` world is. So `mixed` needs the class in the
   body regardless; once it is there for `mixed`, no heap reference needs
   to be fat.
@@ -293,7 +293,7 @@ so the question never applies to them.
 ### Slot kinds
 
 **Decision**: a property slot is the machine representation of the
-property's declared type, and nothing more. The 16-byte Box
+property's declared type, and nothing more. The 16-byte ValueBox
 ([values.md](values.md)) appears inside an object **only** where the
 property has no declared type — that is the one storage site in an
 object where the type is not known statically.
@@ -303,9 +303,9 @@ object where the type is not known statically.
 | `int`, `float` | raw `i64` / `f64`, no tag | 8 / 8 |
 | declared class type, `string`, `array` | bare pointer; `NULL` means **uninitialized** (a non-nullable type has no valid null), read compares and throws ([values.md](values.md)) | 8 / 8 |
 | `?T` for pointer-shaped `T` | the same pointer; `NULL` is PHP `null` (niche). Uninitialized, if possible, is an init-bitmap bit ([values.md](values.md)) | 8 / 8 |
-| `?int`, `?float` | Box — a nullable scalar has no representation of its own ([values.md](values.md)) | 16 / 8 |
+| `?int`, `?float` | ValueBox — a nullable scalar has no representation of its own ([values.md](values.md)) | 16 / 8 |
 | `bool` | a byte, or a bit in the byte block (below) | 1 / 1 |
-| untyped / `mixed` | Box | 16 / 8 |
+| untyped / `mixed` | ValueBox | 16 / 8 |
 | hooked property with no backing store (`virtual`) | none | 0 |
 
 A typed property therefore costs what its type costs. An object with
@@ -315,13 +315,13 @@ four `int` fields is 16 bytes of header plus 32 bytes of payload, not
 ### Slot order
 
 **Decision**: a class lays out its own properties in three runs —
-**counted pointers, then Boxes, then everything else in declaration
+**counted pointers, then ValueBoxes, then everything else in declaration
 order** — and the byte block last.
 
 ```
 +0   header (8) | class (8)
      counted pointers          ← contiguous run
-     Boxes                     ← contiguous run
+     ValueBoxes                     ← contiguous run
      remaining slots, in declaration order
      byte block: init bits, packed bools
 ```
@@ -347,13 +347,13 @@ is bidirectional — pointers left of the origin, scalars right, Bacon/
 Fink/Grove — and its signed offsets and interface-layout cost are why
 no production VM adopted it.)
 
-**Two lists, by run kind.** A counted-pointer run and a Box run are
+**Two lists, by run kind.** A counted-pointer run and a ValueBox run are
 walked differently — a pointer element is 8 bytes and "empty" is `NULL`,
-a Box element is 16 bytes and "empty" is the `refcounted` flag clear —
+a ValueBox element is 16 bytes and "empty" is the `refcounted` flag clear —
 so a single flat list of `(offset, count)` could not tell a strider
 which stride and which skip-test to use. `traced_runs` is therefore
-**two typed lists**: pointer runs (stride 8, skip `NULL`) and Box runs
-(stride 16, skip by flag). A typed class's Box list is usually empty.
+**two typed lists**: pointer runs (stride 8, skip `NULL`) and ValueBox runs
+(stride 16, skip by flag). A typed class's ValueBox list is usually empty.
 
 **Every stride null-checks.** A counted-pointer slot can hold `NULL` at
 any time — an uninitialized non-nullable pointer starts `NULL`, and
@@ -373,7 +373,7 @@ zero-fill over the object body — which makes every raw slot `null`/`0`
 and every init-bitmap bit clear (i.e. uninitialized) at once — then the
 few explicit stores: a default value where the property has one, and a
 `undef` flag on a `mixed`/untyped slot declared **without** a default,
-since an all-zero Box is `null`, not undefined ([values.md](values.md)).
+since an all-zero ValueBox is `null`, not undefined ([values.md](values.md)).
 No loop, no `traced_runs` read. The map serves initialization only on
 the out-of-line path where the class is dynamic (§"Construction and
 teardown").
@@ -466,18 +466,18 @@ Per class, once, when it is linked:
    (table above). `virtual` properties take no slot.
 2. **Start** the cursor at the parent's `layout_end`, or at 16 for a
    root class. The hole list is empty.
-3. **Place** the runs in order — counted pointers, Boxes, then the rest
+3. **Place** the runs in order — counted pointers, ValueBoxes, then the rest
    in declaration order. For each slot: align the cursor up, record any
    skipped interval as a hole, take the slot, advance.
 4. **Fill holes** with 4/2/1-byte slots and the byte block before
-   extending the cursor. Pointers and Boxes are never placed into a
+   extending the cursor. Pointers and ValueBoxes are never placed into a
    hole: that would break the contiguity of the runs.
 5. **Finish**: `layout_end` is the cursor, `object_size` is it rounded
    up to 8.
 6. **Record** the trace map: the parent's `(offset, count)` pairs, plus
    at most one new pair per traced kind for this class's own run. The
    result is a list, one pair per class in the hierarchy that
-   contributed pointers or Boxes.
+   contributed pointers or ValueBoxes.
 
 ---
 
@@ -651,7 +651,7 @@ Hot part (touched by dispatch and property access):
 | `factory` | Canonical constructor `factory(ctx, category)`: allocates and initializes an instance ("Construction and teardown") |
 | `dispose` | Internal destructor `dispose(obj)`: releases counted fields and runs `__destruct` if present |
 | `prop_layout` | Property table: name → (offset, slot kind, hook flags, declaration index) |
-| `traced_runs` | The trace map the GC strides: **two** typed lists of `(offset, count)` — pointer runs (stride 8, skip `NULL`) and Box runs (stride 16, skip by flag) |
+| `traced_runs` | The trace map the GC strides: **two** typed lists of `(offset, count)` — pointer runs (stride 8, skip `NULL`) and ValueBox runs (stride 16, skip by flag) |
 | `display` | Cohen display: ancestors root→self indexed by depth, for O(1) `instanceof` |
 | `destruct_slot` | Vtable slot of `__destruct`, or a sentinel when the class has none |
 | `interfaces` | Sorted array: interface id → itable pointer |
@@ -791,7 +791,7 @@ zero-fill for the slots that start at zero.
 ### Initializing the block, per thread
 
 A thread's TLS region starts zeroed, which is the *correct* start only
-for slots whose initial value is zero: a `null` pointer or Box, a `0`
+for slots whose initial value is zero: a `null` pointer or ValueBox, a `0`
 scalar, a clear init-bitmap bit. Everything else needs code. A
 `public static int $n = 5` holds a non-zero scalar; `public static array
 $m = ['a' => 1]` and `public static string $s = 'x'` hold counted heap
@@ -1035,7 +1035,7 @@ Each entry in `prop_layout` carries access flags: `plain` / `get-hook` / `set-ho
 - **Type unknown**: property inline cache (cache the class pointer → offset or hook slot), same mechanism as method ICs. Standard practice in JS engines.
 - **`__get`/`__set`**: class-wide fallback, taken on `prop_layout` miss for classes whose magic-method bitmask has the corresponding bit set.
 - **Asymmetric visibility** (`private(set)`): compile-time check only; no runtime representation, the byte layout is identical.
-- **`readonly`**: a compile-time fact, and the byte layout is identical. On a statically-resolved write the compiler enforces the write-once rule directly, usually with no runtime code at all. The dynamic paths that do not know the property statically — `$obj->$name = …`, `ReflectionProperty::setValue()` — read the `readonly` flag from `prop_layout` (the metadata is there for exactly this) and enforce at runtime. "First write vs violation" is not a new mechanism: it is the property's uninitialized state (a `NULL` non-nullable pointer, an init-bitmap bit, a Box `undef` flag) — a write to an uninitialized readonly slot is the one allowed initialization, a write to an initialized one throws.
+- **`readonly`**: a compile-time fact, and the byte layout is identical. On a statically-resolved write the compiler enforces the write-once rule directly, usually with no runtime code at all. The dynamic paths that do not know the property statically — `$obj->$name = …`, `ReflectionProperty::setValue()` — read the `readonly` flag from `prop_layout` (the metadata is there for exactly this) and enforce at runtime. "First write vs violation" is not a new mechanism: it is the property's uninitialized state (a `NULL` non-nullable pointer, an init-bitmap bit, a ValueBox `undef` flag) — a write to an uninitialized readonly slot is the one allowed initialization, a write to an initialized one throws.
 - **Dynamic properties**: only `stdClass` and classes marked `#[AllowDynamicProperties]` carry one hidden object slot holding a lazily-allocated hashtable (name → value). All other classes do not have the slot at all; zero cost for the common case.
 
 ---

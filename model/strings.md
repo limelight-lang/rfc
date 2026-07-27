@@ -2,8 +2,8 @@
 
 ## Scope
 
-The string entity: memory layout, class semantics, mutability modes, and
-the interpolated-string template class. Plugs into the Box/unboxed and COW
+The StringBox: memory layout, class semantics, mutability modes, and
+the interpolated-string template class. Plugs into the ValueBox/unboxed and COW
 contracts defined in [values.md](values.md).
 
 ---
@@ -26,7 +26,7 @@ hop. The hash is computed on first use and cached.
 interfaces (see Extension Interfaces in [classes.md](classes.md)), and
 metadata. But it costs nothing at the instance level:
 
-- **No per-instance class pointer.** The Box type tag (or the statically
+- **No per-instance class pointer.** The ValueBox type tag (or the statically
   known type) already identifies the value as a string, and the String
   class is a final singleton; the class is known without reading the
   object.

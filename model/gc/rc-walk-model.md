@@ -434,7 +434,7 @@ mechanism from anything in this document.
   address outside the counted world can resurrect anything.
 - **Multiple mutators.** T2 depends on the drain running where nothing
   interleaves. Actors take that guarantee with them.
-- **Skipped populations** — `Box`, huge objects, retained arena blocks.
+- **Skipped populations** — `FFIBox`, huge objects, retained arena blocks.
   Covered by T1: recall, never safety.
 
 ## 11. From this document to a running checker

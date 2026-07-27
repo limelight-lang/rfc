@@ -2,9 +2,9 @@
 
 ## Scope
 
-The array entity: the three storage implementations behind the single
+The ArrayBox: the three storage implementations behind the single
 `array` class, transition rules, and the external contract. Plugs into the
-Box/unboxed and COW contracts from [values.md](values.md).
+ValueBox/unboxed and COW contracts from [values.md](values.md).
 
 The detailed hashtable design (bucket layout, collision strategy,
 iteration order preservation) is a future document; this one fixes the
@@ -30,8 +30,8 @@ strategies, chosen per array:
 | # | Storage | Element | When |
 |---|---------|---------|------|
 | 1 | **Typed vector** | Unboxed (raw i64 / f64 / ptr) | The compiler has **proven** all elements share one type |
-| 2 | **Mixed vector** | Box (16 B) | Dense integer keys `0..n-1`, heterogeneous values |
-| 3 | **Ordered hash** | Box (16 B) | String keys, sparse indices: full PHP array semantics |
+| 2 | **Mixed vector** | ValueBox (16 B) | Dense integer keys `0..n-1`, heterogeneous values |
+| 3 | **Ordered hash** | ValueBox (16 B) | String keys, sparse indices: full PHP array semantics |
 
 This is the elements-kinds strategy of V8 / storage strategies of PyPy,
 with Zend's packed-array optimization as the direct analog of #2.
@@ -66,7 +66,7 @@ identity, refcount, and COW state are unaffected.
   [values.md](values.md): refcount always maintained, write with
   `refcount > 1` separates. Separation copies the storage in its current
   representation.
-- Elements are Values: Box slots in #2/#3, raw unboxed values in #1.
+- Elements are Values: ValueBox slots in #2/#3, raw unboxed values in #1.
 - Nested arrays are pointers to child array entities; separation is
   shallow (children are shared until written, standard COW recursion).
 - Arrays created in the language are always managed RC/COW entities.

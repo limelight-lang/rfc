@@ -616,17 +616,21 @@ the two together leave unbought.
   today — and is now written down with its worked cases in
   [static-lifetimes.md](../memory/static-lifetimes.md), "What may own a
   borrow".
-- **Weak references.** Deferred. The planned shape is a side entry per
-  weakly referenced target, so a `WeakRef` counts the entry and never the
-  target, and Phase 4 nulls the entry — no reverse map needed. One
-  obligation is binding on that design (2026-07-26): **every weak entry
+- **Weak references.** Designed, not yet built — see
+  [weak-references.md](../weak-references.md) (2026-07-27). The shape
+  refined the earlier side-entry sketch: the canonical `WeakRef` entity
+  *is* the shared cell (holders count the entity, never the target), and
+  the dying object finds it through a per-thread weak table whose row
+  lists its subscribers; the drain nulls the cell's target field. One
+  obligation is binding on that design (2026-07-26): **every weak cell
   naming a confirmed member is nulled before the drain runs any user
   code** — a weak load is the one channel that can hand a destructor a
   pointer counted references cannot account for, and the drain's safety
   argument ("no external reference to a member exists" — the exact test)
   holds only in the counted world. CPython closes the identical window
   the same way: PEP 442 clears weak references to cyclic garbage before
-  any finalizer runs.
+  any finalizer runs. The nulling runs in the mutator's drain checkpoint,
+  so the collector thread never touches the weak table.
 - **Huge objects** in OS-direct block runs are outside the pool regions and
   cannot be enumerated by the registry. Cycles through them are not
   collected; the edge is skipped, which is conservative.

@@ -10,6 +10,26 @@ in one line; **cost** if any.
 
 ---
 
+### 2026-07-27 — The weak cell is the canonical WeakReference; a per-thread table delivers death
+
+Weak references designed ([weak-references.md](../model/weak-references.md)):
+no separate side entry — PHP's canonical-instance guarantee lets the
+`WeakRef` entity itself be the shared cell, so death notification is one
+store into its target field. The dying object finds the cell through a
+per-thread weak table (address → subscriber row, tagged: canonical cell /
+map); rows are runtime-internal, no user-facing death callbacks. `WeakMap`
+cleanup is eager at notification time.
+- **Why:** the cell must be findable by the dying object without an 8-byte
+  field in every object; per-thread because every notification site
+  (teardown, drain checkpoint, arena reset) runs on the owning thread, so
+  the table needs no locks.
+- **Rejected:** a Swift-style separate side entry (an allocation and a
+  hand-rolled refcount that `RcHeader` already provides); Java-style lazy
+  map expunge (stale entries hold values hostage — javadoc-documented);
+  a global Zend-style table (a mutex per create/death).
+- **Cost:** ephemeron entries (value references its own key) are not
+  collected — PHP 8.0–8.2 behaviour, 8.3 parity deferred to BACKLOG.
+
 ### 2026-07-25 — A safepoint is a moment, not a root map; and rc-walk's checkpoints live in the allocator
 
 Two corrections that turned out to be one. A poll safepoint says *when*,

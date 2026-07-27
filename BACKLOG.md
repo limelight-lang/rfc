@@ -86,6 +86,15 @@ into proper RFCs when picked up.
   — including `Throwable` — avoids an itable search, the Windows funclet
   constraint on a custom personality, unwind registration for JIT code,
   and where the frequency hint comes from.
+- **`WeakMap` ephemeron entries (PHP 8.3 parity)** — a value that
+  references its own key keeps the key alive, so the entry is never
+  removed; eager notification cannot see it
+  ([weak-references.md](model/weak-references.md)). Zend shipped this
+  leak from 8.0 to 8.2 and fixed it in 8.3 by teaching the cycle
+  collector to treat a map's key→value edges as conditional on key
+  liveness. Needs the same collector support here (both `rc-trace` and
+  `rc-walk`); until then behaviour matches PHP 8.0–8.2. Revisit when
+  `WeakMap` itself is built.
 - **Enums** (PHP 8.1) — immortal singletons; mostly falls out of the
   existing model, needs a short document.
 - **Generators / Fibers** — execution-stack capture; heavily coupled to

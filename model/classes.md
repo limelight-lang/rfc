@@ -87,7 +87,8 @@ pointer (8 bytes saved), methods are direct calls, and `get_class` /
 teardown / conversion resolve through the kind's singleton descriptor.
 Teardown by kind: a `Box` runs the wrapped struct's `dispose` (the FFI
 class's lowered `__destruct`; [ffi.md](memory/ffi.md)), a `WeakRef` clears
-its side-table registration and never strong-releases its referent. The
+its weak-table registration and never strong-releases its referent
+(machinery: [weak-references.md](weak-references.md)). The
 `Box` kind is a single singleton, but it wraps *different* FFI types, each
 with its own layout and `dispose`; the wrapped type is therefore recorded
 in the `Box` **body** as an instance field (a descriptor pointer), not at

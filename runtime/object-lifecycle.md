@@ -175,7 +175,9 @@ Runtime-level teardown, invisible to PHP:
 
 - release every refcounted property slot (cascading releases),
 - free the dynamic-properties hashtable if present,
-- clear the weak-reference side table entry if the WEAK bit is set.
+- clear the weak-reference state if the WEAK bit is set — deliver
+  death notification through the weak table
+  ([weak-references.md](../model/weak-references.md)).
 
 ### Phase 3 — Memory release
 
@@ -252,8 +254,10 @@ takes a weak reference while it lives in an arena is registered on a
 per-arena weak list (as `__destruct` objects are on `track_destructor`),
 and reset walks that list clearing each side-table entry before the
 pages are reused. An arena with no weak-referenced objects pays nothing.
-(A runtime mechanism, noted in BACKLOG; the rule is stated here so weak
-references and arenas are specified together, not each in isolation.)
+(Machinery designed in
+[weak-references.md](../model/weak-references.md), "Death
+notification"; the rule is stated here so weak references and arenas
+are specified together, not each in isolation.)
 
 ---
 

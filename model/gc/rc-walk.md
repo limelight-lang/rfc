@@ -46,20 +46,38 @@ a handful of times per epoch) and draining what the collector has condemned
 pass). Neither is a per-operation cost, which is what the constraint
 forbids.
 
-**Both ride the memory manager, not a compiler-inserted poll.** Allocation
-is called constantly, it is already inside the allocator, and the allocator
-is the one party that knows how much is pending and can decide the moment.
+**Both ride the death branch of `ll_release`, not a compiler-inserted
+poll** (decision 2026-07-27; the checkpoint originally rode the entity
+factory allocation). Death is the one mutator event the protocol
+actually cares about — only deaths feed recycling — and the `1 → 0`
+branch is already cold and expensive (teardown, destructors), so the
+checkpoint test drowns there while the fast paths pay nothing: raw
+allocation, raw free (the parking test stays, it is mechanism, not
+signal), the factory, and every non-final release. The checkpoint
+enters **after this release's own header store and before any
+teardown**, so every free the death performs observes the epoch in
+program order. The second home remains the compiler's poll
+(`ll_gc_maybe_collect`).
+
+**Batched releases.** Lowering may emit a run of releases at a scope
+exit. For that it emits one explicit `ll_gc_checkpoint()` for the run,
+then releases each reference with `ll_release_batch` — `ll_release`
+minus the checkpoint test — so the run pays the test once, not per
+reference. The unbatched `ll_release` stays checkpointing, so naive
+FFI callers keep the protocol alive without knowing it exists.
+
 The arrangement's accepted limit (2026-07-26, finding F2 in
-[rc-walk-proof.md](rc-walk-proof.md)): a thread that stops allocating —
-parked in a syscall, an FFI call, or a pure compute loop — reaches no
-checkpoint, so once a message is posted **the epoch waits for that
-thread's next allocation**: the ack and the drain ride checkpoints, and
-the epoch cannot end before the drain. Deferred memory stays parked for
-the duration — bounded in volume (it can only hold what already
-existed, so the queue cannot exceed the live heap at epoch start) but
-unbounded in time. Deliberately left without a fallback: no fairness
-mechanism is worth a per-operation cost, and the memory returns at the
-thread's first allocation.
+[rc-walk-proof.md](rc-walk-proof.md), reshaped 2026-07-27): a thread
+with no entity deaths — parked in a syscall, an FFI call, a pure
+compute or pure-allocation loop — reaches no checkpoint, so once a
+message is posted **the epoch waits for that thread's next death or
+poll**: the ack and the drain ride checkpoints, and the epoch cannot
+end before the drain. Deferred memory stays parked for the duration —
+bounded in volume (it can only hold what already existed, so the queue
+cannot exceed the live heap at epoch start) but unbounded in time.
+Deliberately left without a fallback: no fairness mechanism is worth a
+per-operation cost, and the memory returns at the thread's first
+death or poll.
 
 ## The central identity: roots are derived, not enumerated
 
@@ -418,15 +436,15 @@ children pinned forever.) The component is re-judged next epoch.
 ### Phase 4 — VERIFY and RELEASE (mutator thread, by message)
 
 Confirmed components are posted to the owning mutator thread, which drains
-the queue at its next allocation. The collector never frees anything itself —
-and the drain trusts nothing it was told.
+the queue at its next checkpoint — a death or the poll. The collector never
+frees anything itself — and the drain trusts nothing it was told.
 
-**The drain is not re-entrant** (decided 2026-07-26, finding F8). A
-destructor run by the drain may allocate; that allocation is a
-checkpoint inside the drain. The drain runs inside the allocator, so
-the allocator knows it is mid-drain from its own state: the nested
-entry serves memory and acks a pending handshake, but never picks up a
-message. One bit of allocator state closes the recursion.
+**The drain is not re-entrant** (decided 2026-07-26, finding F8;
+restated for the 2026-07-27 checkpoint move). A destructor run by the
+drain releases references, and a release hitting zero is a checkpoint
+inside the drain. One thread-local mid-drain bit closes the recursion:
+the nested entry acks a pending handshake, but never picks up a
+message.
 
 **The exact test.** The drain runs on the mutator's own thread, so nothing
 races it: this is the one place a verdict can be checked against the true
@@ -651,10 +669,10 @@ the two together leave unbought.
 
 ## Open questions before implementation
 
-1. **When the collector decides to run at all.** The checkpoints live in
-   the allocator, so the allocator also owns the trigger: how much
-   deferred memory, how many suspected components, how long since the last
-   epoch. Every threshold here is a measurement nobody has taken.
+1. **When the collector decides to run at all.** The runtime owns the
+   trigger signals: how much deferred memory, how many suspected
+   components, how long since the last epoch. Every threshold here is a
+   measurement nobody has taken.
 2. **Relaxed-atomic header accesses** are asserted zero-cost on x86-64 and
    AArch64; verify against generated code that no coalescing or fusion is
    lost before the cost table's claim is committed.

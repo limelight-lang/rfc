@@ -187,7 +187,12 @@ committed, its cell reads null before any user code can run.**
     ([gc/rc-walk.md](gc/rc-walk.md), Phase 4).
 - **Arena reset** — arena objects die with the pages, skipping
   teardown, so reset walks the arena's weak list (populated by row
-  creation, above): for each entry still carrying bit 7, notify.
+  creation, above): for each entry **whose category still reads
+  request-arena** and which still carries bit 7, notify. The category
+  test is load-bearing (found in build, 2026-07-27): an escapee
+  promoted in place had its category rewritten and is *alive* — its
+  cell must keep resolving, so the walk skips it and its row survives
+  the reset.
   Ordering: **after the reset's destructor fixpoint, before the pages
   are reused** — a tracked destructor running `get()` on a fellow
   arena object must still see it alive

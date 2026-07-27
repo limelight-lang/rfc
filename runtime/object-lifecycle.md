@@ -173,11 +173,17 @@ The only phase visible to PHP code.
 
 Runtime-level teardown, invisible to PHP:
 
+- clear the weak-reference state **first** if the WEAK bit is set —
+  deliver death notification through the weak table
+  ([weak-references.md](../model/weak-references.md)). The order is
+  load-bearing: the child releases below cascade into user code, and a
+  child's `__destruct` calling `get()` on a still-registered cell would
+  receive a strong reference to this object — refcount zero, teardown
+  committed — and either outlive phase 3 (use-after-free) or re-enter
+  dispose on its own release (double free). Zend nulls its weak
+  references at the top of `zend_object_std_dtor` for the same reason.
 - release every refcounted property slot (cascading releases),
-- free the dynamic-properties hashtable if present,
-- clear the weak-reference state if the WEAK bit is set — deliver
-  death notification through the weak table
-  ([weak-references.md](../model/weak-references.md)).
+- free the dynamic-properties hashtable if present.
 
 ### Phase 3 — Memory release
 
@@ -220,10 +226,13 @@ fn Foo__dispose(obj: *mut Object) {
     // overwrite. Heap children fall through to the ordinary release.
     // (The cycle collector owes this same bookkeeping when it frees a
     // holder without coming through here.)
+    // Weak notification precedes every child release: the drops below
+    // run user code, and get() must already see null (see the phase-2
+    // bullet above — the wrong order is a use-after-free).
+    if flags(obj) & WEAK != 0 { weak_table_notify(obj); }
     drop_slot(obj, FOO_NEXT_OFFSET);      // e.g. `Foo $next`
     drop_slot(obj, FOO_DATA_OFFSET);      // e.g. `array $data`
     if FOO_HAS_DYNAMIC_PROPS { free_hashtable(dynamic_props(obj)); }
-    if flags(obj) & WEAK != 0 { weak_table_clear(obj); }
 
     // Phase 3: memory, by category
     match mem_category(obj) {

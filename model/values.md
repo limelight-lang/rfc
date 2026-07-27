@@ -230,7 +230,12 @@ bit is zero, so the body zero-fill sets "uninitialized" for both for
 free. Only a ValueBox slot's `undef` flag is *not* zero (an all-zero ValueBox is
 `null`), so a `mixed` property with no default takes one flag store
 after the zero-fill — the same shape as stamping any non-zero default,
-and only for that uncommon case.
+and only for that uncommon case. At a compiler-known `new` site those
+stores are straight-line code; the out-of-line factory reads them from
+the descriptor's `undef_runs` — the defaultless ValueBox slots as
+`(offset, count)` runs, grouped by the layout into the tail of the
+ValueBox trace run so the stamp is one contiguous stride
+([classes.md](classes.md), "Class Descriptor").
 
 ### References into unboxed slots
 

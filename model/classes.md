@@ -650,7 +650,7 @@ Hot part (touched by dispatch and property access):
 | `layout_end` | First free byte, unrounded: where a subclass resumes laying out |
 | `factory` | Canonical constructor `factory(ctx, category)`: allocates and initializes an instance ("Construction and teardown") |
 | `dispose` | Internal destructor `dispose(obj)`: releases counted fields and runs `__destruct` if present |
-| `prop_layout` | Property table: name → (offset, slot kind, hook flags, declaration index) |
+| `prop_layout` | Property table: name → (offset, slot kind, hook flags, declaration index, and for a bitmap-tracked slot its init-bit position in the byte block, [values.md](values.md) "Uninitialized properties") |
 | `traced_runs` | The trace map the GC strides: **two** typed lists of `(offset, count)` — pointer runs (stride 8, skip `NULL`) and ValueBox runs (stride 16, skip by flag) |
 | `undef_runs` | ValueBox slots declared **without** a default, as `(offset, count)` runs (stride 16, always a sub-range of the ValueBox trace runs): the out-of-line factory stamps their `undef` flag after the zero-fill ([values.md](values.md), Construction). Construction-only — the GC and teardown never read it |
 | `display` | Cohen display: ancestors root→self indexed by depth, for O(1) `instanceof` |

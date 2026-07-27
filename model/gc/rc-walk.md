@@ -236,17 +236,18 @@ word. The collector claims two byte-addressable pieces of it; the
 mutator's whole obligation to both is one masking operation.
 
 **The condemned byte — object offset 7, bits 24-31.** The collector's
-verdict.
+verdict, three-valued.
 
 - The **collector** writes 1 into that byte to condemn an entity.
-- The **mutator** writes 0 into it on every `retain` and `release`.
+- The **mutator** does not touch it on the hot paths (amended
+  2026-07-27, "The narrow mutator" below; the original design had every
+  `retain`/`release` clear it as an early acquittal filter). It is read,
+  in the word the release already loaded, only on the reaching-zero
+  path — the F5 deferral test — whose cold branch writes **2**, the
+  deferred-death marker the drain duties key on.
 
 The refcount occupies bytes 0-3. Different addresses, plain stores on both
 sides — **no atomic read-modify-write anywhere**.
-
-Cost on the mutator: the header word is already loaded and stored by
-`retain`/`release`; clearing the byte adds one masking operation and no
-memory traffic. In builds without this collector the mask is not emitted.
 
 **The epoch byte — object offset 6, bits 16-23.** The collector's maturity
 stamp, and the answer to a question no bump cursor can answer: did this
@@ -259,10 +260,13 @@ The walker, meeting an occupied slot stamped 0, writes the current epoch
 number into the byte and skips the entity; a slot stamped with an *older*
 epoch is walked. Numbers cycle 1-255, skipping 0: after a wrap an entity
 can read as current and be skipped once more — latency, not error. Races
-lose stamps, never invent them: a mutator whole-word store that buries a
-fresh stamp under the stale byte it loaded leaves the entity "new" for one
-more epoch. The collector pays one byte store per new entity per epoch;
-the mutator pays zero, per allocation and per operation.
+lose stamps, never invent them — and since the narrow-mutator amendment
+(2026-07-27) the mutator's counter operations no longer store the flags
+half at all, so the historical caveat about a whole-word store burying a
+fresh stamp is confined to the factory's initializing store, which
+writes a slot no stamp has met yet. The collector pays one byte store
+per new entity per epoch; the mutator pays zero, per allocation and per
+operation.
 
 **The byte is a filter, not the safety gate.** A mutator whole-word store
 that clobbers a concurrent condemnation reads back as 0 and the verdict is
@@ -278,8 +282,75 @@ One demand on codegen: the header word is read by another thread, so the
 mutator's header load/store and every collector access compile as
 **relaxed atomics** — the same instructions on x86-64 and AArch64, but
 without the annotation the race is undefined behaviour and the compiler
-may cache the header in a register across a whole loop, deferring the
-clear indefinitely. Still no atomic read-modify-write anywhere.
+may cache the header in a register across a whole loop. Still no atomic
+read-modify-write anywhere.
+
+### The narrow mutator (amended 2026-07-27)
+
+The original design had every `retain`/`release` clear the condemned
+byte — "one masking operation on a word already loaded". Measurement
+(`ll-model/dev/BENCHMARKS.md`, 2026-07-27) showed what that phrasing
+hid: to clear the byte the mutator must *store* the whole word, so the
+counter update — a narrow `incl`/`decl [mem]` in an rc-trace build —
+became a load / modify / mask / merge / store chain on every counted
+operation, +0.5–0.6 ns per retain+release pair.
+
+The amendment: **the mutator's hot paths touch only the refcount
+bytes.** `retain` and a non-final `release` load the header word once
+(the flags tests need it anyway), then store the *4-byte counter half
+only*. No flags store, no byte clear, no whole-word reconstruction.
+
+Why this is sound — the clear was a filter, never the gate:
+
+- A condemned entity that stays live simply carries its byte to the
+  drain. The Phase 4 exact test recomputes liveness from **current**
+  fields on the owning thread; an outside reference shows up as
+  `refcount > in-component in-degree`, the message is dropped whole,
+  and the drop runs the acquittal duties — which clear the members'
+  bytes (`walk.rs, drain_confirmed`). Every posted component ends in
+  exactly one byte-clearing drain in either outcome, so byte hygiene
+  never depended on the hot-path clear.
+- The reaching-zero path still reads the byte it already loaded — the
+  F5 deferral (a condemned entity never dies on the ordinary path) is
+  untouched, and it now **mints the deferred-death marker**: the cold
+  F5 branch stores the full word with the condemned byte set to **2**
+  ("death deferred") and the count at zero. The acquittal duties tear
+  exactly the members reading byte 2 — never a slot that died
+  ordinarily before the condemnation landed and was parked, whose byte
+  reads 1 over a refcount of 0. (Review finding, 2026-07-27: the
+  original duties keyed on `rc == 0` alone, which could tear such a
+  corpse — its class word already overwritten by the parked-free
+  link. The marker is the discriminator, and it must precede or
+  accompany this amendment.) The exact test gates the same way: a
+  member at `rc 0` without the marker died ordinarily — the message is
+  dropped without tracing that member's edges.
+- What is lost is only the filter's earliness. A component touched
+  after condemnation either shows a count difference and is dropped —
+  at the re-check or at the drain — or was touched-and-restored (ABA),
+  in which case the exact test *confirms* and frees it: correct, since
+  equality at drain time proves every reference is in-component right
+  then. Transient borrows no longer buy an epoch of acquittal;
+  destructors of borrowed-then-abandoned cycles run one epoch earlier.
+- **The collector's panic path owes acquittals.** The hot-path clear
+  used to self-heal a byte stranded by a collector that condemned and
+  then died before posting; with it gone, `Epoch`'s unwind path must
+  post an Acquit for every condemned-but-unposted component, or a
+  later ordinary death of such an entity defers to a drain that never
+  comes — a permanent zombie.
+- A bonus the original design listed as a caveat: with no flags-half
+  stores on the mutator's *counted* hot paths, retain/release can no
+  longer bury the collector's concurrent epoch stamps or condemnation
+  bytes. Whole-word flag updates remain on cold mutator paths (weak
+  bit, destructor bits, the dispose guard) and on the factory's
+  initializing store; those races stay conservative-direction, as
+  before.
+
+The mixed-size access pair this creates — the mutator's 4-byte counter
+store against the collector's 8-byte word loads and 1-byte stores —
+is the same class the collector's byte stores already were: disjoint
+bytes, relaxed atomics, no read-modify-write. Miri cannot see
+mixed-size races (`ll-model/dev/WORKFLOW.md`); the stepped forcing
+tests and the TSO argument carry this, as they already did.
 
 ## The algorithm
 
@@ -548,10 +619,10 @@ during an epoch.
 
 | | |
 |---|---|
-| `retain` / `release` | one masking operation on a word already loaded and stored |
+| `retain` / `release` | nothing beyond the counter itself: one header load (the flags tests need it anyway), one narrow 4-byte counter store — no flags store, no masking (narrow-mutator amendment, 2026-07-27) |
 | allocation | nothing — slot classification (free / new / mature) is collector-side, from the refcount word and the epoch byte |
-| memory release | one flag test while an epoch is in flight; on the reaching-zero path only, one test of the condemned byte (pre-mask value of the word already loaded) |
-| per epoch | a handful of handshake acks — one callback each, at an existing poll |
+| memory release | one flag test while an epoch is in flight; on the reaching-zero path only, one test of the condemned byte (in the word already loaded) and the checkpoint test |
+| per epoch | a handful of handshake acks — one callback each, at a checkpoint |
 | per confirmed component | the Phase 4 drain: one verification pass plus the frees it would have performed anyway |
 | everything else | nothing |
 

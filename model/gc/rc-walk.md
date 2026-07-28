@@ -1,10 +1,11 @@
 # rc-walk — a barrier-free concurrent cycle collector
 
-> **Status: design, partially built.** Build steps 1–4 are product
-> code in `ll-model` (the `rc-walk` cargo feature, the default build
-> since 2026-07-27); the 2026-07-28 amendments — the batched-checkpoint
-> split, the forced verdict, the pressure ladder — are design ahead of
-> code, each flagged "code lag" in place. The strategy registry
+> **Status: design, partially built.** Build steps 1–4 and the
+> batched-checkpoint split are product code in `ll-model` (the
+> `rc-walk` cargo feature, the default build since 2026-07-27); of the
+> 2026-07-28 amendments, the forced verdict and the pressure ladder
+> remain design ahead of code, each flagged "code lag" in place. The
+> strategy registry
 > ([strategies.md](strategies.md)) carries `rc-walk` alongside `nogc`,
 > `rc`, `rc-trace` and `rc-satb`; selection stays build-time, as for
 > every other strategy.
@@ -108,11 +109,11 @@ activity bit is observed before the run's frees, as on the death
 branch). **The same split binds `ll_release_vector`** — the vector
 form's checkpoint-at-entry is the condemned pre-run pickup under
 another name ([bulk-operations.md](../memory/bulk-operations.md)
-amended). Code lag, flagged: today `ll_gc_checkpoint` is still one
-full pre-run checkpoint, the ack-only ABI entry
-(`ll_gc_checkpoint_ack`) does not exist, and the vector form
-checkpoints at entry — the split is design ahead of code, like the
-factory reorder once was.
+amended). In code since 2026-07-28: `ll_gc_checkpoint_ack` fronts the
+run, the trailing `ll_gc_checkpoint` picks up, and the vector form
+carries the same split — pinned by a regression in the phase-lock
+shape (a posted component judged against the very reference the run
+releases).
 
 The arrangement's accepted limit (2026-07-26, finding F2 in
 [rc-walk-proof.md](rc-walk-proof.md), reshaped 2026-07-27): a thread
@@ -940,8 +941,9 @@ cheapest first:
    gate. Without that, an allocating destructor inside the collection
    could pick up an epoch message naming members the collection
    already holds guarded, violating the drain's no-other-guards
-   contract. (Code lag: today's pickup gate does not yet test the
-   walk-active bit.)
+   contract. (In code since 2026-07-28, pinned by a regression: a
+   checkpoint firing inside the synchronous collection leaves the
+   message pending.)
 5. **Fail the allocation honestly.**
 
 Two gates, inherited rather than new: steps 2 and 4 run user code
@@ -1056,9 +1058,10 @@ the two together leave unbought.
 4. Weak references.
 5. The escalation ladder past rung 1 — stratification and the forced
    verdict with its rationing — if measurement shows starvation; with
-   it, the batched/vector checkpoint split (`ll_gc_checkpoint_ack` +
-   trailing pickup), the walk-active pickup gate, and the pressure
-   ladder's allocator hook.
+   it, the pressure ladder's allocator hook. Its prerequisites — the
+   batched/vector checkpoint split (`ll_gc_checkpoint_ack` + trailing
+   pickup) and the walk-active pickup gate — landed ahead of it,
+   2026-07-28.
 
 `rc-trace` (`gc.rs`, Bacon–Rajan) stays in the registry throughout as the
 single-threaded strategy, so the two can be compared on the same workload.

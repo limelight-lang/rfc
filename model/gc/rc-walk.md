@@ -1,9 +1,13 @@
 # rc-walk — a barrier-free concurrent cycle collector
 
-> **Status: design.** Nothing here is implemented. The strategy registry
-> ([strategies.md](strategies.md)) gains `rc-walk` alongside `nogc`, `rc`,
-> `rc-trace` and `rc-satb`. Selection stays build-time, as for every other
-> strategy.
+> **Status: design, partially built.** Build steps 1–4 are product
+> code in `ll-model` (the `rc-walk` cargo feature, the default build
+> since 2026-07-27); the 2026-07-28 amendments — the batched-checkpoint
+> split, the forced verdict, the pressure ladder — are design ahead of
+> code, each flagged "code lag" in place. The strategy registry
+> ([strategies.md](strategies.md)) carries `rc-walk` alongside `nogc`,
+> `rc`, `rc-trace` and `rc-satb`; selection stays build-time, as for
+> every other strategy.
 
 ## What this collector is for
 
@@ -86,6 +90,29 @@ reference. The unbatched `ll_release` stays checkpointing, so naive
 FFI callers keep the protocol alive without knowing it exists. The
 single-call vector form of the same contract is
 `ll_release_vector` (`model/memory/bulk-operations.md`).
+
+*Amended 2026-07-28: the batched checkpoint splits like the death
+branch —* **ack before the run, pickup after it.** The original
+single pre-run checkpoint picked up messages while the scope's
+transients were still counted, which is the wrong instant twice over:
+a drain observing a transient borrow acquits a component the very
+next instruction returns to garbage, and a loop whose only
+checkpoints are scope exits then presents *every* pickup with the
+same held borrow — the phase-lock that defeats the forced verdict
+below. After eager death the trailing pickup is nearly free: any
+death inside the run already picks up at its dispose's exit, so the
+trailing `ll_gc_checkpoint` matters only for death-free runs — and
+those are exactly the runs whose releases just returned transients to
+their true counts. The ack stays in front (handshake latency; the
+activity bit is observed before the run's frees, as on the death
+branch). **The same split binds `ll_release_vector`** — the vector
+form's checkpoint-at-entry is the condemned pre-run pickup under
+another name ([bulk-operations.md](../memory/bulk-operations.md)
+amended). Code lag, flagged: today `ll_gc_checkpoint` is still one
+full pre-run checkpoint, the ack-only ABI entry
+(`ll_gc_checkpoint_ack`) does not exist, and the vector form
+checkpoints at entry — the split is design ahead of code, like the
+factory reorder once was.
 
 The arrangement's accepted limit (2026-07-26, finding F2 in
 [rc-walk-proof.md](rc-walk-proof.md), reshaped 2026-07-27): a thread
@@ -682,6 +709,7 @@ during an epoch.
 | memory release | one flag test while an epoch is in flight; on the reaching-zero path only, the checkpoint test (the condemned-byte test is gone with the byte — eager-death amendment, 2026-07-27) |
 | per epoch | a handful of handshake acks — one callback each, at a checkpoint |
 | per confirmed component | the Phase 4 drain: one verification pass plus the frees it would have performed anyway |
+| per forced verdict (ladder rung 4) | the same verification pass, on a component that may prove live — rationed by per-component backoff and the per-epoch cap ("Convergence") |
 | everything else | nothing |
 
 No barrier on reference stores. No queue. No park. No atomic
@@ -709,27 +737,225 @@ because nothing it says is acted on until a race-free test agrees."
 
 ## Convergence and the failure mode
 
-Validation can starve: a workload that keeps touching the same entities
-never lets a component stay untouched long enough to be confirmed. Then
-nothing is collected and memory grows.
+Validation can starve: a component the filter keeps acquitting is never
+confirmed, nothing is collected, and memory grows. The first draft
+treated "a workload that keeps touching the same entities" as one
+undifferentiated threat and ended its ladder in a pause. The channels
+deserve to be counted, because they are few and they are not equal
+(analysis 2026-07-28, two independent review passes):
+
+- **A live component falsely condemned by a stale walk.** Ordinary
+  mutator work touches it; the filter acquits. That is the filter
+  doing its job — a live component must *never* be confirmed, and its
+  perpetual acquittal is correctness, not starvation. The cost is
+  wasted collector CPU.
+- **Cascading deaths from a neighbouring drain or a late external
+  death.** Each such touch is an event that happens once; deaths are
+  monotone. One epoch of latency per event, bounded by the component's
+  size.
+- **Stale and torn walk reads.** Garbage is quiet: the next epoch's
+  walk reads it accurately. One epoch of latency.
+- **`WeakRef::get` on a member of a dead cycle.** The one channel
+  through which live code can touch *unreachable* memory, repeatedly
+  and forever: a dead-but-uncollected cycle's weak cell still
+  resolves, and `get()` retains whatever the cell holds. A registry
+  that polls its weak references each tick re-touches the corpse
+  every epoch. **This is the sole unbounded-leak channel.** True
+  garbage whose whole weakly-connected component carries no weak
+  subscriber cannot be touched again once the neighbouring cascades
+  settle: every delaying event — a cascade edge, an epoch-byte wrap
+  skip, the F3 maturity epoch (counted from the walk that first
+  stamps it) — is finite and unrepeatable, so its collection is
+  **bounded, not perpetual**. (The component scoping matters: a
+  weakless garbage ring garland-linked to a weak-polled one shares
+  its component's fate — which is what rung 3 exists to cut apart.)
+
+So the honest statement of the failure mode is narrow: *perpetual*
+starvation of *true garbage* requires a weak-reference poller;
+everything else is bounded latency or deliberately-spent collector
+CPU. The ladder ends accordingly — not in a pause, but in front of
+the judge the design already owns.
 
 The escalation ladder, in order, with the mutator never drafted into
 collector work:
 
-1. Re-run the epoch — cheap, and the population of true cycles is stable
-   while the population of hot objects is not.
-2. Re-walk only the candidate set to a fixpoint: condemn, handshake,
-   re-check, repeat until two consecutive rounds agree. Candidates are a
-   small fraction of the heap, so rounds are cheap. (FUGC terminates its
-   marking the same way.)
-3. As a last resort, park the mutator at one checkpoint for the length of a
-   candidate re-check — bounded by candidate count, not by heap. This is
-   a pause, and it is the fallback, not the design.
+1. **Re-run the epoch** — cheap, and the population of true cycles is
+   stable while the population of hot objects is not.
+2. **Re-walk only the candidate set to a fixpoint**: condemn,
+   handshake, re-check, repeat until two consecutive rounds agree.
+   Candidates are a small fraction of the heap, so rounds are cheap.
+   (FUGC terminates its marking the same way — though its guarantee
+   rests on monotone marking, which this rung alone lacks: one touch
+   resets the round. The guarantee is restored by rung 4.)
+3. **Stratify a repeatedly-acquitted garland** (optional refinement).
+   Weak-connectivity grouping (Phase 2) lets one hot member acquit a
+   whole garland of linked rings. On repeat acquittals the collector
+   may condense the component into its strongly-connected strata and
+   condemn separately the strata with no in-edges from the acquitted
+   remainder — freeing the quiet rings while only the hot stratum
+   waits. Collector-private arithmetic on the recorded edges; no new
+   shared state.
+4. **The forced verdict.** After `R` consecutive acquittals of the
+   same component, the collector stops filtering and posts it as an
+   ordinary confirmation — the Phase 3 re-check is skipped for that
+   component (the handshake is not: other components still need it).
+   The drain then decides against the true graph: the corpse rule and
+   the exact test run exactly as for any posted component, and either
+   every member's count balances its in-component in-degree — garbage,
+   collected on the spot — or some member is held from outside *at
+   the instant of the drain*, and the message is dropped because the
+   component is, right now, provably alive. The only other outcome is
+   the corpse-rule drop — a member died ordinarily since posting,
+   which is progress by itself and re-judged next epoch. So **no
+   component starves: every forced drain the thread reaches either
+   collects it, observes it live, or observes it part-dead.** The F2
+   premise is unchanged and worth restating here: a drain still needs
+   a checkpoint, and a thread that reaches none drains nothing —
+   forcing does not repair that stall, it only inherits it. A program
+   that holds a strong reference at every drain the collector ever
+   forces has, by `get()`'s own contract, kept the object reachable —
+   that is liveness, not starvation, and no ladder in any collector
+   frees it.
 
-The queue of deferred releases also grows for the duration of an epoch: a
-slower collector costs memory. Both of these are measurements, not
-arguments — they must be taken on real workloads before any threshold is
-fixed.
+Rung 4 is sound because the Phase 3 filter was never a safety gate —
+"no byte is a safety gate" has been canon since the narrow mutator,
+and the scenario battery already drove the exact test against
+comparable inputs (the 2026-07-26 battery, pre-amendment protocol: a
+broken walker's false post, finding F4 — dropped, no free). What the
+filter buys is precision;
+rung 4 spends precision to buy termination, and only where termination
+is actually threatened. Three rules keep it honest:
+
+- **The trigger is a heuristic; the message is not.** "Same component
+  `R` epochs running" is tracked as a hash of the member slot set,
+  invalidated whenever a member slot is flushed — and it is only a
+  *trigger*. The posted message is always built from the **current**
+  epoch's walk and pinned by the current epoch's deferred-free queue,
+  like every other confirmation; the history never names slots. A
+  spurious hash match (recycled slots re-forming a lookalike cycle)
+  costs one early forced drain, which the next rule bounds.
+- **Forcing is rationed.** `R` doubles per forced drop for that
+  component (a component that keeps being observed live is live), and
+  forced posts are capped per epoch. Without the ration, one weak
+  poller over a large ring would tax the mutator with an `O(ring)`
+  verification every `R` epochs, forever — the budget line "a falsely
+  posted component costs one verification pass" priced an accident,
+  not a subscription. Zend's threshold backoff shows the opposite
+  failure (backoff alone converts starvation into a sanctioned leak,
+  php-src GH-9266); backoff *plus a decisive final gate* has neither
+  problem.
+- **Prefer the leak channel.** A component with no weak-subscribed
+  member (no member carries `HAS_WEAK_REFERENCES`) that keeps
+  acquitting is live by the channel analysis above — forcing it can
+  only confirm liveness at `O(component)` cost. The collector
+  therefore forces weak-subscribed components first, and others only
+  under memory pressure (below). The bit is readable from the walk's
+  own header loads; no new shared state.
+
+Two texts become load-bearing with rung 4 and are stated here so no
+future edit un-states them. First, the batched checkpoint's split
+(ack before the run, **pickup after it** — "Batched releases" above):
+with the pre-run pickup, a loop whose only checkpoints were scope
+exits presented every drain with the same transiently-held borrow,
+and the forced verdict dropped forever — the phase-lock. The trailing
+pickup observes the transients dead, the exact test balances, and the
+cycle frees. (The parked mutator of the deleted rung died on the same
+trace: parking at a checkpoint inside the hold window re-reads the
+same inflated count. The pause never bought what it cost.) Second,
+the drain's ordering: **weak cells are nulled only after the exact
+test passes** (Phase 4 order: corpse scan, exact test, guards, weak
+nulling, destructors). While only true garbage could be posted this
+was incidental; once rung 4 can post a live component, a drop must
+leave its weak cells untouched — nulling a live component's cells
+would be observable semantic damage. The code has always ordered it
+so; now the order is contract.
+
+One boundary unchanged by rung 4: the exact test balances **counted**
+references only, so an uncounted borrow (DC5) passes a forced drain
+exactly as it passes an ordinary one. The covering-root obligation of
+[static-lifetimes.md](../memory/static-lifetimes.md) remains the sole
+defense, and forcing more posts rolls that die more often — one more
+reason the ration above is mandatory, not advisory.
+
+**Rejected: parking the mutator** (the previous rung 3, deleted
+2026-07-28). It bought a quiescent re-check — but the design already
+owns a quiescent re-check that costs no pause: the Phase 4 exact
+test, run by the mutator on its own thread at a checkpoint it was
+reaching anyway. The park is strictly dominated (it dies on the
+phase-lock trace above, pauses the mutator, and violates design
+principle 4 — the mutator is never stopped — for nothing in return).
+Prior art agrees on the shape: the Recycler retries candidate cycles
+forever without a pause but has no race-free final gate to force a
+verdict *to*; this design has one, and that asymmetry is the whole
+answer.
+
+The queue of deferred releases also grows for the duration of an epoch:
+a slower collector costs memory ("Deferred physical release" above and
+the bounding mechanisms in `BACKLOG.md`). `R`, the per-epoch cap and
+the stratification threshold are measurements, not arguments — they
+must be taken on real workloads before any number is fixed.
+
+## When the collector runs: the pressure ladder
+
+Half of open question 1 has an answer that costs no new mechanism:
+**the allocation-failure path is the trigger.** In the normal regime
+allocation is served from free lists and blocks, the collector runs on
+its own cadence (thresholds still to be measured), and the mutator
+pays nothing. When the manager cannot serve a request from what it
+holds — pool empty, reserve unfilled — it is already on a rare, cold
+path that was about to ask the OS for a block. On that path, and
+before honest failure, the mutator climbs its own ladder of self-help,
+cheapest first:
+
+1. **Flush its own parked memory**, if an epoch has closed and left a
+   backlog — the flush was waiting for the next checkpoint anyway;
+   this is that checkpoint, run early. No user code.
+2. **Drain the verdict queue now.** Posted confirmations are finished
+   dossiers: the cheapest memory in the process — one verification
+   pass per component plus frees the mutator already owed.
+3. **Signal pressure to the collector**, which escalates: epochs on
+   demand rather than on cadence, the fixpoint rung, forced verdicts
+   with smaller `R` — and the rations above relax, including the
+   weak-subscribed preference: under pressure a paid `O(component)`
+   pass beats an allocation failure, so even weakless perpetual
+   acquittals get their forced day in court. The rations exist to
+   bound steady-state cost, not to protect a process out of memory.
+4. **Run the synchronous collection itself** —
+   `walk::collect_cycles`, the build-step-2 whole-heap form, on its
+   own thread. This is not the deleted pause: principle 4 forbids
+   stopping the mutator *from outside*; a mutator that chooses to
+   spend its own time instead of failing an allocation is exercising
+   the same ownership that makes it the judge. (Zend fires
+   `gc_collect_cycles` from its allocator under the same logic.)
+
+   Step 4 may run while an epoch is in flight, and the argument is
+   the epoch's own machinery: frees still park (identity for posted
+   messages holds); a member the synchronous collection kills reads
+   `rc 0` at the epoch message's later drain and drops it by the
+   corpse rule; a member the synchronous collection currently guards
+   fails that drain's balance. One gate becomes explicit rather than
+   incidental: the synchronous collection is a drain-class activity,
+   so **message pickup is refused while it runs** — its walk-active
+   bit joins the mid-drain bit and the teardown depth in the pickup
+   gate. Without that, an allocating destructor inside the collection
+   could pick up an epoch message naming members the collection
+   already holds guarded, violating the drain's no-other-guards
+   contract. (Code lag: today's pickup gate does not yet test the
+   walk-active bit.)
+5. **Fail the allocation honestly.**
+
+Two gates, inherited rather than new: steps 2 and 4 run user code
+(destructors), so they obey the same reentrancy gates as any pickup —
+never mid-drain, never mid-teardown; if the gates are closed the
+mutator takes the OS block (or fails) now, and the ladder runs at the
+next safe point. And the ladder never crosses threads: the thread
+feeling the pressure is the thread that needs the memory, its parked
+list and its verdicts are thread-local, and no other mutator is
+paused, signalled, or waited on.
+
+What remains of open question 1 is the *cadence* half — how much
+deferred memory or how many suspects justify a background epoch when
+nothing is failing — and that remains a measurement.
 
 ## Rejected: OS dirty-page tracking
 
@@ -799,15 +1025,21 @@ the two together leave unbought.
 
 ## Open questions before implementation
 
-1. **When the collector decides to run at all.** The runtime owns the
-   trigger signals: how much deferred memory, how many suspected
-   components, how long since the last epoch. Every threshold here is a
-   measurement nobody has taken.
+1. **The collector's background cadence.** The pressure half of the
+   trigger is decided ("When the collector runs", 2026-07-28: the
+   allocation-failure path climbs the mutator's self-help ladder);
+   what remains is when a *background* epoch is worth running while
+   nothing is failing — how much deferred memory, how many suspects,
+   how long since the last epoch. Every threshold is a measurement
+   nobody has taken, as are the forced-verdict numbers: `R`, its
+   doubling, the per-epoch forced-post cap, the stratification
+   threshold.
 2. **Relaxed-atomic header accesses** are asserted zero-cost on x86-64 and
    AArch64; verify against generated code that no coalescing or fusion is
    lost before the cost table's claim is committed.
-3. **Whether the fixpoint rung of the ladder earns its keep** over plain
-   epoch re-runs — a measurement, on a workload that actually starves.
+3. **Whether the fixpoint and stratification rungs earn their keep**
+   over plain epoch re-runs plus the forced verdict — a measurement,
+   on a workload that actually starves.
 
 ## Build order
 
@@ -822,7 +1054,11 @@ the two together leave unbought.
    filter, the message queue and the epoch/drain ordering, the
    deferred-free bit extended to buffers.
 4. Weak references.
-5. The escalation ladder past rung 1, if measurement shows starvation.
+5. The escalation ladder past rung 1 — stratification and the forced
+   verdict with its rationing — if measurement shows starvation; with
+   it, the batched/vector checkpoint split (`ll_gc_checkpoint_ack` +
+   trailing pickup), the walk-active pickup gate, and the pressure
+   ladder's allocator hook.
 
 `rc-trace` (`gc.rs`, Bacon–Rajan) stays in the registry throughout as the
 single-threaded strategy, so the two can be compared on the same workload.

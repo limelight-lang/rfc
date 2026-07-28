@@ -28,11 +28,18 @@ a scope exit, a container clear — and submits the vector once.
 Semantically exactly equal to:
 
 ```c
-ll_gc_checkpoint();                 // once, before any death
+ll_gc_checkpoint_ack();             // once, before any death
 for (i in 0..count)
     if (ll_release_batch(entities[i]))
         ll_entity_die(entities[i]);
+ll_gc_checkpoint();                 // pickup, after the run
 ```
+
+*Amended 2026-07-28 with the batched-checkpoint split of
+[rc-walk.md](../gc/rc-walk.md) ("Batched releases"): ack before the
+run, pickup after it — a pre-run pickup observes the run's transients
+still counted, the phase-lock that defeats the forced verdict. Code
+lag: the shipped vector form still checkpoints once at entry.*
 
 - The epoch checkpoint is served **once, at entry** — before the first
   death, so every free the batch performs observes an in-flight epoch

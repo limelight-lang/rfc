@@ -10,6 +10,47 @@ in one line; **cost** if any.
 
 ---
 
+### 2026-07-28 — The forced verdict replaces the parked mutator; the allocation-failure path is the pressure trigger
+
+The escalation ladder's rung 3 (park the mutator) is deleted — it
+violated design principle 4 and, per the channel analysis, bought
+nothing: parking at a checkpoint inside a borrow's hold window
+re-reads the same inflated count. New endgame: after `R` consecutive
+acquittals of the same component (trigger-only identity: slot-set
+hash, invalidated on flush; the posted message is always the current
+walk's product), the collector bypasses the Phase 3 filter and posts
+the component — the Phase 4 exact test, race-free on the owner
+thread, is the final arbiter: balanced → collected, mismatch →
+provably live at that instant, corpse → part-dead, re-judged.
+Rationing is mandatory: per-component exponential backoff, a
+per-epoch cap, weak-subscribed components first (the only perpetual
+touch channel to true garbage is `WeakRef::get`). Prerequisite that
+became load-bearing: the batched/vector checkpoint splits — ack
+before the release run, pickup after it — else a scope-exit poller
+phase-locks every pickup inside its hold window. Second load-bearing
+order: weak nulling only after the exact test passes
+(weak-references.md reconciled). Companion section "When the
+collector runs": the allocation-failure path climbs the mutator's
+self-help ladder (flush parked → drain verdicts → signal pressure,
+rations lift → synchronous `collect_cycles`, gated by the walk-active
+bit joining the pickup gate → honest OOM); principle 4 forbids
+outside pauses, not one's own spent time.
+- **Why:** the design already owns a quiescent re-check — the drain —
+  so the park was strictly dominated; prior art has no forced-verdict
+  precedent because no other system has a race-free final gate to
+  force *to* (Recycler retries forever; FUGC terminates by
+  monotonicity, which the forced verdict restores here).
+- **Rejected:** condemned-aware `WeakRef::get` (per-get mutator cost,
+  and it would resurrect the byte eager death just deleted); early
+  weak nulling at condemn time (unsound for live false candidates);
+  backoff without a final gate (Zend GH-9266: starvation becomes a
+  sanctioned leak).
+- **Cost:** rare rationed `O(component)` verification passes on live
+  components; all of it is design ahead of code ("code lag" flags in
+  place: `ll_gc_checkpoint_ack`, the trailing pickup, the vector
+  split, the walk-active pickup gate). Open question 1 keeps only its
+  cadence half.
+
 ### 2026-07-27 — Eager-death review: ack-only death checkpoint, out-of-band parking, unwind waits for acks
 
 Two fresh-context adversarial passes over the eager-death amendment

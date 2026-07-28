@@ -161,9 +161,12 @@ committed, its cell reads null before any user code can run.**
   same reason. Displaced map values release inline right after the
   row is severed — this site is already a cascade of releases.
 - **Cycle death** — the drain notifies every confirmed member
-  **before any user code runs**, the binding obligation of
-  [gc/rc-walk.md](gc/rc-walk.md) (2026-07-26; CPython's PEP 442 is
-  the same move). Displaced map values go onto the drain's existing
+  **after the exact test passes and before any user code runs**, the
+  binding obligation of [gc/rc-walk.md](gc/rc-walk.md) (2026-07-26;
+  the after-the-exact-test half became load-bearing 2026-07-28, when
+  the forced verdict made it possible to post a *live* component — a
+  dropped message must leave its cells untouched. CPython's PEP 442
+  is the same move). Displaced map values go onto the drain's existing
   deferred-drop queue (the one already deferring severed external
   children), never inline. The same ordering applies to `rc-trace`'s
   cycle teardown when it gains destructor support. Two consequences

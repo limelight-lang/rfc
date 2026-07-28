@@ -239,6 +239,20 @@ What this costs, split by what actually differs:
 
 ## Open Questions
 
+- **There is no general heap** (2026-07-28). Allocation-site selection
+  above assumes a heap owned by no domain, into which a provably
+  transferable object is born so the send is a pointer handoff. The
+  memory model has none: every block belongs to a thread's heap, and a
+  nobody's-heap would require exactly the shared allocation and free
+  that per-thread ownership avoids. Worse, an actor is not bound to a
+  thread. Its *mutable* state is safe — that lives in its own arena,
+  which belongs to the actor and migrates with it — but a transferable
+  entity has nowhere neutral to be born: promoted out of the arena, it
+  lands in the entity heap of whichever pool thread was mounting the
+  actor, so its host is a thread while its holder is an actor. The
+  payload table and allocation-site selection are owed a re-derivation;
+  the GC side of the problem is in
+  [../model/gc/domains.md](../model/gc/domains.md).
 - **Sync-call deadlock**: actor A parked awaiting B while B awaits A.
   Cycle detection on the waits-for graph, timeouts, or forbidding
   nested synchronous calls; undecided.

@@ -37,6 +37,15 @@ into proper RFCs when picked up.
 
 ## Model — remaining documents
 
+- **The movable array** — a `#[Moved]` class may hold an array field
+  (payloads without arrays are not PHP payloads), but an array does not
+  declare its element types, so the class graph cannot close over them:
+  neither the closure rule nor the acyclicity check settles statically.
+  A movable array is therefore its own kind with its own rules — how it
+  freezes, how `~=` clones it and its storage buffer, what its elements
+  may be. Deferred 2026-07-28; until then what the class graph cannot
+  settle falls back to a traversal at send time
+  ([model/gc/domains.md](model/gc/domains.md) §3).
 - **Array hashtable design** — bucket layout, collision strategy,
   iteration-order preservation, mechanics of the mixed-vector → hash
   migration ([arrays.md](model/arrays.md)).

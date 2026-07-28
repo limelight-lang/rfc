@@ -62,8 +62,10 @@ rather than once per assignment (this is what Pony's ORCA buys with
 messages); and the walk finds the cell by ordinary enumeration.
 Rejected for `moved`: an array of received objects pays an indirection
 per element and the load cannot be hoisted out of the loop, which
-contradicts "the receiver works with an ordinary object". It remains
-defensible for `shared`, where foreign access is rare by construction.
+contradicts "the receiver works with an ordinary object". **Adopted for
+`shared`** the same day (domains.md §6): there the entity is never
+named directly at all, so the box is not an extra layer over a
+reference — it *is* the reference.
 
 **An owner field in the entity header** (a byte in the flags word,
 free since the eager-death amendment) so a verdict could be routed to

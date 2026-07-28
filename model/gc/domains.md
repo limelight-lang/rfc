@@ -54,6 +54,15 @@ home.** Nothing is sent home alive: severing releases children, and a
 child may still be held by the holder, so a decrement performed
 anywhere else would be a second writer of that child's counter.
 
+**A shared entity is the exception, and safely so** (Edmond,
+2026-07-28): it is destroyed by **the domain whose box died last**. The
+reason the exception holds is the closure rule (§6) — a shared entity's
+children may only be shared or immortal, so their counters are atomic
+and any domain may sever them. The rule introduced for one purpose pays
+for itself here. The slot still travels home to the creator's block by
+the ordinary route. What it costs is that the destructor runs in an
+arbitrary domain — see §11.
+
 **I6. Crossing a domain boundary is registered, including a
 sub-domain's.** An arena is a domain; an entity handed out of one must
 be **promoted out of it**, not merely registered as an escape —
@@ -201,6 +210,35 @@ nothing that cannot close a ring is worth walking.
   exact test race-free with a shared member — is not needed: a shared
   entity is never a member.
 
+**A shared entity is never named directly** (Edmond, 2026-07-28). User
+code cannot hold or store the entity itself: the compiler hides it
+behind a **box** — a cell in the referring domain that names the
+target — and an assignment stores the box, never the target. The box is
+an ordinary entity of its own domain, so local references to it count
+non-atomically; the entity's own counter moves once per domain, when a
+box is born and when it dies, instead of once per assignment. Identity
+operations (`===`, the object id, hashing) dereference the box, as they
+already must for the model's other transparent wrappers, so duplicate
+boxes naming one target are legal and no canonicalizing table is owed.
+
+**Only compiler-emitted code dereferences the box.** The guarantee is
+the compiler's, not a convention a programmer must keep — the same
+footing `#[Moved]` stands on, and the reason both survive where
+Kotlin/Native's freezing did not.
+
+The box is shaped like the canonical weak cell and reuses its
+machinery: the entity *is* the cell, holders count the cell and never
+the target, and a per-domain table keyed by the target's address gives
+one box per domain per target — so reading a field is a lookup, not an
+allocation, and boxes do not multiply per read. Two differences from
+the weak cell: this box **holds** its target (that is what makes the
+target's atomic counter move once per domain, at the box's birth and
+death), and it therefore never needs nulling.
+
+The collector sees the box, not the target: the box is walked as an
+ordinary local entity and its one out-edge is dropped like any edge
+into something skipped.
+
 **A shared entity may reference only shared or immortal entities.**
 Nothing else. I4's derivation — a frozen entity cannot point into the
 *receiver's* state, because that state did not exist when its edges
@@ -324,7 +362,7 @@ the **destructor**, and what stops the slot being reissued mid-walk.
 |---|---|---|---|---|
 | home-grown entity | A | A | A | A |
 | moved A → B | B | A | nobody — skipped by both | B |
-| `shared` | any | its creator | nobody — skipped | open (§11): with no single holder, I5 does not say |
+| `shared` | any, through a box | its creator | nobody — skipped | the domain whose box died last |
 | arena entity, never escapes | A's arena | arena blocks | nobody | A, in the reset fixpoint |
 | arena escapee, promoted at reset | A | retained block | nobody (outside the registry — unless [retained-block-walk.md](retained-block-walk.md) lands) | A |
 | frozen / immortal | any | immortal region | nobody | never |
@@ -404,8 +442,17 @@ Conservative, never unsound: the last four rows of the table above.
   loads that word).
 - **The drain-exclusivity window** is proven for one mutator
   ([drain-window.md](drain-window.md)); the re-derivation is owed.
-- **`shared` still needs atomic counters** — references to it come and
-  go from several domains even though its fields never change.
+- **May a `shared` class have a destructor at all?** (Recorded as a
+  question, 2026-07-28.) It runs in whichever domain dropped the last
+  box — an arbitrary one — so anything with thread affinity in it is a
+  trap the programmer gets no warning about. Forbidding it makes shared
+  entities pure data; allowing it puts "the destructor of a shared
+  class runs in an arbitrary domain" into the language contract.
+- **`shared` still needs atomic counters**, but few: with the box (§6)
+  the entity's own counter moves only when a domain's box is born or
+  dies, not per assignment. What the box costs is an entity kind — and
+  the kind field has exactly one code left, which `resource` also wants
+  ([layouts.md](../layouts.md)).
 - **Throughput of §7's gating.** Holding the remote drain for an
   epoch's duration recreates the refill-forever pattern
   `collect_owned` exists to prevent; a cost line is owed once measured.

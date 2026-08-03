@@ -24,14 +24,16 @@ Size classes bound internal fragmentation to the class step, and block-level reu
 
 ---
 
-## MMTK: One Available Backend
+## MMTK: considered, not used
 
-**Decision (revised)**: MMTK is **not** the foundation; it is one
-pluggable backend behind the strategy contract (`mmtk:<plan>` in
-[strategies.md](strategies.md)), restricted to non-moving plans.
-Limelight's own strategies (`rc-trace`, `rc-satb`) own their heap
-directly; the block/line structure below is shared vocabulary either
-way.
+**Decision, 2026-08-03**: MMTK is out. It was first demoted from
+foundation to one pluggable backend behind the strategy contract
+(`mmtk:<plan>`, restricted to non-moving plans); that row is now
+removed from the registry ([strategies.md](strategies.md)) and no
+third-party backend slot remains. Limelight's own strategies own their
+heap directly, which is what every shipped one already does; the
+block/line structure below is shared vocabulary regardless. The survey
+below is kept as the record of what was considered.
 
 MMTK is a Rust-based framework that provides production-quality GC plans including Immix, StickyImmix, ConcurrentImmix, and LXR.
 

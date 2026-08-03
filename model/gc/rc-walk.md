@@ -992,8 +992,10 @@ the two together leave unbought.
   today — and is now written down with its worked cases in
   [static-lifetimes.md](../memory/static-lifetimes.md), "What may own a
   borrow".
-- **Weak references.** Designed, not yet built — see
-  [weak-references.md](../weak-references.md) (2026-07-27). The shape
+- **Weak references.** The collector delegates them; the machinery that
+  discharges the obligation below is built (`ll-model` `src/weak.rs`,
+  2026-07-27) and specified in
+  [weak-references.md](../weak-references.md). The shape
   refined the earlier side-entry sketch: the canonical `WeakRef` entity
   *is* the shared cell (holders count the entity, never the target), and
   the dying object finds it through a per-thread weak table whose row
@@ -1036,9 +1038,13 @@ the two together leave unbought.
    nobody has taken, as are the forced-verdict numbers: `R`, its
    doubling, the per-epoch forced-post cap, the stratification
    threshold.
-2. **Relaxed-atomic header accesses** are asserted zero-cost on x86-64 and
-   AArch64; verify against generated code that no coalescing or fusion is
-   lost before the cost table's claim is committed.
+2. **Relaxed-atomic header accesses on AArch64.** x86-64 is settled:
+   the generated release code is plain `mov`s with no lock prefix and
+   no read-modify-write, and `ll_release` loses the candidate-buffering
+   call tail (`ll-model` `8c2b0fe`, 2026-07-26). AArch64 carries the
+   same zero-cost claim (`refcount.rs`, the module doc) on reasoning
+   alone; read the generated code there before the cost table commits
+   to it.
 3. **Whether the fixpoint and stratification rungs earn their keep**
    over plain epoch re-runs plus the forced verdict — a measurement,
    on a workload that actually starves.

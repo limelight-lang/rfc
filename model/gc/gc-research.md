@@ -3,12 +3,13 @@
 > **Status: research.** The survey below stands, but the
 > recommendation in §7 has been superseded by decisions:
 > the collector is a pluggable build-time strategy
-> ([strategies.md](strategies.md)); the default is `rc-trace`
-> (ARC + arenas + stop-the-thread cycle tracing), with concurrent SATB
-> as the low-latency strategy ([satb.md](satb.md)); MMTK is one
-> backend, not the foundation; LLVM statepoints are ruled out by the
-> non-moving decision ([heap-design.md](heap-design.md)), cheap poll
-> safepoints suffice. The Phase 1→2→3 ladder maps onto the strategy
+> ([strategies.md](strategies.md)); the default is `rc-walk`
+> (ARC + arenas + barrier-free concurrent cycle walking, 2026-07-27),
+> with `rc-trace` behind `--no-default-features` and concurrent SATB
+> as the low-latency strategy ([satb.md](satb.md)); MMTK is no longer
+> offered as a backend (2026-08-03, the registry row removed); LLVM
+> statepoints are ruled out by the non-moving decision
+> ([heap-design.md](heap-design.md)), cheap poll safepoints suffice. The Phase 1→2→3 ladder maps onto the strategy
 > registry rather than onto successive rewrites of a single collector.
 
 ---
@@ -271,9 +272,9 @@ evacuation as strictly optional, so it also works with conservative roots. In
 production use by Guile.
 
 **Why not the foundation here:** the same two costs as MMTK — it wants to own
-the heap, and it wants roots enumerated — plus it is C, while the strategy
-contract already reserves the ready-made slot for MMTK
-([strategies.md](strategies.md)).
+the heap, and it wants roots enumerated — plus it is C. The strategy contract
+([strategies.md](strategies.md)) offers no third-party backend slot at all
+since 2026-08-03.
 
 ### Boehm-Demers-Weiser GC
 

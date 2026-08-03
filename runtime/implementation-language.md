@@ -15,17 +15,23 @@ everything else.
 
 | Factor | Rust | C++ |
 |---|---|---|
-| MMTK (a GC backend, [heap-design.md](../model/gc/heap-design.md)) | Native: `VMBinding` is a Rust trait | Through a C wrapper |
 | Memory safety of a large long-lived codebase | Yes (unsafe islands are localized) | No |
 | LLVM API (IR emission, JIT engine) | Bindings (inkwell/llvm-sys), lag behind LLVM | First-class, native |
 | In-memory compilation of interop snippets ([ir-integration-research.md](../interop/ir-integration-research.md)) | Impossible (`librustc_driver` is closed) | Clang supports it, already in the interop plan |
 | LLVM version choice | Dictated by rustc (e.g. Rust 1.85 = LLVM 19) | Free |
 | Bitcode for cross-inlining into PHP code | Yes | Yes |
 
+A sixth factor stood here until 2026-08-03: MMTK as a GC backend, native
+to Rust because `VMBinding` is a Rust trait and reachable from C++ only
+through a C wrapper. MMTK is not being built
+([heap-design.md](../model/gc/heap-design.md)), so the factor is gone.
+The decision stands on the rest, and the runtime core it produced is
+already Rust.
+
 ### Split
 
 - **Rust** — the runtime core (~90% of the code): memory manager, arenas,
-  GC binding (the MMTK backend), runtime data structures,
+  the collectors, runtime data structures,
   strings/arrays, stdlib infrastructure. Long-lived, eventually
   multi-threaded code where Rust's safety pays for itself. Precedents:
   MMTK itself, Ruby's YJIT.
@@ -34,8 +40,8 @@ everything else.
   C++ library; it cannot be embedded from Rust). Communicates with the
   Rust core over a C ABI.
 
-Rejected alternatives: pure C++ (loses MMTK nativeness and safety for the
-whole codebase to make one module more convenient); pure Rust (fights LLVM
+Rejected alternatives: pure C++ (loses safety across the whole codebase to
+make one module more convenient); pure Rust (fights LLVM
 bindings in the most complex part of the project and gives up in-memory
 Clang).
 

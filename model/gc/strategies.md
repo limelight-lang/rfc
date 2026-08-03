@@ -18,9 +18,6 @@ strategy behind a fixed contract**, selected **at build time**.
   no flag checks or dispatch in its store paths. (Same approach as
   Ruby's modular GC.)
 
-MMTK is **not** the foundation of this design; it is one backend that
-can sit behind the contract (see the registry below).
-
 ---
 
 ## The Strategy Contract
@@ -168,7 +165,7 @@ Strategies consume, not define, the object model:
 ## Constraint: non-moving only
 
 Per [heap-design.md](heap-design.md), objects never relocate. A
-strategy (or MMTK plan) that moves objects does not fit the contract.
+strategy that moves objects does not fit the contract.
 Arena-reset evacuation is not an exception: it is an arena-boundary
 event with no live stack, outside any strategy
 ([arena-reset.md](../memory/arena-reset.md)).
@@ -181,9 +178,9 @@ event with no live stack, outside any strategy
 |---|---|---|---|---|
 | `nogc` | bump allocation, never frees | leaks | none | benchmarks baseline; short scripts |
 | `rc` | ARC + arenas | **leaks cycles** | none | short CLI where cycles don't accumulate |
-| `rc-trace` **(default)** | ARC + arenas + stop-the-thread cycle tracing | collected | small, bounded by live general heap | web workloads; the first implementation |
+| `rc-trace` | ARC + arenas + stop-the-thread cycle tracing | collected | small, bounded by live general heap | web workloads; the first implementation |
+| `rc-walk` **(default)** | ARC + arenas + barrier-free concurrent cycle walking, derived roots | collected | none on the mutator; the walk runs off-thread | the shipping strategy, see [rc-walk.md](rc-walk.md) |
 | `rc-satb` | ARC + arenas + concurrent SATB marking | collected | near-zero | latency-sensitive daemons, see [satb.md](satb.md) |
-| `mmtk:<plan>` | MMTK backend via `VMBinding` adapter | per plan | per plan | experimentation; non-moving plans only |
 
 `nogc` is what the echo compiler ships today; `rc` is approximately
 elephc's model; `rc-trace` is the Zend architecture done right
@@ -191,7 +188,13 @@ elephc's model; `rc-trace` is the Zend architecture done right
 
 ---
 
-## The default: `rc-trace`
+## `rc-trace`
+
+`rc-walk` is the default build since 2026-07-27 (`ll-model`
+`Cargo.toml`, `dev/DECISIONS.md`); `rc-trace` sits behind
+`--no-default-features` as the single-threaded sibling both share a
+workload with. Points 1 and 2 below are common to both, and point 3 is
+where they part.
 
 1. **ARC is the primary reclamation path.** Refcount hits zero →
    immediate, deterministic teardown. Compiler pairing elimination,

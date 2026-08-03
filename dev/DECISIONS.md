@@ -10,6 +10,21 @@ in one line; **cost** if any.
 
 ---
 
+### 2026-08-03 — MMTK is out; the registry offers no third-party backend
+
+MMTK will not be built (Edmond). The `mmtk:<plan>` row leaves the
+strategy registry and nothing replaces it, so the contract now serves
+Limelight's own strategies only. **Why:** the shipped collectors own
+their heap directly and have since `rc-walk`; keeping a backend row
+nothing implements made the registry advertise a slot that no code,
+and no plan, stands behind. **Rejected:** keeping the row as a
+standing offer — it is the drift class this repo already pays for.
+**Cost:** one supporting argument for Rust as the core language
+disappears (`runtime/implementation-language.md`); the decision itself
+stands on memory safety and is already executed. The surveys in
+`heap-design.md` and `gc-research.md` stay as the record of what was
+considered.
+
 ### 2026-07-28 — The forced verdict replaces the parked mutator; the allocation-failure path is the pressure trigger
 
 The escalation ladder's rung 3 (park the mutator) is deleted — it

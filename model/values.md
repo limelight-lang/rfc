@@ -272,15 +272,44 @@ RcHeader | Value
 
 **Decision**: COW is not hard-wired to types. Any heap entity can carry
 the COW flag (one bit in `RcHeader.flags`). Strings and arrays are created
-COW by default; both can exist in non-COW (freely mutable) form; see
-[strings.md](strings.md) for mutable string buffers. Plain objects may opt
-*into* COW, giving value semantics.
+COW by default; an array can also exist in non-COW (freely mutable)
+form. A string cannot: its dynamic representation grows in place only
+while one owner holds it and separates on an append by a shared owner,
+so COW governs both string layouts ([strings.md](strings.md)). Plain
+objects may opt *into* COW, giving value semantics.
 
-Write barrier, identical everywhere:
+Write barrier, identical everywhere. Separation allocates a new entity,
+so the barrier takes the old pointer and returns the one the holder must
+store; the address of an existing entity never changes:
 
 ```c
-if ((flags & LL_COW) && refcount > 1) separate();
+ptr = ll_cow_separate(ptr);   // no-op unless the rule below fires
 ```
+
+The holder performs the write-back at its own store site: a local
+ValueBox, a property slot, an array element, and a ReferenceBox's inner
+ValueBox each store the returned pointer. An FFI handle cannot: the
+foreign side holds its own copy of the pointer, so a borrowed
+`const char*` into string bytes is invalidated by any mutation of that
+string ([memory/ffi.md](memory/ffi.md)).
+
+The rule that fires it:
+
+```c
+category is Immortal or LongLived  → separate (the count is pinned)
+IS_ESCAPEE set                     → separate (the field counts escapes,
+                                      not references)
+COW && refcount > 1                → separate
+otherwise                          → write in place
+```
+
+Category before count, because retain and release return early on an
+immortal entity and leave its count at 1 forever
+(`ll-model/src/refcount.rs`); reading that 1 as "sole owner" would
+overwrite an interned string shared process-wide. `IS_ESCAPEE` before
+count for the same reason in the other direction: while bit 11 is set,
+the field holds the arena escape hold-count, so no reference count is
+there to read.
 
 ### Refcount is always maintained on COW entities
 
@@ -288,6 +317,21 @@ if ((flags & LL_COW) && refcount > 1) separate();
 semantics (it answers "is this buffer shared?"), not merely lifetime
 bookkeeping. It is therefore maintained **in every memory category,
 always**.
+
+**Invariant (2026-08-03)**: on a COW entity the refcount equals the
+number of holders. A second holder retains before it can write, and the
+compiler may elide a retain/release pair only where it has proved that
+no second holder arises. Deferred ARC ([memory/arc-optimizations.md]
+(memory/arc-optimizations.md), item 2) therefore does not apply to COW
+entities at any tier: it lets the count lag behind the stack until the
+next safepoint, and the sharing test is consumed at the instant of the
+write, where a lagging count means an in-place write into a string
+somebody else holds. A lifetime undercount is repaired by the next stack
+scan; a COW undercount corrupts the value silently and is never
+repaired.
+
+The invariant is checkable in a debug build: at the entry to a write,
+compare the count against the holders reachable from the frame.
 
 The memory category (see [arenas.md](memory/arenas.md)) changes only the
 reaction when the count reaches zero:

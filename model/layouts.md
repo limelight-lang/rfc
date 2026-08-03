@@ -168,17 +168,21 @@ Normative: [classes.md](classes.md) "Slot kinds", "Slot order".
 ### StringBox — kind 1
 
 ```
-COW (default):    │ RcHeader │ hash (lazy) │ len │ bytes… inline │
-mutable builder:  │ RcHeader │ Buffer{ data, len, capacity }     │
-                                  └──▶ │ bytes… │  reallocated
-frozen/immortal:  as COW; a write always separates
+inline (default): │ RcHeader │ len │ hash (lazy) │ bytes… inline │
+dynamic:          │ RcHeader │ len │ hash (lazy) │ data │ capacity │
+                                                    └──▶ │ bytes… │ reallocated
+immortal:         inline; a write always separates
 ```
 
-One PHP type, three physical layouts: a sub-mode bit in the header
-selects them (teardown must know whether bytes are inline; string ops
-must know where `len` is). The header address stays stable — only the
-buffer behind the builder moves. No class pointer: the kind resolves
-the singleton `String` descriptor. Normative: [strings.md](strings.md).
+One PHP type, two physical layouts, a sub-mode bit in the header
+selecting them. `len` and `hash` sit at the same offsets in both, so
+only the code reaching for the bytes branches on the bit; teardown
+branches too, because a dynamic string owns a second allocation. The
+header address stays stable and only the payload moves. The compiler
+picks the layout at allocation — there is no runtime promotion between
+them — and a write that separates a dynamic string produces a dynamic
+copy. No class pointer: the kind resolves the singleton `String`
+descriptor. Normative: [strings.md](strings.md).
 
 ### ArrayBox — kind 2
 

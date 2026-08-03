@@ -94,6 +94,27 @@ be there.
 
 ---
 
+## Entities with out-of-line storage
+
+Promotion retains the block the **header** lies in and reads nothing
+inside the entity (`ll-model/src/promote.rs`). An entity whose storage
+is a second allocation — a dynamic string's payload
+([../strings.md](../strings.md)), an array's storage
+([../arrays.md](../arrays.md)) — therefore survives with a pointer into
+a block that was returned to the pool.
+
+**Rule**: promotion is layout-aware for every kind that has out-of-line
+storage. The header stays where it is, because its address is published
+and its holders are not enumerable; the storage is reallocated in the
+target category and copied, and the pointer inside the entity is
+rewritten. Storage large enough to be OS-direct rather than in a block
+transfers ownership instead: its record leaves the arena's
+large-allocation list and passes to the promoted entity.
+
+The alternative — retaining the storage's block as well — is rejected:
+it holds a 64 KB block for one payload, and the block is arena memory
+that would then outlive every arena.
+
 ## Relationship to ARC
 
 Before promotion an arena object has no refcount history (arena

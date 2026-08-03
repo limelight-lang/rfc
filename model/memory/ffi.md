@@ -191,6 +191,15 @@ by a `FFIBox` when it escapes. A write to a borrowed view separates it into
 an ordinary managed entity (the COW rule generalizes: shared with the
 outside world, so any write copies).
 
+The reverse direction has no such protection. **A pointer into a managed
+string's bytes, handed to C, is invalidated by any mutation of that
+string**, and nothing detects the violation: separation allocates a new
+entity, and growth of a dynamic string reallocates the payload while the
+entity address stays fixed ([strings.md](../strings.md)). A caller that
+needs bytes it can hold across a mutation copies them out, or holds an
+interned string, whose address and contents are fixed for the life of
+the process.
+
 ---
 
 ## Attribute catalog

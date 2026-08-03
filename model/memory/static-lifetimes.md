@@ -242,7 +242,12 @@ backlog, not committed.
   (`rc-trace` pauses get shorter, `rc-satb` epochs get rarer).
 - **COW entities** ([../values.md](../values.md)): refcount doubles as
   the sharing test on COW values, so tiers 1–2 apply to them only when
-  the analysis also proves no COW sharing is observable.
+  the analysis also proves no COW sharing is observable. Deferred ARC
+  (tier 3, [arc-optimizations.md](arc-optimizations.md) item 2) does not
+  apply to them at all: the count must equal the number of holders at
+  every instant a write can read it, and deferral is the one
+  optimization that breaks that invariant rather than preserving it
+  (`values.md`, "Refcount is always maintained on COW entities").
 
 ## Open Questions
 

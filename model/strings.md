@@ -11,12 +11,27 @@ contracts defined in [values.md](values.md).
 ## Layout
 
 ```
-RcHeader | hash (u64, lazy) | len (u64) | bytes... (inline)
+inline:   RcHeader | len (u64) | hash (u64, lazy) | bytes... (inline)
+dynamic:  RcHeader | len (u64) | hash (u64, lazy) | data | capacity
+                                                     └──▶ bytes...
 ```
 
-One allocation per string: the bytes live inline after the header (as in
-`zend_string`), so string access is one pointer dereference with no second
-hop. The hash is computed on first use and cached.
+One allocation per inline string: the bytes follow the header (as in
+`zend_string`), so string access is one pointer dereference with no
+second hop. A dynamic string holds its bytes out of line so they can be
+reallocated as it grows, which costs one further dereference to reach
+them.
+
+**`len` and `hash` sit at the same offsets in both layouts**, +8 and
++16, so length and hash are read without deciding which layout this is.
+Only the code that needs the bytes themselves branches. The dynamic
+layout is a `Buffer` ([memory/buffers.md](memory/buffers.md)) with the
+fields ordered to meet that constraint, not the `Buffer` struct embedded
+verbatim.
+
+The hash is computed on first use and cached. **Zero means "not
+computed"**: an append clears it, and the hash function maps a genuine
+zero to one so the sentinel stays unambiguous.
 
 ---
 
@@ -49,50 +64,92 @@ long-lived arena as immortal entities: one string = one address, equality
 
 ---
 
-## Mutability Modes: `StringInterface`, Two Classes
+## Two Layouts Behind `StringInterface`
 
-**Revised decision**: COW and mutable strings share the `string` entity
-kind but have genuinely different memory layouts, so they are two
+**Revised decision**: inline and dynamic strings share the `string`
+entity kind and differ only in where the bytes are, so they are two
 **physical representations** selected by a sub-mode bit in the string
 header (not two class descriptors — a string carries no class pointer),
 presented to the language behind a shared `StringInterface`:
 
-- **COW string (default)** — the layout above: bytes inline after the
-  header. Fixed size once allocated; a write with `refcount > 1`
-  separates (copies). Never grows in place.
-- **Mutable string (builder)** — `RcHeader | Buffer{data, len, capacity}`
-  ([docs/memory-manager.md](https://github.com/limelight-lang/ll-model/blob/main/docs/memory-manager.md)
-  Mutable Buffers): indirection is required because growth means moving
-  the payload, and the `RcHeader` entity's own address must stay stable
-  (non-moving GC, existing references must not dangle). In-place append
-  via the buffer's extend-in-place/grow algorithm, no separation, ever.
-  No PHP-level API is defined yet; the runtime representation supports
-  it natively.
+- **Inline string (default)** — bytes after the header, one allocation,
+  fixed size once allocated.
+- **Dynamic string** — bytes out of line, with spare capacity, so append
+  extends them in place instead of reallocating the whole string. The
+  indirection buys exactly that: growth moves the payload, while the
+  entity's own address must stay fixed (the GC never moves entities, and
+  the holders of a string are not enumerable). No PHP-level API is
+  defined yet; the runtime representation supports it natively.
+
+**Both layouts occur in every memory category.** The request arena and
+the GC heap differ in who releases the memory, not in how a string is
+shaped: an arena string is reclaimed by the reset, a heap string by its
+own refcount reaching zero.
+
+**Which layout a string gets is a compile-time decision.** The compiler
+allocates a string dynamic when it can see the string being appended to
+— a concatenation loop, an accumulator — and inline otherwise. There is
+no runtime promotion from one layout to the other: that would rewrite
+the body under a header the collector may be reading concurrently, which
+is the same objection that retired freeze below. A wrong guess costs
+copies during growth, never memory corruption.
 
 Both are managed entities: RC/COW-flagged, created in the language always
 carrying RC. The exception is the FFI boundary, where a foreign buffer
 may be viewed as a string without copying; see
 [zero-abstraction.md](memory/zero-abstraction.md).
 
-### Freeze: builder → immutable, a mode-bit flip
+### Writes obey the COW rule; there is no freeze operation
 
-A string carries **no class pointer** (it is a non-object entity, kind =
-`string` in the header flags, [classes.md](classes.md)). So the two
-representations above are not two class descriptors reached through an
-instance pointer — they are **one entity kind with a sub-mode bit** in
-the string header: COW-inline, mutable-builder, or frozen-immutable. The
-`StringInterface` split is a language-level abstraction; physically it is
-this mode bit plus the layout it implies.
+**Decision (2026-08-03)**: a dynamic string is never frozen. Every write
+— overwrite or append — runs the barrier rule in
+[values.md](values.md): immortal and long-lived separate always,
+`IS_ESCAPEE` separates always, `refcount > 1` separates, and only a sole
+owner writes in place. For a dynamic string writing in place means
+extending the buffer; **separation produces a dynamic copy**, not an
+inline one, so the writer keeps a growable string and an append loop
+stays linear after the copy.
 
-"Freezing" a builder into an immutable string (mentioned as a future
-operation in docs/memory-manager.md) is therefore a **mode-bit flip**,
-not a class-pointer swap: there is no class pointer to swap, and the
-Ghost-object `!invariant.load` machinery does not apply here (it guards a
-class-pointer load that a string never performs — string methods are
-direct calls to the final `String`, devirtualized, with no vtable in the
-entity). The free routine reads the same mode bit to pick teardown: a
-frozen/COW string frees only its inline block, a builder also frees its
-out-of-line `Buffer.data`.
+Freeze was specified as a mode-bit flip, and a bit cannot perform one:
+the two layouts hold their bytes in different places, so moving between
+them is a copy. **Rejected**: a third, frozen sub-mode that closes a
+dynamic string for writing in place. It keeps the address and skips the
+copy, but the string then carries the extra dereference and its unused
+spare capacity for the rest of its life.
+
+The two sub-modes are not class descriptors: a string carries **no class
+pointer** (a non-object entity, kind = `string` in the header flags,
+[classes.md](classes.md)). The Ghost-object `!invariant.load` machinery
+therefore does not apply here — it guards a class-pointer load that a
+string never performs, since string methods are direct devirtualized
+calls to the final `String`.
+
+The free routine reads the sub-mode bit to pick teardown: an inline
+string frees only its own block, a dynamic string frees its out-of-line
+payload as well.
+
+### An arena string that survives the reset takes its payload with it
+
+A dynamic string in the request arena keeps its header in one arena
+block and its bytes in another, since the payload is reallocated as it
+grows. Promotion retains the block the **header** lies in
+(`ll-model/src/promote.rs`) and reads nothing inside the entity, so the
+payload's block would be returned to the pool while the promoted string
+still points into it.
+
+**Decision**: promotion is layout-aware. A surviving dynamic string
+keeps its header where it is — the address must not change, because the
+holders are unknown — and its payload is reallocated in the heap and
+copied, with `data` rewritten. Nothing else in the arena is retained on
+its behalf. A payload larger than a block is OS-direct rather than in a
+block ([memory/buffers.md](memory/buffers.md)), so it is not copied at
+all: its record moves out of the arena's large-allocation list and its
+ownership passes to the heap entity.
+
+Only surviving strings pay this, and they are the minority by
+construction: the rest die with the reset at no cost. The same
+obligation falls on arrays, whose storage is likewise out of line
+([arrays.md](arrays.md)).
 
 ---
 

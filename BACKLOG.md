@@ -448,8 +448,8 @@ reference identity and the category barrier.
 - **Interpolated string API** — public API on the template object,
   compile-time handler/type attachment (tagged-template style), exact
   flattening semantics ([strings.md](model/strings.md)).
-- **Mutable string (non-COW) PHP-level API** — the runtime
-  representation exists; the language surface does not.
+- **Dynamic string PHP-level API** — the runtime representation exists;
+  the language surface does not.
 
 ## The big one
 

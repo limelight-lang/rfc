@@ -7,8 +7,9 @@ see [ll-model/docs/memory-manager.md](https://github.com/limelight-lang/ll-model
 "Mutable Buffers") across all three arena categories, and the reclaim
 strategy for buffers that outlive a single request.
 
-Consumers: mutable (non-COW) strings ([strings.md](../strings.md)), and
-any future growable container built the same way.
+Consumers: dynamic strings ([strings.md](../strings.md)) — COW like
+every other string, the buffer serving growth rather than mutability —
+and any future growable container built the same way.
 
 ---
 
@@ -23,6 +24,12 @@ any future growable container built the same way.
 - **Long-lived / immortal**: no bump-top to extend. Growth is alloc-new +
   copy + free-old (`ll_realloc`-shaped). This is where isolation and
   reclaim strategy (below) matter.
+- **GC heap**: open. A dynamic string exists in the heap as well as the
+  arena ([strings.md](../strings.md)), so its payload needs an allocator
+  and a free routine there; the shape is the long-lived one, but which
+  allocator owns it — the object heap, the buffer arena, or `ll_alloc`
+  directly — is undecided, and the answer also decides who frees the
+  payload of a string promoted out of an arena.
 
 ## Memory-Pressure Modes
 
@@ -125,8 +132,9 @@ Needs real workloads to pick *K* and the mode thresholds.
 
 ## Interactions
 
-- [strings.md](../strings.md): the mutable-string class embeds exactly
-  this buffer.
+- [strings.md](../strings.md): a dynamic string carries these fields,
+  ordered so that `len` lands at the same offset as in the inline
+  layout.
 - [arena-reset.md](arena-reset.md): the compaction fallback above reuses
   the same evacuation shape as sparse-block evacuation, applied to
   buffer blocks instead of whole arenas.

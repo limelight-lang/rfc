@@ -10,6 +10,56 @@ in one line; **cost** if any.
 
 ---
 
+### 2026-08-03 — strings: two layouts, no freeze, and the COW rule reads the category first
+
+Freeze is dropped and the two string layouts are settled (Edmond).
+Inline and dynamic differ only in where the bytes are; `len` and `hash`
+sit at the same offsets in both, so only byte access and teardown branch
+on the sub-mode. The layout is chosen by the compiler at allocation —
+dynamic where it sees the string being appended to — and there is **no
+runtime promotion between layouts**: rewriting the body under a header
+`rc-walk` may be reading concurrently is the same objection that killed
+freeze, and it is symmetric. **Why freeze fails:** it was specified as a
+mode-bit flip, and no bit moves bytes from inline to out of line. Its job
+is done instead by the ordinary COW rule, which now reads **category,
+then `IS_ESCAPEE`, then the count** — an immortal entity's count is
+pinned at 1 by the retain/release early-outs, so a bare count test would
+have grown an interned literal in place and overwritten its neighbour.
+A separating write on a dynamic string produces a **dynamic** copy, so
+an append loop stays linear after it. **Arena survivors:** promotion
+keeps the header where it is and reallocates the payload into the heap,
+because promotion retains the block the header lies in and would
+otherwise leave `data` pointing into a block returned to the pool;
+an OS-direct payload transfers ownership instead of being copied.
+**Rejected:** a third frozen sub-mode (keeps the dereference and the
+spare capacity for life); a single inline-only layout in the heap
+(makes `$obj->buf .= $x` quadratic). **Cost:** dynamic strings pay one
+dereference to reach their bytes, and surviving arena strings pay a copy
+of their payload at reset. The old `builder` name goes too:
+`ClassBuilder` already holds that word in `ll-model`, and `Buffer` is the
+primitive a dynamic string owns rather than is.
+
+### 2026-08-03 — a COW entity's refcount equals its number of holders
+
+The sharing test is only as good as the count, so the count is exact
+(Edmond): a second holder retains before it can write, and the compiler
+may elide a retain/release pair only where it proved no second holder
+arises. **Why:** deferred ARC lets the count lag the stack until the next
+safepoint. For lifetime that is harmless — the stack scan repairs it —
+but the COW test is consumed at the instant of the write and never
+revisited, so a lagging count means writing in place into a string
+somebody else holds, and the value is corrupted silently. **Rejected:**
+keeping deferred ARC for COW entities behind an analysis that proves
+non-sharing; that is tiers 1-2, which already carve COW out, and tier 3
+is precisely where no such proof exists. **The `IS_ESCAPEE` case is not
+covered by exactness at all:** while bit 11 is set the field holds the
+arena escape hold-count, so there is no reference count to read, and the
+rule there is to separate unconditionally — which promotes
+`ll-model/src/memory/barrier.rs`'s `debug_assert` into a normative rule
+in the conservative direction. **Cost:** strings and arrays forgo the
+deferred-ARC traffic reduction, the same price Zend pays for the same
+oracle.
+
 ### 2026-08-03 — `rc-satb` stays designed and unbuilt, with named triggers
 
 `rc-walk` overtook it on the one axis it was registered for. **Why:**

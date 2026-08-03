@@ -1016,11 +1016,12 @@ the two together leave unbought.
   walker cannot trace, so it is skipped totally and a ring passing through
   one is never collected. Conservative; revisit if FFI-heavy workloads
   leak.
-- **Cycles among promoted survivors.** Retained former-arena blocks sit
-  outside the registry, so their occupants are never walked — root
-  sources, by the corollary. A ring living entirely in retained blocks is
-  never collected. Conservative; revisit if promotion-heavy workloads
-  leak.
+*(**Cycles among promoted survivors** stood here until 2026-08-03.
+Retained former-arena blocks were unwalkable for want of a stride, so
+their occupants were root sources and a ring living entirely among them
+never died. The reset now keeps its survivor list as each retained
+block's object index and both walkers enumerate through it —
+[retained-block-walk.md](retained-block-walk.md).)*
 - **Multiple mutator threads** sharing `GcHeap` entities. Refcounts are
   non-atomic today, so the crate is single-mutator; actors will force this
   question and may force a per-thread epoch protocol — and will take the

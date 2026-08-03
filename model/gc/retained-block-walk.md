@@ -1,8 +1,16 @@
 # Walking retained blocks
 
-> **Status: proposal**, agreed 2026-07-28. Independent of the domain
-> work: it fixes a recorded limit of the shipped collector and touches
-> only the walk and the arena reset.
+> **Status: built**, 2026-08-03 (`ll-model` `memory/retained.rs`,
+> `promote.rs`, `heap.rs`, `collector.rs`). Independent of the domain
+> work: it fixed a recorded limit of the shipped collector, and the
+> limit has left rc-walk.md's "What this design does not solve".
+>
+> One thing the proposal understated: there are **two** enumerators, not
+> one. `heap::for_each_entity_slot` feeds the synchronous
+> `walk::collect_cycles`, `heap::snapshot_entity_blocks` feeds the
+> collector's epoch, and both had to learn the index — otherwise the two
+> collectors disagree about what is walkable and the synchronous walk
+> stops being the harness that validates the concurrent one.
 
 ## The limit
 
@@ -67,15 +75,22 @@ are few by the premise that makes retention worth doing at all.
   hold-count reads away from a foreign writer, and nothing here touches
   that race.
 
-## Owed before it lands
+## Owed before it lands — how each was settled
 
-- **Totality.** rc-walk.md's rule that row omission and edge omission
-  are one decision taken at one test must survive a census with two
-  sources (size-class blocks and retained indexes). One lookup that
-  consults both, not two lookups with two answers.
-- **Granularity.** One index per retained block or one per retained
-  set — a reset can retain several blocks, and the walk wants to find
-  the index from a block address.
-- **Lifetime.** The index is freed with the block; the existing "return
-  a fully-emptied retained block to the pool" mechanism is where that
-  hooks in.
+Reasons in full: `ll-model` `dev/DECISIONS.md`, 2026-08-03.
+
+- **Totality.** One lookup, as required. Both kinds of block live in the
+  same sorted payload list, and only the slot derivation branches after
+  the match: a size-class block divides its offset, a retained block
+  binary-searches its index. An exact-match miss rejects an interior or
+  stale address for the same reason the remainder test does.
+- **Granularity.** One index per retained block. Both enumerators reach
+  a block first — one by the 64 KiB alignment mask, the other by
+  scanning the region registry — so an index keyed by block address
+  costs no second mapping on the lookup path.
+- **Lifetime.** A registry keyed by block address owns the indexes
+  (`memory/retained.rs`) and `release(block)` drops one. Nothing calls
+  it yet, because a retained block never returns to the pool today; the
+  index therefore lives exactly as long as the retention it describes,
+  which is the correct lifetime rather than a leak. The call exists so
+  that the return mechanism, when it lands, hooks in with one line.

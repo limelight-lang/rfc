@@ -10,6 +10,30 @@ in one line; **cost** if any.
 
 ---
 
+### 2026-08-03 — `rc-satb` stays designed and unbuilt, with named triggers
+
+`rc-walk` overtook it on the one axis it was registered for. **Why:**
+`rc-satb` promises near-zero pauses and pays a deletion barrier on every
+overwriting store plus two all-thread safepoints per epoch; `rc-walk`
+pauses the mutator not at all and charges nothing on a reference store,
+because its roots are derived from the counts rather than enumerated.
+`satb.md` predates `rc-walk` and never mentions it. **Rejected:
+retiring it** the way MMTK was retired the same day — that was a slot
+with neither code nor plan behind it, whereas this has both a plan and
+properties `rc-walk` cannot acquire: marking terminates by
+construction, floating garbage is bounded by one epoch, liveness comes
+from reachability rather than completeness of the counts (the only
+defence against an ARC-elided borrow), and it is the recorded door to
+deferred reference counting. It is also the only spare collector whose
+failure modes do not overlap `rc-walk`'s. **Cost of keeping it:** a
+design that must be re-derived before use — and one defect found while
+deciding, now recorded in it as blocking: the root set omits FFI
+handles, so an entity held only by one would be swept under a live C
+pointer, turning `rc-walk`'s conservative leak into a use-after-free.
+**Triggers to build:** a measured `rc-walk` failure surviving a *built*
+escalation rung 4; `domains.md` failing on its largest hole after an
+honest attempt; or a decision to elide ARC past the covering-root rule.
+
 ### 2026-08-03 — MMTK is out; the registry offers no third-party backend
 
 MMTK will not be built (Edmond). The `mmtk:<plan>` row leaves the

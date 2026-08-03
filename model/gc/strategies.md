@@ -180,7 +180,7 @@ event with no live stack, outside any strategy
 | `rc` | ARC + arenas | **leaks cycles** | none | short CLI where cycles don't accumulate |
 | `rc-trace` | ARC + arenas + stop-the-thread cycle tracing | collected | small, bounded by live general heap | web workloads; the first implementation |
 | `rc-walk` **(default)** | ARC + arenas + barrier-free concurrent cycle walking, derived roots | collected | none on the mutator; the walk runs off-thread | the shipping strategy, see [rc-walk.md](rc-walk.md) |
-| `rc-satb` | ARC + arenas + concurrent SATB marking | collected | near-zero | latency-sensitive daemons, see [satb.md](satb.md) |
+| `rc-satb` | ARC + arenas + concurrent SATB marking | collected | near-zero: two all-thread safepoints per epoch | designed, deliberately unbuilt — see [satb.md](satb.md) |
 
 `nogc` is what the echo compiler ships today; `rc` is approximately
 elephc's model; `rc-trace` is the Zend architecture done right
@@ -277,11 +277,18 @@ The runtime therefore exposes only mechanism: `buffer_candidate`
 `ll_gc_maybe_collect` (fire if armed), and the reentrancy guard. No
 triggering policy lives in the model.
 
-## The flagship against pauses: `rc-satb`
+## `rc-satb`
 
 Same composition, one substitution: marking runs **concurrently** with
 the mutator, and correctness during marking is maintained by an SATB
 deletion barrier in the store slot. Design: [satb.md](satb.md).
+
+This section was headed "the flagship against pauses" until 2026-08-03,
+which the registry above already contradicted: `rc-walk` pauses the
+mutator not at all, while this design takes two all-thread safepoints
+per epoch and pays a barrier on every overwriting store. `rc-satb` is
+designed and deliberately unbuilt; satb.md's banner carries the reasons
+it is kept anyway and the triggers that would make it worth building.
 
 The GC/mutator coordination machinery in
 [heap-design.md](heap-design.md) (the lock-free CAS handoff and the

@@ -10,9 +10,35 @@ correctness argument, the deletion barrier, the epoch protocol, and the
 integration with the CAS handoff and deferred-free machinery from
 [heap-design.md](heap-design.md).
 
-Status: designed ahead of need. The default strategy `rc-trace` ships
-first; `rc-satb` is the build for latency-sensitive long-running
-processes.
+> **Status: designed, deliberately unbuilt** (reviewed 2026-08-03).
+> The sentence this banner replaces said `rc-trace` ships first and
+> `rc-satb` is the build for latency-sensitive processes. Both halves
+> are out of date: `rc-walk` has been the default build since
+> 2026-07-27, and it delivers concurrent collection **with no store
+> barrier and no pause at all** — this design's two all-thread
+> safepoints, SNAPSHOT and TERMINATE, are two more than `rc-walk` has.
+> On the axis `rc-satb` was registered for, it has been overtaken.
+>
+> It is kept, not retired, for the properties `rc-walk` cannot acquire
+> by any amount of work: marking **terminates by construction**, where
+> derived roots are re-derived and can be starved; floating garbage is
+> bounded by one epoch; liveness is by reachability rather than by
+> completeness of the counts, which is the only defence against an
+> elided borrow the ARC optimiser removed; and the door to deferred
+> reference counting stays open ([../../BACKLOG.md](../../BACKLOG.md)),
+> which `rc-walk`'s identity closes.
+>
+> What would make it worth building, so that "not now" is not
+> indefinite: a **measured** failure of `rc-walk` on a real workload
+> that survives its escalation ladder once rung 4 is actually built;
+> or [domains.md](domains.md) failing on its own largest hole after an
+> honest attempt, which would make a per-thread barrier the fallback
+> for the cyclic half of multithreading; or a decision to elide ARC
+> past the covering-root rule.
+>
+> Read the rest of this document as a design at that date. It predates
+> `rc-walk` entirely and knows nothing of eager death, the narrow
+> mutator, the checkpoint architecture or entity kinds.
 
 ---
 
@@ -201,6 +227,23 @@ Both coordination mechanisms defined in
 
 ## Open questions
 
+- **FFI roots are missing, and that is a soundness hole, not a gap.**
+  The root set above is stacks, globals and live-arena heap roots. An
+  entity whose only holder is a counted FFI handle appears in none of
+  them, so the marker never colours it, and sweeping frees it under a
+  live C pointer. `rc-walk` does not have this problem — an FFI handle
+  is a counted reference, so it roots its target arithmetically, and
+  skipping the wrapper's contents is a conservative leak
+  ([rc-walk.md](rc-walk.md), "What this design does not solve"). This
+  design trades that leak for a use-after-free, and closing it needs a
+  root registry that is not written down anywhere here. Nothing may be
+  built from this document until it is.
+- **The epoch trigger names machinery that no longer exists.** "Threshold
+  on cycle-candidate bytes" is the `rc-trace` candidate buffer, which
+  `rc-walk` removed along with the call tail it cost every non-zero
+  decrement. In an `rc-satb` build that tail comes back — build-time
+  selection means nothing is unwound in other builds — but the trigger
+  has to be re-derived rather than inherited.
 - **Epoch trigger calibration** — candidate-bytes threshold vs
   allocation volume; measure on real workloads.
 - **SATB queue overflow policy** — segment size, marker backpressure,

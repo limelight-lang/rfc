@@ -884,6 +884,19 @@ an explicit cycle collector covers that as it does any other cycle.
 
 ### Teardown at thread exit
 
+> **Built**, 2026-08-03 (`ll-model` `src/static_block.rs`). One thing
+> the design did not anticipate: this is the first work that makes
+> thread exit run *user code*, and the `__destruct` bodies it reaches
+> touch per-thread runtime structures. Rust registers a `thread_local!`
+> with drop glue for TLS destruction, destruction order is unspecified,
+> and on glibc it is reverse registration order — which destroys the
+> exit hook last, because it registers first. So the structures the
+> pass needs were reliably already gone, and the resulting panic cannot
+> unwind out of a destructor. Every such structure is now a pointer cell
+> with no drop glue, and thread exit disposes of them in an order it
+> fixes itself: static blocks, then the collector's per-thread state,
+> then the weak table, then the heaps.
+
 The counterpart of the static initializer above, and where a static
 block's roots are actually released. Without it a worker pool accumulates
 their graphs forever: the escape hold-count a static places on a

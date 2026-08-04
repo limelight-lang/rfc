@@ -340,8 +340,12 @@ promoted instead of copied.
 
 **The store can therefore fail**, since a copy is an allocation.
 `ll_store_ptr`, `ll_store_box` and `ll_ref_store` report it: on refusal
-the slot and every count are exactly as they were, and generated code
-raises memory-exhausted ([exceptions.md](../runtime/exceptions.md)). The
+the slot and every count are exactly as they were. That is what makes the
+refusal safe, and it is also what the caller must respect — an
+overwriting store is the publish **and then, only if it succeeded**, the
+drop of the displaced entity. Dropping after a refused publish releases
+the reference the slot still holds. Generated code then raises
+memory-exhausted ([exceptions.md](../runtime/exceptions.md)). The
 log reserve that funds the barrier's own allocations does not extend
 here — it works because a log record is fixed-size, and a copy is the
 size of the value.

@@ -679,8 +679,16 @@ fixed reserve can fund it — which is the whole reason the paragraph above
 does not cover it. It is also, unlike a lost log record, a failure with a
 sound continuation: refuse, leave the slot and every count untouched,
 raise memory-exhausted. `ll_store_ptr`, `ll_store_box` and `ll_ref_store`
-therefore return whether the store happened, and generated code checks
-it exactly where it checks a factory's null.
+therefore return whether the store happened.
+
+The check is **not** in the same position as a factory's null check, and
+the difference matters: an overwriting store is a publish followed by a
+drop of the displaced entity, and the drop is conditional on the publish.
+A factory site has no such pending second half. Emitting the drop after a
+refused publish releases the reference the slot still holds, which
+dangles it — in a program that is at that moment unwinding a
+memory-exhausted exception and may touch the slot in a `finally` or a
+destructor.
 
 That is one branch on the stores the compiler could not prove safe, not
 the Zend-shaped check after every store: where it knows the value is not

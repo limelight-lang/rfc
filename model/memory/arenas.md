@@ -112,9 +112,27 @@ evacuation and arrays are designed together (an array holder is many
 elements, and its storage rehashes, so a per-slot back-pointer is both
 expensive and unstable — the count is neither).
 
-**deepCopy at the barrier** remains as the eager variant for value-like
-data (COW strings/arrays), where copying is natural and reference identity
-is not observable.
+**deepCopy at the barrier** is what a COW entity gets, and it is not an
+alternative to the counter but the only route: built 2026-08-04. A store
+that puts a request-arena COW entity into a longer-lived slot allocates a
+copy in the GC heap, and the slot takes the copy — the escape hold-count
+is never touched. Copying is allowed here because a COW value has no
+identity a program can observe, which is exactly what an object has and
+why an object is counted and promoted instead.
+
+It also settles a collision the two mechanisms had over one field. The
+hold-count lives in `refcount` while bit 11 is set, and a COW entity's
+`refcount` is its exact holder count in every category
+([values.md](../values.md)); both cannot hold at once, and a COW entity
+that never escapes never has to. The COW write rule therefore has no
+`IS_ESCAPEE` arm at all.
+
+The cost is that a reference store can now fail, because a copy is an
+allocation: the barrier reports it and generated code raises
+memory-exhausted ([exceptions.md](../../runtime/exceptions.md)). The log
+reserve that funds the barrier's own allocations cannot cover this — it
+works because a log record is fixed-size, and a copy is the size of the
+value.
 
 **Static vs dynamic resolution** ([arena-promotion.md](arena-promotion.md)):
 when the compiler proves the escape within one function/scope, it

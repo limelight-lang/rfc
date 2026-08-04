@@ -670,6 +670,23 @@ check after every store stays rejected: the cost of correctness here is
 paid once, in a reserve, not on every store that succeeds. The reserve
 exists (see above); the abort behind it remains as the last resort.
 
+**Amended 2026-08-04: the barrier has one failure that is a real
+operation, and it does report.** A store that puts a request-arena COW
+entity into a longer-lived slot copies the value into the GC heap and
+stores the copy ([arenas.md](../model/memory/arenas.md), deepCopy at the
+barrier). That copy is an allocation the size of the value, so no
+fixed reserve can fund it — which is the whole reason the paragraph above
+does not cover it. It is also, unlike a lost log record, a failure with a
+sound continuation: refuse, leave the slot and every count untouched,
+raise memory-exhausted. `ll_store_ptr`, `ll_store_box` and `ll_ref_store`
+therefore return whether the store happened, and generated code checks
+it exactly where it checks a factory's null.
+
+That is one branch on the stores the compiler could not prove safe, not
+the Zend-shaped check after every store: where it knows the value is not
+arena-allocated, or the slot is not longer-lived, it emits no check
+because it emits no call.
+
 `ll_arena_track_destructor` uses the same mechanism but is **not** the
 same argument: a dropped destructor record does not dangle, it silently
 skips a `__destruct`, which is a semantic break rather than a

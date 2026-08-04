@@ -300,11 +300,17 @@ The rule that fires it:
 category is Immortal               → separate (the count is pinned at 1)
 category is LongLived              → separate (the count is maintained,
                                       but is no sharing signal)
-IS_ESCAPEE set                     → separate (the field counts escapes,
-                                      not references)
 COW && refcount > 1                → separate
 otherwise                          → write in place
 ```
+
+**There is no `IS_ESCAPEE` arm** (2026-08-04). There used to be, because
+while bit 11 is set the field holds an arena escape hold-count rather
+than a reference count. A COW entity can no longer carry that bit: the
+store barrier **copies** a COW value out of the arena instead of counting
+an escape into it (below), so the two readings of those four bytes never
+meet. The arm was a branch on the write path testing a bit nothing can
+set.
 
 Category before count, for a different reason in each of the two
 categories. On an **immortal** entity retain and release return early and
@@ -319,10 +325,26 @@ load and a relaxed store rather than a read-modify-write
 it unreliable the moment the entity is reachable from a second thread,
 and because `string_die` reclaims only the GC heap, so an in-place write
 would land in memory nothing releases. Both halves are recorded at
-`ll-model/src/refcount.rs::cow_separation_needed`. `IS_ESCAPEE` comes
-before the count for the same reason in the other direction: while bit 11
-is set, the field holds the arena escape hold-count, so no reference
-count is there to read.
+`ll-model/src/refcount.rs::cow_separation_needed`.
+
+**A COW value leaving the arena is copied at the store, not counted.**
+When a store puts a request-arena COW entity into a longer-lived slot,
+the store barrier allocates a copy in the GC heap and the slot takes the
+copy; the escape hold-count is never touched. This is the deep copy
+[arenas.md](memory/arenas.md) names for value-like data, and it is what
+makes the rule above have no `IS_ESCAPEE` arm: a COW entity cannot be an
+escapee, so bit 11 and the exact holder count never describe the same
+four bytes. Identity is the reason it is allowed — a COW value has none
+that a program can observe, while an object does and is therefore
+promoted instead of copied.
+
+**The store can therefore fail**, since a copy is an allocation.
+`ll_store_ptr`, `ll_store_box` and `ll_ref_store` report it: on refusal
+the slot and every count are exactly as they were, and generated code
+raises memory-exhausted ([exceptions.md](../runtime/exceptions.md)). The
+log reserve that funds the barrier's own allocations does not extend
+here — it works because a log record is fixed-size, and a copy is the
+size of the value.
 
 ### Refcount is always maintained on COW entities
 

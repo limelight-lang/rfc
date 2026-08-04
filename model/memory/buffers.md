@@ -24,12 +24,24 @@ and any future growable container built the same way.
 - **Long-lived / immortal**: no bump-top to extend. Growth is alloc-new +
   copy + free-old (`ll_realloc`-shaped). This is where isolation and
   reclaim strategy (below) matter.
-- **GC heap**: open. A dynamic string exists in the heap as well as the
-  arena ([strings.md](../strings.md)), so its payload needs an allocator
-  and a free routine there; the shape is the long-lived one, but which
-  allocator owns it — the object heap, the buffer arena, or `ll_alloc`
-  directly — is undecided, and the answer also decides who frees the
-  payload of a string promoted out of an arena.
+- **GC heap**: the buffer arena owns it, and the buffer arena obeys the
+  object heap's ownership rules (decided 2026-08-04). A string or array
+  is an object of reduced form, so its payload is an entity's body, and a
+  body is freed by whichever thread drops the last reference — the same
+  rule that governs an object. The buffer arena therefore carries what
+  the object heap carries: a per-block `owner`, a per-block lock-free
+  stack for frees arriving from another thread, an owner-written live
+  count so a block holding a posted chunk can never look empty, and
+  hand-over at thread exit — empty blocks to the pool, the rest to a
+  global abandoned list that the next thread adopts from. The payload of
+  a string promoted out of an arena is the same case: promotion copies it
+  into this arena, and it is freed by the same route.
+
+  Rejected: giving heap payloads to `ll_alloc` directly. It answers
+  cross-thread free for free, but it puts continuously varying,
+  realloc-heavy churn into size classes and back into the object heap,
+  which is the isolation this document exists to state. The isolation is
+  worth a protocol; it is not worth two ownership rules.
 
 ## Memory-Pressure Modes
 

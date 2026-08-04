@@ -11,16 +11,17 @@ contracts defined in [values.md](values.md).
 ## Layout
 
 ```
-inline:   RcHeader | len (u64) | hash (u64, lazy) | bytes... (inline)
-dynamic:  RcHeader | len (u64) | hash (u64, lazy) | data | capacity
-                                                     └──▶ bytes...
+          +0         +8          +12              +16           +24
+inline:   RcHeader | len (u32) | (spare)        | hash (u64) | bytes... (inline)
+dynamic:  RcHeader | len (u32) | capacity (u32) | hash (u64) | data
+                                                                └──▶ bytes...
 ```
 
 One allocation per inline string: the bytes follow the header (as in
 `zend_string`), so string access is one pointer dereference with no
 second hop. A dynamic string holds its bytes out of line so they can be
 reallocated as it grows, which costs one further dereference to reach
-them.
+them. Header sizes: 24 bytes inline, 32 dynamic.
 
 **`len` and `hash` sit at the same offsets in both layouts**, +8 and
 +16, so length and hash are read without deciding which layout this is.
@@ -29,9 +30,132 @@ layout is a `Buffer` ([memory/buffers.md](memory/buffers.md)) with the
 fields ordered to meet that constraint, not the `Buffer` struct embedded
 verbatim.
 
+**`len` is 32-bit so that `capacity` rides for free** (decided
+2026-08-04). An 8-byte `hash` has to start at a multiple of 8, so a
+32-bit length leaves four bytes of padding at +12 whatever we do with
+them; the dynamic layout spends them on its capacity. That takes the
+dynamic header from 40 bytes to 32 and costs the inline layout nothing —
+it keeps the padding empty and stays at 24. Narrowing `hash` as well
+would buy a further 8 bytes and drop short strings a size class (the
+heap steps by 16, so a 9-byte string moves from the 48-byte class to the
+32-byte one), but a 32-bit hash has to serve both the bucket index and
+the Swiss-table control byte, and full-hash collisions would start
+around 65k distinct keys. Not taken; revisit when Phase D says which
+string lengths actually dominate.
+
 The hash is computed on first use and cached. **Zero means "not
 computed"**: an append clears it, and the hash function maps a genuine
 zero to one so the sentinel stays unambiguous.
+
+### A string holds at most 4 GiB
+
+**Decision (2026-08-04)**: `len` and `capacity` are 32-bit, so a string
+is capped at `2^32 - 1` bytes. This is a limit of the language, not an
+implementation detail, and it belongs in the language reference.
+
+The cap is more generous than three of the runtimes we are measured
+against: Java and C# have capped strings at `2^31 - 1` since their first
+release, and V8 caps far lower still. It is stricter than PHP, whose
+`zend_string` carries a `size_t` length — a program that reads a 5 GiB
+file into one string works there and fails here. That case is real in
+batch and CLI work and absent from the web workloads the language is
+aimed at; PHP's own default `memory_limit` of 128 MB puts it out of
+reach of most deployments anyway.
+
+**Every path that grows a string checks the result against the cap and
+raises, through one shared choke point.** Concatenation, append, repeat,
+and whole-file reads all route through it. A silent truncation to 32
+bits would produce a write past the end of the buffer, which is the
+worst defect class available here, and one choke point is also the
+single place a future wider string would hook into.
+
+**Strings above the cap do not get a transparent representation.** A
+third physical form would put a branch in every string operation —
+comparison, concatenation, hashing, table lookup, promotion, teardown —
+which is exactly what the two-layout design avoids by keeping `len` and
+`hash` at shared offsets. It would also spend the last free entity kind:
+the kind field is three bits and seven of eight codes are taken
+(`ll-model/src/refcount.rs`, `EntityKind`). When strings beyond 4 GiB
+are genuinely needed, they arrive as a **separate class the programmer
+chooses** — a stream or a rope — not as a `string` that silently behaves
+differently.
+
+### The hash function is a build-time choice, defaulting to rapidhash v3
+
+**Decision (2026-08-04).** The string hash is **selected when the
+runtime is built**, exactly as the GC strategy already is — that is a
+cargo feature in `ll-model` with two implementations claiming the same
+header bits, and the hash is the second axis of the same kind. Nothing
+selects a hash at run time, so no call goes through a pointer on the
+path that matters, and a deployment whose threat model differs from the
+default's changes a build flag rather than the language.
+
+This is available to us because we compile the program ourselves:
+runtime bitcode and compiler-generated IR are merged and re-optimized
+together (`../runtime/implementation-language.md`), so a build-time
+constant reaches every call site as an inlined body. A library shipping
+one binary to unknown machines cannot do this and pays with a function
+pointer; we are only in that position in the portable-AOT mode, and only
+for the long path below.
+
+**The default: rapidhash v3 for short inputs**, vendored with its
+constants pinned, scalar, inlined at every call site. It is the fastest
+function that passes SMHasher3 clean, uses no vector or crypto
+instructions — so it inlines in every build mode including portable AOT —
+and is seedable. **Rejected: xxh3**, whose advantage is bulk throughput
+this workload never reaches and whose own tracker records
+seed-independent collisions found during development; **rejected:
+wyhash**, frozen at final4, superseded by rapidhash from the same author,
+and still failing the seed-sensitivity families; **rejected: gxhash and
+aHash**, which need AES instructions and therefore either a runtime
+dispatch or a build that will not inline into baseline-featured IR.
+
+**A frozen length threshold and a slot for a second function.** The
+threshold is part of the hash definition: compiler and runtime compare
+`len` against the same constant. The slot's first and only occupant is
+the short function, so the split ships as structure with nothing in it,
+and a later release can activate the second arm without touching the
+compiler/runtime contract — hashes never outlive a build artifact, so
+changing the algorithm between releases costs nothing.
+
+**HighwayHash-64 is the named candidate for that slot, and it is a
+security upgrade rather than a speed one.** Every published measurement
+puts it behind scalar rapidhash on bulk throughput, so a speed-motivated
+long path does not exist. A strength-motivated one does: an attacker
+picks key length and therefore picks which function processes their
+input, so total resistance is the weaker of the two, and the long side
+must be at least as strong as the short one or the split is a
+self-inflicted downgrade. HighwayHash's 256-bit key is never folded into
+compiler-emitted constants, so it can be per-process random even in the
+build mode where the short path's seed cannot be.
+
+**The threshold is a measurement, and there is no number yet.** No
+published scalar-to-SIMD crossover exists for either architecture;
+xxh3's internal 240-byte boundary is one author's tuning. It is measured
+in `ll-model`'s own harness before it is frozen.
+
+**Seeding.** Two secrets, both derived from one master seed, never
+sharing raw material: the short function is the weak one, and a shared
+seed would hand an attacker the long one along with it. The master is
+per-process where the compiler runs in-process (JIT) and per-build
+otherwise. In the AOT modes the seed is extractable from the artifact by
+anyone holding it, which is Java's and PHP's position rather than Go's —
+therefore **the hash table carries a structural backstop**: a probe-length
+counter with an escape hatch, so worst-case behaviour is bounded without
+depending on a secret.
+
+**The zero remap belongs to the frozen definition**, not to the caller:
+the hash function maps a genuine zero to a fixed non-zero constant, so
+the "not computed" sentinel stays unambiguous and the compiler folds the
+same value the runtime computes.
+
+**Still open: whether the compiler folds the hash of a literal key at
+all.** Folding removes the work from every literal-key access and
+requires compiler and runtime to share a seed inside one artifact; not
+folding costs a few multiplies per access and removes the shared secret
+entirely. The default until measured is **not folded**, because it is
+the option that keeps the security story simple, and because the cost it
+pays is the one this design is least short of.
 
 ---
 

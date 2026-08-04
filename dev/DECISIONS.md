@@ -10,6 +10,57 @@ in one line; **cost** if any.
 
 ---
 
+### 2026-08-04 — the string hash is chosen when the runtime is built, and defaults to rapidhash v3
+
+The hash becomes a build-time axis like the GC strategy already is — an
+`ll-model` cargo feature — with rapidhash v3 (vendored, constants
+pinned, scalar) as the default short-input function, a frozen length
+threshold, and a slot for a long-input function whose first occupant is
+the same one. **Why build time:** we compile runtime bitcode and
+generated IR together and re-optimize, so a build-time constant reaches
+every call site as an inlined body, while a runtime choice would put a
+function pointer on the hot path and cost the constant-folding of a
+literal key's hash. **Why rapidhash:** fastest function passing SMHasher3
+clean, no vector or crypto instructions, therefore inlinable in every
+build mode including portable AOT. **Rejected:** xxh3 (its win is bulk
+throughput this workload never reaches; seed-independent collisions on
+record from its development), wyhash (superseded by the same author,
+still failing the seed families), gxhash and aHash (need AES, so either a
+pointer or a build that will not inline into baseline-featured IR).
+**Long side is a strength decision, not a speed one:** an attacker picks
+key length and so picks the function, making total resistance the weaker
+of the two — HighwayHash-64 is the named candidate because it can carry a
+per-process 256-bit key even where the short path's seed is baked into
+the artifact. **Cost:** in the AOT modes the seed is extractable by
+anyone holding the binary, so the hash table must carry a structural
+backstop (probe-length counter with an escape hatch) rather than relying
+on a secret. **Open:** the threshold is a measurement not yet taken, and
+whether the compiler folds a literal key's hash at all — default until
+measured is not folded, which keeps the seed out of the artifact.
+
+### 2026-08-04 — a string is capped at 4 GiB, and the length gives up half its width to pay for capacity
+
+`len` becomes `u32` at +8; the dynamic layout spends the four bytes of
+padding at +12 on its `capacity`, taking that header from 40 bytes to
+32. `hash` stays 64-bit at +16, so the shared-offset rule is untouched.
+**Why:** an 8-byte `hash` must be 8-aligned, so a narrow length leaves
+that padding whatever we do with it — capacity rides for free, and the
+inline layout pays nothing, staying at 24 bytes. **Cost:** a 4 GiB limit
+on strings, which is language-visible; every growth path checks against
+it through one choke point and raises, since a silent 32-bit truncation
+would write past the buffer. More generous than Java and C# (`2^31 - 1`
+since release) and than V8; stricter than PHP, whose `zend_string` uses
+`size_t` — a program reading a 5 GiB file into one string works there
+and fails here. **Rejected: narrowing `hash` to 32 bits too**, which
+would save a further 8 bytes and drop a 9-byte string from the 48-byte
+size class to the 32-byte one — but that hash must serve both the bucket
+index and the Swiss-table control byte, and full-hash collisions would
+begin around 65k keys; revisit when Phase D shows the real length
+distribution. **Rejected: a transparent long-string form** — it would
+add a branch to every string operation and spend the last free
+`EntityKind` code (seven of eight taken). Strings beyond the cap arrive
+later as a separate class the programmer chooses, a stream or a rope.
+
 ### 2026-08-03 — the COW flag is the string layout, and a dynamic string never copies on write
 
 Supersedes the sub-mode bit and the separating append in the entry

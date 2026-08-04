@@ -16,7 +16,7 @@ architecture.
 
 **Decision**: `array` implements `ArrayInterface` (the language-facing
 type), but unlike the string split
-([strings.md](strings.md#mutability-modes-stringinterface-two-classes)),
+([strings.md](strings.md#two-layouts-behind-stringinterface)),
 the three storage strategies below stay **internal to one class**, not
 separate classes: transitions between them (see below) never change the
 object's `class` pointer, so there is no `!invariant.load` conflict here

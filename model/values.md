@@ -272,11 +272,12 @@ RcHeader | Value
 
 **Decision**: COW is not hard-wired to types. Any heap entity can carry
 the COW flag (one bit in `RcHeader.flags`). Strings and arrays are created
-COW by default; an array can also exist in non-COW (freely mutable)
-form. A string cannot: its dynamic representation grows in place only
-while one owner holds it and separates on an append by a shared owner,
-so COW governs both string layouts ([strings.md](strings.md)). Plain
-objects may opt *into* COW, giving value semantics.
+COW by default; both can exist in non-COW form. For a string the flag
+carries a second meaning it does not carry elsewhere: it **is** the
+layout — set means bytes inline, clear means a dynamic string with its
+bytes out of line — and it is fixed at creation for the life of the
+entity ([strings.md](strings.md)). Plain objects may opt *into* COW,
+giving value semantics.
 
 Write barrier, identical everywhere. Separation allocates a new entity,
 so the barrier takes the old pointer and returns the one the holder must

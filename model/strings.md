@@ -68,18 +68,30 @@ long-lived arena as immortal entities: one string = one address, equality
 
 **Revised decision**: inline and dynamic strings share the `string`
 entity kind and differ only in where the bytes are, so they are two
-**physical representations** selected by a sub-mode bit in the string
+**physical representations** selected by the **COW flag** already in the
 header (not two class descriptors — a string carries no class pointer),
 presented to the language behind a shared `StringInterface`:
 
-- **Inline string (default)** — bytes after the header, one allocation,
-  fixed size once allocated.
-- **Dynamic string** — bytes out of line, with spare capacity, so append
-  extends them in place instead of reallocating the whole string. The
-  indirection buys exactly that: growth moves the payload, while the
-  entity's own address must stay fixed (the GC never moves entities, and
-  the holders of a string are not enumerable). No PHP-level API is
-  defined yet; the runtime representation supports it natively.
+- **Inline string, `COW = 1`** (the default) — bytes after the header,
+  one allocation, fixed size once allocated.
+- **Dynamic string, `COW = 0`** — bytes out of line, with spare capacity,
+  so append extends them in place instead of reallocating the whole
+  string. The indirection buys exactly that: growth moves the payload,
+  while the entity's own address must stay fixed (the GC never moves
+  entities, and the holders of a string are not enumerable). No PHP-level
+  API is defined yet; the runtime representation supports it natively.
+
+**The COW flag is set at creation and does not change during the
+string's life.** No operation flips it: a string created without COW
+stays without it. This is what makes the flag readable as the layout —
+every path that needs to know where the bytes are reads a bit that
+cannot have moved since allocation. It also means no sub-mode bit is
+needed anywhere else in the header, which matters because the flags word
+has no free bit left (`ll-model/src/refcount.rs`, the layout test).
+
+Should a future operation ever need to change the flag, it changes the
+layout with it, and it is a copy, not a bit flip — the same argument
+that retired freeze below. No such operation exists.
 
 **Both layouts occur in every memory category.** The request arena and
 the GC heap differ in who releases the memory, not in how a string is
@@ -101,14 +113,12 @@ may be viewed as a string without copying; see
 
 ### Writes obey the COW rule; there is no freeze operation
 
-**Decision (2026-08-03)**: a dynamic string is never frozen. Every write
-— overwrite or append — runs the barrier rule in
-[values.md](values.md): immortal and long-lived separate always,
-`IS_ESCAPEE` separates always, `refcount > 1` separates, and only a sole
-owner writes in place. For a dynamic string writing in place means
-extending the buffer; **separation produces a dynamic copy**, not an
-inline one, so the writer keeps a growable string and an append loop
-stays linear after the copy.
+**Decision (2026-08-03)**: a dynamic string is never frozen. A write to
+an **inline** string runs the barrier rule in [values.md](values.md):
+immortal and long-lived separate always, `IS_ESCAPEE` separates always,
+`refcount > 1` separates, and only a sole owner writes in place. A
+**dynamic** string is outside that rule entirely (above): its write
+always goes in place and extends the buffer.
 
 Freeze was specified as a mode-bit flip, and a bit cannot perform one:
 the two layouts hold their bytes in different places, so moving between
@@ -124,9 +134,24 @@ therefore does not apply here — it guards a class-pointer load that a
 string never performs, since string methods are direct devirtualized
 calls to the final `String`.
 
-The free routine reads the sub-mode bit to pick teardown: an inline
-string frees only its own block, a dynamic string frees its out-of-line
-payload as well.
+The free routine reads the same flag to pick teardown: an inline string
+frees only its own block, a dynamic string frees its out-of-line payload
+as well.
+
+**A dynamic string never copies on write.** The barrier rule in
+[values.md](values.md) fires on `COW && refcount > 1`, and a dynamic
+string carries `COW = 0`, so it is outside that rule by construction —
+it is the non-COW, freely mutable form that flag has always denoted. A
+write goes in place, always, and no sharing test is performed.
+
+That is safe because the compiler only allocates a string dynamic where
+it has proved a single owner — an accumulator, a local builder, a value
+that never reaches a second holder. Where the proof fails it allocates
+inline COW instead, and the ordinary rule applies. The obligation is the
+same one already stated for tiers 1-2 in
+[memory/static-lifetimes.md](memory/static-lifetimes.md): a COW carve-out
+holds only where no sharing is observable. Here it is not a carve-out
+from counting but the allocation choice itself.
 
 ### An arena string that survives the reset takes its payload with it
 

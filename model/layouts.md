@@ -174,8 +174,10 @@ dynamic:          │ RcHeader │ len │ hash (lazy) │ data │ capacity │
 immortal:         inline; a write always separates
 ```
 
-One PHP type, two physical layouts, a sub-mode bit in the header
-selecting them. `len` and `hash` sit at the same offsets in both, so
+One PHP type, two physical layouts, the header's **COW flag** selecting
+them: set means inline, clear means dynamic. The flag is fixed at
+creation and never flips, so it is readable as the layout for the life
+of the entity. `len` and `hash` sit at the same offsets in both, so
 only the code reaching for the bytes branches on the bit; teardown
 branches too, because a dynamic string owns a second allocation. The
 header address stays stable and only the payload moves. The compiler

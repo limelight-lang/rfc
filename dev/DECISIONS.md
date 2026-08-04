@@ -10,6 +10,23 @@ in one line; **cost** if any.
 
 ---
 
+### 2026-08-03 — the COW flag is the string layout, and a dynamic string never copies on write
+
+Supersedes the sub-mode bit and the separating append in the entry
+below (Edmond). `COW = 1` means bytes inline, `COW = 0` means a dynamic
+string with its bytes out of line; the flag is set at allocation and
+never flips, so every path reads the layout from a bit that cannot have
+changed. **Why:** the flags word has no free bit — the layout test in
+`ll-model/src/refcount.rs` accounts for all 32 — and a dynamic string is
+exactly what the non-COW form of that flag has always denoted: freely
+mutable, no copy on write, no sharing test. **Consequence:** a dynamic
+string is outside the barrier rule, so its safety rests on the compiler
+allocating one only where it has proved a single owner; where the proof
+fails it allocates inline COW. **Rejected:** carrying the sub-mode in the
+high bit of `len` (free by construction, since no string reaches 2^63
+bytes) — unnecessary once the COW flag answers it, and it would have put
+a mask on every length read.
+
 ### 2026-08-03 — strings: two layouts, no freeze, and the COW rule reads the category first
 
 Freeze is dropped and the two string layouts are settled (Edmond).

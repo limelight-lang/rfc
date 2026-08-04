@@ -10,6 +10,29 @@ in one line; **cost** if any.
 
 ---
 
+### 2026-08-04 — folding a literal key's hash is a build option, and the seed goes with it
+
+Supersedes the "Open" clause of the entry below, which left folding
+undecided and defaulted to not folding. **Decided:** neither, it is
+selected — one option (`hash-folding` in `ll-model`, off by default)
+carries folding and the seed's home together, because a compiler that
+folds must know the seed while it compiles and a per-process seed is not
+knowable then. Off draws the seed from the OS per process; on fixes it at
+build time and folds. **Why optional:** the trade is real in both
+directions and belongs to whoever ships, not to the language. **Why off
+by default:** the folded arm puts the seed inside the artifact, and an
+attacker holding the artifact can then precompute colliding array keys.
+**What folding buys is one load per literal-key access**, not the "few
+multiplies" the entry below priced — a literal key is interned and its
+hash is computed once per process at intern time — and that gain is
+unmeasured. **Cost:** folded constants live in the program while the
+function lives in the runtime, and nothing in the linker compares them, so
+a folding build must carry a stamp of the hash's identity and check it at
+startup. **Still not answered by either arm:** hash flooding. rapidhash
+claims no resistance to key recovery from observed collisions, so the
+table's probe-length backstop remains the only real defence, and it is
+undesigned.
+
 ### 2026-08-04 — the string hash is chosen when the runtime is built, and defaults to rapidhash v3
 
 The hash becomes a build-time axis like the GC strategy already is — an

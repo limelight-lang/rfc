@@ -126,36 +126,78 @@ picks key length and therefore picks which function processes their
 input, so total resistance is the weaker of the two, and the long side
 must be at least as strong as the short one or the split is a
 self-inflicted downgrade. HighwayHash's 256-bit key is never folded into
-compiler-emitted constants, so it can be per-process random even in the
-build mode where the short path's seed cannot be.
+compiler-emitted constants — a long key is not a literal — so it stays
+per-process random even in a build that folds the short path's hashes and
+therefore fixes the short seed (below).
 
 **The threshold is a measurement, and there is no number yet.** No
 published scalar-to-SIMD crossover exists for either architecture;
 xxh3's internal 240-byte boundary is one author's tuning. It is measured
 in `ll-model`'s own harness before it is frozen.
 
-**Seeding.** Two secrets, both derived from one master seed, never
-sharing raw material: the short function is the weak one, and a shared
-seed would hand an attacker the long one along with it. The master is
-per-process where the compiler runs in-process (JIT) and per-build
-otherwise. In the AOT modes the seed is extractable from the artifact by
-anyone holding it, which is Java's and PHP's position rather than Go's —
-therefore **the hash table carries a structural backstop**: a probe-length
-counter with an escape hatch, so worst-case behaviour is bounded without
-depending on a secret.
+**Seeding.** Each function carries one keying value — rapidhash's 64-bit
+seed, HighwayHash's 256-bit key — and when the second arrives the two are
+read independently rather than derived from a common master: the short
+function is the weak one, and material shared with it hands an attacker
+the long one along with it. Nothing here keys the `secret[8]` array
+rapidhash takes beside its seed; those stay the reference's published
+constants, and making them per-deployment would put eight loads inside
+the bulk loop for no stated gain.
+
+**Where the seed lives follows folding**, decided 2026-08-04 (below):
+without folding it is drawn from the OS once per process, and with
+folding it is fixed at build time and travels inside the artifact, where
+anyone holding the artifact can read it. That is Java's and PHP's
+position rather than Go's, and it is why the choice is a build option
+rather than a default.
+
+**Neither position is a defence, and the table owes one.** A per-process
+seed raises the cost of hash flooding from reading a constant to mounting
+a timing attack, and no further: rapidhash descends from wyhash and
+claims no resistance to key recovery from observed collisions. Therefore
+**the hash table carries a structural backstop**: a probe-length counter
+with an escape hatch, so worst-case behaviour is bounded without
+depending on a secret. Until that exists, this design has no answer to an
+attacker who supplies array keys.
 
 **The zero remap belongs to the frozen definition**, not to the caller:
 the hash function maps a genuine zero to a fixed non-zero constant, so
 the "not computed" sentinel stays unambiguous and the compiler folds the
 same value the runtime computes.
 
-**Still open: whether the compiler folds the hash of a literal key at
-all.** Folding removes the work from every literal-key access and
-requires compiler and runtime to share a seed inside one artifact; not
-folding costs a few multiplies per access and removes the shared secret
-entirely. The default until measured is **not folded**, because it is
-the option that keeps the security story simple, and because the cost it
-pays is the one this design is least short of.
+### Folding a literal key's hash is a build option, off by default
+
+**Decision (2026-08-04),** replacing the open question this section used
+to leave — whether the compiler folds the hash of a literal key at all.
+It is not settled either way; it is selected, by one build option that
+carries the seed with it. `ll-model` calls it `hash-folding`.
+
+**Folding and the seed are one question, not two.** A compiler that folds
+has to know the seed while it compiles, and a seed drawn when the process
+starts is not knowable then. So the option selects a pair: folded plus a
+build-time seed, or unfolded plus a per-process one. Off is the default,
+because the default should be the arm an attacker cannot precompute
+against.
+
+**What folding buys is one load per literal-key access.** Not the "few
+multiplies" an earlier draft of this section priced: a literal key is an
+interned name, and an interned name is hashed once when it is created, so
+its hash is already computed once per process and read from the entity.
+Folding replaces a load from a permanently hot address with an immediate,
+and generated code needs the interned pointer regardless, for the
+identity compare. The gain is real and small, and it is unmeasured.
+
+**What it costs is two obligations.** The seed becomes readable by anyone
+holding the artifact, which is the whole of the security difference. And
+the compiler and the runtime must agree bit for bit — same function, same
+vendored version, same constants, same seed, same zero remap — across two
+binaries that nothing in the linker compares. A disagreement is silent:
+every folded constant is wrong and the symptom is lookups that miss.
+Therefore **a folding build carries a stamp**: each side records the
+identity of the hash it was built with, and generated code compares them
+once at startup and stops on a mismatch. Without folding there is nothing
+to stamp, and a program that folded anything mismatches by construction,
+which is the correct outcome.
 
 ---
 

@@ -300,6 +300,18 @@ construction: the rest die with the reset at no cost. The same
 obligation falls on arrays, whose storage is likewise out of line
 ([arrays.md](arrays.md)).
 
+**When the copy is refused** (2026-08-04, added with the
+implementation): the payload's block is retained after all, alongside the
+survivors' own, and the string reads its old bytes for the rest of its
+life. This is the one case where something other than a header's block
+stays out of circulation, and it exists because a reset has no caller
+left to report a refusal to — it runs at the end of a request, after the
+frame that could have raised. Teardown recognizes a payload in a retained
+block and leaves it alone; the block goes home when the retained block
+itself does. The transfer route cannot reach this case, since it
+allocates nothing — which is the second reason it is a transfer and not a
+copy.
+
 ---
 
 ## Interpolated String Class

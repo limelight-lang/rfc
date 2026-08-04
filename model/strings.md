@@ -217,10 +217,21 @@ Should a future operation ever need to change the flag, it changes the
 layout with it, and it is a copy, not a bit flip — the same argument
 that retired freeze below. No such operation exists.
 
-**Both layouts occur in every memory category.** The request arena and
-the GC heap differ in who releases the memory, not in how a string is
+**The inline layout occurs in every memory category; the dynamic one
+only in the GC heap and the request arena.** The request arena and the
+GC heap differ in who releases the memory, not in how a string is
 shaped: an arena string is reclaimed by the reset, a heap string by its
-own refcount reaching zero.
+own refcount reaching zero. The two categories the dynamic layout is
+refused in follow from its being the freely mutable non-COW form. An
+immortal dynamic string would be a process-wide shared string written in
+place, which is what the COW rule exists to prevent. A long-lived one
+would keep its payload forever: `string_die` returns the entity block
+only in the GC-heap category, and the arena payload is left to the reset,
+so nothing reclaims a long-lived string's out-of-line bytes.
+`ll_string_new_dynamic`
+returns null for both rather than redirecting the allocation, so a wrong
+category is a failure at the creation site instead of an entity in the
+wrong block (`ll-model/src/string.rs`).
 
 **Which layout a string gets is a compile-time decision.** The compiler
 allocates a string dynamic when it can see the string being appended to

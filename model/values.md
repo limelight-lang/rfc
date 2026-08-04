@@ -297,20 +297,32 @@ string ([memory/ffi.md](memory/ffi.md)).
 The rule that fires it:
 
 ```c
-category is Immortal or LongLived  → separate (the count is pinned)
+category is Immortal               → separate (the count is pinned at 1)
+category is LongLived              → separate (the count is maintained,
+                                      but is no sharing signal)
 IS_ESCAPEE set                     → separate (the field counts escapes,
                                       not references)
 COW && refcount > 1                → separate
 otherwise                          → write in place
 ```
 
-Category before count, because retain and release return early on an
-immortal entity and leave its count at 1 forever
-(`ll-model/src/refcount.rs`); reading that 1 as "sole owner" would
-overwrite an interned string shared process-wide. `IS_ESCAPEE` before
-count for the same reason in the other direction: while bit 11 is set,
-the field holds the arena escape hold-count, so no reference count is
-there to read.
+Category before count, for a different reason in each of the two
+categories. On an **immortal** entity retain and release return early and
+leave the count at 1 forever (`ll-model/src/refcount.rs`), so reading
+that 1 as "sole owner" would overwrite an interned string shared
+process-wide. A **long-lived** COW entity takes neither early return —
+the first needs the COW flag clear, the second needs the Immortal
+category — so its count is maintained in full, and "pinned" does not
+describe it. It separates because the count is maintained by a relaxed
+load and a relaxed store rather than a read-modify-write
+(`refcount::refcount_store`, the narrow-mutator amendment), which makes
+it unreliable the moment the entity is reachable from a second thread,
+and because `string_die` reclaims only the GC heap, so an in-place write
+would land in memory nothing releases. Both halves are recorded at
+`ll-model/src/refcount.rs::cow_separation_needed`. `IS_ESCAPEE` comes
+before the count for the same reason in the other direction: while bit 11
+is set, the field holds the arena escape hold-count, so no reference
+count is there to read.
 
 ### Refcount is always maintained on COW entities
 

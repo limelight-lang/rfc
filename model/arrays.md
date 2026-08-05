@@ -7,8 +7,8 @@ The ArrayBox: the three storage implementations behind the single
 ValueBox/unboxed and COW contracts from [values.md](values.md).
 
 The detailed hashtable design (bucket layout, collision strategy,
-iteration order preservation) is a future document; this one fixes the
-architecture.
+iteration order preservation) is [arrays-hashtable.md](arrays-hashtable.md);
+this one fixes the architecture.
 
 ---
 

@@ -46,9 +46,10 @@ into proper RFCs when picked up.
   may be. Deferred 2026-07-28; until then what the class graph cannot
   settle falls back to a traversal at send time
   ([model/gc/domains.md](model/gc/domains.md) §3).
-- **Array hashtable design** — bucket layout, collision strategy,
-  iteration-order preservation, mechanics of the mixed-vector → hash
-  migration ([arrays.md](model/arrays.md)).
+- ~~**Array hashtable design**~~ — written 2026-08-05,
+  [arrays-hashtable.md](model/arrays-hashtable.md). What it leaves open is
+  listed there and is a matter of measurement, not of design: which index
+  layer, the compaction threshold, and the two flood constants.
 - **Closures** — capture (by-value / by-ref), `$this` binding,
   first-class callable syntax.
 - **ReferenceBox representation** — revisit how a PHP `&` reference is

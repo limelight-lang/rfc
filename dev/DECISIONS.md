@@ -10,6 +10,55 @@ in one line; **cost** if any.
 
 ---
 
+### 2026-08-05 — the array hashtable is an index array over a dense insertion-ordered entry array, and the collision link moves out of the element
+
+**Decided:** one allocation of `u32` index slots plus a dense 40-byte
+entry array in insertion order; a lookup is two dependent accesses, and
+no order-preserving design does better. The collision link is an explicit
+`next` field at +16 rather than Zend's trick of threading it through the
+element's own padding — `values.md` forbids per-slot state in bytes 10..15
+because the store barrier writes all sixteen, so a value store would sever
+the chain. The ValueBox sits last, at +24, so no write it performs reaches
+the key or the link. **Rejected: SwissTable as storage** — insertion order
+forces a dense ordered array to exist anyway, and iterating a control-byte
+table costs about twice a dense stride (measured 6.8 against 1.2 ns per
+element at 8 M). **Cost:** 40 bytes per entry against Zend's 32, plus 8
+bytes of index at load 0.5.
+
+### 2026-08-05 — the index layer is replaceable and the choice waits on a measurement nobody has
+
+**Decided:** chains on `u32` are the default; the alternative is a `u64`
+slot fusing a 7-bit fingerprint with the entry index, which is still two
+dependent accesses. The entry array, promotion, the tracer and every
+observable semantic are identical under both. **Why:** measured over a
+byte-identical entry array, the fused slot wins absent-key lookups
+(16.0 against 26.3 ns at 8 M) and loses badly after deletion (12.4 against
+3.2 ns at 100 k), because an open-addressed slot cannot be freed and
+becomes a tombstone, and a table that is deleted from and then only read
+never reaches a rebuild. Moving the rebuild onto the delete path raised
+deletion at 4 M from 18.7 to 61.3 ns. **What decides it:** the ratio of
+`isset`-shaped lookups to reads in real PHP, unmeasured by anyone.
+
+### 2026-08-05 — the flood backstop counts equal full hashes on insertion and escalates once to a keyed hash
+
+**Decided:** count, per insert and against current state, the entries met
+whose full 64-bit hash equals the new key's (constant threshold, since
+eight-way agreement by chance needs ~2^56 keys) and the chain length.
+Firing on the first escalates the table once to a keyed byte hash and sets
+a one-way mode bit; firing on the second redraws the per-table salt.
+Integer keys are indexed through a salted avalanche mix, not by value, so
+`0, 1024, 2048, …` no longer share a bucket. **Why:** rapidhash is in the
+family with published seed-independent multicollisions, so a salt over the
+index cannot separate equal-hash keys, and redrawing it in response to
+them is what made Perl's REHASH exploitable (CVE-2013-1667). **Rejected:
+treeification** — the nodes fit neither beside a 16-byte ValueBox nor as
+indices into an order-preserving array, and side allocation would make the
+attacked path an attacker-triggered allocation. **Rejected: firing on
+lookup** — `isset()` must not allocate, must not reallocate storage under
+a live iterator, and has no synchronisation on a shared table. **Cost:**
+one multiply on hash-resident integer keys, and folded hash constants go
+unused in an escalated table.
+
 ### 2026-08-05 — the template object is an ordinary object, and nothing about it is generated per site except its class
 
 **Decided:** parts and values alternate with empty parts allowed, so

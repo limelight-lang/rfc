@@ -68,26 +68,33 @@ here. What decides it is the ratio of absent-key lookups (`isset`, `??`,
 `array_key_exists`) to present-key lookups in real PHP, which nobody has
 measured.
 
-Measured on this design's two index shapes over a byte-identical entry array
-(one core of an i7-11700K, gcc -O2 -march=native, integer keys, best of three,
-nanoseconds per operation):
+**No measurement in this repository currently supports a choice between them,
+and the ones that were attempted are withdrawn.** Both index shapes were
+benchmarked over a byte-identical entry array on 2026-08-05, and an independent
+review of the harness found four defects that between them void the comparison:
+every table size was a power of two, so the open-addressed index was allocated
+twice the slots it needed and ran at load 0.500 rather than the 0.875 it exists
+for — the stated comparison was never executed; the mixed workload sized its
+tables for a theoretical peak and ran at loads between 0.016 and 0.508; the
+tombstone rebuild that was supposed to distinguish two of the runs could not
+fire at the sizes tested; and the deletion rule was not the one it was modelled
+on, so it truncated the probe sequence of unrelated keys and lost live entries
+at a rate of roughly one per seven hundred operations at realistic load. Earlier
+runs had already been invalidated twice — once for timing a `memset` of an
+oversized index, once for probing keys in insertion order, which walks the entry
+array sequentially and erases the very cost the control byte exists to avoid.
 
-| operation | size | chained u32 | fused fingerprint |
-|---|---|---|---|
-| lookup, key present | 8 M | 40.8 | 42.4 |
-| lookup, key absent | 8 M | 26.3 | **16.0** |
-| iteration, per element | 8 M | 1.2 | 1.2 |
-| delete every key | 1 M | **13.8** | 15.6 |
-| lookup after deleting half | 100 k | **3.2** | 12.4 |
+What survives is qualitative and is why chains are the default here: an
+order-preserving table needs the dense entry array regardless, so the index is
+the only variable; PHP arrays are mostly small, and at small sizes the whole
+table is cache-resident, which is precisely where a control byte buys nothing
+and its extra work shows; deletion is frequent in PHP, and unlinking a chain
+leaves nothing behind, while an open-addressed slot cannot be freed without
+truncating the probe sequence of keys that passed over it and therefore leaves a
+tombstone to be cleaned later. Iteration is unaffected either way, since it is a
+property of the entry array.
 
-Iteration is identical because it is a property of the entry array, not of the
-index. The last row is tombstones: an open-addressed slot cannot be freed on
-deletion without truncating the probe sequence of keys that passed over it, so it
-becomes a tombstone, and a table that is deleted from and then only read never
-reaches the rebuild that would clear them. Moving the rebuild onto the delete
-path raised deletion at 4 M keys from 18.7 ns to 61.3 ns, because rebuilding
-scans the entry array including its holes. Chains have no tombstone: unlinking
-shortens the chain.
+The measurement that would settle it is specified in "Open" below.
 
 ---
 
@@ -323,8 +330,20 @@ reserves with `unreachable!("no COW copy for this entity kind yet")`.
   signal.
 - **The recursion-depth guard** on the escape copy, since nesting depth is
   attacker-shaped input on a store path.
-- **The measurements' limits**: the fused index was measured with scalar
-  fingerprint comparison rather than a SIMD group probe, so its numbers are a
-  lower bound; keys were integers; and everything was measured on one x86 core,
-  while `BACKLOG.md` names small ARM cores as targets, where the memory-level
-  parallelism that hides a dependent access is scarcer.
+- **The index measurement, done properly.** What the withdrawn attempt has to
+  fix before its numbers mean anything: size each table at its own design load
+  (0.5 chained, 0.875 open-addressed) rather than at a shared power of two; let
+  growth, compaction and index rebuild run inside the timed region, since the
+  design puts the cost there; make an insert a lookup-then-insert, which is what
+  a PHP write is; probe in a shuffled order; assert the achieved hit count
+  inside every timed loop, which is the check that would have caught all four
+  defects; interleave the two implementations within one run and pin the clock,
+  because the between-run spread on this box reached 50 % and exceeded every
+  difference being read; and measure string keys as well as integers, since a
+  string key comparison is a length test and a `memcmp` rather than one
+  register compare. Until then the default stands on the structural argument
+  above, not on numbers.
+- **ARM.** Everything attempted so far ran on one x86 core. The SIMD group probe
+  has no single-instruction equivalent on NEON, and the memory-level parallelism
+  that hides a dependent access is scarcer on the small cores `BACKLOG.md` names
+  as targets, so both halves of the comparison move there.

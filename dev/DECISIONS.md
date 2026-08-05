@@ -10,6 +10,32 @@ in one line; **cost** if any.
 
 ---
 
+### 2026-08-05 — the index measurements are withdrawn, and the default stands on structure rather than on numbers
+
+**Decided:** the benchmark numbers quoted in the entry below are retracted, and
+`arrays-hashtable.md` no longer carries them. An independent review of the
+harness found four defects: every table size was a power of two, so the
+open-addressed index was allocated twice the slots it needed and never ran above
+load 0.500 — the comparison the numbers claimed to make was never executed; the
+mixed workload sized its tables for a theoretical peak and ran between loads
+0.016 and 0.508; the tombstone rebuild that was supposed to separate two of the
+runs could not fire at the sizes tested, so the explanation given for their
+disagreement was false; and the deletion rule was not the one it was modelled
+on, truncating the probe sequence of unrelated keys and losing live entries at
+roughly one per seven hundred operations at realistic load. Two earlier defects
+in the same harness had already been found and fixed — a timed `memset` of an
+oversized index, and probing in insertion order, which walks the entry array
+sequentially and erases the cost the control byte exists to avoid. **Why this is
+recorded rather than quietly corrected:** the same numbers were used twice to
+reverse a design conclusion in one day, and the failure mode is a harness that
+silently measures a different structure than the one named. **Cost:** the choice
+of index layer is now explicitly undecided; the requirements for a measurement
+that would decide it are listed in the document's "Open" section. **What does
+not change:** chains remain the default, on the structural argument — the dense
+ordered entry array is required either way, PHP arrays are mostly small and
+cache-resident where a control byte buys nothing, and deletion is frequent while
+an open-addressed slot cannot be freed without leaving a tombstone.
+
 ### 2026-08-05 — the array hashtable is an index array over a dense insertion-ordered entry array, and the collision link moves out of the element
 
 **Decided:** one allocation of `u32` index slots plus a dense 40-byte

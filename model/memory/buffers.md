@@ -122,7 +122,22 @@ L2-residency of a walk holds by construction, not by hope.
   entirely.
 - `critical` mode: allocation pops from a block's list first, searching
   at most the first *K* entries (bounded, tunable) before falling back
-  to bump.
+  to bump. *K* is the budget for the whole search, not per block: the
+  lists of every block the arena owns are candidates, current first, and
+  a per-block budget would make the walk grow with the number of blocks.
+- Each block header also keeps **its own bump cursor**, so the block and
+  not the arena owns its unused tail. That is what makes an adopted
+  block reusable: allocation resumes the tail its previous owner left,
+  in every pressure mode, since bumping into a tail is bump allocation
+  and not hole reuse. Without it a block abandoned holding one small
+  chunk keeps a whole block out of circulation until that chunk dies.
+  The order on the refill path is adopt, then any owned tail, then the
+  pool. Adoption goes first, unlike the object heap, which reaches its
+  abandoned list only when no owned block has room: a block with no owner
+  has nobody to collect the frees still being posted into it, and one
+  pickup per rotation bounds how many such blocks accumulate. The cost is
+  that an arena holds foreign blocks it can never empty and walks a
+  longer chain per rotation.
 
 **Known limit — no coalescing, ever**: adjacent free chunks are never
 merged (that would need boundary tags, rejected below), so a block can

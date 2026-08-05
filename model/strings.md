@@ -383,8 +383,9 @@ values: [$id, $status]
   compiler** — rules below.
 - A structure-aware consumer receives the template object itself and
   processes parts and values independently. The canonical case is a SQL
-  driver that parameterizes the values instead of splicing them; SQL
-  injection becomes impossible by construction. Same for HTML escaping.
+  driver that parameterizes the values instead of splicing them, and it
+  gets that **only where it asked for it** — see rule 2. Same for HTML
+  escaping.
 - Precedents: C# `FormattableString`, JS tagged templates.
 
 ### Rule 1: a template used once and never stored is never built
@@ -425,9 +426,51 @@ storing one — it holds pointers to temporaries. A template that never
 escapes the expression has nothing to gain from being an object and costs
 an allocation, a header and a later free.
 
-*(Rules for the cases this one does not cover — a structure-aware
-consumer, and a result whose type the compiler cannot see — are being
-decided.)*
+### Rule 2: the template object is built only where the destination asked for it
+
+**Decision (2026-08-05).** Materialization is the default everywhere. A
+template object exists only when the **declared type of the destination**
+is the template interface — a parameter, a property, or a typed local:
+
+```php
+function query(InterpolateStringInterface $sql) { ... }
+
+$db->query("SELECT * FROM users WHERE id = $id");   // template
+$x = "$y 234";                                       // string, always
+```
+
+The decision is made at the site from the signature. **No forward flow
+analysis is required**, and none is performed: the compiler does not ask
+where a value will end up, only what the thing receiving it declares. An
+explicit accessor on the interpolation is the same mechanism written by
+hand, for the case where no declared type is in reach.
+
+**Why the destination and not the source.** The alternative is to keep
+the template whenever the compiler cannot prove nobody wants its
+structure, and materialize otherwise. That defaults to allocating in
+every untyped site, which in this language is most of them, and it makes
+the cost of an interpolation depend on an analysis the reader cannot see.
+Deciding from the declared type is one lookup, it is visible in the
+source, and the author of an API opts in once for all of its callers —
+the arrangement C# uses, where the parameter type selects the
+interpolated-string handler.
+
+**The consequence, stated rather than buried.** The protection follows
+the declared type, so it is lost when a value reaches the call through an
+untyped variable:
+
+```php
+$q = "SELECT * FROM users WHERE id = $id";   // no declared type: materialized here
+$db->query($q);                              // receives a string; nothing to parameterize
+```
+
+Writing `InterpolateStringInterface $q = "..."` keeps it. So SQL
+injection is impossible **by construction wherever the API declares the
+interface and the call reaches it directly** — not unconditionally, and
+the earlier wording in this section said otherwise.
+
+*(Still open: the shape of the template object itself and how it
+flattens — rule 3.)*
 
 **Planned extension (later)**: a public API on the template object, plus
 compile-time machinery: an additional *type* and a *handler* attached at

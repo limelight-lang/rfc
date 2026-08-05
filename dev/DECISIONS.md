@@ -10,6 +10,27 @@ in one line; **cost** if any.
 
 ---
 
+### 2026-08-05 — the template object is built only where the destination's declared type asks for it
+
+**Decided:** materialization is the default everywhere; a template object
+exists only when the declared type of the destination — a parameter, a
+property, a typed local — is the template interface. `$db->query(...)`
+with `query(InterpolateStringInterface $sql)` builds a template;
+`$x = "$y 234"` builds a string, always. **Why:** the decision is one
+lookup at the site, visible in the source, and the API author opts in
+once for every caller — the arrangement C# uses, where the parameter type
+selects the handler. **Rejected:** keeping the template wherever the
+compiler cannot prove nobody wants the structure, which allocates at
+every untyped site and makes the cost of an interpolation depend on an
+analysis the reader cannot see; and forward flow analysis from the
+assignment, which is more machinery for the same answer. **Cost, and it
+is not small:** the protection follows the declared type, so a value that
+reaches a call through an untyped variable was already materialized and
+arrives as a string. SQL injection is impossible by construction where
+the API declares the interface and the call reaches it directly, not
+unconditionally — the section's earlier wording claimed more than that
+and has been corrected.
+
 ### 2026-08-05 — an interpolated string used once and never stored is never built
 
 **Decided:** the compiler decides at the interpolation site. Where it can

@@ -21,9 +21,21 @@ and any future growable container built the same way.
   non-issue: the whole arena resets together, so an abandoned old payload
   is reclaimed for free at request end. No dedicated isolation needed
   here.
-- **Long-lived / immortal**: no bump-top to extend. Growth is alloc-new +
-  copy + free-old (`ll_realloc`-shaped). This is where isolation and
-  reclaim strategy (below) matter.
+- **Long-lived / immortal**: the buffer arena bump-allocates too, so
+  growth extends in place on the same condition as the request arena — the
+  payload's end is the arena's bump — and is alloc-new + copy + free-old
+  (`ll_realloc`-shaped) otherwise. This is where isolation and reclaim
+  strategy (below) matter. *(Amended 2026-08-05: this bullet used to say
+  there was no bump top here, which was written before the buffer arena
+  took its present form.)*
+
+  **The in-place path runs ahead of hole reuse in every mode, `critical`
+  included**, which is the one place it departs from the ordering below.
+  Extending costs the difference between the two capacities and leaves no
+  hole; moving into a hole costs a copy and leaves one the size of the old
+  payload. Since holes never coalesce here, an append loop served by hole
+  reuse produces a chain of them at 64, 128, 256 bytes — each too small for
+  the step that follows.
 - **GC heap**: the buffer arena owns it, and the buffer arena obeys the
   object heap's ownership rules (decided 2026-08-04). A string or array
   is an object of reduced form, so its payload is an entity's body, and a

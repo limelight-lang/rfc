@@ -469,8 +469,60 @@ injection is impossible **by construction wherever the API declares the
 interface and the call reaches it directly** — not unconditionally, and
 the earlier wording in this section said otherwise.
 
-*(Still open: the shape of the template object itself and how it
-flattens — rule 3.)*
+### Rule 3: the shape of the template object, and how it flattens
+
+**Decision (2026-08-05).**
+
+**Parts and values alternate, and empty parts are allowed.** A template is
+part, value, part, … part, so there is always exactly one more part than
+there are values. `"$a$b"` is three parts, the first and last empty. This
+is what removes the offset map: with the order fixed, there is nothing
+left to encode. JS tagged templates fix the same invariant
+(`strings.length === values.length + 1`) for the same reason.
+
+**The parts live on the class, the values in the instance.** Every
+interpolation site gets its own generated class, and the parts are
+compile-time constants shared by every pass through that site — interned
+immortal strings, so no refcounting and nothing for the collector to
+trace. The instance is `RcHeader | class | Value[n]`: an ordinary object
+of fixed size, walked by the ordinary object tracer through its box runs.
+No new entity kind, no variable-length body, no arrays.
+
+**No cached flattened result.** An earlier draft gave the object a slot
+for one. Rule 2 removed the reason: an object now exists only where the
+destination declared the interface, so its consumer is structure-aware by
+construction and flattens rarely, if at all. Eight bytes on every
+instance to serve a path most instances never take is the wrong trade —
+whoever flattens keeps the result.
+
+**One shared flattening routine, not a generated method per site.** The
+unroll-or-loop question dissolves once rules 1 and 2 separate the cases:
+the common path builds no object and is straight-line generated code,
+where unrolling is a codegen decision; the object path is the rare one,
+and emitting a function per site for it spends binary size on what is
+seldom called. The shared routine walks the class's part table. No
+threshold to measure.
+
+**Flattening is two passes**, as in Zend's `ZEND_ROPE_END`: sum the
+lengths, allocate the result once, copy each piece into place. Two
+refinements on it:
+
+- A value that is not already a string is written **into the result
+  directly** where its length can be known first — an integer's digit
+  count is cheap. Zend builds a temporary string per value and copies
+  that in, paying two copies; C# avoids the same cost through
+  `ISpanFormattable`.
+- **All user code runs before the allocation.** `__toString` is user
+  code and may do anything, so the first pass performs every such call
+  and holds the strings it produced; only then is the result allocated.
+  The values have been read into locals by that point, so user code
+  cannot change what is being assembled. What it can still do is flatten
+  the same template again, producing a second result — harmless unless
+  `__toString` is impure, and Zend is exposed to exactly the same thing.
+
+**The instance is an ordinary object**, so the ordinary memory-category
+rules apply. Its typical shape — built at a call site and consumed by the
+callee — puts it in the request arena.
 
 **Planned extension (later)**: a public API on the template object, plus
 compile-time machinery: an additional *type* and a *handler* attached at

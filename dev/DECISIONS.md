@@ -10,6 +10,27 @@ in one line; **cost** if any.
 
 ---
 
+### 2026-08-05 — the template object is an ordinary object, and nothing about it is generated per site except its class
+
+**Decided:** parts and values alternate with empty parts allowed, so
+there is always one more part than values and the offset map disappears —
+the order is the encoding (JS tagged templates fix the same invariant).
+Parts are interned immortal strings on the per-site class; the instance
+is `RcHeader | class | Value[n]`, fixed size, walked by the ordinary
+object tracer. **No new entity kind and no arrays**, which is what the
+whole shape was chosen to avoid. **Dropped: the cached flattened
+result** — rule 2 made the object's only consumer a structure-aware one,
+which flattens rarely, so a slot on every instance serves a path most
+never take. **Dropped: a generated flatten method per site** — rules 1
+and 2 separated the cases, so the common path is straight-line code with
+no object and the object path is rare; a function per site spends binary
+size on what is seldom called, and the unroll threshold nobody could have
+measured stops mattering. **Flattening** is Zend's two passes (sum,
+allocate once, copy) with a value written into the result directly where
+its length is knowable first, and with every `__toString` call completed
+*before* the allocation, so user code cannot change what is being
+assembled under it.
+
 ### 2026-08-05 — the template object is built only where the destination's declared type asks for it
 
 **Decided:** materialization is the default everywhere; a template object

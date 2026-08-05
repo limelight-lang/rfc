@@ -480,13 +480,23 @@ is what removes the offset map: with the order fixed, there is nothing
 left to encode. JS tagged templates fix the same invariant
 (`strings.length === values.length + 1`) for the same reason.
 
-**The parts live on the class, the values in the instance.** Every
-interpolation site gets its own generated class, and the parts are
-compile-time constants shared by every pass through that site — interned
-immortal strings, so no refcounting and nothing for the collector to
-trace. The instance is `RcHeader | class | Value[n]`: an ordinary object
-of fixed size, walked by the ordinary object tracer through its box runs.
-No new entity kind, no variable-length body, no arrays.
+**The parts live in the site's static data, the values in the instance.**
+The parts are compile-time constants shared by every pass through that
+site — interned immortal strings, so no refcounting and nothing for the
+collector to trace — and the compiler emits them once per site as a
+**shape**: a count and a pointer to that many parts, never allocated and
+never freed. The instance is `RcHeader | class | shape | Value[n]`: an
+ordinary entity, no new entity kind, no arrays.
+
+**One class serves every site** (Edmond, 2026-08-05, amending this rule's
+first draft, which gave each site a generated class). The site's identity
+is its shape, and a class per site would generate a class per string
+literal for no gain — the consumer's declared type is the same interface
+either way. What it costs is that the number of values is a property of
+the instance rather than of the class, so the body's length comes from
+the shape, and the three walks that read an object's children take one
+branch on the class flag instead of reading the class's box runs. That
+branch is the whole price, and it is paid in one place.
 
 **No cached flattened result.** An earlier draft gave the object a slot
 for one. Rule 2 removed the reason: an object now exists only where the
@@ -500,7 +510,7 @@ unroll-or-loop question dissolves once rules 1 and 2 separate the cases:
 the common path builds no object and is straight-line generated code,
 where unrolling is a codegen decision; the object path is the rare one,
 and emitting a function per site for it spends binary size on what is
-seldom called. The shared routine walks the class's part table. No
+seldom called. The shared routine walks the site's shape. No
 threshold to measure.
 
 **Flattening is two passes**, as in Zend's `ZEND_ROPE_END`: sum the

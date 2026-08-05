@@ -10,6 +10,25 @@ in one line; **cost** if any.
 
 ---
 
+### 2026-08-05 — an interpolated string used once and never stored is never built
+
+**Decided:** the compiler decides at the interpolation site. Where it can
+see that the result is consumed as a plain string and does not outlive the
+expression, no template object exists at run time — the site compiles to
+string assembly. `$x = "$y + 1"` is `$x = $y . ' + 1'`. **Why:** a template
+that never escapes the expression gains nothing from being an object and
+costs an allocation, a header and a free. **Assembly is one pass** — sum
+the lengths, allocate once, copy each piece — because a chain of binary
+concatenations produces an intermediate string per join; the two coincide
+only at two pieces, which is why Zend keeps `FAST_CONCAT` beside its rope.
+**Rejected:** guessing the result length the way C#'s handler does
+(`literal_length + holes * 11`), because that trade assumes growth is
+expensive and ours is not — a payload at the bump top grows without a copy;
+and a stored lazily-flattened template for this case, which is LLVM
+`Twine`'s shape and which `Twine` itself forbids storing. **Open:** the
+rules for a structure-aware consumer and for a result whose type the
+compiler cannot see.
+
 ### 2026-08-04 — folding a literal key's hash is a build option, and the seed goes with it
 
 Supersedes the "Open" clause of the entry below, which left folding

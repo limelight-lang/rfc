@@ -378,13 +378,56 @@ parts:  ["SELECT * FROM users WHERE id = ", " AND status = "]
 values: [$id, $status]
 ```
 
-- A consumer that just wants a string gets the flattened result (exact
-  flattening point TBD, likely on first use as a plain string).
+- A consumer that just wants a string gets the flattened result. **Where
+  that flattening happens is decided at the interpolation site by the
+  compiler** — rules below.
 - A structure-aware consumer receives the template object itself and
   processes parts and values independently. The canonical case is a SQL
   driver that parameterizes the values instead of splicing them; SQL
   injection becomes impossible by construction. Same for HTML escaping.
 - Precedents: C# `FormattableString`, JS tagged templates.
+
+### Rule 1: a template used once and never stored is never built
+
+**Decision (2026-08-05).** When the compiler can see that the
+interpolation's result is consumed as a plain string and does not outlive
+the expression, **no template object exists at run time**. The site
+compiles to string assembly and nothing else. `$x = "$y + 1"` really is
+`$x = $y . ' + 1'`.
+
+**Assembly is one pass, not a chain of concatenations.** Sum the lengths
+of every piece, allocate the result once, copy each piece into place. A
+chain of binary `.` produces an intermediate string per join; the single
+pass produces none. The two coincide at exactly two pieces, which is why
+Zend keeps `FAST_CONCAT` for that case and its rope for the rest —
+`ZEND_ROPE_INIT` / `ROPE_ADD` fill a flat array of string pointers in
+compiler-allocated frame slots, and `ZEND_ROPE_END` sums, allocates once
+and memcpys (`Zend/zend_vm_def.h`).
+
+**A value that is not already a string is written straight into the
+result** where its length can be known before writing — an integer's
+digit count is cheap to compute. Zend does not do this: it builds a
+temporary string per value and copies that in, paying two copies.
+C# avoids the same cost through `ISpanFormattable`, writing into the
+destination buffer directly.
+
+**Rejected: guessing the length.** C#'s handler is constructed with the
+literal length and the hole count and reserves
+`literal_length + holes * 11` characters, growing if it guessed low. That
+trade favours a runtime where growth is expensive. Ours is not: a
+long-lived payload that is still the last chunk bumped grows by moving
+the bump, with no copy (`memory/buffers.md`). Exact measurement costs one
+pass over pieces already in cache and removes the guess entirely.
+
+**Rejected: a stored template that flattens lazily, for this case.** It
+is the shape LLVM's `Twine` has, and `Twine`'s own documentation forbids
+storing one — it holds pointers to temporaries. A template that never
+escapes the expression has nothing to gain from being an object and costs
+an allocation, a header and a later free.
+
+*(Rules for the cases this one does not cover — a structure-aware
+consumer, and a result whose type the compiler cannot see — are being
+decided.)*
 
 **Planned extension (later)**: a public API on the template object, plus
 compile-time machinery: an additional *type* and a *handler* attached at

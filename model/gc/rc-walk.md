@@ -273,6 +273,15 @@ An entity announces its kind in header bits 12–14 ([classes.md](../classes.md)
 only kinds 0 and 6 carry a class pointer there, and reaching for
 `traced_runs` through a class that does not exist is a wild read.
 
+**The concurrent walker is this walk, not a second one.** It differs only
+in reading the entity's own words relaxed-atomically instead of plainly —
+which it must, since a plain read against a live mutator's store is
+undefined behaviour rather than the torn read Phases 3 and 4 exist to
+repair — so it is the same per-layout stride under a different reader
+([classes.md](../classes.md), "Why tracing stays data"). A separate copy
+of each stride for the collector is how kinds came to be traced by one
+walk and missed by another.
+
 - **Object (0), lazy object (6)** — traced through the class's
   `traced_runs`.
 - **Array (2)** — traced through the element ValueBoxes in its storage. Arrays

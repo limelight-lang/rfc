@@ -649,6 +649,20 @@ generated body loops over `traced_runs` rather than unrolling ("Generated
 body shape" above), converging on the trace's own form — but still reached
 by the indirect call the trace never pays.
 
+**"Data" does not mean one stride per consumer.** Several operations walk
+the same runs — the quiescent tracer, the drain's sever, the arena reset,
+and a concurrent collector — and they differ in how the memory is read,
+not in where the children are. A concurrent walker must read the entity's
+own words atomically, since a plain read racing a mutator store is
+undefined behaviour rather than a torn value, while a descriptor and a
+template shape are immortal and are read plainly by every walker. So the
+stride is written once and parameterized by the reader; each instantiation
+still monomorphizes to a bare loop, and the indirect call the trace never
+pays is not reintroduced. Writing the stride out per consumer instead is
+what the runtime did until 2026-08-06, and it cost a defect on each
+layout change: the interpolated template's per-instance value count had to
+be taught to three walkers, and the third was found only by review.
+
 ---
 
 ## Class Descriptor

@@ -316,9 +316,12 @@ documents** (2026-07-22); what remains open is at the end.
 - **Optimistic devirtualization of `static::` call sites** with patching
   on subclass load (CHA-style) — JIT phase
   ([classes.md](model/classes.md)).
-- **Interning of runtime-built name strings** — intern on first use vs
-  hash-only matching; decide during stdlib work
-  ([classes.md](model/classes.md)).
+- ~~**Interning of runtime-built name strings**~~ — decided 2026-08-06,
+  and neither of the two options this entry offered: a runtime-built name
+  is matched against the interned table by hash and confirmed by
+  `memcmp`, and never interned at all
+  ([classes.md](model/classes.md), "A runtime-built name is matched,
+  never interned").
 - **`?float` niche via non-canonical NaN payloads** — would shrink
   `?float` back to 8 bytes; requires NaN canonicalization on stores;
   considered too subtle for phase 1 ([values.md](model/values.md)).

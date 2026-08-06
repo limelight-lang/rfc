@@ -1077,11 +1077,17 @@ Each entry in `prop_layout` carries access flags: `plain` / `get-hook` / `set-ho
 
 All names known at compile time (classes, methods, properties, interfaces) are interned into the **immortal region** as immortal strings: one string = one address for the lifetime of the process. The region is load-bearing twice over — it is what makes the address permanent, and [values.md](values.md)'s COW rule branches on the category, taking the immortal arm (count pinned, a write always separates) rather than the long-lived one.
 
-- Name equality = pointer compare, no `memcmp`.
+- Name equality **between interned names** = pointer compare, no `memcmp`. The qualifier is load-bearing; see the runtime-built name below.
 - The hash is computed once and stored next to the string.
 - Immortal strings generate zero refcount traffic (flags category `11`).
 
-Slow-path lookups (`$obj->$name()`, `__call`, dynamic property access) compare against interned names; a name string constructed at runtime is interned (or matched by precomputed hash) before the search.
+### A runtime-built name is matched, never interned
+
+**Decision**: a name string constructed at runtime — `$obj->$name()`, `$obj->{$expr}`, `call_user_func` — is **canonicalized by one comparison at the boundary and never enters the immortal region**. The slow path hashes it, probes `methods` by that hash, and confirms the candidate by length plus `memcmp` against the interned key. On a match the search proceeds with the canonical interned pointer, so every path downstream still compares by pointer; on a miss it goes to `__call` or the error.
+
+**Why not the two options this replaces.** *Interning on first use* makes an append-only, never-freed, process-wide table reachable from attacker-shaped input in a long-lived worker — and in the crate as it stands it is worse than unbounded growth: `immortal_alloc` refuses nothing above one block payload, so `$obj->{str_repeat('a', 100000)}()` would terminate the worker rather than raise. It also puts a global lock on a dispatch path. *Hash-only matching* keeps the table clean but breaks the pointer-equality invariant above in the direction that cannot be detected: two distinct names sharing a 64-bit hash resolve to each other, so `$obj->$a` reads `$b`'s property. Constructed collisions in this hash family are the premise of the array table's own flood defence ([arrays-hashtable.md](arrays-hashtable.md)), so this is a reachable case, not a theoretical one.
+
+**What it costs**: one `memcmp` on a path that is already the slow path, and no pointer identity for a dynamically built name — a site that dispatches the same constructed name repeatedly pays hash plus `memcmp` every time. Whether such sites are common enough to earn a per-site cache keyed on (class, name) is a question for profiling, not for now.
 
 ---
 

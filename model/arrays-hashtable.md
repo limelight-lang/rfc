@@ -88,21 +88,47 @@ regime is the one where the entry array has left cache.
 measurement: iteration walks the entry array and reads no index, and the entry
 array is the same under both.
 
+**The decision rests on the small and middle sizes, and on an assumption named
+here so it can be tested.** The chained margin at N ≤ 3584 is 1.5x to 3x on
+build, both lookups and delete, at sizes where the whole table is L1- or
+L2-resident — so it is the cost of the path itself, two arrays and a group probe
+against one slot read, and not an effect of memory latency. Go reports the same
+shape from the other side: a 28-46 % regression on maps of eight elements or
+fewer after its move to control bytes. The assumption is **not** that PHP arrays
+are small — a small dense integer array is strategy 2 and never reaches this
+table — but that the tables which do reach strategy 3 are mostly small and
+middling associative ones: rows from a database, configuration, request
+parameters. That is plausible and unmeasured, and it is the assumption to attack
+first if this default ever looks wrong.
+
 **What this comparison does not establish.** Keys were integers used as their own
 hash, so a key comparison was one register compare; a real string key costs a
 length test and a `memcmp`, which the control byte filters away at seven bits and
-a chain does not — that is the one corner where the alternative stays alive and
-it has not been measured. The index memory goes the other way, roughly 9.1 bytes
-per entry chained against 5.7 for the control byte. A mixed workload was run and
-is **not** quoted here: at the largest size it forced one table doubling in the
-control-byte arm and none in the chained arm, so a single 71 ms growth event sat
-inside a 116 ms measurement, and after that doubling the table ran at 0.438
-rather than 0.875 — the row measures neither index at its design point. One core,
-one x86 machine, WSL2 with no control over the frequency governor.
+a chain does not. The index memory goes the other way, roughly 9.1 bytes per
+entry chained against 5.7 for the control byte — about 7 % of the table at a
+40-byte entry, and the entry's `next` field is not part of that cost, since
+removing it leaves 36 bytes that the ValueBox's 8-byte alignment rounds back up
+to 40. The comparison is equal-N with each index at its own design load; an
+equal-memory comparison would let the control byte run near 0.55 instead of
+0.875 and would cheapen its miss, but only at the large sizes where the two
+already meet within the spread. A mixed workload was run and is **not** quoted
+here: at the largest size it forced one table doubling in the control-byte arm
+and none in the chained arm, so a single 71 ms growth event sat inside a 116 ms
+measurement, and after that doubling the table ran at 0.438 rather than 0.875 —
+the row measures neither index at its design point. One core, one x86 machine,
+WSL2 with no control over the frequency governor.
+
+**Two non-performance grounds point the same way.** The flood backstop's first
+trigger counts entries whose full 64-bit hash equals the new key's; a chain walk
+visits exactly those candidates and reads the hash from an entry it has already
+loaded, while a control-byte probe walks a run that includes unrelated keys, so
+the counter is noisier there. And `BACKLOG.md` names small ARM cores as targets,
+where NEON has no single-instruction movemask: chains need no second probe
+implementation.
 
 Nothing above changes the entry array, promotion, the tracer, or any observable
-semantics, so the index remains replaceable if the string-key measurement in
-"Open" comes out the other way.
+semantics, so the index stays replaceable — but it is a decision now, not a
+deferral, and what would reverse it is stated in "Open".
 
 ---
 
@@ -330,8 +356,14 @@ reserves with `unreachable!("no COW copy for this entity kind yet")`.
 
 ## Open
 
-- **The index layer**, pending the ratio of absent-key to present-key lookups on
-  real PHP code. The entry array is designed so that either shape fits.
+- **The index layer is decided, and the string-key run is its check rather than
+  its prerequisite.** The cancellation threshold, named in advance so the result
+  cannot be read to taste: if the control-byte index wins both lookups by 1.5x
+  or more at N between 56 and 28 672 on string keys of realistic length, without
+  its deletion margin worsening, the default changes. This is not expected — a
+  chain compares the full 64-bit hash before any `memcmp`, so the seven-bit tag
+  saves only the entry load for candidates that do not match, and at load 0.5
+  there are few of those.
 - **The compaction threshold**, currently Zend's ~3 % by borrowing rather than by
   measurement.
 - **The two flood constants**, and whether escalation raises an operations-visible

@@ -10,6 +10,31 @@ in one line; **cost** if any.
 
 ---
 
+### 2026-08-06 — the chained index is the decision, not the default pending a measurement
+
+**Decided:** the array hashtable indexes its entry array with chains, and the
+question is closed rather than deferred. **Why now, without the equal-memory run
+that was owed:** the margin lives at the sizes strategy 3 actually sees — 1.5x to
+3x on build, both lookups and delete at N up to a few thousand, where the whole
+table is cache-resident, so it is the cost of the path (two arrays and a group
+probe against one slot read) rather than an effect of memory latency. An
+equal-memory run would let the control-byte index run near load 0.55 and cheapen
+its miss, but only at the large sizes where the two already meet within the
+spread; it cannot move the small-N columns the decision rests on. **The
+assumption it does rest on, stated so it can be attacked:** not that PHP arrays
+are small — a small dense integer array is strategy 2 and never reaches the hash
+— but that the tables reaching strategy 3 are mostly small and middling
+associative ones. **Two non-performance grounds agree:** the flood backstop
+counts entries with an equal full hash, which a chain walk visits exactly while a
+probe run includes unrelated keys, so the counter is cleaner; and NEON has no
+single-instruction movemask, so chains need no second probe implementation for
+the ARM targets. **Cost:** about 3.4 bytes more index per entry, ~7 % of a
+40-byte entry. The `next` field is not part of that cost — without it the entry
+is 36 bytes, which the ValueBox's alignment rounds back to 40. **What reverses
+it,** named in advance in the document: the control-byte index winning both
+lookups by 1.5x or more on string keys at N from 56 to 28 672 without a worse
+deletion margin.
+
 ### 2026-08-06 — the index comparison is measured at design load, and the control byte's advantage does not survive it
 
 **Decided:** chains stay the default on measured grounds for integer keys. The

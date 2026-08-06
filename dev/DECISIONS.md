@@ -10,6 +10,33 @@ in one line; **cost** if any.
 
 ---
 
+### 2026-08-06 — no cache in this runtime carries a replacement policy, and the personality routine gets a flag bit
+
+**Decided:** `model/caches.md` is written, and its answer is negative — no LRU,
+LFU, ARC or CLOCK anywhere. **Why:** nine production runtimes were read at source
+level (Zend, V8, HotSpot, HHVM, CPython 3.12 and `main`, PyPy, LuaJIT,
+JavaScriptCore, CoreCLR) and not one uses a classical policy for a dispatch,
+property, method or type cache; every one overwrites in place, because the
+entries are two or three words and any policy costs metadata work on every hit.
+**The industry's one exception is a checklist Limelight fails.** HotSpot's code
+cache qualifies because entries are kilobytes, the recency signal is free from an
+entry barrier that already exists, reclamation batches into an existing pause,
+and the policy disables itself under no pressure. `rc-walk` pauses the mutator
+not at all, AOT calls are direct so there is no entry barrier, and nothing here
+scans another thread's stack — so the conclusion is that **nothing qualifies,
+including a future compiled-code region**, which therefore grows monotonically.
+**Rejected imports:** HHVM's per-request generation byte, which names no site
+here and is unsound for an actor that migrates between threads; and a CPython
+class version stamp, which answers a question PHP cannot ask. **Also decided,
+in `runtime/exceptions.md`:** the personality routine — the one genuinely
+megamorphic site, since it sees a different class per call and has no site to
+attach a cache to — takes a `Throwable` bit in the class flags plus the sorted
+itable's binary search. A shared megamorphic table was rejected there: it would
+buy back only the two-compare search while re-introducing the multi-writer
+problem that per-site words avoid. **Standing rule recorded with it:** every
+capacity limit names a degradation path, and it is never an abort — there is no
+interpreter to fall back to here, so every path must be exact.
+
 ### 2026-08-06 — an inline cache site is one word pointing at an immutable pair
 
 **Decided:** a site holds one word, published with a release store, pointing at a

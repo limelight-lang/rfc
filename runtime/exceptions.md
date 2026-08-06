@@ -523,11 +523,29 @@ answer rather than being glossed:
   exist inside a shared personality routine, which sees a different
   class on every call.
 
-Options, to be decided before implementation: reserve a bit in the class
-flags for "implements Throwable" (making the catch-all a single test),
-give the well-known root interfaces fixed slots, or sort the itable and
-binary-search. The first is cheap and covers the case that actually
-dominates.
+**Decided 2026-08-06: a `Throwable` bit in the class flags, plus the
+sorted itable's binary search for everything else.** The case split is
+lopsided, which is what makes the decision easy. A `catch` of a *class* —
+including `Exception` and `Error`, which are classes — is already O(1)
+off the Cohen display. The interface catches that occur in practice are
+almost entirely `\Throwable`, and one bit tested with a load and a branch
+covers them; the bit is stamped at link time when `Throwable` appears in
+the closure of `interfaces`. A rare user-interface catch falls back to the
+itable, which is already sorted by interface id, so it is two or three
+compares over a handful of entries — inside unwinding, off every hot path
+by construction.
+
+Rejected: fixed slots for well-known root interfaces, which tax every
+class's itable layout to speed a case the bit already owns, with no second
+root interface occurring in catch position. Also rejected: a shared
+megamorphic cache in the style of V8's or JavaScriptCore's stub cache.
+This is the one genuinely megamorphic site in the runtime, so it is where
+such a cache would belong — but the stream is a different class per call,
+so a cache would buy back only the two-compare search it replaces, while
+inheriting the multi-writer problem that
+[lowering.md](../model/lowering.md) solves for ordinary sites by giving
+each one a private word. A personality routine has no site to make
+private.
 
 **Classes not yet linked.** A `catch` of a class that has not been
 loaded must fail to match *without* triggering loading. Action entries

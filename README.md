@@ -17,7 +17,7 @@ pluggable garbage collection instead of a one-size-fits-all VM heap.
 | Static lifetimes | The compiler tracks ownership and moves, Rust-style but with a runtime fallback instead of compile errors. Proven objects get zero refcounting and a scheduled destructor call | [static-lifetimes](model/memory/static-lifetimes.md) |
 | Pluggable GC | The collector is a build-time strategy behind a fixed contract. Default `rc-trace`: ARC + arenas + stop-the-thread cycle tracing. Flagship against pauses: concurrent SATB marking | [strategies](model/gc/strategies.md), [satb](model/gc/satb.md), [heap-design](model/gc/heap-design.md) |
 | Actors | `#[Actor]` classes own their arenas and execute serially; queues are the only door between actors. Collection runs per actor at message boundaries; each actor may bind its own GC | [actors](runtime/actors.md) |
-| Object model | C++-grade dispatch for PHP: inline-trailing vtables, COM-style itables, fat interface references, inline caches that never invalidate | [classes](model/classes.md), [lowering](model/lowering.md) |
+| Object model | C++-grade dispatch for PHP: inline-trailing vtables, COM-style itables, fat interface references, inline caches that never invalidate | [classes](model/classes.md), [lowering](model/lowering.md), [caches](model/caches.md) |
 | Exceptions | Three channels — table-driven unwinding, an error-return channel, and a non-catchable bailout for fatals — with the **compiler** choosing, not the programmer. The return channel is also the portability floor: it needs no host support, which is what makes the embedded/WASM/JVM modes possible. Design has known open defects, listed in the document | [exceptions](runtime/exceptions.md) |
 | Values | 16-byte ValueBox for the dynamic world, raw unboxed slots for declared types, COW as a per-object flag | [values](model/values.md), [strings](model/strings.md), [arrays](model/arrays.md) |
 
@@ -28,8 +28,10 @@ pluggable garbage collection instead of a one-size-fits-all VM heap.
 - [values.md](model/values.md) — ValueBox/unboxed contracts, Optional, `UNINIT`, COW protocol
 - [strings.md](model/strings.md) — string layout, string-as-class, interpolated template class
 - [arrays.md](model/arrays.md) — one `array` class, three storage strategies
+- [arrays-hashtable.md](model/arrays-hashtable.md) — the ordered hash: entry layout, index, deletion, flood defence
 - [classes.md](model/classes.md) — object layout, class descriptors, vtables, itables, property access
 - [lowering.md](model/lowering.md) — the C structures and LLVM IR behind the model
+- [caches.md](model/caches.md) — every cache site, why none carries a replacement policy, and what each does when it fills
 - [model/memory/](model/memory/README.md) — arenas, arena reset, static lifetimes, ARC optimizations
 - [model/gc/](model/gc/README.md) — GC strategies, SATB, heap design, research survey
 

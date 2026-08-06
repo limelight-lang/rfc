@@ -1093,12 +1093,17 @@ All names known at compile time (classes, methods, properties, interfaces) are i
 
 ## Inline Caches
 
-Monomorphic IC per call site / property access site: cache the pair (class pointer, resolved target). Hit = one pointer compare + direct jump.
+Monomorphic IC per call site / property access site, holding the pair (class pointer, resolved target). Hit = one pointer compare + direct jump.
 
-Two already-made decisions make ICs unusually cheap in Limelight:
+**The site is one word holding a pointer to that pair, not two words holding its halves** — the pair is immutable, baked at class link time beside its method-table entry, so a site update publishes a complete record rather than assembling one in place. Two independent mutable words would let a reader on one thread pair another thread's class with a third thread's target and dispatch the wrong method silently; the IR, the ordering and the alternatives are in [lowering.md](lowering.md), "Unknown receiver".
+
+Three already-made decisions make ICs unusually cheap in Limelight:
 
 1. **Non-moving GC** ([heap-design.md](gc/heap-design.md)): class descriptors and direct-pointer objects never move, so a cached class pointer cannot be invalidated by relocation (a movable-proxy target keeps the same class-pointer value regardless).
-2. **Classes are immutable after link**: PHP has no runtime monkey-patching of class methods. A conditionally-declared class (`if (...) { class A {} }`) produces a distinct descriptor at link time. Consequently ICs never require an invalidation mechanism.
+2. **Classes are immutable after link**: PHP has no runtime monkey-patching of class methods. A conditionally-declared class (`if (...) { class A {} }`) produces a distinct descriptor at link time.
+3. **Descriptors are immortal** ("Class Descriptor" above): an address is never recycled, so a stale cache entry cannot become a *false* hit on a different class.
+
+Consequently the class half of an IC never requires an invalidation mechanism. **The target half requires one invariant, which is stated because it is the thing a tiering JIT would break: compiled code is immortal.** Phase 1 is pure AOT and satisfies it trivially. `lowering.md` carries what changes if that ever stops being true.
 
 ---
 

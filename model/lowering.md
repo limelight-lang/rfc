@@ -235,31 +235,86 @@ cache used for unknown receivers.
 
 ### Unknown receiver — monomorphic inline cache
 
-Per call site, two private globals:
+**A site is one word, and it holds a pointer to an immutable pair.** The pair
+`(class, target)` is baked at class link time beside the method-table entry it
+belongs to, in the immortal region, and is never written again. The site's word
+is the only mutable state, and it is published with a release store:
 
 ```llvm
-@site42.cls = private global ptr null
-@site42.fn  = private global ptr null
+@site42 = private global ptr null                ; -> const { ptr cls; ptr fn; }
 
   %cls    = load ptr, ptr getelementptr(i8, ptr %obj, i64 8)
-  %cached = load ptr, ptr @site42.cls
-  %hit    = icmp eq ptr %cls, %cached
+  %pair   = load atomic ptr, ptr @site42 acquire, align 8
+  %pcls   = load ptr, ptr %pair                  ; null-pair guarded, below
+  %hit    = icmp eq ptr %cls, %pcls
   br i1 %hit, label %fast, label %slow, !prof !likely
 
 fast:
-  %fn = load ptr, ptr @site42.fn
-  %r1 = call %Value %fn(ptr %obj, ...)          ; one compare + direct call
+  %fn = load ptr, ptr getelementptr(i8, ptr %pair, i64 8)
+  %r1 = call %Value %fn(ptr %obj, ...)           ; one compare + direct call
   br label %join
 
-slow:                                           ; interned-name lookup in
-  %r2 = call %Value @ll_call_by_name(ptr %obj,  ; cls->methods, then __call;
-             ptr @iname.foo, ...)               ; updates @site42.*
+slow:                                            ; interned-name lookup in
+  %r2 = call %Value @ll_call_by_name(ptr %obj,   ; cls->methods, then __call;
+             ptr @iname.foo, ...)                ; release-stores @site42
   br label %join
 ```
 
-The cache never needs invalidation: classes are immutable after link and
-the GC is non-moving, so a cached class pointer stays valid forever. A miss
-means genuine polymorphism at that site.
+An uninitialized site points at a static null pair — `{ null, null }` — rather
+than being null itself, so the fast path needs no separate emptiness test: no
+object's class pointer is null, so the compare simply fails and the site takes
+the slow path once.
+
+**Why one word and not two.** Two independent globals — a class word and a
+target word, both written by the slow path — are not safely readable by more
+than one thread: a reader can observe one thread's class beside another
+thread's target and call the wrong function on the wrong class, silently and
+without any memory error. The runtime is multi-threaded by construction
+(per-thread heaps, `ll_thread_exit`, actors), and every thread executing a site
+writes it. Publishing a pointer to a pair that was already complete before it
+became reachable removes the race by construction rather than by ordering: the
+two halves are never written after link, and only the pointer to them moves.
+
+**Why the pair is baked at link time and not allocated on a miss.** Allocating
+a fresh pair per cache update would let a bimorphic site in a hot loop grow the
+immortal region without bound — execution-driven growth of a region that is
+never reclaimed. The pair costs 16 bytes per method-table entry, once per class,
+and a site transition is then one store and no allocation at all. The slow path
+already resolves the name to a method-table entry, so the pair is on the line it
+has just read.
+
+**Ordering.** The store is release and the load acquire. On x86-64 the acquire
+load is an ordinary load; on ARM64 it is one `ldar`/`ldapr`, which the Android
+and iOS targets in `BACKLOG.md` pay once per dynamic dispatch. The pair's own
+fields need no atomics, being immutable.
+
+Interface-conversion sites and property sites take the same shape, with the
+pair's second half an itable pointer or a slot offset. A `__call` resolution is
+not cached: the site re-enters the slow path, which is where `__call` belongs.
+
+**Alternatives, priced.** A seqlock over two words costs two extra loads and a
+branch on every hit, which is worse than the pair's one added level of
+indirection. Per-thread site arrays need no atomics at all but cost
+`sites × 16 bytes × threads` and a cold start per thread. Packing the whole
+cache into one word — a 48-bit class pointer beside a 16-bit vtable slot — is
+the only shape cheaper than the pair, since it removes the dependent load, and
+it works because descriptors are immortal; it is not chosen here because it
+stakes a claim on virtual-address width that LA57 and ARM's LVA both make
+questionable. That trade is worth revisiting only with a measurement.
+
+**Invalidation.** The class half never needs any: classes are immutable after
+link, descriptors are immortal ([classes.md](classes.md), "Class Descriptor"),
+and the GC is non-moving, so a cached class pointer stays valid forever. A miss
+means genuine polymorphism at that site. **The target half is valid only under
+an invariant that phase 1 satisfies trivially and a tiering JIT would break:
+compiled code is immortal — no method body is ever moved, retired or freed.**
+If tiering arrives, the pair's second half becomes either an entry cell (one
+immortal word per method holding the current entry address, so recompilation is
+one store and every site heals through a load it already makes) or a vtable slot
+number resolved through `class->vtbl[slot]`, which heals the same way and needs
+the per-class subclasses list that CHA-style patching of `static::` sites needs
+anyway. Neither is designed here; what matters now is that the invariant is
+written down, so tiering cannot arrive without meeting it.
 
 ---
 

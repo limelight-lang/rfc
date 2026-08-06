@@ -10,6 +10,32 @@ in one line; **cost** if any.
 
 ---
 
+### 2026-08-06 — an inline cache site is one word pointing at an immutable pair
+
+**Decided:** a site holds one word, published with a release store, pointing at a
+`(class, target)` pair baked at class link time beside its method-table entry in
+the immortal region and never written again. **Why:** the previous shape was two
+independent process-global words, both written by the slow path on every thread
+executing the site, so a reader could observe one thread's class beside another's
+target and dispatch the wrong method on the wrong class — silently, with no
+memory error, in a runtime that is multi-threaded by construction. Publishing a
+pointer to an already-complete record removes the race by construction rather
+than by ordering. **Baked, not allocated:** a pair allocated per cache update
+would let a bimorphic site in a hot loop grow a region that is never reclaimed;
+baking costs 16 bytes per method-table entry once per class, and a site
+transition becomes one store with no allocation. An uninitialized site points at
+a static `{null, null}` pair, so the fast path needs no emptiness test.
+**Rejected:** a seqlock (two extra loads and a branch per hit); per-thread site
+arrays (`sites x 16 B x threads`, cold start per thread); and packing a 48-bit
+class pointer with a 16-bit vtable slot into one word — cheapest of all, and
+sound because descriptors are immortal, but it stakes a claim on
+virtual-address width that LA57 and ARM LVA make questionable. **Cost:** one
+dependent load on the hit path, and one acquire load — free on x86-64, one
+`ldar` on the ARM targets. **Invariant written down rather than assumed:** the
+target half is valid only while compiled code is immortal, which phase 1
+satisfies trivially and a tiering JIT would break; `lowering.md` names the two
+shapes that survive tiering.
+
 ### 2026-08-06 — Ghost is the shim, and class metadata is immortal rather than long-lived
 
 **Decided:** two contradictions inside `classes.md` are resolved by following

@@ -55,46 +55,54 @@ at. The u32 index caps a single array at 2³²−2 elements, a language-visible 
 of the same kind as the 4 GiB string cap in [strings.md](strings.md), checked
 through one choke point that raises rather than truncating.
 
-### The index layer is replaceable, and deliberately so
+### Why chains, and not a control-byte index
 
-The entry array is identical under a second index shape: `u64` slots fusing a
-seven-bit hash fingerprint with the `u32` entry index, probed by open addressing.
-That shape answers a lookup for an absent key without touching the entry array at
-all, and it remains two dependent accesses because the fingerprint and the index
-share one word. Chains are the default and the fused slot is the alternative;
-neither changes the entry array, promotion, the tracer, or any observable
-semantics, so the choice can be revisited on measurement rather than settled
-here. What decides it is the ratio of absent-key lookups (`isset`, `??`,
-`array_key_exists`) to present-key lookups in real PHP, which nobody has
-measured.
+The alternative was a SwissTable-style index over the same entry array: one
+control byte per slot carrying a seven-bit hash tag, probed sixteen at a time
+with SIMD, plus a parallel `u32` array of entry indices. Its published advantage
+is the absent-key lookup, which terminates in the control line without touching
+the entry array at all.
 
-**No measurement in this repository currently supports a choice between them,
-and the ones that were attempted are withdrawn.** Both index shapes were
-benchmarked over a byte-identical entry array on 2026-08-05, and an independent
-review of the harness found four defects that between them void the comparison:
-every table size was a power of two, so the open-addressed index was allocated
-twice the slots it needed and ran at load 0.500 rather than the 0.875 it exists
-for — the stated comparison was never executed; the mixed workload sized its
-tables for a theoretical peak and ran at loads between 0.016 and 0.508; the
-tombstone rebuild that was supposed to distinguish two of the runs could not
-fire at the sizes tested; and the deletion rule was not the one it was modelled
-on, so it truncated the probe sequence of unrelated keys and lost live entries
-at a rate of roughly one per seven hundred operations at realistic load. Earlier
-runs had already been invalidated twice — once for timing a `memset` of an
-oversized index, once for probing keys in insertion order, which walks the entry
-array sequentially and erases the very cost the control byte exists to avoid.
+**That advantage does not appear once each index runs at its own design load**,
+which is the measurement that decides this. A chained index is full at load 0.5
+and a control-byte index at 0.875; at 0.5 a chained miss ends on the first slot
+read most of the time, while at 0.875 the control-byte probe must walk until it
+meets an empty byte, which instrumentation puts at two groups on average and up
+to twelve. Measured over a byte-identical entry array, integer keys, medians of
+fifteen alternating runs on one core (ns per operation, chained / control byte):
 
-What survives is qualitative and is why chains are the default here: an
-order-preserving table needs the dense entry array regardless, so the index is
-the only variable; PHP arrays are mostly small, and at small sizes the whole
-table is cache-resident, which is precisely where a control byte buys nothing
-and its extra work shows; deletion is frequent in PHP, and unlinking a chain
-leaves nothing behind, while an open-addressed slot cannot be freed without
-truncating the probe sequence of keys that passed over it and therefore leaves a
-tombstone to be cleaned later. Iteration is unaffected either way, since it is a
-property of the entry array.
+| N | 56 | 448 | 3 584 | 28 672 | 229 376 | 1 835 008 |
+|---|---|---|---|---|---|---|
+| lookup, absent | 1.21 / 1.89 | 1.10 / 1.91 | 1.13 / 3.37 | 5.95 / 11.21 | 8.93 / 14.43 | 28.6 / 30.4 |
+| delete | 1.90 / 5.80 | 1.86 / 4.87 | 2.95 / 4.79 | 6.13 / 13.40 | 14.6 / 23.7 | 42.6 / 56.0 |
+| lookup, present | 0.79 / 1.87 | 0.81 / 1.87 | 1.25 / 2.31 | 4.81 / 4.79 | 11.1 / 12.1 | 38.7 / 36.7 |
+| build | 5.4 / 12.2 | 4.5 / 10.2 | 5.6 / 9.4 | 9.2 / 11.0 | 17.2 / 16.7 | 56.4 / 43.0 |
 
-The measurement that would settle it is specified in "Open" below.
+Deletion is the chained index's clearest win and holds at every size; the
+absent-key column is its win everywhere except the largest size, where the two
+are level within the run-to-run spread. The control-byte index wins the build at
+the largest size only, where it also draws level on a present-key lookup — its
+regime is the one where the entry array has left cache.
+
+**Iteration does not enter this at all**, by construction rather than by
+measurement: iteration walks the entry array and reads no index, and the entry
+array is the same under both.
+
+**What this comparison does not establish.** Keys were integers used as their own
+hash, so a key comparison was one register compare; a real string key costs a
+length test and a `memcmp`, which the control byte filters away at seven bits and
+a chain does not — that is the one corner where the alternative stays alive and
+it has not been measured. The index memory goes the other way, roughly 9.1 bytes
+per entry chained against 5.7 for the control byte. A mixed workload was run and
+is **not** quoted here: at the largest size it forced one table doubling in the
+control-byte arm and none in the chained arm, so a single 71 ms growth event sat
+inside a 116 ms measurement, and after that doubling the table ran at 0.438
+rather than 0.875 — the row measures neither index at its design point. One core,
+one x86 machine, WSL2 with no control over the frequency governor.
+
+Nothing above changes the entry array, promotion, the tracer, or any observable
+semantics, so the index remains replaceable if the string-key measurement in
+"Open" comes out the other way.
 
 ---
 
@@ -330,19 +338,24 @@ reserves with `unreachable!("no COW copy for this entity kind yet")`.
   signal.
 - **The recursion-depth guard** on the escape copy, since nesting depth is
   attacker-shaped input on a store path.
-- **The index measurement, done properly.** What the withdrawn attempt has to
-  fix before its numbers mean anything: size each table at its own design load
-  (0.5 chained, 0.875 open-addressed) rather than at a shared power of two; let
-  growth, compaction and index rebuild run inside the timed region, since the
-  design puts the cost there; make an insert a lookup-then-insert, which is what
-  a PHP write is; probe in a shuffled order; assert the achieved hit count
-  inside every timed loop, which is the check that would have caught all four
-  defects; interleave the two implementations within one run and pin the clock,
-  because the between-run spread on this box reached 50 % and exceeded every
-  difference being read; and measure string keys as well as integers, since a
-  string key comparison is a length test and a `memcmp` rather than one
-  register compare. Until then the default stands on the structural argument
-  above, not on numbers.
+- **String keys, which are the one corner the index comparison leaves open.** A
+  seven-bit tag filters a wrong key before any byte comparison; a chain compares
+  the full hash and then the bytes. With integer keys that difference is one
+  register compare and the measurement above is biased toward chains by exactly
+  that amount. Same harness, string keys of realistic length distribution.
+- **A mixed workload that measures what it claims.** The attempt made on
+  2026-08-05 is not quotable: table sizes that put one index at its design load
+  left the other with a full growth cycle of headroom, so at the largest size one
+  arm paid a doubling inside the timed region and the other paid none, and after
+  that doubling neither arm was at its design load. Either give both arms
+  proportional headroom, or hold the live count fixed so no growth occurs, and
+  print the achieved load and growth count for the mixed phase rather than for
+  the build phase only.
+- **Instrumentation that cannot drift from the code it measures.** The probe-length
+  figures first reported for the control-byte index came from a copy of the probe
+  loop that still used the old stride, and it silently failed to find about one
+  present key in a hundred. A counter compiled into the real lookup under a build
+  flag is the shape that cannot diverge.
 - **ARM.** Everything attempted so far ran on one x86 core. The SIMD group probe
   has no single-instruction equivalent on NEON, and the memory-level parallelism
   that hides a dependent access is scarcer on the small cores `BACKLOG.md` names

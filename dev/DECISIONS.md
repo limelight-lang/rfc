@@ -10,6 +10,28 @@ in one line; **cost** if any.
 
 ---
 
+### 2026-08-06 — the index comparison is measured at design load, and the control byte's advantage does not survive it
+
+**Decided:** chains stay the default on measured grounds for integer keys. The
+harness was rewritten after the retraction below: the slot count is now the power
+of two for the control-byte index and the entry capacity seven eighths of it, so
+a full table sits at 0.875 while the chained index sits at 0.4375 — each at its
+own design maximum, printed with every row. Deletion follows hashbrown's
+slot-anchored rule; a correctness pass over 200k keys with six rounds of churn
+runs before anything is timed; every insert is lookup-then-insert; every timed
+loop checks the count it produced; the two arms alternate. **Result:** the
+absent-key lookup, which is the whole argument for a control byte, goes to chains
+at every size but the largest, where the two are level — at 0.5 a chained miss
+ends on the first slot read, while at 0.875 the control-byte probe walks two
+groups on average and up to twelve. Deletion goes to chains everywhere by 1.3x to
+3.1x. The control byte wins the build at the largest size only. **Not
+established, and stated in the document:** string keys, where the seven-bit tag
+filters a comparison a chain has to make in full; and the mixed workload, whose
+run is discarded because the sizes gave one arm a full growth cycle of headroom
+and the other none, so a single doubling sat inside the measurement and dropped
+the table off its design load. **Cost:** the index memory is 9.1 bytes per entry
+chained against 5.7 for the control byte, and that is the price of the default.
+
 ### 2026-08-05 — the index measurements are withdrawn, and the default stands on structure rather than on numbers
 
 **Decided:** the benchmark numbers quoted in the entry below are retracted, and

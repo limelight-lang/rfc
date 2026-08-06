@@ -94,16 +94,33 @@ with its own layout and `dispose`; the wrapped type is therefore recorded
 in the `FFIBox` **body** as an instance field (a descriptor pointer), not at
 `+8` and not in the flags.
 
-**Lazy objects (kind 6, Ghost/Proxy) are the exception that keeps the
-class pointer** — because there the class is *not* fixed by the kind. A
-Ghost impersonates an arbitrary target class (`new LazyGhost(Money::class)`
-must satisfy `instanceof Money` and materialize a `Money`), so its `+8`
-holds the **target** class, not a "lazy" class. Kind 6 marks "not
-initialized yet"; the first touch materializes the instance and flips
-the kind 6 → 0 (object), with `+8` already pointing at the right class.
+**Lazy objects (kind 6, Ghost/Proxy) carry a class pointer like an
+ordinary object, and it is the generated ghost-shim descriptor** — see
+"Lazy Objects: Ghost and Proxy" below, which is where the mechanism is
+specified. A Ghost impersonates an arbitrary target class
+(`new LazyGhost(Money::class)` must satisfy `instanceof Money` and
+materialize a `Money`), and the shim carries that target's `object_size`,
+`traced_runs`, `display`, `destruct_slot` and `dispose`, so a walker or a
+teardown that reaches an untouched ghost through `obj->class` behaves
+exactly as it would for an all-uninitialized instance of the real class.
+The first touch runs the initializer, rewrites `+8` to the real
+descriptor, and flips the kind 6 → 0.
+
+**Why the shim and not the real class at `+8` from birth.** An inline
+cache's hit path is a class-pointer compare and a direct call
+([lowering.md](lowering.md)); it never loads the flags word. With the real
+class at `+8` a warm cache would compare equal on an untouched ghost and
+call the method on a zero-filled body, and making the hit path see kind 6
+costs a load and a branch at every dynamic dispatch site. With the shim it
+compares unequal, misses, and takes the slow path, which materializes.
+`lowering.md` already assumes this reading: it drops `!invariant.load`
+precisely for a class "whose class pointer is rewritten on first touch".
+
 Ghost-*capability* remains a **class** flag (a class opts in, beside the
-magic-method bits); this instance kind marks a live not-yet-touched
-instance.
+magic-method bits). Kind 6 stays as an instance marker for the paths that
+load flags anyway and need to know an instance is untouched — `clone`,
+which must materialize before copying rather than duplicate the shim
+pointer, and reflection's initialization state.
 
 Code `7` remains reserved; the candidate index now spans 17 bits (131071
 positions, ample against the ~10k buffer arm threshold) — the two bits
@@ -636,7 +653,9 @@ by the indirect call the trace never pays.
 
 ## Class Descriptor
 
-**Decision**: One descriptor per class, allocated in the long-lived arena at class link time. Its address is stable for the lifetime of the process; this is the foundation for inline caches (see below).
+**Decision**: One descriptor per class, allocated in the **immortal region** at class link time. Its address is stable for the lifetime of the process; this is the foundation for inline caches (see below).
+
+The region matters, and an earlier draft of this document said "long-lived arena". It is immortal — bump allocation with no reset and nothing ever freed (`ll-model/src/memory/immortal.rs`, and invariant 14 of that crate's `ARCHITECTURE.md`). The long-lived arena leaves its reclamation strategy explicitly undecided ([arenas.md](memory/arenas.md)), and a reclaimed descriptor address that is later re-issued to a different class would not crash an inline cache — it would produce a **false hit**, dispatching one class's method on another's instance. "ICs never require invalidation" is a theorem under immortal residence and a hope under any other.
 
 ### Fields
 
@@ -705,9 +724,9 @@ call class->vtbl[slot]
 
 This equals the cost of a C++ virtual call (vptr → slot) while keeping the full class descriptor one load away for `instanceof`, reflection, and GC.
 
-### Offsets instead of pointers
+### Offsets instead of pointers — withdrawn
 
-All class metadata lives in the long-lived arena. Internal references between metadata structures (class → parent, class → itable, class → name) may be stored as u32 offsets from the arena base instead of 64-bit pointers: 4 bytes instead of 8, at the cost of one add per dereference. Constraint: metadata arena ≤ 4 GB.
+All class metadata lives in the immortal region, and that retires the u32-offset option this section used to propose (class → parent, class → itable, class → name as 4-byte offsets from an arena base, at the cost of one add per dereference, with the metadata arena capped at 4 GB). The immortal region is a chain of 64 KB blocks drawn one at a time from the same global pool that serves request arenas and the heap, interleaved with them in address space: there is no base to take an offset from, and no bound on the span. Class references are full 8-byte pointers, which this document had already decided elsewhere. Self-relative offsets within one allocation — a descriptor to its own trailing vtable and itables — would still be expressible, and are not worth a second addressing mode.
 
 ### Traits
 
@@ -1056,7 +1075,7 @@ Each entry in `prop_layout` carries access flags: `plain` / `get-hook` / `set-ho
 
 ## Interned Names
 
-All names known at compile time (classes, methods, properties, interfaces) are interned into the long-lived arena as **immortal strings**: one string = one address for the lifetime of the process.
+All names known at compile time (classes, methods, properties, interfaces) are interned into the **immortal region** as immortal strings: one string = one address for the lifetime of the process. The region is load-bearing twice over — it is what makes the address permanent, and [values.md](values.md)'s COW rule branches on the category, taking the immortal arm (count pinned, a write always separates) rather than the long-lived one.
 
 - Name equality = pointer compare, no `memcmp`.
 - The hash is computed once and stored next to the string.
@@ -1121,13 +1140,16 @@ ordinary field (that would make the copy a second ghost that re-runs
 `__construct` on first touch). Cloning forces materialization first,
 then clones the real instance.
 
-**Conflict**: this contradicts the `!invariant.load` annotation on the
-class-pointer load ([lowering.md](lowering.md)), which assumes "an
-object's class never changes after construction." Resolution: a per-class
-opt-in flag (alongside `has-destructor` in the flags bitmask) marks a
-class as ghost-capable. Only instances of flagged classes lose
-`!invariant.load` on their class-pointer loads; the overwhelming majority
-of classes, never used as ghosts, keep the full optimization.
+**Cost against `!invariant.load`**: the annotation on the class-pointer
+load ([lowering.md](lowering.md)) assumes "an object's class never changes
+after construction", and a ghost's does. Resolution: a per-class opt-in
+flag (alongside `has-destructor` in the flags bitmask) marks a class as
+ghost-capable. Only instances of flagged classes lose `!invariant.load` on
+their class-pointer loads; the overwhelming majority of classes, never
+used as ghosts, keep the full optimization. `lowering.md` carries the
+matching exception, and it is what settles the shim as the design: it
+names the exempt case as a class "whose class pointer is rewritten on
+first touch", which describes the shim and nothing else.
 
 ### `instanceof` under Ghost/Proxy
 

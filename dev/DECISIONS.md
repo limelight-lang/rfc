@@ -10,6 +10,32 @@ in one line; **cost** if any.
 
 ---
 
+### 2026-08-06 — Ghost is the shim, and class metadata is immortal rather than long-lived
+
+**Decided:** two contradictions inside `classes.md` are resolved by following
+what another document already settled, so neither needed a new decision.
+**Ghost:** `classes.md` described the mechanism twice and incompatibly — kind 6
+keeping the real target class at `+8`, and a generated ghost-shim descriptor
+swapped out on first touch. `lowering.md` had already settled it by dropping
+`!invariant.load` for a class "whose class pointer is rewritten on first touch",
+which describes the shim alone. The kind-6 passage is rewritten; kind 6 stays as
+an instance marker for `clone` and reflection, which load flags anyway. **Why
+the shim is also the only safe reading:** an inline cache's hit path compares the
+class pointer and calls, never loading flags, so with the real class at `+8` a
+warm cache would call a method on a zero-filled body — and teaching the hit path
+to test kind 6 costs a load and a branch at every dynamic dispatch site.
+**Residence:** `classes.md` said class descriptors and interned names live in the
+long-lived arena while the crate puts both in the immortal region, and
+`arenas.md` listed them under Long-Lived while its own Immortal row listed
+interned strings. Immortal wins, following the code. It is load-bearing rather
+than tidy: `arenas.md` leaves long-lived reclamation undecided, and a recycled
+descriptor address re-issued to another class is a **false inline-cache hit**,
+not a crash. **Retired with it:** the u32-offsets-from-an-arena-base option and
+its 4 GB constraint — the immortal region is a chain of pool blocks with no base
+and no bounded span. **Cost:** an `eval`'d or plugin class is never reclaimed,
+which is acceptable while nothing supports unloading, and is now stated rather
+than implied.
+
 ### 2026-08-06 — the chained index is the decision, not the default pending a measurement
 
 **Decided:** the array hashtable indexes its entry array with chains, and the

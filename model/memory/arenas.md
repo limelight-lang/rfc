@@ -39,13 +39,13 @@ This is the dominant allocation path for typical PHP workloads.
 
 ## Long-Lived Arena
 
-Objects that outlive a single request but are not immortal: class definitions, interned strings, opcode caches, shared data structures. These are allocated in a long-lived arena with a separate lifecycle from the request arena.
+Objects that outlive a single request but are not immortal: shared data structures built once and released together, caches whose lifetime a subsystem manages. These are allocated in a long-lived arena with a separate lifecycle from the request arena.
 
-Exact reclamation strategy (explicit free, reference counting, or epoch-based) is TBD per object type.
+Exact reclamation strategy (explicit free, reference counting, or epoch-based) is TBD per object type — which is why nothing whose address is cached anywhere lives here. **Class definitions and interned strings are immortal, not long-lived**, and this section used to list them here by mistake ([classes.md](../classes.md), "Class Descriptor"): an inline cache keys on a class-descriptor address and an interned name is compared by pointer, so a reclaimed address later re-issued to a different class or name would be a silent false match rather than a crash.
 
 ## Immortal Objects
 
-Objects that never die: `null`, `true`, `false`, small integers, permanently interned strings. Allocated once, never freed. All retain/release operations on these objects are no-ops checked via an immortality flag in the object header.
+Objects that never die: `null`, `true`, `false`, small integers, interned strings, class descriptors and everything in their trailing metadata train. Allocated once, never freed. All retain/release operations on these objects are no-ops checked via an immortality flag in the object header.
 
 ---
 

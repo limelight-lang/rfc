@@ -171,7 +171,7 @@ second writer.
 - **hole** — `key == 1`. Left by deletion, skipped by iteration and by the
   tracer, reclaimed by compaction.
 - **element holding a reference** — the ValueBox carries a pointer to a
-  ReferenceBox (kind 3, `RcHeader | Value`), tagged in the box's own flags.
+  ReferenceBox (`RcHeader | Value`), tagged in the box's own flags.
 - **element of a table under a foreign owner** — see "Thread hand-over".
 
 **A reference into an element is a ReferenceBox, never a slot pointer.**

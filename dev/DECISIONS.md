@@ -10,6 +10,42 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-07 — entity-kind codes leave the RFC; the enum is normative
+
+**Decided (Edmond):** no document here prints the code of an entity kind.
+A kind is named — Object, StringBox, ArrayBox, ReferenceBox, FFIBox,
+WeakRef, Lazy — and where a code form is needed the text writes
+`EntityKind::…`. The assignment of code to kind is normative in
+`EntityKind`, `ll-model/src/refcount.rs`, and a consumer takes it from
+the runtime's exported ABI rather than by transcription; a hardcoded code
+is a defect even when its value happens to be right.
+
+**Why:** the code is a detail of the encoding, and restating it here made
+the design depend on it. The runtime's cycle-collector admission test was
+written as a bitmask over the codes, could not express the set it needed,
+and leaked a ring through a ReferenceBox until it became a set built from
+the names (`ll-model` f2f2461). `classes.md` carried the same defect as a
+parenthetical claiming the buffer holds only objects and arrays, which
+bit 13 separates.
+
+**The test for what may still print a number:** the sentence stays true
+under any permutation of the code-to-kind assignment. The field's width
+and position (three bits at 12–14) and the count of codes used and
+reserved pass it; a kind-to-code pair, and any argument from the order,
+adjacency or bit pattern of the codes, do not.
+
+**Rejected:** one normative table of codes kept inside the RFC (it is the
+thing the ruling removes); building an ABI header or `cbindgen` now (no
+consumer exists, and the header's shape belongs to the whole ABI surface
+rather than to this one row).
+
+**Cost:** until that ABI surface exists, the assignment lives only in Rust
+source, so a reader of `layouts.md` follows one link to see a concrete
+byte. Historical documents keep the wording of their day, codes included,
+and `layouts.md` says so where it introduces them. A grep is the standing
+check: `grep -rnE '\bkind ?=? ?[0-7]\b' --include='*.md' .` may match only
+under `dev/` and in the dated review records.
+
 ### 2026-08-06 — no cache in this runtime carries a replacement policy, and the personality routine gets a flag bit
 
 **Decided:** `model/caches.md` is written, and its answer is negative — no LRU,

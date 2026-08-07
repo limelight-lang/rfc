@@ -29,7 +29,7 @@ unboxed contract for free.
 
 **Terminology.** The ValueBox (a 16-byte tagged value, PHP's `zval` in
 spirit) is a different thing from the built-in **`FFIBox` class**
-(entity kind 4, [classes.md](classes.md), [ffi.md](memory/ffi.md))
+(a built-in class with an entity kind of its own, [classes.md](classes.md), [ffi.md](memory/ffi.md))
 that wraps a raw `#[FFI]` C structure for the managed world. Both were
 once called "Box"; the 2026-07-27 rename ([layouts.md](layouts.md))
 removed the collision, and the bare word is no longer used.

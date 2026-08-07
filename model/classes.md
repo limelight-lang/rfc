@@ -32,7 +32,7 @@ Value representation for scalars, strings, and arrays is covered separately. Mem
 | 9 | **`DESTRUCTOR_RAN`** — `__destruct` has already run (exactly-once guard) |
 | 10 | Copy-on-write: counted in every memory category |
 | 11 | Live escapee: `refcount` currently holds the escape hold-count |
-| 12–14 | **Entity kind**: `0` object, `1` string, `2` array, `3` ReferenceBox (a PHP `&` reference: `RcHeader \| Value`), `4` `FFIBox` (built-in class wrapping a C struct), `5` `WeakRef` (built-in `WeakReference` class), `6` lazy object (Ghost/Proxy, uninitialized until first touch), `7` reserved (a plain closure is an object). Selects the free routine at teardown, and for a bare non-object pointer the per-tag descriptor (below) |
+| 12–14 | **Entity kind**: object, string, array, ReferenceBox (a PHP `&` reference: `RcHeader \| Value`), `FFIBox` (built-in class wrapping a C struct), `WeakRef` (built-in `WeakReference` class), and lazy object (Ghost/Proxy, uninitialized until first touch); the eighth code is reserved (a plain closure is an object). Which code names which kind is the encoding's own business — normative in `EntityKind` (`ll-model/src/refcount.rs`), and a consumer takes the assignment from the runtime's exported ABI, never by transcription. Selects the free routine at teardown, and for a bare non-object pointer the per-tag descriptor (below) |
 | 15–31 | Position in the cycle collector's candidate buffer, as `index + 1`; zero means "position unknown" and costs a linear scan |
 
 ### Entity kind and non-object teardown
@@ -58,7 +58,7 @@ can close through — Object, ArrayBox, ReferenceBox, Lazy — and how that
 membership is tested is the implementation's, `ll-model/src/refcount.rs`.)
 
 Whether `+8` holds a class pointer is itself a function of the kind —
-object (`0`) and lazy (`6`) carry one, every other kind does not — so no
+object and lazy carry one, every other kind does not — so no
 separate flag records it. The old "is there a class at +8" flag bit was
 removed: the one path that asks (an unknown-type free or dispatch) is
 already switching on the kind, which subsumes the test.
@@ -79,7 +79,7 @@ string is a direct call — no `obj->class`, no kind switch, no itable
 search. The kind-field resolution runs **only** where the type survives to
 runtime as an open `mixed`.
 
-**`FFIBox` and `WeakRef` (kinds 4–5) are singleton built-in classes and
+**`FFIBox` and `WeakRef` are singleton built-in classes and
 carry no class pointer** — the kind *is* the class, exactly as `string`
 resolves to the singleton `String`. A `FFIBox` wraps a C struct to attach
 it to the managed world ([FFI](memory/ffi.md)); a `WeakRef` is
@@ -95,7 +95,7 @@ with its own layout and `dispose`; the wrapped type is therefore recorded
 in the `FFIBox` **body** as an instance field (a descriptor pointer), not at
 `+8` and not in the flags.
 
-**Lazy objects (kind 6, Ghost/Proxy) carry a class pointer like an
+**Lazy objects (Ghost/Proxy) carry a class pointer like an
 ordinary object, and it is the generated ghost-shim descriptor** — see
 "Lazy Objects: Ghost and Proxy" below, which is where the mechanism is
 specified. A Ghost impersonates an arbitrary target class
@@ -105,25 +105,26 @@ materialize a `Money`), and the shim carries that target's `object_size`,
 teardown that reaches an untouched ghost through `obj->class` behaves
 exactly as it would for an all-uninitialized instance of the real class.
 The first touch runs the initializer, rewrites `+8` to the real
-descriptor, and flips the kind 6 → 0.
+descriptor, and flips the kind Lazy → Object.
 
 **Why the shim and not the real class at `+8` from birth.** An inline
 cache's hit path is a class-pointer compare and a direct call
 ([lowering.md](lowering.md)); it never loads the flags word. With the real
 class at `+8` a warm cache would compare equal on an untouched ghost and
-call the method on a zero-filled body, and making the hit path see kind 6
+call the method on a zero-filled body, and making the hit path see the
+lazy kind
 costs a load and a branch at every dynamic dispatch site. With the shim it
 compares unequal, misses, and takes the slow path, which materializes.
 `lowering.md` already assumes this reading: it drops `!invariant.load`
 precisely for a class "whose class pointer is rewritten on first touch".
 
 Ghost-*capability* remains a **class** flag (a class opts in, beside the
-magic-method bits). Kind 6 stays as an instance marker for the paths that
+magic-method bits). The lazy kind stays as an instance marker for the paths that
 load flags anyway and need to know an instance is untouched — `clone`,
 which must materialize before copying rather than duplicate the shim
 pointer, and reflection's initialization state.
 
-Code `7` remains reserved; the candidate index now spans 17 bits (131071
+One kind code remains reserved; the candidate index now spans 17 bits (131071
 positions, ample against the ~10k buffer arm threshold) — the two bits
 freed by removing the old class-pointer flag and the arena-reset mark
 return here.
@@ -135,9 +136,9 @@ shape, the **Proxy**: an indirection standing in for a target that
 intercepts every access to it, paying one dereference to attach an effect
 the target and its callers never see. This is the Gang-of-Four *Proxy*
 taxonomy directly — a *virtual proxy* (materialize on first touch) is the
-**Ghost/lazy** object (kind 6); a *smart reference* (do work on access) is
-the **WeakRef** (kind 5, an access that can go dead) and the **FFIBox**
-(kind 4, wrapping a foreign struct into the managed world,
+**Ghost/lazy** object; a *smart reference* (do work on access) is
+the **WeakRef** (an access that can go dead) and the **FFIBox**
+(wrapping a foreign struct into the managed world,
 [ffi.md](memory/ffi.md)); a *movable handle* is a fourth effect (below).
 PHP 8.4's own lazy-objects feature already names its two strategies
 *Ghost* and *Proxy*; the movable handle is the classic engine handle
@@ -1160,7 +1161,7 @@ handles. So the shim traces and frees exactly as the real class would
 for an all-uninitialized instance; a `dispose` on an untouched ghost
 runs no user `__destruct` (its `DESTRUCTOR_PENDING` is unset until the
 constructor completes) and releases nothing (all slots `NULL`). Entity
-kind is `6` (lazy) until first touch, then `0` (object) — see the flags
+kind is lazy until first touch, then object — see the flags
 layout above.
 
 A `clone` of an *untouched* ghost must not copy the shim pointer as an

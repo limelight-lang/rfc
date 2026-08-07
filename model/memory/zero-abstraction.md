@@ -66,7 +66,7 @@ scope, release with the owner.
 When the reference escapes to where static lifetime cannot be proven
 (stored into `mixed`, a container, captured by an escaping closure,
 returned into untyped code), the compiler attaches it through **`FFIBox`**,
-the built-in wrapper class (entity kind 4, [classes.md](../classes.md);
+the built-in wrapper class ([classes.md](../classes.md);
 full model in [ffi.md](ffi.md)).
 
 - `FFIBox` is a normal managed citizen: refcounted, GC-visible. It is a

@@ -20,14 +20,16 @@ real confusion. The rename was applied across the whole RFC on
 | Name | What it is | In code (until it catches up) |
 |---|---|---|
 | **ValueBox** | the 16-byte tagged *value*, no header, inline in a slot | `Value` (`ll-model/src/value.rs`) |
-| **FFIBox** | entity kind 4 — wrapper attaching a raw C struct to the managed world | `EntityKind::Box` |
-| **StringBox** | entity kind 1 — the string | `EntityKind::String` |
-| **ArrayBox** | entity kind 2 — the array | `EntityKind::Array` |
-| **ReferenceBox** | entity kind 3 — the `&` cell | `EntityKind::Reference`, `src/reference.rs` |
-| Object, WeakRef, Lazy | entity kinds 0, 5, 6 | same |
+| **FFIBox** | wrapper attaching a raw C struct to the managed world | `EntityKind::Box` |
+| **StringBox** | the string | `EntityKind::String` |
+| **ArrayBox** | the array | `EntityKind::Array` |
+| **ReferenceBox** | the `&` cell | `EntityKind::Reference`, `src/reference.rs` |
+| Object, WeakRef, Lazy | the remaining entity kinds | same |
 
 Historical documents (`dev/DECISIONS.md`, `dev/POSTMORTEM.md`, the
-review records) keep the wording of their day.
+review records) keep the wording of their day — entity-kind codes
+included. The current assignment is `EntityKind`,
+`ll-model/src/refcount.rs`.
 
 ---
 
@@ -147,7 +149,7 @@ Load-bearing invariants:
 
 ## Entities — every one starts with RcHeader
 
-### Object — kind 0
+### Object
 
 ```
 ┌──────────┬─────────┬───────────────┬───────────────────┬─────────┐
@@ -165,7 +167,7 @@ fills holes. Physical order therefore differs from declaration order
 never by property. Only Object and Lazy carry a class pointer at +8.
 Normative: [classes.md](classes.md) "Slot kinds", "Slot order".
 
-### StringBox — kind 1
+### StringBox
 
 ```
 inline (default): │ RcHeader │ len │ hash (lazy) │ bytes… inline │
@@ -186,7 +188,7 @@ them — and a write that separates a dynamic string produces a dynamic
 copy. No class pointer: the kind resolves the singleton `String`
 descriptor. Normative: [strings.md](strings.md).
 
-### ArrayBox — kind 2
+### ArrayBox
 
 ```
 │ RcHeader │ storage … │     three storage strategies behind one
@@ -197,7 +199,7 @@ descriptor. Normative: [strings.md](strings.md).
 Layout sketch only — the hashtable design is a future document.
 Normative: [arrays.md](arrays.md).
 
-### ReferenceBox — kind 3
+### ReferenceBox
 
 ```
 value form:  │ RcHeader │ ValueBox (16 B) │        the & cell
@@ -211,7 +213,7 @@ header. Only code using `&` pays for any of this. Normative:
 [values.md](values.md) "ReferenceBox", "References into unboxed
 slots".
 
-### FFIBox — kind 4 (design; not built)
+### FFIBox (design; not built)
 
 ```
 │ RcHeader │ type descriptor │ ptr ──▶ │ raw C struct, headerless │
@@ -223,7 +225,7 @@ live there — so the wrapper is always separate. The wrapped type is a
 body field (one singleton kind wraps many FFI types). Normative:
 [ffi.md](memory/ffi.md) "Escape: attaching to the managed world".
 
-### WeakRef — kind 5
+### WeakRef
 
 ```
 │ RcHeader │ target │     16 B; always GC-heap; target nulled
@@ -233,7 +235,7 @@ body field (one singleton kind wraps many FFI types). Normative:
 
 Normative: [weak-references.md](weak-references.md).
 
-### Lazy — kind 6 (Ghost/Proxy; design)
+### Lazy (Ghost/Proxy; design)
 
 ```
 │ RcHeader │ target class │ body of that class … │
@@ -241,7 +243,7 @@ Normative: [weak-references.md](weak-references.md).
 
 The one non-object kind that keeps the class pointer — the class is
 not fixed by the kind. First touch materializes in place and flips
-kind 6 → 0. Normative: [classes.md](classes.md) "Lazy objects".
+the kind Lazy → Object. Normative: [classes.md](classes.md) "Lazy objects".
 
 ---
 
@@ -254,16 +256,16 @@ value level — tag, one load,            entity level — kind, bits 12-14,
 no dereference                          for bare pointers
 
 mixed $s │ ptr │ String │ RC │ ───┐
-                                  ├──▶ │ rc=2 │ flags: kind=1 │ hash │ len │ "hi" │
+                                  ├──▶ │ rc=2 │ flags: kind=String │ hash │ len │ "hi" │
 string $t │ ptr │ (compiler) ─────┘         one StringBox, one count
 ```
 
 | ValueBox tag | → | entity kind |
 |---|---|---|
-| String = 5 | → | StringBox = 1 |
-| Array = 6 | → | ArrayBox = 2 |
-| Object = 7 | → | Object = 0 · FFIBox = 4 · WeakRef = 5 · Lazy = 6 |
-| Reference = 9 | → | ReferenceBox = 3 |
+| String = 5 | → | StringBox |
+| Array = 6 | → | ArrayBox |
+| Object = 7 | → | Object · FFIBox · WeakRef · Lazy |
+| Reference = 9 | → | ReferenceBox |
 | Resource = 8 | → | **no kind — open question** (below) |
 | Null/False/True/Int/Float | | no entity; the payload is the value |
 
@@ -289,5 +291,5 @@ carries a pointer payload, but no kind backs it: a bare resource
 pointer is not self-describing for teardown, violating the rule that
 makes bare heap pointers freeable ([classes.md](classes.md) "Entity
 kind and non-object teardown"). The kind field is nearly full (7 of 8
-codes taken; consolidation of the Proxy family 4–6 is deferred in
+codes taken; consolidation of the Proxy family is deferred in
 classes.md). To resolve when resources are designed.

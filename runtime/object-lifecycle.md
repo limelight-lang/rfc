@@ -114,7 +114,7 @@ pub struct Object {
 // What `Foo`'s generated factory does — the shape, not a generic body:
 //   fn Foo__factory(ctx, category) -> *mut Object {
 //     let obj = allocate(ctx, category, FOO_OBJECT_SIZE); // per category
-//     obj.rc = RcHeader::new(category, ENTITY_KIND_OBJECT); // kind 0; NOT DESTRUCTOR_PENDING
+//     obj.rc = RcHeader::new(category, ENTITY_KIND_OBJECT); // NOT DESTRUCTOR_PENDING
 //     obj.class = &FOO_CLASS;
 //     // straight-line init: zero-fill the body, then the explicit stores
 //     // (defaults, and a ValueBox `undef` flag on a mixed slot without a

@@ -270,7 +270,7 @@ what makes the flag safe to ship before the analysis is precise.
 
 An entity announces its kind in header bits 12–14 ([classes.md](../classes.md),
 "Entity kind"), and the walker dispatches on it **before** touching `+8`:
-only kinds 0 and 6 carry a class pointer there, and reaching for
+only the object and lazy kinds carry a class pointer there, and reaching for
 `traced_runs` through a class that does not exist is a wild read.
 
 **The concurrent walker is this walk, not a second one.** It differs only
@@ -1021,7 +1021,7 @@ the two together leave unbought.
 - **Huge objects** in OS-direct block runs are outside the pool regions and
   cannot be enumerated by the registry. Cycles through them are not
   collected; the edge is skipped, which is conservative.
-- **Cycles through FFI wrappers.** A `FFIBox` (kind 4) wraps a C struct the
+- **Cycles through FFI wrappers.** A `FFIBox` wraps a C struct the
   walker cannot trace, so it is skipped totally and a ring passing through
   one is never collected. Conservative; revisit if FFI-heavy workloads
   leak.

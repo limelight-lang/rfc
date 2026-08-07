@@ -148,7 +148,7 @@ When a C structure must enter the dynamic world — stored into `mixed`, a
 container, a class property, returned into untyped code — it can no longer
 be a bare compile-time-typed reference (the managed world needs a tag and
 a lifetime the raw structure cannot carry). It is attached through
-**`FFIBox`**, the built-in wrapper class (entity kind 4,
+**`FFIBox`**, the built-in wrapper class (
 [classes.md](../classes.md)):
 
 - `FFIBox` is a managed, refcounted, GC-visible entity, always a **separate

@@ -44,7 +44,7 @@ shared cell all holders read:
 
 ```
 WeakRef entity, 16 bytes on the heap
-+0  RcHeader   8 B   kind 5, ordinary refcount, held by every $w copy
++0  RcHeader   8 B   kind WeakRef, ordinary refcount, held by every $w copy
                      (maps subscribe through the weak table, below, and
                      never hold the entity)
 +8  target     8 B   the referent; null once the referent died
@@ -208,8 +208,8 @@ committed, its cell reads null before any user code can run.**
 
 Two smaller pins the sites imply:
 
-- **Every entity kind honours bit 7 at death.** A `FFIBox` (kind 4) or a
-  lazy object (kind 6) is a legal `WeakReference` target, so the
+- **Every entity kind honours bit 7 at death.** A `FFIBox` or a
+  lazy object is a legal `WeakReference` target, so the
   weak-notify test lives in the generic entity death switch, not in
   the object arm alone.
 - **Thread exit**: the weak table outlives the static-block teardown

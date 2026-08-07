@@ -144,12 +144,29 @@ every string-key operation and belongs in the cost of one, not in a footnote.
 computed". The table stores that hash in the entry, so a probe compares 64 bits
 before it compares any bytes, and a full comparison runs only on equal hashes.
 
-**An integer key's position** comes from an avalanche mix of the key, salted per
-table — not from the key's low bits. Zend indexes an integer key by its value, so
-the keys `0, 1024, 2048, …` collide in one bucket at every table size up to 1024,
-which is a flood requiring no knowledge of any seed and no hash function at all.
-The mix costs a multiply and a shift, and it is paid only by hash-resident
-integer keys: a dense integer array is strategy 2 and never reaches this table.
+**An integer key's position** comes from the key's value while the table is
+unsalted, and from an avalanche mix of the key, salted per table, once the flood
+ladder has drawn the table's salt. A fresh table is unsalted — the ladder's
+zeroth rung — so a table pays the mix only after a long chain fired the rung
+(amended 2026-08-07; the first draft applied the mix from birth). The trigger
+reads shape, not intent: honest keys striding by a power of two build the same
+chain a flood does and buy the same salt, which is the price of needing no
+classifier.
+
+Indexing by value admits Zend's flood: the keys `0, 1024, 2048, …` collide in one
+bucket at every table size up to 1024, with no knowledge of any seed and no hash
+function at all. The zeroth rung admits it deliberately, because the flood builds
+exactly one long chain, and a long chain is the first rung's own trigger — the
+rung that draws the salt and rebuilds. The salt is thus paid exactly where keys
+turned out to come from outside, and nothing has to predict where that is. A
+compiler-supplied "external data" flag was rejected as the selector: the
+classification has to be right on every array, it fails silently in the unsafe
+direction, and keys arrive through `json_decode`, a database row, `array_keys` of
+another array and any function argument. The flag stays available later as an
+optimization, when a compiler exists that can prove rather than assume.
+
+The mix costs a multiply and a shift, paid only by salted, hash-resident integer
+keys: a dense integer array is strategy 2 and never reaches this table.
 
 **The lazily cached string hash is a shared write.** `string.rs` justifies its
 plain non-atomic store by observing that only single-thread-owned strings are
@@ -243,8 +260,8 @@ the compiler proved stay branch-free.
 flags word has no free bit ([strings.md](strings.md), and the crate's layout
 test), and it needs none: teardown and both walkers dispatch on entity kind
 first, and then read a byte from the ArrayBox's own fields, which are on a line
-they have already loaded. Two bits for the strategy, one for the hash mode
-below, and the per-table salt live there together.
+they have already loaded. Two bits for the strategy, two for the ladder's rung
+state below — drawn and escalated — and the per-table salt live there together.
 
 ---
 
@@ -284,8 +301,16 @@ key's bytes — the long-key function slot [strings.md](strings.md) already
 reserves, with a per-process key that is never folded — and sets the table's
 one-way mode bit, after which its string-key operations hash bytes instead of
 reading the cached hash at +16. The cached hash is not touched: it is shared
-across every table holding that string. Trigger 2 redraws the per-table salt and
-rebuilds the index; a second firing escalates as well.
+across every table holding that string. Trigger 2 draws the per-table salt — a
+fresh table has none — and rebuilds the index; a second firing escalates as
+well. Whichever trigger fires first on an unsalted table draws the salt on the
+way, so rung state moves one way and a copy inherits one fact. The escalated
+hash's key is the long-key slot's per-process never-folded key named above;
+until that slot is filled the runtime stands in with a hash keyed by the
+table's salt, which is the second reason the draw precedes escalation — a salt
+left at zero would key the stand-in with a number every attacker knows. Either
+way it is a draw, not the redraw the Perl defect is about: a salt already drawn
+is never moved again.
 
 **What the attacker can drive**: one salt rebuild and one escalation per table,
 each O(n), plus a bounded constant of work per insert before firing. Redrawing a

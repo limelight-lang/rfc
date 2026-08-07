@@ -53,8 +53,9 @@ each need an extra word per entry to say what they point at. The kind
 bit costs ~3 bits once per entity, in a word that is read at free time
 anyway; a per-entry tag would cost 8 bytes per *reference*, of which
 there are far more than entities. (The candidate buffer never even needs
-the switch: it holds only objects and arrays, which the kind field's
-middle bit (13) already separates — object `000`, array `010`.)
+the switch: it admits exactly the kinds that hold counted slots a cycle
+can close through — Object, ArrayBox, ReferenceBox, Lazy — and how that
+membership is tested is the implementation's, `ll-model/src/refcount.rs`.)
 
 Whether `+8` holds a class pointer is itself a function of the kind —
 object (`0`) and lazy (`6`) carry one, every other kind does not — so no
@@ -167,9 +168,11 @@ An address that escapes through FFI pins its target (or extraction
 copies), just as a non-proxied object never moves at all.
 
 *Deferred, not decided:* because FFIBox, WeakRef, and Ghost are one family,
-their three kind codes (4–6) may later be consolidated to reclaim kind
-bits (kind `7` is still reserved). Not done — the kinds stay distinct
-until a consolidation is designed.
+they may later be consolidated into a single Proxy kind, dropping the used
+codes from seven to five — which is where a code for `resource` would come
+from ([layouts.md](layouts.md), the open question). It buys codes and not a
+bit: five kinds still need three of them. Not done — the kinds stay
+distinct until a consolidation is designed.
 
 The retain/release fast path is a single branch covering both arenas and immortal objects, with one exception:
 

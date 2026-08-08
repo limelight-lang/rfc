@@ -201,9 +201,28 @@ growth then moves sixteen bytes containing a pointer, and the box stays put.
 Consequences, each of which is a branch somewhere: an element store writes
 *through* the box; taking the reference on a shared table separates first,
 because it is a write; a by-value iterator dereferences the box when producing
-the value; the COW separator retains the box and does not recurse, which is
-PHP's observable by-reference infection; and `escape_copy` treats it as
-identity-bearing — hold-count, never copy.
+the value; the COW separator shares the box **while a second name holds it**
+and unwraps it otherwise, which is where PHP's by-reference infection begins
+and ends; and `escape_copy` treats it as identity-bearing — hold-count, never
+copy.
+
+**The separator's condition, and the one event that asks it.** A copy of the
+table unwraps an element whose box has a single holder — the source's own
+entry — and takes the value behind it; with two or more it shares the box, and
+a write through either container is read through the other. Duplication is the
+only event that collapses a reference. Neither `unset` of the binding, nor a
+write through the box, nor a write to a neighbouring element changes the
+element's state, which is measured behaviour rather than a choice: php 8.3.6
+reports the element `reference refcount(1)` after each, and collapses it in
+`zend_array_dup_element`. `escape_copy` is not a duplication and does not
+collapse: the program stores a value across a lifetime boundary there, so the
+box travels with the element.
+
+**In the request arena the holder count is an upper bound**, so the separator
+errs toward sharing — a container there is reclaimed by the reset rather than
+by its own death, and every hold it took on a box stands until the request
+ends. The direction is the safe one and the reasoning is in
+[values.md](values.md), "ReferenceBox".
 
 Strategy 1 (the typed vector) admits no reference at all, since an unboxed slot
 has no room for the tag and the storage reallocates. Taking `&` into a proven

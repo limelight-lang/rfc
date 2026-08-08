@@ -264,6 +264,35 @@ indirection in the model, and only code that actually uses `&` pays it
 RcHeader | Value
 ```
 
+**A box is allocated in the GC heap, whatever the holder's category.**
+Every rule about a box asks how many holders it has, and the heap is the
+one place a count means that: an arena entity is not counted at all
+unless it is COW, and counting a box in the arena would break "counted
+or escaping, never both" and put a kind test on the retain and release
+of every arena entity. The price is that `&` is a heap allocation, which
+is `zend_reference`'s own cost class, and that boxing an element of an
+arena array copies an arena COW value to the heap once per boxing.
+
+**Duplicating a container collapses a box with a single holder.** The
+holder count decides it, and duplication is the only event that asks: a
+copy of an array unwraps an element whose box nobody else holds and
+takes the value behind it, and shares the box otherwise. Nothing else
+collapses a reference — not `unset` of the binding, not a write through
+the box, not a write to a neighbouring element — and a copy made because
+a value crosses out of the request arena into a longer-lived holder is
+not a duplication either: the program stores there, so the box travels
+with the element and both containers go on naming it.
+
+**In the request arena the holder count is an upper bound.** A container
+there is reclaimed by the reset rather than by its own death, and the
+release it owes a heap entity belongs to the reset log, so a box keeps
+every hold an arena container ever took on it until the request ends. A
+duplication therefore errs toward sharing, which is the safe direction:
+every live holder carries a counted `+1`, so a count of one still proves
+sole ownership, and only a collapse that PHP would have made can be
+delayed. What that costs a program is written down in the runtime's
+`dev/DECISIONS.md`, 2026-08-08, with the sequence that exhibits it.
+
 ---
 
 ## Copy-on-Write Protocol

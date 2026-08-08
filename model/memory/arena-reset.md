@@ -230,11 +230,11 @@ is evacuated now or carried until its stragglers die; there is no
 - **Why carrying stragglers is acceptable**: retention damage is
   bounded by the straggler's own lifetime — under steady load the
   retained blocks form a bounded stationary population, not unbounded
-  accretion. (With line recycling dropped, note the honest limit:
-  today nothing returns even a fully-emptied retained block to the
-  pool — the survivors' free path is a no-op. Reclaiming the
-  all-survivors-dead block is a small future mechanism, deliberately
-  not Immix.) Only unpredictably long-lived stragglers keep blocks
+  accretion. (With line recycling dropped, the block is reclaimed
+  whole rather than by lines: an index counts what holds it — its live
+  occupants and the payloads a refused carry pinned it for — and the
+  last of them to die hands the block to the pool. Deliberately not
+  Immix.) Only unpredictably long-lived stragglers keep blocks
   forever — exactly the ones sparse-block evacuation exists for.
 - **Phasing**: retention is the safe default and the whole of the first
   implementation — no copying, no identity machinery, no reference

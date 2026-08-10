@@ -8,6 +8,7 @@ Covers memory regions, allocation strategies, arena/pool design, and the interfa
 
 - [arenas.md](arenas.md) — memory categories, request/long-lived arenas, the cross-arena category barrier
 - [arena-reset.md](arena-reset.md) — deferred promotion: the escapee registry, evacuation (not built) vs block retention at arena death
+- [large-entities.md](large-entities.md) — an entity past its category's packing unit: the two-clause invariant, the dynamic string layout for bytes, one block-aligned allocation per entity for cells, the run registry
 - [buffers.md](buffers.md) — growable buffers: per-category growth, memory-pressure modes, the dedicated `BLOCK_KIND_BUFFER` reclaim strategy
 - [static-lifetimes.md](static-lifetimes.md) — compiler-tracked ownership and moves: the tier ladder, drop-point policy, relationship analysis (acyclic classes, `#[Backedge]` cycle shapes)
 - [zero-abstraction.md](zero-abstraction.md) — `#[FFI]` entities: no header, no ARC; owner-bound lifetime or `FFIBox` attachment, borrowed string/array views

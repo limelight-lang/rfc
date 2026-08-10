@@ -143,11 +143,13 @@ region scan they already perform, once the kind test admits the new
 kind. An OS-direct run is outside every region — the pool's region
 registry records only the 2 MB regions it carved — so a run is
 discovered from a registry of its own, and **is entered into that
-registry after its `RcHeader` is published, never before**. The
-insertion order is the mirror of the removal rule below, and for the
-same reason: a registered address is dereferenced by both enumerators
-without further testing, so an address is registered only once it names
-an entity.
+registry once it is commissioned, before the factory publishes the
+entity**. Registration is to a run what the kind store is to a pooled
+block: the moment it becomes visible to an enumerator. What the
+enumerator finds there is the zeroed occupancy word, which reads as an
+empty slot, so the ordering rule is the zero pass rather than the
+publication — the same rule an entity block obeys, where the kind says
+"entity" long before any entity exists.
 
 **The block's snapshot entry needs the entity's size, published before
 the kind.** `snapshot_entity_blocks` reads a per-block field to compute
@@ -347,14 +349,19 @@ allocation exists in two places — pooled and OS-direct in
 as does the arena's large-run log with its transfer out, and
 `body_alloc` with its size-carrying free.
 
-**Designed, not built.** The kind pair and its allocator entry point,
-the zeroing and publication order for a large-entity block, the run
-registry, the enumerators' arm for the new kinds, the two park-set
-entries and the restated leak bound, the arms in `ll_free_large`,
-`ll_usable_size` and `ll_free`'s two assertions, the arena's entity
-door, the reset's four rules for a surviving run, the four lifted
-refusals, the factory's choice between the inline and dynamic string
-layouts, and the compiler's warning at `MAX_SMALL`.
+**Built since, as `ll-model`'s `memory::large_entity`.** The kind pair
+and the allocator entry point, the zeroing and publication order, the run
+registry, the park-set entries, the arms in `ll_free_large`,
+`ll_usable_size` and `ll_free`'s assertions, and the lifted refusals of
+the two heap categories and the immortal region. The string factory's
+choice of layout is built with them, and it cost a header bit: `COW`
+selected the layout as well as the semantics, and an oversize string
+needs the combination that bit could not express.
+
+**Designed, not built.** The enumerators' arm for the new kinds, the
+restated leak bound of the park queue, the request arena's entity door
+and its lifted refusal, the reset's four rules for a surviving run, and
+the compiler's warning at `MAX_SMALL`.
 
 When the cells half is built, [../gc/rc-walk.md](../gc/rc-walk.md)'s
 "Huge objects" bullet needs narrowing: objects in OS-direct runs stop

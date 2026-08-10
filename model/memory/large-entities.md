@@ -64,12 +64,19 @@ inline one. The slot is then 32 bytes — `RcHeader`, `len`, `capacity`,
 `hash` and a `data` pointer — and the payload comes from `body_alloc`,
 which sends anything over a block payload to a dedicated OS-direct run
 in either category, and in the request arena also logs that run for the
-reset. Every part of that path is built and tested: the arena's
+reset. Every part of that path was already built and tested: the arena's
 run, the reset's carry (`promote::carry_external_memory` and
-`string::carry_payload_out_of`), and the size-carrying free. What is
-missing is one decision at the factory, which today always builds
-inline, so a 9 KiB heap string is refused rather than served in a
-32-byte slot beside a right-sized body.
+`string::carry_payload_out_of`), and the size-carrying free.
+
+**The factory's choice cost a header bit, not one line.** `COW` selected
+the layout and also meant copy-on-write, so building a large string in
+the dynamic layout would have made it non-COW — written in place under a
+second holder, uncounted in the arena, held rather than copied on escape.
+The layout took a bit of its own, `STRING_OUT_OF_LINE`, and `COW` now
+means only what it says; a string out of line by size carries both. The
+bit is string-scoped and free in both collector builds, because the
+candidate index that owns bit 15 is written only for the kinds that can
+close a cycle, and `String` is not one.
 
 This covers the GC heap and the request arena, and only those two.
 `ll_string_new_dynamic` refuses `LongLived` and `Immortal` outright, and

@@ -234,26 +234,37 @@ long-lived arena as immortal entities: one string = one address, equality
 
 **Revised decision**: inline and dynamic strings share the `string`
 entity kind and differ only in where the bytes are, so they are two
-**physical representations** selected by the **COW flag** already in the
-header (not two class descriptors — a string carries no class pointer),
-presented to the language behind a shared `StringInterface`:
+**physical representations** selected by a header flag of their own,
+`STRING_OUT_OF_LINE` (not two class descriptors — a string carries no
+class pointer), presented to the language behind a shared
+`StringInterface`:
 
-- **Inline string, `COW = 1`** (the default) — bytes after the header,
-  one allocation, fixed size once allocated.
-- **Dynamic string, `COW = 0`** — bytes out of line, with spare capacity,
-  so append extends them in place instead of reallocating the whole
-  string. The indirection buys exactly that: growth moves the payload,
-  while the entity's own address must stay fixed (the GC never moves
-  entities, and the holders of a string are not enumerable). No PHP-level
-  API is defined yet; the runtime representation supports it natively.
+- **Inline string** (the default) — bytes after the header, one
+  allocation, fixed size once allocated.
+- **Dynamic string** — bytes out of line, with spare capacity, so append
+  extends them in place instead of reallocating the whole string. The
+  indirection buys exactly that: growth moves the payload, while the
+  entity's own address must stay fixed (the GC never moves entities, and
+  the holders of a string are not enumerable). No PHP-level API is
+  defined yet; the runtime representation supports it natively.
 
-**The COW flag is set at creation and does not change during the
-string's life.** No operation flips it: a string created without COW
-stays without it. This is what makes the flag readable as the layout —
-every path that needs to know where the bytes are reads a bit that
-cannot have moved since allocation. It also means no sub-mode bit is
-needed anywhere else in the header, which matters because the flags word
-has no free bit left (`ll-model/src/refcount.rs`, the layout test).
+**The layout flag is set at creation and does not change during the
+string's life.** No operation flips it, so every path that needs to know
+where the bytes are reads a bit that cannot have moved since allocation.
+
+**The layout is a separate bit from `COW`, and that separation is
+load-bearing** (2026-08-10,
+[memory/large-entities.md](memory/large-entities.md)). `COW` said both
+things until a string had to be out of line *by size*: past what a
+memory category's allocator packs in one slot the inline layout cannot be
+allocated at all, and such a string is copy-on-write like any other. One
+bit cannot express that combination, so the layout took a bit of its own
+— bit 15, which is dead on a string header in both collector builds,
+since the candidate index there is written only for kinds that can close
+a cycle and `string` is not one. `COW` means copy-on-write and nothing
+else: it also decides whether an arena entity is counted and whether it
+is copied or held when it escapes, and a string built out of line by size
+keeps all three behaviours.
 
 Should a future operation ever need to change the flag, it changes the
 layout with it, and it is a copy, not a bit flip — the same argument
@@ -275,13 +286,25 @@ returns null for both rather than redirecting the allocation, so a wrong
 category is a failure at the creation site instead of an entity in the
 wrong block (`ll-model/src/string.rs`).
 
-**Which layout a string gets is a compile-time decision.** The compiler
-allocates a string dynamic when it can see the string being appended to
-— a concatenation loop, an accumulator — and inline otherwise. There is
-no runtime promotion from one layout to the other: that would rewrite
-the body under a header the collector may be reading concurrently, which
-is the same objection that retired freeze below. A wrong guess costs
-copies during growth, never memory corruption.
+The by-size form obeys the same two exclusions, and only the reasons
+change hands. A long-lived string past its limit is refused because
+nothing reclaims its payload, which is the reclamation policy's question
+rather than this one's. An immortal string past its limit keeps the
+inline layout whole, in the block-aligned run the immortal allocator
+already serves for a request over one block payload; it is never freed
+and never walked, so nothing about it needs the payload machinery.
+
+**Which layout a string gets is decided at its allocation, by two
+inputs.** The compiler allocates a string dynamic when it can see the
+string being appended to — a concatenation loop, an accumulator — and
+inline otherwise; a wrong guess there costs copies during growth, never
+memory corruption. The factory then overrides inline with out-of-line
+whenever the content exceeds what the category's allocator packs in one
+slot, because there the inline layout has no home. The first input also
+clears `COW`, the second never does. There is no runtime promotion from
+one layout to the other: that would rewrite the body under a header the
+collector may be reading concurrently, which is the same objection that
+retired freeze below.
 
 Both are managed entities: RC/COW-flagged, created in the language always
 carrying RC. The exception is the FFI boundary, where a foreign buffer
@@ -311,15 +334,16 @@ therefore does not apply here — it guards a class-pointer load that a
 string never performs, since string methods are direct devirtualized
 calls to the final `String`.
 
-The free routine reads the same flag to pick teardown: an inline string
-frees only its own block, a dynamic string frees its out-of-line payload
-as well.
+The free routine reads the layout flag to pick teardown: an inline string
+frees only its own block, an out-of-line one frees its payload as well.
 
-**A dynamic string never copies on write.** The barrier rule in
-[values.md](values.md) fires on `COW && refcount > 1`, and a dynamic
-string carries `COW = 0`, so it is outside that rule by construction —
-it is the non-COW, freely mutable form that flag has always denoted. A
-write goes in place, always, and no sharing test is performed.
+**A non-COW string never copies on write.** The barrier rule in
+[values.md](values.md) fires on `COW && refcount > 1`, and the form the
+compiler allocates for a proved single owner carries `COW = 0`, so it is
+outside that rule by construction. A write goes in place, always, and no
+sharing test is performed. A string that is out of line only because of
+its size carries `COW = 1` and takes the ordinary rule, separating into
+a fresh out-of-line entity when a second holder writes.
 
 That is safe because the compiler only allocates a string dynamic where
 it has proved a single owner — an accumulator, a local builder, a value

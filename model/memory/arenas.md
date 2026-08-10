@@ -37,6 +37,24 @@ Most PHP objects are created and die within a single request. These objects are 
 
 This is the dominant allocation path for typical PHP workloads.
 
+**An entity larger than one block payload is allocated here too, and not
+by bumping.** A bump-packed block cannot hold a slot larger than its own
+payload, so past that bound the arena takes a block-aligned allocation of
+its own and logs it as one of its runs — the same shape every category
+uses for such an entity ([large-entities.md](large-entities.md)). Two
+consequences belong to this section. An unpromoted one is freed by the
+reset with the arena's other runs, which is what the log is for. A
+**surviving** one is the reset's single exception to block retention: its
+block is handed over rather than retained, because it is not shared with
+anything and its kind is what routes the free — retained, a
+multi-megabyte allocation would reach the 64 KiB block pool at the
+entity's eventual death.
+
+The split is made by a door of its own. `ll_arena_alloc` reaches the
+bump allocator straight from the C ABI, where an entity and a byte
+buffer are the same request, so that entry point keeps refusing the size
+and the entity path is a separate one.
+
 ## Long-Lived Arena
 
 Objects that outlive a single request but are not immortal: shared data structures built once and released together, caches whose lifetime a subsystem manages. These are allocated in a long-lived arena with a separate lifecycle from the request arena.

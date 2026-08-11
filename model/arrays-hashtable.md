@@ -26,22 +26,33 @@ locates it.
 ```
 [ u32 index slots ][ Entry × capacity ]
 
-Entry (40 B):
+Entry (32 B):
   +0   hash_or_key   u64   full hash of a string key, or the integer key itself
   +8   key           ptr   string key; 0 = integer key; 1 = hole
-  +16  next          u32   index of the next entry in this bucket's chain
-  +20  meta          u32   per-entry state (see "Element states")
-  +24  value         ValueBox (16 B)
+  +16  value         ValueBox (16 B), whose reserved bytes carry this
+                     entry's collision link: a u32 at entry +28
 ```
 
-**Why the ValueBox is last.** The store barrier writes all sixteen bytes of a
-ValueBox ([values.md](values.md), the `+10` row: bytes 10..15 are "alignment
-padding, not usable as per-slot state"). Placing the ValueBox at +24 puts every
-write it performs inside bytes 24..40, so a value store cannot reach `key`,
-`next` or `hash_or_key`. Zend threads its collision chain through the element's
-own padding (`zval.u2.next`); this crate cannot, and the four bytes at +16 are
-what replace that trick. They cost footprint, not a third dependent access — the
-link is loaded with the entry that was going to be read anyway.
+**The collision link lives inside the element's ValueBox**, in the six bytes
+[values.md](values.md) reserves at the box's `+10` — the link is the top four of
+them, box `+12`. The entry therefore costs 32 bytes rather than the 40 a
+separate `next` and `meta` pair cost, and an element of capacity costs 40 with
+its two index slots against the 48 it cost before, which is what `zend_array`
+has cost since PHP 7.3. Zend threads its
+chain through the element's own padding (`zval.u2.next`) under a rule its macros
+obey: a value copy never carries `u2`. The rule here has to be stronger, because
+the concurrent collector reads the element's second word while a mutator writes
+it, so **every** write to that word is one relaxed atomic store of the width the
+collector loads. The element field is private, three composing writers publish
+the word, and every read hands the box out with the reserved bytes cleared, so a
+link cannot travel in a copy into another entry
+(`ll-model/dev/DECISIONS.md`, 2026-08-07). The link is loaded with the entry
+that was going to be read anyway, so it costs no third dependent access.
+
+**Why the key words come first.** The store barrier writes all sixteen bytes of
+a ValueBox, so a value store reaches bytes 16..32 and nothing below them: the
+key and the hash are out of its way by position. That is what makes the hole
+marker survive an element store.
 
 **Why `key` is the discriminant.** An aligned pointer is a string key; `0` is an
 integer key, whose value is in `hash_or_key`; `1` marks a hole left by deletion.
@@ -105,10 +116,11 @@ first if this default ever looks wrong.
 hash, so a key comparison was one register compare; a real string key costs a
 length test and a `memcmp`, which the control byte filters away at seven bits and
 a chain does not. The index memory goes the other way, roughly 9.1 bytes per
-entry chained against 5.7 for the control byte — about 7 % of the table at a
-40-byte entry, and the entry's `next` field is not part of that cost, since
-removing it leaves 36 bytes that the ValueBox's 8-byte alignment rounds back up
-to 40. The comparison is equal-N with each index at its own design load; an
+entry chained against 5.7 for the control byte — those 3.4 bytes were about 7 %
+of the table at the 40-byte entry this comparison was run against, and are about
+8 % at the 32 bytes the entry costs now. The chain link is not part of that cost
+at all: it sits inside the element's reserved bytes and adds nothing to the
+entry. The comparison is equal-N with each index at its own design load; an
 equal-memory comparison would let the control byte run near 0.55 instead of
 0.875 and would cheapen its miss, but only at the large sizes where the two
 already meet within the spread. A mixed workload was run and is **not** quoted
@@ -182,7 +194,8 @@ second writer.
 
 ## Element states
 
-`meta` and `key` together carry four states, and every walker branches on them:
+`key` and the element's own tag together carry four states, and every walker
+branches on them:
 
 - **live, plain value** — the common case.
 - **hole** — `key == 1`. Left by deletion, skipped by iteration and by the

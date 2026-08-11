@@ -215,7 +215,8 @@ Two smaller pins the sites imply:
 - **Thread exit**: the weak table outlives the static-block teardown
   ([classes.md](classes.md), "Teardown at thread exit") and any
   in-flight epoch's local drain — both deliver notifications through
-  it — and is disposed last; rows still present at that point (e.g. a
+  it — and is disposed after them, ahead of the buffer arena and the
+  thread's heaps; rows still present at that point (e.g. a
   weak reference to an immortal) are discarded without notification,
   the thread's cells dying with its heap. Cross-thread movement of a
   graph containing a kind-5 entity (`thread_clone` / `thread_move`),

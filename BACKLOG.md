@@ -343,6 +343,20 @@ documents** (2026-07-22); what remains open is at the end.
   mailbox backpressure, monomorphization for store-path-divergent
   actors, actor handle representation in the value model
   ([actors.md](runtime/actors.md)).
+- **Mark termination waits on the slowest parked actor** — an actor
+  parked mid-message on I/O reaches no message boundary until the
+  operation completes, so it answers no handshake, and mark termination
+  requires every actor to have replied ([actors.md](runtime/actors.md),
+  [satb.md](model/gc/satb.md)). An actor blocked on a socket for 30 s
+  holds the marking phase for 30 s, and every other actor's SATB buffer
+  grows meanwhile. The system-signal check compiled into unbounded loops
+  does not reach this case: a parked actor executes no loop. Answering
+  the handshake at the park point instead is not free either — the
+  parked actor's stack is non-empty, so its roots would have to be
+  scanned, which is exactly what the message-boundary protocol avoids.
+  Raised 2026-08-12 while writing the execution substrate
+  (`limelight-lang/io`, `design/execution.md`), which is where the wait
+  becomes visible.
 - **Proxy-mediated movability for cold long-lived data** — opt-in: a
   container that knows its contents are cold and long-lived (sessions,
   warm caches) has them wrapped in canonical per-object proxies at

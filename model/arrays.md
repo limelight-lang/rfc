@@ -46,8 +46,19 @@ dispatch: effectively a C array with PHP syntax.
 
 ## Transition Rules
 
-- **1 never transitions.** It exists only where the compiler proved
-  monomorphism; the proof is static, so the representation is final.
+- **1 → 2** happens on a store the proven element type cannot hold. The
+  proof is static and covers the region the compiler saw; separation
+  copies the storage in its current representation, so a proven
+  `array<int>` reaching generic code arrives there as a typed vector, and
+  a string stored into it is what ends the representation. The generic
+  element write dispatches on the strategy tag and migrates, exclusively
+  owned by then, so it may allocate and may raise. Stores inside the
+  proven region stay branch-free.
+  *(Amended 2026-08-12: this bullet used to read "1 never transitions",
+  which [arrays-hashtable.md](arrays-hashtable.md), "Growth, and the
+  migration from the mixed vector", had already argued shut. The two
+  documents now say the same thing; no crate produces strategy 1 yet, so
+  nothing implements the transition either.)*
 - **2 → 3** happens at runtime when the array stops being a dense list:
   insertion of a string key, or creation of a hole/sparse index. Same
   trigger as Zend packed→hash.

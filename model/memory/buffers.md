@@ -21,7 +21,7 @@ and any future growable container built the same way.
   non-issue: the whole arena resets together, so an abandoned old payload
   is reclaimed for free at request end. No dedicated isolation needed
   here.
-- **Long-lived / immortal**: the buffer arena bump-allocates too, so
+- **Long-lived**: the buffer arena bump-allocates too, so
   growth extends in place on the same condition as the request arena — the
   payload's end is the arena's bump — and is alloc-new + copy + free-old
   (`ll_realloc`-shaped) otherwise. This is where isolation and reclaim
@@ -36,6 +36,17 @@ and any future growable container built the same way.
   payload. Since holes never coalesce here, an append loop served by hole
   reuse produces a chain of them at 64, 128, 256 bytes — each too small for
   the step that follows.
+- **Immortal**: a region of its own, and none of the three operations
+  above happens there. The payload comes from the immortal region rather
+  than from the buffer arena, growth is refused rather than served, and a
+  free is a no-op — an address in this category is cached by readers for
+  the life of the process, so moving a payload would strand them, and
+  handing its bytes to the buffer arena would pin that block forever.
+  A container that has to change size in this category replaces its
+  storage instead ([arenas.md](arenas.md), "Immortal Objects"). *(Amended
+  2026-08-12: this used to share the long-lived bullet above, which
+  described the buffer arena's growth and free for a category that reaches
+  neither.)*
 - **GC heap**: the buffer arena owns it, and the buffer arena obeys the
   object heap's ownership rules (decided 2026-08-04). A string or array
   is an object of reduced form, so its payload is an entity's body, and a

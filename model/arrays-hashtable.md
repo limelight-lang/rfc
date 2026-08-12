@@ -291,9 +291,19 @@ the compiler proved stay branch-free.
 **The strategy tag** lives in the ArrayBox body, not in the entity header. The
 flags word has no free bit ([strings.md](strings.md), and the crate's layout
 test), and it needs none: teardown and both walkers dispatch on entity kind
-first, and then read a byte from the ArrayBox's own fields, which are on a line
-they have already loaded. Two bits for the strategy, two for the ladder's rung
-state below — drawn and escalated — and the per-table salt live there together.
+first, and then read the tag from the ArrayBox's own fields, which are on a line
+they have already loaded.
+
+Inside the body it sits with the storage pointer and the two counts, in the
+words a concurrent walker reads, and **not** in the byte holding the ladder's
+rung state and the append cursor's exhaustion. The walker loads the tag
+atomically, because the tag is what says which layout the counts describe and a
+migration replaces the representation under it; the rung state is written
+plainly by the mutator and no walker reads it. One byte cannot be both, so the
+two bits once reserved for the strategy beside the rung state are free again,
+and the per-table salt stays where the rung state is. *(Amended 2026-08-12:
+this paragraph put the strategy tag in that byte, which the walker's atomic
+reading forbids.)*
 
 ---
 
@@ -405,9 +415,20 @@ category, so an arena COW child is copied recursively, an arena object or
 ReferenceBox child takes the existing hold-count route, and a heap or immortal
 child is merely retained. Depth is bounded by the arena-resident COW subtree. A
 refused publish needs no rollback log, because the copy is private until the slot
-accepts it: releasing the prefix already built and freeing the private storage
-restores every external count. This is the arm `object.rs`'s `escape_copy`
-reserves with `unreachable!("no COW copy for this entity kind yet")`.
+accepts it: releasing the prefix already built, freeing the private storage and
+giving the private entity itself back restores every external count. All three,
+and the third is the one an implementation drops — the entity nothing has named
+yet is still an entity, and leaving it behind leaks a slot per refusal.
+*(Amended 2026-08-12: the sentence stopped at the storage, and the crate leaked
+exactly what it left out.)*
+
+The escape copy has an arm per COW kind — a string's and an array's — and the
+kinds with no COW copy reach a default that cannot return: null is how the
+call says "out of memory", and an unimplemented kind is not that, so there is
+nothing safe to return and nothing safe to continue into.
+*(Amended 2026-08-12: this used to read as though the whole deep copy were the
+arm reserved by `unreachable!`, which is the default beside the two arms rather
+than either of them.)*
 
 ---
 

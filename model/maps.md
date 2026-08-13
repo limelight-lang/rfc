@@ -155,8 +155,12 @@ only for cells inside the entity.
 **The chunk is not freed while an epoch is in flight.** It goes through
 `deferred_free`, which exists for this.
 
-The hooks are inherited the way `dispose` is, so a subclass of a map
-class is walked, re-checked and severed without redeclaring anything.
+A subclass of a map class inherits the group, so it is walked,
+re-checked, severed and freed without redeclaring anything. That is a
+requirement rather than an observation: the descriptor builder seeds the
+runs, the properties and the vtable from the parent and does not seed
+`dispose`, so a subclass declaring none of its own gets the default one.
+For a map subclass that would be the whole table leaked.
 
 ---
 
@@ -560,18 +564,26 @@ reason the array's copy states.
 Named here because a map is the hook's second customer and it asks for
 more than the first:
 
-1. A hook that yields **cells**, whose chunk is freed through
-   `deferred_free` while an epoch is in flight. This is S18 as raised.
+1. A hook that yields **cells**, from storage the parking machinery can
+   take, because a block whose cells the collector recorded may not be
+   freed while an epoch is in flight. This is S18 as raised.
 2. A **version**: read through the head's window, with the entity given
-   up for the epoch when no coherent reading is obtained, and answered so
-   that Phase 3 can ask about it again through the descriptor rather than
-   by casting the entity to an array.
-3. A **sever body** on the descriptor, because the generic cell-nulling
-   corrupts a table entry two ways.
+   up for the epoch when no coherent reading is obtained, and a
+   **re-check** the descriptor answers, because Phase 3 finds an array's
+   version by casting the entity and taking a fixed offset, which on an
+   object is the class word.
+3. A **sever body**, because the generic cell-nulling corrupts a table
+   entry two ways, and a **free body**, because rc-trace frees the white
+   set itself without calling `dispose` and would otherwise leave the
+   chunk behind.
 4. A way for a class to declare **body bytes no run describes**, and the
    storage head's no-`&mut` rule restated for an object body.
+5. **Inheritance of the group**, which the descriptor builder does not do
+   for `dispose` today.
 
-Points 2, 3 and 4 are additions to what S18.1 currently scopes.
+Everything but point 1 is an addition to what S18 was raised for. The
+shape they take is `dev/DECISIONS.md`, 2026-08-13, "a class with cells
+outside itself carries one flag and one group of five".
 
 ---
 

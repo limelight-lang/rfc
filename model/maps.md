@@ -194,45 +194,114 @@ arithmetic rather than a decision.
 
 ## What the flood ladder becomes
 
-**Decision**: the ladder is kind-dispatched, and it is not inherited
-unchanged. Rung one covers all four kinds. Rung two is a string-key rung
-and must never be reached with any other kind.
+**Decision**: the ladder is kind-dispatched in its triggers as well as
+its bodies, it gains a terminal rung, and every secret it draws comes
+from a per-process key that no build option folds. Rung one covers all
+four kinds. Rung two is a string rung, trigger and body both. Rung three
+is refusal, and it is the answer for every kind once nothing rebuildable
+remains.
 
-The table's ladder counts, per insert, the entries whose full identity
-number equals the new key's, and separately the length of the chain
-walked. Rung one draws a per-table salt and rebuilds; rung two escalates
-to a keyed hash over the key's bytes and rebuilds. As it stands the salt
-enters only the integer path, and the escalated rebuild hashes the bytes
-of every non-integer key it meets.
+**The two triggers measure two different failures**, and the ladder must
+stop conflating them. The chain trigger sees keys whose identities differ
+while their buckets coincide; a salt answers it for any kind, the
+identities being separable. The equal-identity trigger sees keys whose
+identity numbers agree while the keys differ, and only a kind whose
+identity is a lossy hash can produce that: the string, whose identity
+hashes its bytes, and the array, whose identity hashes its content. An
+integer's identity is its value and an object's is its id, so for those
+two equal identity means the same key, which is an overwrite and never an
+entry in the walk. **The counter therefore counts an entry only when its
+tag equals the incoming key's.** Counting any non-integer key, as the
+array's table does today, is what lets eight equal-content arrays fire
+the string escalation.
 
-Both halves are wrong for a map, and the second is a wild read rather
-than a wrong number. An object key's entry holds a pointer to an object;
-handed to the byte hash it is read as a string, whose length field is the
-object's class word. The first insert that escalates a `MapMixed` holding
-one object key crashes the process, and so does every later growth,
-because growth rebuilds the index too.
+**The identities, from birth.** An integer indexes by value, a string by
+its cached hash, an object by its rotated id, and an array by a **keyed**
+content hash under the per-process key. Inside that walk a string element
+is hashed **by its bytes under the same key**, not by its cached hash: a
+cached hash is a build constant under `hash-folding`, so a content hash
+that consumed it would inherit offline-constructible collisions through
+colliding strings however the outer mix were keyed. Hashing the bytes
+closes that route and costs nothing asymptotically on a path that already
+walks the structure. The content hash is keyed per process and by nothing
+else, because the stored number must equal an independently computed
+probe and must survive a copy, so no per-table component may enter it.
 
-**Rung one, generalised.** The salt enters the slot derivation for every
-kind: the slot is the salted mix of whatever `hash_or_key` holds. For an
-integer that is the value, as today. For an object it is the rotated id.
-For an array it is the stored content hash, which needs no re-walk — the
-identity number is already there. For a string it is the full hash. One
-rung, one mechanism, no key bytes read.
+**Rung one, the chain trigger's first firing, all four kinds.** Draw the
+per-table salt and rebuild. Every kind's slot becomes the salted mix of
+its identity number, and no key bytes are read. The salt is a keyed hash
+of the storage address under the per-process key rather than the plain
+hash of it the array draws today, whose own note concedes that addresses
+recycle across resets and that under `hash-folding` the seed inside it is
+a build constant. With that one change rung one is a complete defence for
+the two kinds whose identity is exact: an integer or object flood needs
+bucket collisions, bucket choice needs the salt, and the salt needs the
+key.
 
-**Rung two, narrowed.** Escalating to a keyed hash over the key's bytes
-is meaningful only where the identity *is* bytes, which is the string key
-alone. An address has no bytes, and an array's content hash is already a
-hash over its contents, so re-hashing it with the salt is rung one. For a
-`Map`, the ladder therefore has one rung, and that is its whole flood
-answer: a per-table secret over the rotated address makes bucket choice
-unpredictable to a program that can only influence where objects are
-allocated.
+**Rung two, the equal-identity trigger over string entries, or the chain
+trigger's second firing.** Escalate and rebuild: a string entry's slot
+comes from the keyed hash over its bytes, under the per-process key
+together with the table's salt. No other kind's derivation changes, and
+the byte-hashing branch is asserted unreachable from any other tag,
+because its failure is a read of unrelated memory rather than a wrong
+number. An object key's entry holds a pointer to an object, and handed to
+the byte hash it is read as a string whose length is the class word. The
+string is the one kind that both has a colliding identity and can be
+re-derived without allocating, and that conjunction is the whole reason
+rung two exists.
 
-**What this obliges the table to do**: `entry_slot_hash` dispatches on
-the key's tag, and its byte-hashing branch is reachable only from the
-string tag. The assertion that it is unreachable otherwise belongs in the
-code, because the failure is a read of unrelated memory rather than a
-wrong answer.
+**The array has no rung two, and no longer needs one.** Its identity is
+keyed from birth, so equal array identities under different content are
+not a hash accident to rebuild away from; eight of them are evidence that
+the keyed function itself has failed, and re-mixing a broken number with
+a salt separates nothing. The equal-identity trigger over array entries
+fires rung three directly.
+
+**Rung three, refusal.** It fires when a trigger trips and no rebuild
+remains for the offending kind: the equal-identity trigger over array
+entries, the equal-identity trigger over string entries on a table that
+is already escalated, and the chain trigger's third firing. The insert is
+refused with the table unchanged, on the insert's existing refusal
+channel but distinguishable from an allocation refusal, and the runtime
+raises it as a catchable error rather than as memory pressure. This is
+the structural backstop [strings.md](strings.md) has promised since
+before this design existed, bounded without depending on a secret, and it
+replaces the state the code has today, where a spent ladder returns early
+from both rungs and the chain then grows without bound forever. After
+rung three no chain exceeds the trigger's own limit: exhausting the
+ladder caps the damage instead of removing the cap.
+
+**What a `Map` has, priced honestly.** Object identities are exact, so
+there is nothing rung two could separate, and a flood needs bucket
+collisions no attacker can aim without the key. A `Map`'s ladder is
+therefore rung one, a flag-only second firing, and rung three — which for
+object keys is reachable only by an attacker with address control the
+threat model does not grant. One rung plus a terminal refusal is an
+honest defence. One rung over a salt that is a public function of one
+recyclable address, which is what the crate draws today, was not.
+
+---
+
+## What the crate owes before either class exists
+
+**A per-process key, 32 bytes, drawn from the operating system once per
+process in every build**, outside the hash stamp and exempt from
+`hash-folding`, because nothing compiled may depend on it. The crate
+names this slot already and has not filled it: the keyed byte hash stands
+in for it, and the strings design reserves it as the long-hash key.
+
+It is a prerequisite rather than an improvement. `MapMixed`'s array-key
+identity cannot be defined without it, and the repriced salt cannot be
+drawn without it. Until it exists, under `hash-folding` every rebuild the
+ladder performs is aimable and rung three is the only real defence. This
+design ships behind the key, not in front of it.
+
+Four smaller obligations follow it, all in the array's table: the
+trigger's tag-equality test, the kind dispatch in both slot-hash
+functions with the byte branch asserted unreachable from any other tag,
+the salt drawn under the key, and rung three as a refusal outcome
+distinguishable from an allocation refusal, which retires the early
+returns that make a spent ladder a dead one.
 
 ---
 
@@ -345,7 +414,11 @@ array with it.
 This is the definition of content equality for `MapMixed`, not an
 implementation note.
 
-- **Scalars** hash by value, **strings** by their cached hash.
+- **Scalars** hash by value. **A string hashes by its bytes under the
+  per-process key**, not by the hash cached in its entity: that one is a
+  build constant under `hash-folding`, and a content hash consuming it
+  would inherit offline-constructible collisions through colliding
+  strings. See "What the flood ladder becomes".
 - **A nested array** is descended into, in insertion order, hashing each
   key beside its value.
 - **An object is hashed by its id, not by its properties.** So two

@@ -160,6 +160,13 @@ with an escape hatch, so worst-case behaviour is bounded without
 depending on a secret. Until that exists, this design has no answer to an
 attacker who supplies array keys.
 
+*(2026-08-13: the backstop is specified in [maps.md](maps.md), "What the
+flood ladder becomes", as the ladder's third rung — a refusal, raised as
+a catchable error, fired when a trigger trips and no rebuild remains for
+the offending kind. The same section requires the per-process key this
+one reserves above: 32 bytes from the OS in every build, exempt from
+folding, which the map classes need before either can exist.)*
+
 **The zero remap belongs to the frozen definition**, not to the caller:
 the hash function maps a genuine zero to a fixed non-zero constant, so
 the "not computed" sentinel stays unambiguous and the compiler folds the

@@ -411,16 +411,25 @@ write is shallow — children are retained and shared, as `arrays.md` says. The
 store barrier's escape copy is deep, as [values.md](values.md) and
 [arenas.md](memory/arenas.md) say, and it is deep in a category-driven sense: the
 copy publishes each element through the barrier again with the destination's
-category, so an arena COW child is copied recursively, an arena object or
+category, so an arena COW child is copied in turn, an arena object or
 ReferenceBox child takes the existing hold-count route, and a heap or immortal
-child is merely retained. Depth is bounded by the arena-resident COW subtree. A
+child is merely retained. The work is linear in the arena-resident COW subgraph
+reachable from the source: one copy per distinct entity, held once per entry
+naming it. Nesting is worked through a list in a buffer-arena chunk rather than
+the machine stack, so depth, attacker-shaped input on a store path, costs a
+refusable allocation and never a stack frame. A
 refused publish needs no rollback log, because the copy is private until the slot
 accepts it: releasing the prefix already built, freeing the private storage and
 giving the private entity itself back restores every external count. All three,
 and the third is the one an implementation drops — the entity nothing has named
 yet is still an entity, and leaving it behind leaks a slot per refusal.
 *(Amended 2026-08-12: the sentence stopped at the storage, and the crate leaked
-exactly what it left out.)*
+exactly what it left out. Amended 2026-08-13: the replaced sentence bounded a
+recursion depth over a subtree. The copy drains an explicit list, so no
+recursion is left to bound, and it holds one copy per distinct source entity
+instead of unfolding the graph into its paths, which cost 2^depth on a source
+whose children name each other twice per level. The open item asking for a
+recursion-depth guard closes with it.)*
 
 The escape copy has an arm per COW kind — a string's and an array's — and the
 kinds with no COW copy reach a default that cannot return: null is how the
@@ -446,8 +455,6 @@ than either of them.)*
   measurement.
 - **The two flood constants**, and whether escalation raises an operations-visible
   signal.
-- **The recursion-depth guard** on the escape copy, since nesting depth is
-  attacker-shaped input on a store path.
 - **String keys, which are the one corner the index comparison leaves open.** A
   seven-bit tag filters a wrong key before any byte comparison; a chain compares
   the full hash and then the bytes. With integer keys that difference is one

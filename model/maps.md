@@ -111,6 +111,23 @@ key that is an entity is a counted child with no lesser standing than a
 value, and a walk that yields values only leaks a ring closing through a
 key with no pass able to find it.
 
+**The hook supplements the generic stride; it does not replace it.** A
+subclass of a map class declares properties of its own, and those live in
+the pointer and box runs where the generic walk finds them. So all three
+consumers run the runs first and the hook after, and the class's own head
+and table tail are outside every run by the mechanism of point 4 below.
+Replacing the stride would make a subclass's own properties invisible to
+the tracer, which is a computed root and a ring that never collects.
+
+**The head is read through its window.** The four words a walker needs
+are published independently, so a reading taken outside the version
+bracket can pair a freshly published chunk with the count that belonged
+to the previous one and stride past the end of the entries. A map's hook
+therefore reads the head the way the array's arm does: the bracketed
+read, a bounded number of attempts, and the map given up for this epoch
+when no coherent reading is obtained. Giving it up is the safe direction
+and the array already takes it.
+
 **Reading with a version, for Phase 3.** A map's chunk moves under growth
 and compaction exactly as an array's does, so a walk of a map must answer
 the version it read at, and the re-check must be able to ask the same
@@ -147,8 +164,8 @@ class is walked, re-checked and severed without redeclaring anything.
 
 | Kind | Identity in `hash_or_key` | Slot from | Equality |
 |---|---|---|---|
-| integer | the value | the value, or the salted mix once the ladder has fired | the value |
-| string | the full 64-bit hash | the same number, or a keyed hash over the bytes after escalation | the bytes, after the hash agrees |
+| integer | the value | the value, or its salted mix once the ladder has fired | the value |
+| string | the full 64-bit hash | the same number, or its salted mix once the ladder has fired, or a keyed hash over the bytes after escalation | the bytes, after the hash agrees |
 | object | the id, rotated | the same number, or its salted mix once the ladder has fired | the address |
 | array | the content hash | the same number, or its salted mix once the ladder has fired | the content, after the hash agrees |
 
@@ -247,14 +264,34 @@ A tagged pointer is never below 8, so it cannot collide with either
 sentinel, and the sentinels keep the values the array's entry gives them.
 
 **What moves with it**, and this is the whole cost: the key accessor
-masks, the key comparison dispatches on the tag instead of testing the
-raw word against the hole sentinel, removal and the sever mask before
-they hand a pointer out, and the slot hash dispatches as the section
-above requires. An array produces tags 0, 1 and the string tag only, so
-its lookup keeps the two-way shape it has — the tag replaces the
-value test rather than adding a branch beside it. This does not
-reintroduce the dispatch that refused the single-class design: that one
-was a test of *admission*, on every write, against a per-instance set.
+masks; the key comparison dispatches on the tag instead of testing the
+raw word against the hole sentinel; removal and the sever mask before
+they hand a pointer out, and stop being typed as a string pointer; the
+copy's entry replay, which reconstructs a key from an entry on every
+array duplication and every escape copy, gains the two new tags; the
+insert's equal-identity counter tests the tag rather than "not an
+integer"; and **both** slot-hash functions dispatch as the flood section
+requires — the probe side and the rebuild side alike, because a table
+whose two sides disagree on one key kind has that kind's entries present,
+iterable and unfindable.
+
+An array produces tags 0, 1 and the string tag only, so its lookup keeps
+the two-way shape it has: the tag replaces the value test rather than
+adding a branch beside it. This does not reintroduce the dispatch that
+refused the single-class design; that one was a test of *admission*, on
+every write, against a per-instance set.
+
+**The walker is the reader the tag was invented for, and it wants both
+words.** The tracer reads the key word raw, and the two things it builds
+from it have opposite requirements. The **child** it reports must be
+masked, because the collector looks an edge up by the entity's true
+address and a tagged integer is a different address: a dropped in-edge
+makes the key a computed root, and a ring closing through it is never
+collected — the exact failure the hook exists to prevent, reached by
+tagging instead of by omitting. The **raw word** it records must not be
+masked, because Phase 3 re-reads the cell and compares it against that
+value verbatim; masking it would fail every re-check and acquit every
+component touching a map.
 
 **A fifth word was refused.** The entry is 32 bytes, which is what puts
 its per-element cost at parity with `zend_array` 7.3+, and a fifth word
@@ -288,7 +325,11 @@ not incidental: the table's read path may not allocate and may not raise,
 because a lookup runs under a live iterator on a shared table, and the
 content walk allocates. So hashing a probe is the map method's work, the
 table receives a number, and a refusal to hash raises before the table is
-touched.
+touched. A lookup with an array probe can therefore still raise inside a
+`foreach` over the same map, and that is the accepted behaviour: the
+table is untouched when it happens, so the iterator remains valid and the
+map is unchanged. The constraint the table states is honoured rather than
+relocated.
 
 **The walk is over an explicit list in a buffer-arena chunk**, never the
 machine stack, because nesting depth is the program's input on a store
@@ -314,11 +355,21 @@ implementation note.
   change with no barrier and no count to freeze them, so a hash over them
   would be stale the moment after it was taken, with nothing able to
   notice.
-- **A reference box is not allowed inside a key.** On insert, a box whose
-  count is one is collapsed to the value it holds, exactly where the COW
-  copy already collapses one. A box with a second name refuses the
-  insert, because a write through that name changes the key's content
-  without touching the array's count.
+- **A reference box anywhere inside a key refuses the key, at any
+  count.** A box with a second name is the obvious case: a write through
+  that name changes the key's content without touching the array's count.
+  A singly-named box is refused too, and collapsing it instead would be
+  worse than the case it fixes. Collapsing writes into an array the
+  program still names, without separation, on the one path that must
+  create no edges — and it manufactures exactly the cycle this walk's
+  termination argument assumes away, since a box at count one may hold
+  the array that holds it, and collapsing turns that into an array
+  containing itself. The COW copy's collapse is not a precedent for it:
+  that one writes into the fresh copy and never touches the source.
+
+  The same rule applies to a **probe**, not only to a stored key. A probe
+  that hashed through a box would have to be compared through one as
+  well, and the confirming walk compares like with like.
 
 ### Why nothing invalidates it
 
@@ -341,7 +392,11 @@ pure copy-on-write subgraph — every entity a real ring passes through is
 non-copy-on-write, and the two ways an array reaches one, a reference box
 and an object, are respectively refused and not descended into. So the
 walk is over a finite directed acyclic graph, and the association makes
-it linear in that graph rather than in its paths.
+it linear in that graph rather than in its paths. The association is
+consulted **on entry** and filled on entry, so it is a visited set as
+well as a sharing optimisation; the acyclicity argument makes the two
+coincide, and reading it on exit alone would turn any breach of that
+argument into a hang rather than a wrong answer.
 
 **The table's own moves preserve the stored number**, because growth and
 compaction copy whole entries and the index is rebuilt from the stored
@@ -399,7 +454,10 @@ retain stride over the pointer runs. For a map that duplicates the
 storage head and the table tail, giving two live maps over one chunk, two
 writers into one entry array, and two disposes freeing it. So every map
 class overrides `clone` with the body below, whether or not it is
-copy-on-write.
+copy-on-write. The override builds a fresh entity rather than starting
+from a `memcpy`, which is also how it inherits the other thing the
+generic clone does: the copy is a new object that nothing holds weakly,
+so it carries no weak-reference flag and no side-table row.
 
 **The copy copies the container.** A new map entity, a new chunk, the
 entries moved across, and each key and each value **published into the
@@ -431,8 +489,10 @@ more than the first:
 
 1. A hook that yields **cells**, whose chunk is freed through
    `deferred_free` while an epoch is in flight. This is S18 as raised.
-2. A **version** answered by the walk and re-askable in Phase 3, through
-   the descriptor rather than by casting the entity to an array.
+2. A **version**: read through the head's window, with the entity given
+   up for the epoch when no coherent reading is obtained, and answered so
+   that Phase 3 can ask about it again through the descriptor rather than
+   by casting the entity to an array.
 3. A **sever body** on the descriptor, because the generic cell-nulling
    corrupts a table entry two ways.
 4. A way for a class to declare **body bytes no run describes**, and the
@@ -451,7 +511,10 @@ Points 2, 3 and 4 are additions to what S18.1 currently scopes.
   `Object::object_id` is the raw address today, and arena-reset marks
   evacuation shelved in favour of a movable proxy. Address equality is
   the whole of `Map`'s equality, so the answer decides whether the key
-  word holds the object or its proxy.
+  word holds the object or its proxy. It decides one level down as well:
+  an array key's stored content hash embeds the ids of the objects inside
+  it, so an id that changes under a movable object makes that key
+  unfindable with nothing able to notice.
 - **A fourth key tag**, which needs arena entity slots forced to 16-byte
   alignment first. Wanted only if weak keys become a tag rather than a
   class.

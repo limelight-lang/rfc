@@ -1051,10 +1051,14 @@ block's object index and both walkers enumerate through it —
 2. **Relaxed-atomic header accesses on AArch64.** x86-64 is settled:
    the generated release code is plain `mov`s with no lock prefix and
    no read-modify-write, and `ll_release` loses the candidate-buffering
-   call tail (`ll-model` `8c2b0fe`, 2026-07-26). AArch64 carries the
-   same zero-cost claim (`refcount.rs`, the module doc) on reasoning
-   alone; read the generated code there before the cost table commits
-   to it.
+   call tail (`ll-model` `8c2b0fe`, 2026-07-26). The instruction half
+   of the AArch64 claim is settled too (2026-08-16, `ll-model`
+   `dev/BENCHMARKS.md`, "AArch64 reads the header with plain loads and
+   stores"): plain `ldr`/`str` on both header paths, no exclusive
+   pair, no LSE atomic, no fence. What stays open is the **cost**
+   half — no ARM hardware has paired those instructions with a clock,
+   and the x86 store-forwarding lesson is why instruction identity is
+   not yet a cost claim.
 3. **Whether the fixpoint and stratification rungs earn their keep**
    over plain epoch re-runs plus the forced verdict — a measurement,
    on a workload that actually starves.

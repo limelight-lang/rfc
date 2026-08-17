@@ -28,7 +28,9 @@ locates it.
 
 Entry (32 B):
   +0   hash_or_key   u64   full hash of a string key, or the integer key itself
-  +8   key           ptr   string key; 0 = integer key; 1 = hole
+  +8   key           ptr   string key, tagged in its low three bits
+                           (maps.md, "The key word gains a tag, for
+                           every owner"); 0 = integer key; 1 = hole
   +16  value         ValueBox (16 B), whose reserved bytes carry this
                      entry's collision link: a u32 at entry +28
 ```

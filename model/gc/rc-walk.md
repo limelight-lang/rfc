@@ -730,6 +730,93 @@ Against `rc-trace` as implemented today this is a net **reduction**:
 `ll_release` loses the candidate-buffer test and call it performs on every
 non-zero decrement, and the header loses 17 bits of candidate index.
 
+## The birth count: a known in-degree is written at allocation
+
+**Status: designed, not implemented (2026-08-17).** When the number of
+counted references an entity will have received by the end of its
+construction sequence is known at compile time, the factory writes that
+number as the initial refcount, and the sequence's publications of the
+entity emit no retain. The factory publishes the header as one 8-byte
+store anyway, so the constant costs no extra operation, while each
+omitted retain turns a counted publish into a plain slot store — about
+2.4 ns per publication on the recorded machine (`ll-model`
+`dev/BENCHMARKS.md`, 2026-08-16, "store and lifecycle canaries").
+
+`$obj->property = new Property()` is the smallest case: in-degree 1,
+written at birth, the property store plain. The release of the value the
+store displaces is unchanged.
+
+**Why the deferral is sound.** Until the sequence ends the entity is
+reachable only through the constructing frame, and no counted reference
+to it exists yet, so no release can reach zero while the count
+understates. The constant must be complete before the first reference
+escapes the sequence; from then on the entity is an ordinary counted
+entity in every protocol above. Both GC builds carry the scheme
+unchanged, with no new header state. Retain/release pair elision on the
+constructing temporary is subsumed: the pair is not cancelled, it is
+never created.
+
+**The boundary.** Only references *to* the entity, created inside its
+sequence, fold into the constant. A store out of the entity into an
+older counted target retains that target as today: the target's other
+holders release concurrently with the sequence, so its count must never
+understate.
+
+## Unique ownership: one owning slot and no count
+
+**Status: designed, not implemented (2026-08-17).** An entity the
+compiler proves is owned by exactly one heap slot for its whole life
+carries no reference count. The proof obligations, all static:
+
+- one heap slot holds the entity's only counted reference from
+  publication to death;
+- every other copy of the reference is a borrow that is dead before the
+  slot is overwritten and before the owner dies, and does not survive a
+  checkpoint;
+- no weak reference, FFI handle, or static reaches the entity except
+  through the owner;
+- the entity may be COW: uniqueness statically answers the separation
+  test, so a copy-on-write value under this policy emits neither count
+  nor uniqueness check and writes in place.
+
+**What the mutator pays: nothing.** The owning slot's store is plain in
+both directions — no retain of the new value, and the release of the
+displaced one is replaced by eager destruction: the overwritten
+reference was the entity's only one, so the overwrite itself is the
+death, and owner teardown destroys the entity the same way. Destructor
+timing is therefore today's last-release timing, and physical release
+takes the same deferred path any death takes while an epoch is in
+flight.
+
+**The header.** The count word holds the non-zero occupancy sentinel 1,
+which no operation touches; the death path writes 0 before the slot
+returns, so the walker's occupancy test is unchanged. The collector
+must not read the sentinel as a count, which needs a discriminant: one
+bit of the retired condemned byte (bits 24–31, free since the
+eager-death amendment) or a reserved count value — undecided.
+
+**The collector.** The walker traces unique entities as ordinary nodes,
+so their out-edges into counted targets are recorded in `IN`, matching
+the retain those stores paid. Their own root equation disappears: a
+unique entity is never an external root, by the borrow clause, and the
+collector never condemns or frees one directly — it is destroyed by its
+owner, including when the owner falls in a condemned component and the
+Phase 4 drain tears it down.
+
+**The open rule: the move.** Re-seating the unique reference into a
+different slot is an edge insertion no count reports and a concurrent
+snapshot cannot see; behind an already-walked destination it frees a
+live entity. Until ruled otherwise, a move copies the entity, or the
+proof includes "never moved", or the move emits a barrier. The choice
+is open, and it bounds how much code qualifies.
+
+**What was narrowed away** (decision 2026-08-17, `ll-model`
+`dev/DECISIONS.md`): the shared-anchor generalization — any live anchor
+in place of one owner — keeps the sealed-topology proof while
+forfeiting eager death and COW eligibility; the deferred-count window —
+uncounted stores reconciled by a later scan — fails on deletions, whose
+overwritten value no scan can recover.
+
 ## Where the errors point
 
 Staleness is not symmetric, and the first draft's blanket "always

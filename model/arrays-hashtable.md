@@ -348,13 +348,16 @@ reading the cached hash at +16. The cached hash is not touched: it is shared
 across every table holding that string. Trigger 2 draws the per-table salt — a
 fresh table has none — and rebuilds the index; a second firing escalates as
 well. Whichever trigger fires first on an unsalted table draws the salt on the
-way, so rung state moves one way and a copy inherits one fact. The escalated
+way, so rung state moves one way and a copy inherits both bits. The escalated
 hash's key is the long-key slot's per-process never-folded key named above;
 until that slot is filled the runtime stands in with a hash keyed by the
 table's salt, which is the second reason the draw precedes escalation — a salt
 left at zero would key the stand-in with a number every attacker knows. Either
-way it is a draw, not the redraw the Perl defect is about: a salt already drawn
-is never moved again.
+way it is a draw, not the redraw the Perl defect is about: the salt of a table
+holding entries is never moved again. A copy draws its own, over an empty table
+before its first insert, where no entry is indexed under the number it replaces —
+the bits it inherits are what keep the ladder bounded, and the number is what an
+attacker's set was built against ([maps.md](maps.md), "Rung three, refusal").
 
 **What the attacker can drive**: one salt rebuild and one escalation per table,
 each O(n), plus a bounded constant of work per insert before firing. Redrawing a

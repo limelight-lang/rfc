@@ -262,9 +262,14 @@ a salt separates nothing. The equal-identity trigger over array entries
 fires rung three directly.
 
 **Rung three, refusal.** It fires when a trigger trips and no rebuild
-remains for the offending kind: the equal-identity trigger over array
-entries, the equal-identity trigger over string entries on a table that
-is already escalated, and the chain trigger's third firing. The insert is
+remains for the offending kind, which is four cases rather than three:
+the equal-identity trigger over array entries, the equal-identity trigger
+over string entries on a table that is already escalated, the chain
+trigger's third firing, and the chain trigger's *first* on a table
+escalated through the equal-identity trigger. That last case is the
+principle rather than a stricter reading of it: escalation draws the salt
+on its way, so such a table has both rebuilds behind it and has never met
+a long chain. The insert is
 refused with the table unchanged, on the insert's existing refusal
 channel but distinguishable from an allocation refusal, and the runtime
 raises it as a catchable error rather than as memory pressure. This is
@@ -272,8 +277,48 @@ the structural backstop [strings.md](strings.md) has promised since
 before this design existed, bounded without depending on a secret, and it
 replaces the state the code has today, where a spent ladder returns early
 from both rungs and the chain then grows without bound forever. After
-rung three no chain exceeds the trigger's own limit: exhausting the
-ladder caps the damage instead of removing the cap.
+rung three no chain an admission can build exceeds the trigger's own
+limit: exhausting the ladder caps the damage instead of removing the cap.
+
+**A replay is exempt from the refusal, and from nothing else.** An insert
+states which it is: the caller's own admission, or a re-derivation of a
+key the table admitted once — the copy's entry replay, and the migration
+that re-inserts a vector's positions. A key admitted once cannot be
+refused on re-admission, because the refusal would drop an entry that is
+already the program's, on an operation the program never performed.
+Rungs one and two stay armed on a replay, so a table that still holds a
+rebuild takes it. The exemption is paid for in the chain that occasioned
+it: a replay past rung three grows one past the trigger's limit, and what
+returns it is the copy rule below rather than another rung.
+
+**A copy keeps both rung bits and draws its own salt.** The bits are the
+ladder's bound and travel with the key set the copy takes whole; a copy
+that started weak would hand an attacker an unescalated table for the
+asking. The salt does not travel, because the copy replays every key by
+hand: under the source's number the source's chains are reproduced slot
+for slot, and with both rungs spent and the replay exempt nothing would
+rebuild them away, so the chain would be heritable one copy to the next.
+
+**The copy's storage is sized by its own live count**, through the growth
+schedule, and not by the chunk the source holds. Taking the source's slot
+count was tried and withdrawn (`dev/DECISIONS.md` in the crate, "a copy
+sizes its storage by its own replay"): it was meant to keep apart buckets
+that a narrower mask merges, and a mask cannot supply that defence.
+Identities that differ are scattered by the copy's own salt whatever the
+width; identities that agree collide at every width and are what the
+equal-identity trigger answers; and where the salt is known — the oracle
+below — a colliding set is forged against any mask as cheaply as against
+any other. A copy with no live entry takes no chunk at all, unless it
+inherited a drawn rung bit, the draw needing an address to derive from.
+
+**The exemption's bound is the ladder and not the salt's secrecy.** A
+salt is drawn from a storage address under the per-process key, and
+addresses recycle: a copy freed and a copy made again in its place can
+draw the same number, and a timing oracle recovers a salt in any case,
+which is what [strings.md](strings.md) concedes in "Neither position is a
+defence". So the scattering above is what makes the replay's exemption
+cheap in the ordinary case, while what makes it bounded in the adversarial
+one is rung three itself: the next admission into that chain is refused.
 
 **What a `Map` has, priced honestly.** Object identities are exact, so
 there is nothing rung two could separate, and a flood needs bucket

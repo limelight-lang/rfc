@@ -154,6 +154,15 @@ table accounts for its bounded population with no unresolved row.
         findings 1-11 and the critical review's ten, plus the six PHP-fenced
         examples; six families are excluded by class with a reason each.
 
+- [ ] S2.5 Map Edmond's PH1-PH35 into the case book
+      done: every PH number in `model/gc/gc-horizon-cases/adversarial.md` is
+        cited by the case that owns its shape, or listed in
+        `gc-horizon-cases/coverage.md` as out of scope with a reason; every PH
+        case that contradicts a case file is recorded as a finding rather than
+        reconciled silently; PH shapes that name a hole the algorithm does not
+        carry become numbered open questions in `model/gc/gc-horizon.md`
+      tier: T2 · role: Critic
+
 ## S3 — Review  [in progress]
 
 Goal: the book survives two Critic rounds; what does not close goes to Sage.

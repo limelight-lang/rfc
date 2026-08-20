@@ -179,6 +179,18 @@ a collector this design does not target. Re-deriving the specs is a
 precondition of using that instrument, not an alternative to the other
 two.
 
+## Edmond's adversarial cases
+
+Thirty-five attack shapes, PH1 to PH35, are in
+[adversarial.md](adversarial.md) — written the same day as this book and
+moved here whole. Several of them and several of the open questions in
+[gc-horizon.md](../gc-horizon.md#open-questions) are the same finding
+reached from two directions: PH5 and question 8 (the arena reset removes
+a root category), PH9 and question 9 (promotion must dominate the
+throwing edge), PH2 with PH3 and question 7 (the weak break). The
+mapping of every PH number into the sixteen cases has not been made yet
+and is step S2.5 of `dev/PLAN.md`.
+
 ## Coverage
 
 The table mapping this book against the cases already written in the

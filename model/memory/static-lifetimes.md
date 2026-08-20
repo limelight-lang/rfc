@@ -79,7 +79,8 @@ owner. The rule, and it is not the obvious one:
 
 **The owner must be a reference the cycle collector treats as a root —
 a frame slot, an arena slot, a static block, an immortal, an FFI
-handle. A field of a heap object never qualifies.**
+handle. A field of a heap object qualifies only through the chain rule
+below, and never on its own.**
 
 Three cases show why, in order of increasing subtlety.
 
@@ -131,6 +132,34 @@ cycle member ([../gc/rc-walk.md](../gc/rc-walk.md), "The compiler's
 acyclic flag"), but it can still be garbage *held by* a cycle, and it
 dies in the cascade the moment the collector frees that cycle. Its field
 is therefore no safer an owner than any other.
+
+### The chain rule, and the borrow as a use of its anchor
+
+Amended 2026-08-20 by [../gc/gc-horizon.md](../gc/gc-horizon.md), which
+extends the rule above rather than replacing it. A heap field covers a
+borrow when the field sits on a **counted path from a root**: the anchor
+is a root by the rule above, every edge from the anchor to the borrowed
+entity is a counted heap edge, and the borrow's live range ends at the
+first point that can break either half.
+
+The extension is sound for the same reason the strict rule is. At any
+drain, a condemned component intersecting the path carries an external
+counted in-edge traceable to the root, so the Phase 4 exact test
+([../gc/rc-walk.md](../gc/rc-walk.md#phase-4--verify-and-release-mutator-thread-by-message))
+acquits the whole path. The second case above fails not because the
+cover is a field but because `$obj = null` removes the root, leaving the
+path with no counted in-edge from outside — which is why a store to any
+local on the chain ends the coverage.
+
+**A live borrow is a use of its transitive anchor.** The drop point
+below and the move rule above are both computed over the borrow's live
+range rather than over the anchor's own last syntactic use; otherwise
+the drop releases the anchor, or the move transfers it, while a borrow
+still leans on it. The points that end the coverage are enumerated in
+[../gc/gc-horizon.md](../gc/gc-horizon.md#the-horizon-list): a store to a
+chain local, a store through a may-alias of a path base, a release of a
+class whose purity closure is impure, an unsummarized call, and a
+checkpoint that can drain a verdict.
 
 ## Drop Point Policy
 

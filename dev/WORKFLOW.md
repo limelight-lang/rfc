@@ -29,3 +29,15 @@ work that is the same for every task.
 ## Versions
 
 - Not applicable yet — design phase, no releases.
+
+## Plan
+
+- Work larger than one step goes through [PLAN.md](PLAN.md) before it starts.
+  `## S<n>` heads a stage, `- [ ] S<n>.<m>` is a step, and a step carries three
+  fields: `done:` — the condition that closes it, checkable by someone who did
+  not write it; `tier:` — T0 cosmetic, T1 local change, T2 feature or refactor;
+  `role:` — the reviewer the step gets.
+- Two review roles, and `—` when a step gets neither. **Critic** attacks the work
+  and decides nothing. **Sage** settles a dispute Critic did not close after two
+  rounds, and the verdict is marked `Final`. A role line is written when the call
+  happened, never in advance.

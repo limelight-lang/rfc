@@ -25,7 +25,7 @@ solve"). Conservative, never unsound, but permanent.
 
 The walk locates a slot arithmetically: block by address mask, slot by
 division by the block's size class
-([collector.rs](../../../ll-model/src/collector.rs), `census_row`). A
+(`model/src/collector.rs`, `census_row`). A
 retained block was filled by an arena's bump allocator, so its
 occupants have mixed sizes and no uniform stride. There is nothing to
 divide by, and the block cannot join the entity-block population.

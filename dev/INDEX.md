@@ -15,6 +15,7 @@ No product code lives here — this is the specification, see
 - **Architecture / knowledge map** → [ARCHITECTURE.md](ARCHITECTURE.md)
 - **Decisions (why, dated)** → [DECISIONS.md](DECISIONS.md)
 - **Project conventions (branches, commits, PRs)** → [WORKFLOW.md](WORKFLOW.md)
+- **Plan: stages, steps, review roles** → [PLAN.md](PLAN.md)
 - **Pitfalls already hit** → [POSTMORTEM.md](POSTMORTEM.md)
 - **Diagrams / schemas** → [design/](design/)
 - **Repository utilities** → [tools/](tools/README.md) — `linkcheck.php`

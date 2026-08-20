@@ -8,6 +8,11 @@ Covers GC algorithms, collection strategies, interaction with the Memory Manager
 - [satb.md](satb.md) — concurrent SATB marking, the `rc-satb` strategy: designed and deliberately unbuilt since 2026-08-03, `rc-walk` having overtaken it on pauses; the banner carries why it is kept and what would make it worth building
 - [heap-design.md](heap-design.md) — cross-strategy decisions: non-moving, block/line heap, CAS handoff and deferred free for the concurrent strategy
 - [rc-walk.md](rc-walk.md) — the `rc-walk` barrier-free concurrent cycle collector: derived roots, the epoch byte, the Phase 4 exact test
+- [drain-window.md](drain-window.md) — the drain-exclusivity invariant: what the collector may touch while a mutator drains a confirmed component
+- [gc-horizon.md](gc-horizon.md) — the compiler-side rule that decides which locals carry a count and where the uncounted ones pay: the ownership lattice, the eight horizon kinds, promotion
+- [gc-horizon-states.md](gc-horizon-states.md) — its state set: what the runtime must not change, the axes the lattice reads and creates, the product and the identities that collapse it
+- [gc-horizon-cases/](gc-horizon-cases/README.md) — sixteen cases instantiating the algorithm on one entity kind or one proof-ending event each, with the coverage table over the repository's own cases
+- [pure-destructors.md](pure-destructors.md) — the purity ladder P0/P1/P2/NR, the transitive closure, and the hand-off drain it makes sound
 - [retained-block-walk.md](retained-block-walk.md) — proposal: keep the reset's survivor list as an object index so retained former-arena blocks can be walked, retiring the "cycles among promoted survivors" limit
 - [domains.md](domains.md) — proposal: `rc-walk` with more than one mutator — one writer per refcount, `#[Moved]` and the frozen handover, `~=`, each domain collecting itself, and the cases
 - [domains-rejected.md](domains-rejected.md) — every shape and mechanism tried for the above and dropped, with the reason that killed it, and the prior art consulted

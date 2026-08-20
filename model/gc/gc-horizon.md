@@ -1,0 +1,835 @@
+# GC Horizon: borrow protection paid where the proof ends
+
+## Scope
+
+The compiler-side rule that decides which local references carry a
+reference count and which do not, and where the ones that do not pay for
+their safety. It owns the ownership lattice over IR locals, the list of
+points at which a borrow's proofs stop covering it, the promotion that
+pays at such a point, and the composition with the three other members of
+the ownership family — the birth count and unique ownership
+([rc-walk.md](rc-walk.md), "[The birth count](rc-walk.md#the-birth-count-a-known-in-degree-is-written-at-allocation)"
+and "[Unique ownership](rc-walk.md#unique-ownership-one-owning-slot-and-no-count)")
+and the purity ladder ([pure-destructors.md](pure-destructors.md)). The
+collector is not a party to it: nothing in this document changes
+`rc-walk`'s protocol, the header layout, or what the mutator does at a
+checkpoint.
+
+> **Status: design sketch, closed pending Phase D.** Nothing is
+> implemented and no pre-Phase-D step can open it: the corpus scan below
+> can only kill, the publish census that could open it is undated and
+> gated outside this design, and both verification instruments need a
+> compiler that does not exist. Pre-D work is instrument preparation.
+>
+> **Author of the algorithm:** Edmond, 2026-08-18. Revision 5 by four
+> Critic rounds the same day; all four records are at the end. Named
+> `proof-horizon` while it lived in the code repository's design notes;
+> renamed 2026-08-20 with the move here, the old name kept verbatim in
+> dated `dev/DECISIONS.md` entries and in `model/docs/history/`.
+>
+> Successor to the stack-exit epoch model
+> (`model/docs/history/stack-exit-epoch-gc-2026-08-18.md`, superseded the
+> day it was recorded), shaped by that model's five-axis review
+> (`model/dev/STACK_EXIT_EPOCH_GC_REVIEW.md`) and by the two standing
+> refusals in `model/dev/DECISIONS.md`, 2026-08-17 and 2026-08-18.
+>
+> Open choices — the corpus names, the family-wide borrow-analysis
+> ruling, the summary language — are revised in `model/dev/DECISIONS.md`,
+> which is where the design process lives; this document follows those
+> entries rather than leading them.
+
+## The algorithm in two sentences
+
+A local is either **owned** — a counted holder paying today's
+retain/release pair — or an **anchored borrow**, paying nothing while
+the compiler's proofs hold: `live(anchor) ∧ stable_path`, with every
+anchor chain ending in a counted root. A borrow pays only at a **GC
+horizon** — a point its proofs stop covering — and the payment is
+promotion to owned by an ordinary retain, emitted once per lifetime at a
+point that dominates every horizon in its live range.
+
+The cost model is the idea: protection is priced per point of doubt,
+not per read, per copy or per store. Lean-style call summaries push
+the horizon outward; a borrow no summary covers is promoted at its
+first horizon, once, and a borrow whose lifetime reaches no horizon
+pays nothing at all.
+
+**The sound configuration's free region, named honestly.** Before
+any analysis lands, the conservative defaults compose to: a borrow
+survives only a lifetime containing no object store, no release of a
+non-pure-closure class, no owned death and no unsummarized call —
+read-only lifetimes over destructor-free data, roughly one statement
+in idiomatic untyped code. Every widening is bought by a named
+instrument: summaries widen calls, the may-alias lifter below widens
+stores, purity classification widens releases, and the "free region
+grows call-deep" sentence in the literature section holds only
+through callees that are transitively store-free with pure-closure
+internal releases. The corpus scan measures the bought region, not
+the dream.
+
+## The ownership lattice
+
+Every IR local is in one of two states, assigned by the compiler
+over SSA-form borrows — the phi is the disagreement detector the
+failure default reads.
+
+**Owned** — a counted reference, today's code exactly: acquisition
+retains (or absorbs the creation reference of `new`), release per
+the drop-point policy
+([static-lifetimes.md](../memory/static-lifetimes.md#drop-point-policy)),
+eager death at zero, `__destruct` at the release that reaches it. Owned
+by construction:
+
+- the result of `new`;
+- **every call result** — the callee retains the returned reference
+  before its epilogue, and that retain precedes the batched
+  scope-exit release run and the epilogue checkpoint, so the value
+  cannot die under it. A borrowed return would surface behind the
+  epilogue checkpoint, outside any caller-side promotion, so
+  borrowed returns do not exist until the summary language learns
+  callee-side promotion (open question 1);
+- **the receiver and every by-value parameter** — the callee frame
+  holds a counted reference for each, today's calling convention,
+  because an anchored parameter's chain would end in the caller's
+  frame, and per-function horizon detection cannot see a re-entrant
+  store that kills the caller's slot mid-call. Cheapening this via
+  caller-guarantee summaries is open question 6;
+- every reference to a COW-eligible value — array, string, reference
+  box — because their uniqueness test reads the count and an
+  uncounted holder falsifies it
+  ([values.md](../values.md#refcount-is-always-maintained-on-cow-entities));
+- **every borrow whose target's class is not transitively
+  destructor-free**: eliding such a borrow's count lets a severing
+  store between the borrow's last use and the scope's end reach
+  zero early, moving `__destruct` off the drop-point policy's
+  scope-end pin — a Zend-observable timing change. Owned from birth
+  keeps the pin. "Transitively destructor-free" is computed by the
+  same closed-world closure purity uses
+  ([pure-destructors.md](pure-destructors.md#purity-is-transitive)): an
+  open hierarchy under the static class, or an unresolvable field,
+  defaults to not destructor-free and the borrow to owned — a
+  destructor-free base with a destructor-bearing subclass must not
+  pass. The corpus scan prices the exclusion by its own channel;
+- **every borrow whose path crosses a unique-ownership entity**: the
+  chain invariant's premise is that every path edge is a counted
+  heap edge, and a unique entity's owning slot pays no count — the
+  composition happens to stay sound (the entity is never condemned
+  and its overwrite is a may-alias severing store), but the
+  invariant as stated fails, so the case compiles owned;
+- every local the analysis fails on, and every borrow whose birth
+  does not dominate every horizon and every exit of its live range —
+  the direct, checkable form of the failure default; a borrow born
+  inside a loop with a horizon reachable over the back-edge fails it
+  and is owned. Analysis failure selects owned, never guesses
+  anchored.
+
+**Anchored** — an uncounted borrow, `$b = $a->property` as a plain
+load. The chain invariant: the anchor is a counted root — an owned
+local, and equally any root category rc-walk names: an arena slot, a
+static, an immortal, an FFI handle
+([rc-walk.md](rc-walk.md#the-central-identity-roots-are-derived-not-enumerated))
+— or a borrow whose own chain ends in one. **Every point of a live
+borrow is a use of its transitive anchor for every last-use consumer**
+— the drop-point policy's release sites and the move rule's transfer
+sites alike: both are computed over the borrow's live range, not the
+anchor's own last syntactic use, otherwise either one frees or moves
+the anchor under the borrow it covers.
+
+The invariant **extends** rc-walk's legality rule for uncounted
+borrows rather than restating it. The rule
+([rc-walk.md](rc-walk.md#what-this-design-does-not-solve), "Uncounted
+borrows";
+[static-lifetimes.md](../memory/static-lifetimes.md#what-may-own-a-borrow))
+requires the covering counted reference to be a root and says a heap
+field never qualifies; a chained borrow's immediate cover *is* a heap
+field. The extension's own soundness argument: every edge of the
+anchor path is a counted heap edge, so at any drain a condemned
+component intersecting the path has an external counted in-edge
+traceable to the root, the exact test acquits it whole
+([rc-walk.md](rc-walk.md#phase-4--verify-and-release-mutator-thread-by-message)),
+and the walk reaches the target through the live chain — an
+incoherent-array skip on the path only inflates `RC − IN` toward
+roothood, conservative in the safe direction (`model/src/walk.rs`, the
+incoherent-head give-up through `StorageHead::coherent`). Both
+sections above carry the extension and the borrow-is-use amendment
+since 2026-08-20; DC5's mitigation sentence
+([rc-walk-danger-cases.md](rc-walk-danger-cases.md)) follows them.
+
+Anchor identity survives representation changes: the anchor is the
+owned local itself, not the entity it referenced at borrow time, and
+`stable_path` means counted reachability from the anchor's current
+referent — a COW separation re-seating the anchor's array, or a
+`sort()` that keeps every element counted, does not invalidate the
+borrow ([arrays.md](../arrays.md#transition-rules): a transition
+replaces the storage under the same entity, leaving identity, refcount
+and COW state alone) — while any mutation through the anchor local is a
+horizon, and so is **any store to a local on the anchor chain**:
+assignment and `unset` of the anchor end `live(anchor)` regardless of
+the released class's purity, the anchor local being a path base for
+stores *to* it and not only through it. Without this, `$a = null`
+on a pure-class anchor is a release the purity gate exempts, and
+the borrow dangles at a site no other horizon kind names.
+
+## Inside the horizon: what the borrow must prove
+
+The borrow's three obligations are the anchor outliving it, the
+anchor-to-target path staying intact, and every operation able to
+invalidate either being visible in the IR. The same IR analysis is
+meant to serve unique ownership's borrow clause
+([rc-walk.md](rc-walk.md#unique-ownership-one-owning-slot-and-no-count))
+with a different invalidation discipline — one analysis with two
+invalidation disciplines, whose family-wide ruling is still owed (open
+question 5).
+
+Path visibility is bounded by aliasing, and the rule is conservative:
+**a store through any may-alias of a path base is a severing store.**
+The must-not-alias instrument that lifts it is named, because
+without one the rule makes most object stores horizons: closed-class
+typed properties give type-incompatibility disjointness — the same
+closed types the hybrid already targets — and nothing else is
+assumed. The corpus scan carries a severing-store channel so the
+free fraction is measured under the sound rule. COW values are the
+self-repairing case — a foreign alias copies before writing
+([values.md](../values.md#copy-on-write-protocol)) — so typed-array
+paths are the cheap population.
+
+## The horizon list
+
+A GC horizon is any of:
+
+- a call without a trusted summary;
+- dynamic dispatch the class set cannot close;
+- reflection;
+- a by-reference escape;
+- **a release of a class whose transitive-purity closure is not
+  pure** — any store displacement, `unset`, `null` assignment or
+  scope exit, with NR counting as impure, because NR admits external
+  writes that sever live paths. Eager death runs `__destruct` at the
+  release site, no drain involved, so the destructor hazard is a
+  property of releases. The predicate is deliberately the one purity
+  computes — one boolean per class over the field-type closure
+  ([pure-destructors.md](pure-destructors.md#purity-is-transitive)) —
+  and deliberately over-approximate; a finer store-effect analysis of
+  destructor bodies is a separately owed instrument if the coarse
+  rule proves too expensive. No finality conjunct: "may reach zero"
+  is never dischargeable without count-value analysis nobody plans,
+  so every such release is a horizon. The lemma that keeps the rule
+  from swallowing pure cascades: an object that reaches zero is off
+  every live anchor chain, so the own-slot stores of a dying pure
+  cascade never sever a live path. The lemma holds because every
+  cascade entry point is itself some horizon: a summarized callee's
+  internal release cannot zero a path member (each keeps a counted
+  in-edge from its path predecessor, the root live by
+  borrow-is-use), scope-exit batches fail the same way, checkpoint
+  drains are acquitted by the chain invariant, and the one formerly
+  unguarded door — explicit displacement of a pure-class anchor —
+  is closed by the store-to-anchor rule above;
+- a checkpoint that fails the condition below;
+- an own-code store that severs a borrowed path, under the may-alias
+  rule above.
+
+A checkpoint threatens a borrow in two distinct ways, and only the
+second survives as a condition.
+
+**Reclamation.** The drain severs and frees condemned components
+whether or not destructors exist — the P0 raw-sever arm of
+[pure-destructors.md](pure-destructors.md) runs no user code. The chain
+invariant answers this unconditionally: the exact test balances
+counted references and the chain ends in a counted root, so no
+component on the anchor path is condemnable. Discharged by
+construction, at every checkpoint, including the hand-off drain's
+collector-side sever between checkpoints, and including the
+drain-exclusivity window the collector holds
+([drain-window.md](drain-window.md)).
+
+**Path severing by drain destructors.** A `__destruct` the drain
+runs can store into the anchor path. The condition binds **any
+checkpoint that can drain a verdict** — under the hand-off design
+that is two arms: the prologue visit, which runs P2 calls, and the
+unchanged whole drain that an NR-or-impure component takes at
+whatever death or poll picks the verdict up; if the purity ladder's
+open questions move user-code duties into the sliced tail, every
+checkpoint carrying a slice inherits the condition. The discharge is
+reverse reachability whose root set is the **downward closure of
+the condemned set** — the sever releases external children
+"destructors and all", so the cascade's classes are in scope, and
+that closure is exactly what transitive purity computes: a condemned
+set whose closure is pure certifies the checkpoint. Until the
+analysis exists, a checkpoint not proven safe is a horizon.
+
+## At the horizon: promotion
+
+The payment is promotion: one ordinary retain, after which the
+borrow is an owned local, released per the same drop-point policy as
+any other — so promotion changes no lifetime against today's owned
+lowering of the same borrow. Placement rules:
+
+- The promotion point is the **closest point dominated by the
+  borrow's birth that dominates every horizon and every exit of the
+  borrow's live range**; a borrow with no such point is owned from
+  birth by the lattice's failure default, so the rule is total.
+- Promotion cannot precede the birth: the retain's operand exists
+  only after the load. This is also the static argument that death
+  order is preserved — a promoted borrow holds its count over a
+  subrange of exactly the lifetime today's owned borrow holds it.
+- A loop containing a horizon promotes before the loop when the
+  borrow is born before it; born inside, the back-edge fails the
+  dominance test and the borrow is owned.
+- On unwind, a landing pad releases the owned set live at its call
+  site; the promotion point dominating the sites after it makes that
+  set static per site. Which sites can raise is open question 9.
+- **A borrow of a unique-ownership entity cannot be promoted**: the
+  count word holds the occupancy sentinel and a retain written into
+  it protects nothing. And the convention retains are the same
+  hazard: the all-returns-transfer retain and the parameter pair
+  are counted references, so **the uniqueness prover counts every
+  convention retain site — return transfer, receiver, by-value
+  parameter — as a second counted reference**, and an entity that
+  is ever returned or passed is by proof never unique; otherwise
+  `getE() { return $this->e; }` writes the sentinel in the owner's
+  own unit with no horizon in sight. A horizon-reaching borrow
+  demotes the uniqueness proof — and demotion is a **whole-program
+  fixpoint**, not a local lowering: the owner's unit compiled the
+  plain-store overwrite and the sentinel factory, so a
+  later-compiled borrower forces the owner's recompile, an upstream
+  blast radius the economics prices; the fixpoint's trigger set is
+  the convention sites plus the horizon-reaching borrows. The
+  conservative default until the fixpoint exists: uniqueness is
+  lawful only for entities whose every access site compiles in the
+  same session. Recorded also in
+  `model/dev/design/owned-slots-and-the-walk.md`, with the corollary
+  that demotion revives the COW check for the entity's writers.
+- **Promotion is payment only where a retain is honoured.** In the
+  immortal and request-arena categories retain and release return
+  early ([arenas.md](../memory/arenas.md#object-categories-by-memory-strategy)),
+  so the retain buys nothing and the borrow's protection has to come
+  from the referent's own lifetime instead. Open question 8.
+
+The rule bounds the scheme's cost: a promoted borrow pays one pair
+over a subrange of the lifetime today's code pays it over, so per
+borrow the scheme never costs more than the current code, and the
+whole difference is the borrows that are never promoted. Overpayment
+— a promotion point on a path that reaches no horizon — loses
+savings, never adds cost.
+
+The collector is untouched: promotion is a compiler-emitted retain,
+with no protection set, no candidate-test arm and no death-branch
+test.
+
+## The hybrid: counted class, horizon class
+
+Whether locals referencing a class's instances enter the lattice at
+all is a class property in policy and a per-site decision in
+mechanism. In form A the two regimes differ only in where the
+compiler emits pairs, so the class bit is the default the emitter
+follows, and every anchored site still owes its site-local proof.
+
+- **A counted class**: locals are owned, today's code, no proofs and
+  no horizon bookkeeping by default; the always-provable rules below
+  may still take a pair at any site.
+- **A horizon class**: locals enter the lattice — anchored where the
+  proofs hold, promoted at horizons.
+
+A slot whose static class the compiler cannot narrow (`mixed`, an
+open hierarchy) is counted, and analysis failure selects counted:
+both defaults land on today's behaviour. A subclass may differ in
+regime from its parent; a parent-typed site follows the parent's
+bit over any instance, which in form A is a cost decision only,
+since instances of both regimes are runtime-identical. The selection
+heuristic is economic: horizon classes are the closed,
+summary-friendly types in provable scopes; counted classes are the
+ones crossing reflection, callbacks and suspensions, where analysis
+costs more than the pairs it removes.
+
+Granularity — **ruled by Edmond, 2026-08-18** (`model/dev/DECISIONS.md`,
+"proof-horizon granularity", bounded after round 4). The class bit
+stays the emitter's default; on top of it, a closed set of
+**always-provable elision rules** applies at any site in either
+regime. Round 4 bounded what qualifies, and the bound follows from
+Edmond's own criterion rather than weakening it: a rule is in the
+set only when it is decidable from IR shape alone — the enclosed
+region contains no call, no store, no release and no checkpoint —
+because a "horizon-free" proof that consults the may-alias oracle
+is exactly the fallible class the ruling bars; and the lattice's
+owned base cases are preconditions, not competitors — the elided
+pair's target is non-COW-eligible, transitively destructor-free and
+non-unique, since horizon-freedom was never the predicate that
+protects COW, timing or the sentinel. What Swift's precedent
+licenses here is the mechanism — semantics-licensed, unconditional
+elision — and not the contract: Swift bought its elisions by
+guaranteeing lifetimes only to last use, while this design keeps
+the Zend-observable destructor timing pinned, so every rule in the
+set must preserve it. Each admitted rule gets its own
+`model/dev/DECISIONS.md` entry — statement, proof sketch, reviewer,
+date — and its elisions enter the shadow lowering's journal like any
+lattice elision, so no elision class is uninstrumented. A counted
+class's local may lose its pair under such a rule. Summary-driven
+or heuristic per-site deviation stays barred until two instruments
+exist together, neither sufficient alone: a **per-site certificate** —
+anchor chain, summary IDs, horizon set per entry — whose independent
+checker soundly warrants the checkable surface (chain well-formedness,
+syntactic-horizon coverage, summary-version freshness) and cannot
+warrant may-alias completeness, which any checker would inherit from
+the shared oracle; and the shadow-count lowering, whose dynamic
+cross-check is the only detector for what the certificate cannot
+see. The ruling's standing constraint: no rule of either kind
+introduces a write barrier or any other mutator work beyond the
+program's own code.
+
+## The two forms
+
+**Form A — over maintained heap RC. This is the design.** Heap
+counts, owned-local counts, eager death, `__destruct` timing, COW,
+the arena's counted promotion and rc-walk's protocol are today's.
+The elision applies to anchored borrows only.
+
+**Form B — without heap RC** is the superseded model's road, not
+pursued: the architecture inventory dies with the count and
+deterministic destruction needs the count back (the five-axis
+review), and the walk's write barrier *is* the count (the 2026-08-18
+stack-bit refusal, `model/dev/DECISIONS.md`).
+
+## What the superseded model's problems become
+
+The history file's supersession banner records three: a critical
+untouch/retirement race, a load path that dominates the RC pair it
+replaces, and the loss of deterministic destruction.
+
+- The untouch race is gone: promotion is a plain retain that
+  precedes the horizon, so nothing is retracted and nothing races
+  the collector.
+- The load path is gone: an anchored borrow costs zero instructions
+  between horizons, with no per-load guard.
+- Deterministic destruction is preserved by the lattice, and only by
+  it: owned locals keep the count that drives eager death, and
+  destructor-bearing targets never lose a holder to elision.
+
+## Named against the literature
+
+Deutsch–Bobrow defer stack counts and keep a zero-count table whose
+reconciliation scan is the *freeing* mechanism for stack-only
+objects. This design keeps freeing on the owned count instead, so
+nothing replaces the table: owning locals never leave the count, and
+proofs replace reconciliation for borrows only. In Perceus terms the
+dup/drop pairs stay at ownership transfers and the borrow inference
+is pushed across summarized calls. The delta from plain borrow
+inference is the summary system: without summaries every call is a
+horizon and the scheme reduces to the five-axis review's extraction
+— a covering-borrow elision over maintained RC; with them the free
+region grows call-deep, through callees that are transitively
+store-free with pure-closure internal releases — the condition the
+sound-configuration paragraph states (`model/dev/RESEARCH.md`,
+2026-08-18, the static family).
+
+## Economics
+
+```
+saved = (borrow acquisitions whose lifetime reaches no horizon) × pair cost
+```
+
+with the pair at 1.84–1.87 ns (`model/docs/performance-case.md`, "The
+pair: retain and release") as a **unit** cost; the in-situ marginal
+cost of a pair disperses by context, and **the band is unmeasured**
+— the 10.2 ns figure an earlier revision cited is the cost of a
+banned lowering shape, not of the pair in a context — so the
+product's error bar is unknown until the pair-cost-over-contexts
+sweep runs. That sweep is pre-D buildable in a shape the crate
+already owns: the store probe's skeleton
+(`memory::barrier::tests::what_a_store_costs_by_working_set` — two
+working sets, hot and cold halves, a null-sweep control) pointed at
+`ll_retain`/`ll_release` with an independent-work interleave axis.
+The population excludes the owned base cases — `new` results, call
+results, parameters, COW-eligible values, destructor-bearing targets,
+unique-crossing paths — and the horizon list prices releases and
+may-alias stores; every exclusion has a scan channel.
+
+The counting instrument is an **elision-site counter in the release
+lowering behind a build flag**: the compiler statically knows the
+elided sites, and counting their executions perturbs less than the
+debug journal. Three disciplines keep the instrument honest: the
+counter is measurement work, exempted by name in the granularity
+ruling's scope from the no-mutator-work constraint; the counting
+build is never clocked — an increment per elided pair is a 15–30 %
+perturbation of the very effect, so the wall-clock cross-check runs
+on the unflagged build; and the flag's effect on the elision set is
+checked, not assumed — the two builds' static elision site lists
+are compared, both being compiler outputs. The shadow build's count
+is a verification by-product, not the economics' number — its
+lowering can flip lattice outcomes the release build would not.
+
+Three costs sit outside the formula and are named rather than
+implied away. Compile time and code size: the borrow analysis,
+summary computation and per-site landing-pad sets are paid per
+function at every build. The recompilation blast radius, in **both
+directions**: downstream, a stdlib update that adds a destructor or
+a severing store invalidates every caller compiled against the old
+summary; upstream, a uniqueness demotion forces the owner-unit
+recompile. The scan's blast-radius channel sizes the downstream
+half. And the ack budget: an elided borrow's release was non-final
+by the borrow's own obligations, so the death-branch ack rate is
+unchanged; what thins is the batched scope-exit ack pair for scopes
+whose whole release run is elided, and pickup sites that move when a
+destructor-free death nests into a cascade — a different site and
+magnitude than the fast class's death-branch thinning in
+`model/dev/design/owned-slots-and-the-walk.md`, but the same
+epoch-progress budget, and the compensating-poll rule (that
+document's open question 3) is the shared dependency.
+
+The baseline is marginal, not gross, and the rule is asymmetric: **a
+gross number may only kill, only the marginal number may open.** The
+kill and open bars carry no values yet, deliberately: they are owed
+to the census specification alongside the channel list, and no
+verdict is readable until both are recorded.
+Unique ownership's borrow clause and the birth count elide
+overlapping slices of the same traffic, so the census carries
+**per-acquisition coverage flags** from each family analysis —
+which concedes that the classifiers of unique ownership and the
+birth count are census instrumentation, built before any verdict.
+The full channel list is owed to `model/dev/DECISIONS.md` **before the
+Phase D census is specified**, not on acceptance — a census built
+without the flags can price this design only grossly, and a gross
+number opens nothing.
+
+Confirmation is by count, not by clock: confirmed saving is the
+release-build counter's elided pairs × the unit cost, within the
+dispersion band. A wall-clock A/B is a cross-check only, on a
+workload whose density clears the floor's upper edge: at 1.85 ns
+per pair, 3 % of a second is about 16 M pairs, and no existing
+bench has that shape — the Phase D bench plan owes one.
+
+Measurement order, and what each can decide:
+
+1. **Corpus scan, compiler-free, graded.** Per *lifetime*: a
+   lifetime is horizon-free only when every operation it spans is
+   proven, so the scan walks lifetimes, not call sites. Every site
+   is classified three ways — provably-horizon, provably-free,
+   unresolved — and **provable horizons stay horizons in both
+   bounds**: a visible severing store, a release of a provably
+   impure closure. The deliverable is the doubt map — where the
+   unresolved mass concentrates — through these channels: the
+   free-fraction bracket over the graded classification; the
+   unresolved-receiver share; the severing-store share; the
+   per-release purity tier (P0-syntactic / closure-unresolved /
+   provably-impure, under the ruled reading of the child-release
+   order — specified, P2 keeps its call — with a P2-share
+   sub-channel); the destructor-bearing-target share; the referent's
+   static class where known; and the **summary-dependency channel**
+   — per stdlib or vendor class, the transitive share of corpus
+   functions whose call graph reaches it, reported as its own
+   bracket under an under-approximate and an over-approximate
+   receiver resolution, because transitivity amplifies every proxy
+   error to corpus scale; **only the under-approximate number
+   carries kill authority**, matching the gross-may-only-kill
+   asymmetry. Two structural limits are stated rather than
+   discovered later: compiler-placed checkpoints do not exist in
+   source, so checkpoint horizons are absent from both bounds; and
+   "provably-free" is near-empty for calls without receiver
+   resolution, so the kill rule reads the **bracket**, not one
+   bound — kill when the graded optimistic bound is low, or when
+   the unresolved mass exceeds a share recorded with the census
+   bars, at which point the scan proves nothing and the closed
+   status simply persists. The corpus is deployed PHP applications
+   with their vendor trees — the working choice, Edmond's veto
+   open: WordPress, one Laravel application (Monica) and one
+   Symfony application (Sylius) — recorded before the scan runs.
+2. **The Phase D publish census** — with the channels this design
+   needs: borrow-acquisition density per class, horizon crossings
+   per borrow lifetime, live borrows per horizon, and the family
+   coverage flags above. The census as recorded
+   (`model/dev/DECISIONS.md`, 2026-08-17 and 2026-08-18) counts
+   publishes, which prices birth count and unique ownership but none
+   of these.
+
+The operational status, stated without decoration: **closed, and no
+pre-D step can change that status** — the scan's verdict cannot
+open (kill-only), the census is undated and gated outside the code
+crate, and every verification artifact needs the compiler. Pre-D
+work is instrument preparation: the graded scan, the channel-list
+recording, and the summary-language question, whose rulings inside
+(who writes stdlib summaries, the versioning rule) are Edmond's.
+`model/PLAN.md` carries the line.
+
+## Verification artifacts, a precondition of implementation
+
+Form A's virtue — the collector never learns the feature exists —
+removes every runtime detection point: a misplaced horizon and a
+correct elision are the same instruction stream, so a compiler bug
+surfaces as corruption far from its cause. Three instruments are
+owed before any lowering ships; none is buildable before Phase D
+supplies the compiler, which is part of why the design is closed
+until then.
+
+- **Shadow-count lowering.** The **classic pairs drive the real
+  header count** — so the walk's occupancy test, COW's uniqueness
+  read, the release asserts and death itself behave exactly as the
+  classic build — and the elided stream feeds a shadow word. The
+  two streams run **two release schedules in one binary**: the
+  shadow's decrements at the elided build's sites, borrow-is-use
+  extensions included, the real count's at the classic sites — with
+  one schedule for both, a sound elision fires the signal and the
+  diagnostic is dead on arrival. Under the dual schedule the
+  false-positive rate is provably zero: shadow(target) equals
+  real(target) minus the live elided borrows, and a shadow zero
+  under a live borrow means no counted holder exists in the elided
+  stream, which a sound elision's intact chain forbids. The
+  divergence signal is the shadow reaching zero while the real
+  count is nonzero, logged with the per-object journal of
+  elided-acquisition site IDs that names the sites whose retains
+  are missing — always-provable-rule elisions in both regimes enter
+  the same journal, so no elision class is uninstrumented. (The
+  reverse wiring, elided-authoritative, breaks the debug runtime it
+  instruments: a real count of zero on a live object reads as a
+  free slot to the walker and as "unique" to COW.)
+- **Differential lowering.** The same program built with horizons
+  off and on. The oracle is **the destructor sequence and the death
+  set per checkpoint batch** — not "timing": an elided borrow of a
+  destructor-free target legitimately moves the *free* from its own
+  release into the parent's cascade, same teardown, different
+  nesting; destructor-bearing targets are owned from birth, so
+  their timing is pinned and any destructor-sequence diff is a real
+  defect.
+- **Summary versioning.** A summary is a soundness assumption about
+  a callee, so a stdlib update that adds a destructor or a severing
+  store invalidates every caller compiled against the old summary.
+  Open question 1 carries the versioning rule; without one, every
+  stdlib update is a silent soundness event.
+
+## Composition with the designed family
+
+- **Unique ownership:** one borrow analysis, two invalidation
+  disciplines — the ownership clause bans checkpoint crossing
+  outright, this design substitutes the chain invariant plus the
+  path-severing condition. The family-wide ruling the review asked
+  for does not exist yet and is open question 5. The sentinel
+  constraint and the demotion fixpoint above are the second
+  composition point, recorded in both documents.
+- **Birth count:** adjacent populations, marginal accounting per the
+  economics above.
+- **Pure destructors:** transitive purity is the instrument for both
+  destructor horizons — the release horizon's closure predicate and
+  the checkpoint condition's condemned-set closure; the P0 fast
+  paths and death itself are untouched, because owned locals keep
+  the count. The checkpoint condition binds every verdict-draining
+  checkpoint, so the purity ladder's open hand-off questions are a
+  named dependency: if user-code duties move to the sliced tail, the
+  condition moves with them.
+- **rc-walk and the collector crate:** the collector code is
+  untouched; the protocol dependency is the ack-budget paragraph in
+  the economics.
+
+## Open questions
+
+1. The summary language: what a summary states — severable paths,
+   destructor reachability of internal releases, callee-side
+   promotion for borrowed returns, the uniqueness-demotion
+   constraint — who writes stdlib summaries, the conservative
+   default at every unknown (a horizon, always), and the versioning
+   rule from the verification section. The rulings inside are
+   Edmond's.
+2. Borrow scopes across suspensions: a yield is a horizon unless the
+   summary system learns resumption points, and a fiber suspended
+   across an arena reset carries frame borrows the reset cannot see
+   — one question, and it shapes the IR early.
+3. ~~The corpus names for the scan~~ — working choice recorded
+   2026-08-18 with Edmond's veto open: WordPress, Monica (Laravel),
+   Sylius (Symfony), each with its vendor tree.
+4. ~~The hybrid's granularity~~ — ruled by Edmond, 2026-08-18: the
+   class bit is the default, always-provable Swift-style elision is
+   lawful per site in both regimes, fallible per-site deviation
+   stays behind the certificate-plus-shadow-lowering gate, and no
+   rule introduces a write barrier (`model/dev/DECISIONS.md`,
+   "proof-horizon granularity"; the hybrid section carries it).
+5. The family-wide borrow-analysis ruling: one IR-level borrow
+   analysis parameterized by the invalidation set, serving unique
+   ownership and this design — asked by the five-axis review. The
+   working default, recorded 2026-08-18 with Edmond's veto open:
+   one analysis, two invalidation sets.
+6. Anchored parameters: whether caller-guarantee summaries can lift
+   the receiver and by-value parameters out of the owned default,
+   and what the re-entrancy obligation costs there.
+
+Questions 7 to 11 were opened by the case-book review of 2026-08-20,
+which read the algorithm against the entity and memory RFCs. Each is a
+gap in this document, not in the case that found it; the case files
+under [gc-horizon-cases/](gc-horizon-cases/) carry the failing shape.
+
+7. **The weak cell is an uncounted edge, and no base case excludes
+   it.** A weak cell's `target` field references its referent without
+   a count ([weak-references.md](../weak-references.md#the-weak-cell-is-the-canonical-weakreference-itself)),
+   so a path through it is not the counted chain the invariant
+   requires, and the exact test — which balances counted references
+   only — would free the referent under a live borrow. `get()` returns
+   a call result, which is owned by convention and therefore safe
+   today; the question is whether the owned base-case list must name
+   the weak-cell edge outright, and whether the always-provable rules
+   need "the region contains no weak-cell load" among their
+   preconditions.
+8. **Promotion buys nothing in two of the four memory categories.**
+   Retain and release return early on immortal entities and are absent
+   for request-arena ones
+   ([arenas.md](../memory/arenas.md#object-categories-by-memory-strategy)),
+   so the promotion retain is a no-op there. The lattice reads the
+   static class and never the category. Two sub-questions: whether the
+   category belongs in the lattice as an axis, and what protects a
+   borrow of an arena-resident referent across an actor's message
+   boundary, where the arena resets
+   ([actors.md](../../runtime/actors.md#per-actor-collection-at-message-boundaries)).
+   The arena reset's own destructor fixpoint
+   ([arena-reset.md](../memory/arena-reset.md#step-1--validate-trace-destruct-a-fixpoint-loop))
+   runs user code in rounds and is a severing point the horizon list
+   does not name.
+9. **The placement rule is stated over horizons and exits, and stores
+   raise.** A COW-separating store allocates and can throw
+   ([exceptions.md](../../runtime/exceptions.md#allocation-failure-is-an-ordinary-exception)),
+   so the raise sites of a live range are not a subset of its call
+   sites, and a landing pad's owned set is only static per site if
+   placement dominates every raise. Either the rule reads "dominates
+   every horizon, every exit and every raise site", or the landing-pad
+   sentence is weaker than it claims.
+10. **The COW and unique-ownership base cases intersect
+    inconsistently.** A COW-eligible referent that is also unique
+    demands a counted holder from one base case and forbids every
+    retain from the other. The demotion trigger set names convention
+    retains and horizon-reaching borrows, and does not name the
+    base-case retains, so the intersection has no defined lowering.
+11. **Runtime entry points are not PHP calls, and the horizon list
+    does not say so.** Read literally, every `ll_*` entry the lowering
+    emits is "a call without a trusted summary", which makes the free
+    region empty. The line the design intends — a horizon is a
+    PHP-level call, runtime entries being nothrow, effect-known and
+    summarized by construction — is not written anywhere.
+
+## The record
+
+The name is `gc-horizon`; it was `proof-horizon` until 2026-08-20.
+The superseded model and its review stay as the map of the space
+already searched: the refusals of 2026-08-17 and 2026-08-18 closed the
+no-heap-RC roads, and this design keeps every count they defended —
+including the owned locals' — and removes only the pairs the proofs
+make redundant.
+
+Critic round 1, 2026-08-18, three lenses. **Soundness:** uncounted
+owning locals leak every acyclic local-only object and move
+`__destruct` timing in both directions; the checkpoint hazard is the
+drain's own sever-and-free, so the destructor-freedom lift was
+inverted; COW's uniqueness test read a falsified count; the
+protection-set paragraph contradicted "no walk-side changes"; loop
+and conditional horizons made "pay once" unsound without a placement
+rule. **Composition:** the elision re-entered rc-walk's
+uncounted-borrows prohibition and dropped Deutsch–Bobrow's freeing
+half while citing the deferral; "the same three obligations"
+misquoted unique ownership's borrow clause; the superseded model's
+third recorded problem is deterministic destruction, which revision
+1 did not dissolve; the pair-cost citation named the wrong section;
+the ack-thinning dependency went unnamed. **Verification:** the
+per-call-site scan bounds no lifetime fraction; the census lacks
+every channel this design needs; the publication rule's per-crossing
+reading admits unbounded negative savings; family savings
+double-counted at the shared gate; no falsification artifact
+existed. Accepted in full; revision 2 was the fix.
+
+Critic round 2, 2026-08-18, on revision 2's fixes. **Soundness:**
+eager death runs severing destructors at ordinary releases the
+horizon list did not name (critical); the checkpoint condition's
+root set omitted the sever cascade; parameters and `$this` had no
+lattice state and re-entrancy killed the caller-frame chain; a
+borrowed return surfaces after the callee's epilogue checkpoint,
+outside any caller-side promotion; severing stores were undecidable
+without a may-alias rule; a promotion retain against a
+unique-ownership sentinel protects nothing; COW-container borrows
+needed the anchor-identity definition; promotion pinned to scope
+exit regressed the drop-point policy. The chain invariant's
+reclamation claim survived attack. **Composition:** the horizon
+list's openness over eager death, independently; the chain
+invariant claimed to restate the rule it extends; the ack-thinning
+caveat named the wrong site; the differential oracle's "timing
+identical" flags correct compiles; "analysis failure selects owned"
+was cited to a do-not-rely file; the checkpoint condition depended
+on the hand-off's drain shape without naming it; the code
+repository's `dev/INDEX.md` still described revision 1; the
+family-wide ruling was dropped, not answered. **Verification:** the
+placement rule was unsatisfiable for branch-born borrows; the scan's
+kill authority failed on unresolved receivers; no planning artifact
+recorded the closed status; the marginal baseline was not computable
+from the named channels; the density gate demanded the clock where
+the crate's method counts; the shadow count detects only if death
+defers to it; the decision log graded itself. Accepted in full;
+revision 3 was the fix.
+
+Critic round 3, 2026-08-18, on revision 3's fixes. **Soundness:**
+the drop-point policy released an anchor at its last syntactic use
+under a live borrow, and the return-site retain's order against the
+epilogue was unstated (critical); uniqueness demotion had no sound
+lowering local to the borrower's unit (critical); the shadow build's
+elided-authoritative death broke the walk's occupancy test, COW and
+the release asserts; "can reach a severing store" was not the
+predicate purity computes, in both directions; the finality conjunct
+was never dischargeable; the placement rule needed SSA and the
+back-edge case; the sound configuration's free region is read-only
+lifetimes, unstated. Survived a second consecutive round: the chain
+invariant's reclamation discharge (re-verified against the
+implemented exact test), the release-horizon relocation, the owned
+base cases, promotion as a plain retain. **Composition:** eliding a
+borrow of a destructor-bearing target moved `__destruct` off the
+scope-end pin the design itself cites, and the document both denied
+and licensed the move; the owned-slots cross-note dropped "against a
+counted entity" and admitted a sentinel-retain reading; the release
+horizon's predicate was not purity's; the checkpoint condition's
+event binding named the prologue while the dangerous drains run at
+arbitrary pickups; the chain extension owed forward notes to the
+RFC; the unique-entity path broke the invariant's premise silently.
+**Verification:** the two trivial bounds made the kill gate unable to
+fire — the optimistic bound discarded the very horizons revision 3
+added; the purity closure is the same unavailable inference as
+receivers, with no channel; the shadow count was the wrong economics
+instrument and "exact" hid the pair-cost dispersion; the channel list
+was owed too late ("if accepted"); the certificate overclaimed alias
+completeness; the blast radius had no instrument. Accepted in full;
+revision 4 was the fix, with the corpus names still open with Edmond.
+
+Critic round 4, 2026-08-18, on revision 4's fixes and the recorded
+granularity ruling. **Soundness:** explicit displacement of a
+pure-class anchor (`$a = null`) fell under no horizon kind — a
+store *to* the anchor is not a store *through* a path base, and the
+purity gate exempts the release (critical); the ruling's model case
+re-created round 1's COW critical and the heap-field cover, because
+horizon-freedom was never the predicate protecting COW or ownership
+(critical); the all-returns-transfer retain wrote the unique
+sentinel inside the owner's own unit, with the demotion trigger
+blind to convention sites; the destructor-free exclusion read the
+static class and readmitted the timing bug through a subclass; the
+shadow lowering's zero-false-positive property needed the
+dual-schedule statement. Survived a third consecutive round: the
+chain invariant's reclamation discharge, borrow-is-use for
+scheduled releases, destructor-bearing targets owned from birth,
+the shadow swap direction, the owned base cases, promotion as a
+plain retain. **Composition:** the ruling's "always-provable" class
+was defined by an example resting on the may-alias oracle; the
+Swift analogy imported a precedent whose lawfulness comes from the
+timing-weakening this design refused; the counted-class bullet
+contradicted the ruling three paragraphs below; the no-mutator-work
+constraint collided with the compensating poll without a scope
+sentence; the borrow-is-use amendment owed a debt line to "Drop
+Point Policy" and the move rule; the session condition owed one to
+"Unique ownership"; a citation named a mechanism ("version-bracket
+skip") by a phrase absent from its source. **Verification:** the
+always-provable set had no registry, and its counted-class elisions
+escaped the shadow journal; the graded optimistic bound still could
+not fire the kill on call-shaped horizons, and checkpoint horizons
+were structurally absent from both bounds unstated; the
+summary-dependency channel's kill authority stood on an
+unbracketed proxy graph; the dispersion band's sole citation was a
+banned lowering shape; the release-build counter was unexempted
+mutator work whose build must not be clocked; the asymmetric gate
+carried no bars. Accepted in full; revision 5 is the fix, the
+ruling's entry bounded in place with Edmond's criterion kept.
+
+Case-book review, 2026-08-20, one round over the plan for
+[gc-horizon-cases/](gc-horizon-cases/) rather than over the algorithm's
+text. It read revision 5 against the entity and memory RFCs and
+produced open questions 7 to 11 above, the chain extension's forward
+notes to [static-lifetimes.md](../memory/static-lifetimes.md#what-may-own-a-borrow)
+and [rc-walk.md](rc-walk.md#what-this-design-does-not-solve), and the
+move of the purity ladder into [pure-destructors.md](pure-destructors.md),
+without which two horizon kinds cited an instrument this repository did
+not hold.

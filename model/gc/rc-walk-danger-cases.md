@@ -181,6 +181,10 @@ defeat every gate; the point is that the checker notices.*
 - **Assert:** T4 violated with every gate passing honestly — the
   checker must detect the free of an `R*` member even though no
   protocol invariant flagged it earlier. Mitigation is the compiler
-  obligation of [static-lifetimes.md](../memory/static-lifetimes.md)
+  obligation of [static-lifetimes.md](../memory/static-lifetimes.md#what-may-own-a-borrow),
   "What may own a borrow"; this case is the regression test that
-  obligation must forever pass.
+  obligation must forever pass. The chain rule that amended it on
+  2026-08-20 condemns this shape too, and by the same reading: `fr2` has
+  no anchor chain, because m3 dropped the frame reference that would have
+  been its root, so no counted in-edge reaches the path from outside
+  ([gc-horizon.md](gc-horizon.md#the-ownership-lattice)).

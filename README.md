@@ -34,6 +34,7 @@ pluggable garbage collection instead of a one-size-fits-all VM heap.
 - [caches.md](model/caches.md) — every cache site, why none carries a replacement policy, and what each does when it fills
 - [model/memory/](model/memory/README.md) — arenas, arena reset, static lifetimes, ARC optimizations
 - [model/gc/](model/gc/README.md) — GC strategies, SATB, heap design, research survey
+- [model/gc/gc-horizon.md](model/gc/gc-horizon.md) — GC horizon: where an uncounted borrow pays, with its [state set](model/gc/gc-horizon-states.md) and its [case book](model/gc/gc-horizon-cases/README.md)
 
 ### `runtime/` — execution substrate
 

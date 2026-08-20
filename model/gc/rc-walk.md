@@ -1081,13 +1081,17 @@ the two together leave unbought.
   borrowed entity is freed under a live local. The rule the optimiser must
   follow: an elided borrow is legal only when covered by a counted
   reference the collector treats as a **root** — a frame slot, an arena
-  slot, a static, an immortal, an FFI handle. Covering "by a field of some
-  heap object" is not enough, because that object may itself be garbage,
-  and the acyclic flag does not rescue it either. This obligation is
-  independent of which collector is chosen — it applies to `rc-trace`
-  today — and is now written down with its worked cases in
-  [static-lifetimes.md](../memory/static-lifetimes.md), "What may own a
-  borrow".
+  slot, a static, an immortal, an FFI handle. Covering "by a bare field of
+  some heap object" is not enough, because that object may itself be
+  garbage, and the acyclic flag does not rescue it either. A field covers
+  a borrow only on a **counted path from such a root**, every edge of it
+  counted and the borrow itself counting as a use of the root: the chain
+  rule of [gc-horizon.md](gc-horizon.md#the-ownership-lattice), amended
+  into [static-lifetimes.md](../memory/static-lifetimes.md#the-chain-rule-and-the-borrow-as-a-use-of-its-anchor)
+  on 2026-08-20. This obligation is independent of which collector is
+  chosen — it applies to `rc-trace` today — and is written down with its
+  worked cases in
+  [static-lifetimes.md](../memory/static-lifetimes.md#what-may-own-a-borrow).
 - **Weak references.** The collector delegates them; the machinery that
   discharges the obligation below is built (`ll-model` `src/weak.rs`,
   2026-07-27) and specified in

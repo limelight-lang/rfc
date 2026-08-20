@@ -10,6 +10,40 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-20 — the borrow-elision design enters the RFC as GC horizon, and the chain rule amends two normative sections
+
+**Decided (Edmond):** the algorithm named `proof-horizon` in the code
+repository's design notes is called **GC horizon** and lives here, as
+`model/gc/gc-horizon.md`, with its state set beside it and a case book
+of sixteen files under `model/gc/gc-horizon-cases/`. The purity ladder
+it depends on moved with it (`model/gc/pure-destructors.md`), two of the
+eight horizon kinds having cited an instrument this repository did not
+hold.
+
+**Why:** the design was normative nowhere. Its text sat in a code
+repository beside three reading aids, while the sections it contradicts
+— [static-lifetimes.md](../model/memory/static-lifetimes.md), "What may
+own a borrow", and [rc-walk.md](../model/gc/rc-walk.md), "Uncounted
+borrows" — sat here saying a heap field never covers a borrow. Both now
+carry the chain rule: a field covers a borrow on a counted path from a
+root, with the borrow counting as a use of that root. DC5's mitigation
+sentence follows them, and the case that made it condemns the same shape
+under either reading.
+
+**Rejected:** copying the algorithm and keeping the design note as a
+working copy (two texts reading as normative drift silently); moving the
+two reading aids as standalone RFCs (they would re-split the normative
+surface the move exists to unify); a single combined cases file on the
+`rc-walk-danger-cases.md` pattern (Edmond asked for a folder).
+
+**Cost:** the algorithm's economics and measurement order now sit in the
+specification while the process that revises them — the corpus veto, the
+summary-language rulings — stays in `model/dev/DECISIONS.md`; the moved
+document names that file as the place its open choices change. Dated
+entries there keep the old name verbatim.
+
+---
+
 ## 2026-08-07 — entity-kind codes leave the RFC; the enum is normative
 
 **Decided (Edmond):** no document here prints the code of an entity kind.

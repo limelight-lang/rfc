@@ -22,7 +22,9 @@ checkpoint.
 > compiler that does not exist. Pre-D work is instrument preparation.
 >
 > **Author of the algorithm:** Edmond, 2026-08-18. Revision 5 by four
-> Critic rounds the same day; all four records are at the end. Named
+> Critic rounds the same day; all four records are at the end. Revision
+> 6, 2026-08-21, records the Form C selective-counting candidate and its
+> prior art without adopting it. Named
 > `proof-horizon` while it lived in the code repository's design notes;
 > renamed 2026-08-20 with the move here, the old name kept verbatim in
 > dated `dev/DECISIONS.md` entries and in `model/docs/history/`.
@@ -391,6 +393,369 @@ deterministic destruction needs the count back (the five-axis
 review), and the walk's write barrier *is* the count (the 2026-08-18
 stack-bit refusal, `model/dev/DECISIONS.md`).
 
+**Form C — selective collector-computed counts** is a candidate
+extension, not this design and not Form B. It retains exact mutator-
+maintained RC for entities that need prompt death, and gives a proven
+subset a deferred regime in which the collector enumerates internal
+edges. The candidate, its prior art and the gates that keep it from
+silently breaking Form A are specified below.
+
+## Candidate inversion: selective collector-computed counts
+
+This section is **an integration proposal, not an adopted lowering**.
+It reopens the 2026-08-18 no-heap-RC refusal only for a partition of the
+heap while preserving Form A as the fallback. No implementation may
+select Form C until its root-bit contract, cross-regime edge rules and
+collector validation have independent proofs and differential tests.
+
+### The prior art found
+
+This design space has a name. Blackburn and McKinley's **Ulterior
+Reference Counting** (URC, OOPSLA 2003) generalises deferred RC from
+stacks and registers to selected heap objects and fields. It partitions
+the heap into RC and non-RC populations, permits logical per-object tags
+or physical spaces, defines an *integrate event* that moves a deferred
+pointer into RC, discusses the reverse transition for highly mutated
+objects, and offers three ways to recover deferred edges: trace them,
+remember mutated fields, or remember mutated objects. The last costs one
+bit per remembered object and coalesces repeated mutations
+([paper](https://www.steveblackburn.org/pubs/papers/urc-oopsla-2003.pdf)).
+
+Its concrete BG-RC collector used a copying non-RC nursery and an RC
+mature space. On its 2003 Jikes RVM/SPEC JVM experiment it matched the
+throughput of the generational mark-sweep comparator (reported 2% better
+on average in moderate heaps), reduced maximum pauses by a factor of four
+on average, and reduced the modified-object load of RC by about fiftyfold.
+Those are historical results on a 2 GHz Xeon and are evidence that the
+partition is viable, not performance evidence for Limelight.
+
+The line continued rather than ending with URC:
+
+- **Age-Oriented Collection** applies tracing to young objects and RC to
+  old objects in an on-the-fly collector
+  ([paper](https://www.steveblackburn.org/pubs/papers/aogc-cc-2005.pdf)).
+- **Down for the Count?** (ISMM 2012) uses small sticky counts, backup
+  tracing and an implicitly-dead treatment of new objects; its combined
+  optimisations removed a measured 30% gap between the prior RC baseline
+  and mark-sweep in that study
+  ([paper](https://openresearch-repository.anu.edu.au/server/api/core/bitstreams/1135b993-0283-49c4-bfe2-ac77e996624d/content)).
+- **RC Immix** (OOPSLA 2013) leaves new objects uncounted until their
+  first collection discovers an incoming reference, uses three-bit
+  sticky object counts plus per-line live counts, and repairs stuck
+  counts and cycles with backup tracing. It reported a 12% average
+  improvement over its preceding RC implementation and overflow in
+  0.65% of objects with three count bits
+  ([paper](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/rcix-oopsla-2013.pdf)).
+- **LXR** (PLDI 2022) combines coalescing RC for young and old objects,
+  implicitly-dead new objects, concurrent decrements, Immix regions and
+  occasional concurrent SATB tracing for cycles and stuck counts. Its
+  unified field-logging barrier measured 1.6% mutator overhead; the
+  paper's Lucene configuration reported six times the throughput and
+  thirty times lower 99.9-percentile latency than default Shenandoah,
+  figures specific to that configuration
+  ([paper](https://arxiv.org/abs/2210.17175)). As of the current
+  [MMTk status](https://www.mmtk.io/status), LXR exists in MMTk/OpenJDK
+  forks and is not merged into MMTk master.
+
+The unifying result is literal: tracing and RC are dual graph
+computations, and practical deferred and generational collectors occupy
+points between them rather than two disjoint families
+([A Unified Theory of Garbage Collection](https://research.ibm.com/publications/a-unified-theory-of-garbage-collection)).
+What is not supplied by this prior art is Limelight's proposed
+combination: no stack scan, a compiler-maintained local-root bit,
+anchor-chain proofs, and horizon placement choosing how protection is
+materialised.
+
+### What MMTk supplies, and what it does not
+
+MMTk is a toolkit of collector plans and VM-binding interfaces, not an
+automatic URC switch. Its current status page lists LXR as an RC/tracing
+plan available in separate `mmtk-core` and OpenJDK forks and explicitly
+not merged into MMTk master
+([MMTk status](https://www.mmtk.io/status)). Adopting stock MMTk therefore
+does not by itself select URC, RC Immix or LXR; using LXR means taking its
+plan fork, its matching VM binding and the runtime changes that binding
+requires.
+
+MMTk's ordinary liveness contract starts a collection from roots supplied
+by the VM binding through `Scanning` and `RootsWorkFactory`, then follows
+object edges
+([root-scanning API](https://docs.mmtk.io/api/mmtk/vm/scanning/index.html)).
+A tag in a local slot may help the binding recognise the slot, but the
+binding must still enumerate it. MMTk's `pin_object` is unrelated to this
+obligation: pinning promises that an object will not move; it does not make
+an otherwise unreachable object live
+([pinning API](https://docs.mmtk.io/api/mmtk/memory_manager/fn.pin_object.html)).
+
+The no-stack-scan integration is consequently a new binding contract:
+compiler operations publish and withdraw canonical root tokens in a
+registry outside the stack, and the binding reports that registry as the
+root source. If `LOCAL_ROOT` lives only in object metadata, a custom plan
+must enumerate the set bits; stock MMTk plans do not search the heap for a
+language-defined root bit. A dense side bitmap would make such a search
+possible but would turn root discovery into heap-metadata scanning. A
+published-root registry preserves work proportional to root transitions
+and live root tokens, which is the candidate this section selects for the
+first prototype.
+
+### Selected experimental substrate: LXR, not a new collector from zero
+
+The working implementation choice for Form C is to reuse the LXR fork as
+the collector substrate and put Limelight's object semantics above it.
+This is a choice of mechanisms, not adoption of LXR's Java semantics or a
+claim that stock MMTk already implements Form C.
+
+The reusable LXR mechanisms are:
+
+- the Immix block-and-line heap, bump allocation and line/block
+  reclamation;
+- implicitly-dead new objects whose counts are materialised only when an
+  incoming edge is discovered;
+- field logging and coalesced RC, so a chain of writes pays for its
+  initial and final targets rather than every intermediate value;
+- short RC epochs, remembered sets and lazy concurrent decrement
+  processing;
+- occasional concurrent SATB tracing for cycles and stuck counts;
+- bounded opportunistic copying for fragmented blocks; and
+- survival-rate and work-budget triggers for collection scheduling.
+
+Limelight remains responsible for everything whose meaning is language-
+specific:
+
+- selecting `ImmediateCounted` or `DeferredCounted` from class, entity
+  and escape proofs;
+- preserving immediate `1 -> 0` death and destructor order for the
+  Immediate regime;
+- keeping COW uniqueness, weak-reference ordering and FFI ownership out
+  of the Deferred regime until separately proved;
+- publishing canonical local-root tokens instead of requiring a stack
+  scan;
+- proving anchor chains and placing retain or root-token promotion at GC
+  horizons; and
+- performing one-way integration before an actor send, unknown escape or
+  any other operation that invalidates Deferred eligibility.
+
+The ownership boundary is strict: LXR may schedule and reclaim the
+Deferred space, but it does not decide the semantic regime of an entity.
+An Immediate entity is never placed behind delayed LXR decrements. On any
+classification disagreement, Limelight selects Immediate and today's
+retain/release semantics.
+
+The first implementation retains LXR's original root scan as a debug
+oracle while also constructing Limelight's published-root registry. The
+two root sets and their transitive closures must agree over the Deferred
+space. Stack scanning may be removed only after that differential oracle
+is clean; it is not removed merely because `LOCAL_ROOT` lowering exists.
+
+### Two entity regimes, and two decisions rather than one
+
+Form C adds an entity regime distinct from the existing *class regime*.
+The class regime chooses whether the compiler attempts borrow elision;
+the entity regime chooses who maintains the entity's liveness account.
+
+- **ImmediateCounted** — today's exact header RC. Stores and owned locals
+  maintain it, `1 -> 0` performs eager death, and `rc-walk` reads it.
+- **DeferredCounted** — no exact mutator-maintained count for internal
+  Deferred-to-Deferred edges. The collector enumerates those edges and
+  traces from explicit boundary roots. Reclamation is delayed until a
+  collection and therefore cannot carry prompt-death semantics.
+
+URC's important separation is retained: a **deferral policy belongs to a
+pointer slot**, deciding whether a mutation emits count work, while a
+**collection policy belongs to an entity**, deciding which algorithm may
+reclaim it. A single `target.is_deferred` test is not a complete policy.
+
+The conservative first eligibility rule is deliberately narrow:
+
+```
+DeferredCounted requires:
+    GC-heap category
+    non-COW entity
+    transitively destructor-free class
+    no weak-reference timing obligation
+    no FFI-owned resource
+    no unique-ownership sentinel
+    compiler-known layout for edge enumeration
+
+anything unresolved -> ImmediateCounted
+```
+
+COW needs an exact current uniqueness answer; destructor-bearing and FFI
+entities need prompt death; weak references expose clearing order; arena
+and immortal categories already have their own lifetime; and the unique
+sentinel has no count to reconstruct. These exclusions keep the first
+candidate semantically below Form A rather than asking the collector to
+emulate all of its observable timing.
+
+### The edge matrix
+
+Every reference store is classified by the source slot and target regime.
+This matrix is the minimum complete contract:
+
+| Source slot -> target | Required accounting |
+|---|---|
+| immediate -> ImmediateCounted | today's retain/release |
+| deferred -> ImmediateCounted | today's retain/release; an immediate target must never undercount |
+| deferred -> DeferredCounted | no hot-path RC; collector enumerates the final edge |
+| immediate -> DeferredCounted | an explicit boundary hold or remembered boundary edge |
+
+The last row is the dangerous one. An ImmediateCounted source may die and
+remove its outgoing edge between two collector reads. Form C must choose
+one of two instruments before it is sound: a precise **boundary count**
+maintained only for entries into Deferred space, or a write barrier and
+snapshot protocol that remembers the edge. The first preserves the
+current no-general-write-barrier goal and makes a Deferred header count
+external holds only; the second is URC/LXR's route and contradicts the
+standing Form-A constraint. The first implementation should therefore use
+boundary counts and measure their traffic before considering a barrier.
+
+With a boundary count `EXT`, collector-enumerated internal in-degree `IN`
+and the local-root state below, the collector may reconstruct a diagnostic
+snapshot count:
+
+```
+snapshot_RC(o) = EXT(o) + IN(o) + LOCAL(o)
+```
+
+That number alone does not collect cycles: an unreachable cycle has a
+positive `IN`. Reclamation must trace the Deferred graph from `EXT > 0`,
+local roots and other admitted root categories, or equivalently compute
+components and their external in-edges. Calling this collector-computed RC
+does not remove the reachability step.
+
+### The local-root bit, without a stack scan
+
+`LOCAL_ROOT` means **one compiler-owned logical root token exists**, not
+"one or more machine locals happen to contain this address". A boolean
+cannot count two independent locals:
+
+```php
+$a = new A();
+$b = $a;
+unset($a);       // must not clear A.LOCAL_ROOT while $b is live
+```
+
+The compiler must therefore coalesce local aliases under one canonical
+root owner; every other local is a borrow from that token. A move transfers
+the token, and only destruction of the last statically proved owner clears
+the bit. A copy that cannot remain a borrow, re-entrancy that loses the
+owner proof, an escaping closure, cross-thread sharing, suspension, or
+analysis failure demotes the entity to ImmediateCounted unless a wider
+root representation exists. A plain sticky bit that mutators only set is
+not enough: without a stack scan or a reassertion handshake the collector
+has no sound operation that clears it.
+
+The first candidate is thus single-token and fail-closed:
+
+```
+NoRoot --acquire canonical owner--> LocalRoot
+LocalRoot --move owner-----------> LocalRoot
+LocalRoot --last owner dies------> NoRoot
+LocalRoot --unprovable alias-----> integrate ImmediateCounted
+```
+
+Whether the bit is per entity, per actor, or encoded in the count word is
+an ABI question. A global per-entity bit needs atomic ownership transfer
+under cross-thread access; the simpler first rule confines
+DeferredCounted entities to one actor and integrates them before a send.
+
+### Horizon lowering under Form C
+
+The proof side of GC Horizon stays useful. What changes is the payment at
+the horizon:
+
+```
+ImmediateCounted target:
+    Anchored --retain-----------> Owned
+
+DeferredCounted target:
+    Anchored --acquire root-----> LocallyRooted
+```
+
+Before the horizon, an intact path from an existing local-root token or
+boundary root covers the borrow. At the horizon, the compiler materialises
+the least protection the target regime understands. `retain` remains the
+operation for ImmediateCounted; `LOCAL_ROOT` acquisition or transfer is
+the operation for DeferredCounted. The same dominance placement applies,
+but its cost and release action are regime-specific.
+
+This creates a three-state compiler lattice for Form C:
+
+```
+Anchored(chain)
+    -> OwnedCounted       by retain
+    -> LocallyRooted      by root-token acquisition
+```
+
+`LocallyRooted` ends by clearing or transferring the token, never by
+`release`. A mode test on every promotion would recreate the load-path
+problem of the superseded design, so the target regime must be known from
+IR type/region facts or the site must use the ImmediateCounted fallback.
+
+### Collector and transition protocol
+
+Form C cannot reuse `rc-walk` unchanged. Its central `RC - IN` identity
+assumes every external root is counted, and its occupancy test treats
+header count zero as a free slot. Deferred entities require an explicit
+occupancy state and a separate exact-test arm rooted by `EXT` and
+`LOCAL_ROOT`.
+
+Mode transitions occur only at a collector-owned integration boundary:
+
+- **Deferred -> Immediate:** enumerate every incoming deferred edge while
+  the view is stable, initialise the exact RC, flip the mode, then make
+  all future slot mutations immediate. This is URC's integrate event.
+- **Immediate -> Deferred:** first close or reconcile outstanding count
+  updates, split external from internal inputs, install the boundary/root
+  state, and only then permit deferred slots. No ordinary mutator store
+  performs this transition.
+
+The initial implementation must not attempt both directions. Allocation
+into a statically eligible Deferred space followed by one-way integration
+to ImmediateCounted on escape is enough to test the premise. Adaptive
+reintegration of hot mature objects belongs after the static form is
+measured.
+
+### Build order and acceptance gates
+
+1. **Reproduce LXR before specialising it.** Build the matching LXR
+   `mmtk-core` and OpenJDK forks, preserve their benchmark baseline, and
+   identify the Java-specific pieces that the Limelight binding must
+   replace. A version-pinned upstream baseline is required before any
+   performance claim.
+2. **Shadow census, no changed reclamation.** During an existing walk,
+   compute `EXT`, `IN`, root-token candidates, eligible classes,
+   cross-regime edges and the reconstructed counts while real RC remains
+   authoritative. Any disagreement only logs.
+3. **Static Deferred allocation.** Restrict it to destructor-free,
+   non-COW, actor-local classes with compiler-known layouts. Keep a debug
+   real count and compare it against collector reconstruction.
+4. **Dual root discovery.** Keep LXR/MMTk stack scanning as the oracle and
+   report the compiler-published root registry in parallel. Compare root
+   sets, Deferred transitive closures and death sets before allowing the
+   registry to become authoritative.
+5. **Root-token lowering.** Add canonical-owner inference and horizon
+   promotion to `LocallyRooted`; reject every phi, escape or re-entrant
+   shape the proof cannot coalesce.
+6. **One-way integration.** On a disqualifying escape or actor send,
+   integrate at a checkpoint with a stable edge view, then remain
+   ImmediateCounted for life.
+7. **Remove the stack oracle only after equivalence.** The release build
+   may stop scanning stacks only when the published-root protocol has an
+   independent checker and the dual-root corpus has no divergence.
+8. **Only after the above:** evaluate reverse transition, per-object
+   adaptation, count-bit compression and changes to LXR's coalescing
+   barrier.
+
+The Phase D census gains these channels: eligible allocation share;
+stores by edge-matrix row; boundary-count traffic; local-root acquisitions,
+transfers and clears; integrations and their scanned-edge cost; bytes
+retained until Deferred collection; prompt deaths preserved by the
+Immediate regime; cycle/reconstruction work; and the fraction forced back
+to Immediate by COW, destructors, weak references, FFI, sharing or analysis
+failure. Form C opens only on its marginal result against Form A; the
+historical URC, RC Immix and LXR numbers are priors, never acceptance data.
+
 ## What the superseded model's problems become
 
 The history file's supersession banner records three: a critical
@@ -747,6 +1112,15 @@ under [gc-horizon-cases/](gc-horizon-cases/) carry the failing shape.
     the other direction. The design needs one source-independent rule for
     sufficiency, trust, composition, freshness and invalidation of call
     effects.
+12. **Selective collector-computed counts are a candidate, not a
+    composition rule yet.** Form C needs decisions for the canonical
+    local-root token and its multiplicity, the `ImmediateCounted` /
+    `DeferredCounted` header discriminant, the cross-regime boundary
+    count, actor-send integration, occupancy independent of RC, and the
+    collector's exact validation under concurrent mutation. An MMTk
+    binding may host the experiment, but neither stock MMTk nor its
+    pinning API discharges these obligations. Until all six are ruled,
+    every entity remains Form A.
 
 ## The record
 
@@ -756,6 +1130,13 @@ already searched: the refusals of 2026-08-17 and 2026-08-18 closed the
 no-heap-RC roads, and this design keeps every count they defended —
 including the owned locals' — and removes only the pairs the proofs
 make redundant.
+
+Revision 6, 2026-08-21, adds Form C after identifying Ulterior Reference
+Counting and its descendants as the existing selective-RC family. It does
+not reverse the Form-A decision: the section records an independently
+gated experiment, selects the LXR fork as its experimental substrate,
+records the MMTk integration boundary and states the root-token proof that
+would be required to reopen a partition of the heap.
 
 Critic round 1, 2026-08-18, three lenses. **Soundness:** uncounted
 owning locals leak every acyclic local-only object and move

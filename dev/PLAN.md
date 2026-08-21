@@ -208,7 +208,12 @@ broken links.
         sources. Free-threaded CPython ships the same header flag for "who
         counts" and keeps a root registry for "who roots"; Pony ORCA matches
         the philosophy and avoids the question by collecting only when the
-        actor's stack is empty.
+        actor's stack is empty. Extended the same day with Iso (PLDI 2025), a
+        request-private collector whose premise is Limelight's own and whose
+        DLG corollary — only the allocating thread can publish an object —
+        answers the cross-regime edge question for actor-private entities;
+        and with LXR's current status: still unmerged in MMTk, continued in
+        the 2025 work-packets paper.
 - [ ] S5.3 Two Critic rounds over the second design, then Sage on what does not close
       done: both rounds are recorded here, every finding is fixed or refused
         with a reason, and any surviving dispute carries a Sage verdict marked

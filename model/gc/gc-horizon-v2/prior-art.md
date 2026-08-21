@@ -40,6 +40,7 @@ and whether the scheme stops the world.
 | Ulterior RC (2003) | mutator, per mutated object | two bits in the object header | collector, at each collection | a coalescing write barrier, first mutation per object per epoch | nursery collection; stacks still enumerated |
 | RC Immix (2013), LXR (2022) | as above | object header | collector, per epoch | field-logging barrier, 1.6% mutator overhead measured for LXR | brief; concurrent decrements and SATB tracing |
 | Free-threaded CPython (3.14) | mutator, per C-stack reference | `tstate->c_stack_refs`, a side registry | the frame's own exit | nothing on deferred objects' `INCREF`/`DECREF` | the tracing GC |
+| Iso (PLDI 2025) | mutator, on publication | a per-object `public` bit | never — publication is one-way | a write barrier on public-to-private stores; 2% measured | private collections stop only their own thread |
 | Pony ORCA | nobody — the actor collects only when its own stack is empty | — | — | nothing: no read or write barrier | none |
 | ZGC, JDK 16 | mutator, per stack frame | the frame, via a watermark | the collector, on scanning the frame | a check at every method return | none for the root scan |
 | `rc-walk` today | mutator, by counting | the entity's own count word | the matching `release` | a `retain`/`release` pair per local reference | none; the drain frees |
@@ -116,6 +117,40 @@ collector traverses that registry. The registry is the Form C proposal
 of the first design ([../gc-horizon.md](../gc-horizon.md)), reached by a
 production runtime, and it is what the header mark replaces here.
 
+**Iso** is the closest match to the workload. It is a request-private
+collector for Java: each request collects its own objects, and the paper's
+premise is the one Limelight is built on — object lifetimes are tied to
+request lifetimes, most objects stay private to the request that allocated
+them, and global operations are what limits responsiveness at scale. Its
+motivating figure puts PHP WordPress heap composition beside Java's, both
+showing total heap occupancy falling to zero between requests.
+
+The mechanism is the Doligez-Leroy-Gonthier invariant: objects in a local
+heap can only be referenced from outside by the stack of the thread that
+owns the heap, which lets each local heap be collected "independently,
+without synchronization among threads". Iso maintains it dynamically with a
+per-object `public` bit and a write barrier that fires when a store's source
+is public and its destination private, publishing the transitive closure of
+the stored object. An object publishes at most once, so the amortised barrier
+cost is constant, and the measured price of the whole visibility-tracking
+scheme is 2% on Tomcat and Spring. Iso itself beats OpenJDK's G1 by 32% and
+22% in execution time in a modest heap. The heap is 32 KB blocks owned by the
+allocating thread, with private, public and mixed blocks and one further
+invariant — a block holds private objects of at most one thread. Its central
+contribution, opportunistic copying, pins public objects during a private
+collection and private objects during a global one; Limelight is non-moving,
+so that half does not apply.
+
+What does apply is a corollary Iso states and Limelight's own cross-regime
+question needs: **the publishing thread can only ever be the thread that
+allocated the object**, since no other thread knows about a private object.
+If a deferred entity is actor-private, then the edge from a counted source
+into deferred space is always installed by its owner, and integration needs
+no synchronisation with anyone. That is open question 4 above, answered for
+the actor-private case and open for the rest. The 2% is also the closest
+measured price for a publication check, which is the shape of the arena's
+existing escape promotion (`model/src/promote.rs`, `IS_ESCAPEE`).
+
 **Pony ORCA** is the closest match to the philosophy and the furthest
 from the mechanism. It is fully concurrent with no stop-the-world step
 and no read or write barrier; reference counts change only when messages
@@ -185,4 +220,7 @@ not "who roots".
 - [Low-Latency, High-Throughput Garbage Collection (LXR), PLDI 2022](https://arxiv.org/abs/2210.17175)
 - [Free threading internals: deferred reference counting, Victor Stinner](https://vstinner.github.io/free-threading-deferred-reference-counting.html)
 - [ZGC in JDK 16: concurrent thread-stack processing](https://malloc.se/blog/zgc-jdk16)
+- [Iso: Request-Private Garbage Collection, PLDI 2025](https://www.steveblackburn.org/pubs/papers/iso-pldi-2025.pdf)
+- [Work Packets: A New Abstraction for GC Software Engineering, Optimization, and Innovation, OOPSLA 2025](https://www.steveblackburn.org/pubs/papers/packet-oopsla-2025.pdf)
+- [MMTk status page](https://www.mmtk.io/status)
 - [Nim: destructors and move semantics](https://nim-lang.org/docs/destructors.html)

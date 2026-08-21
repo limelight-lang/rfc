@@ -10,6 +10,39 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-21 — the horizon pays by publishing, and the second design gets its own folder
+
+**Decided (Edmond):** the payment at a GC horizon is a publication the
+collector reads, not a `retain`. The second design lives in
+`model/gc/gc-horizon-v2/`, which is marked as the current one;
+`model/gc/gc-horizon.md` stays in place as the record of the first
+design and carries a banner pointing at the folder.
+
+**Why:** the first design keeps the mutator's reference count on every
+local that reaches a horizon, because the count is what makes a root
+visible — `RC - IN > 0` is the only channel a stack-free collector has.
+A publication carries the same fact for less: the epoch byte already
+means "do not judge this slot", the mutator already writes it once per
+entity at allocation, and the walk clears it by ageing, so nothing has
+to be retracted. With publication available, a class of entities needs
+no mutator-maintained count at all.
+
+**Rejected:** a sticky local-root bit with a canonical owner, which the
+first design's Form C proposes — it needs a clearing operation the
+collector does not have, and `$b = $a; unset($a)` breaks the single
+owner; a fifth memory-category code for the deferred regime, which would
+take the entity out of the census that enrols only `GcHeap`; forbidding
+a deferred entity in a compiler-owned field, which needs a test on every
+store into such a field and so is a write barrier.
+
+**Cost:** the epoch byte becomes a safety gate, and `rc-walk` states
+today that no byte is one — a lost mark is a freed live entity, where a
+lost stamp costs a wasted message. Phase 4's exact test has no count to
+re-read for a deferred entity, and the ordering of a mark against a
+concurrent walk is unsolved. Both are open questions in
+`model/gc/gc-horizon-v2/top-level.md`, and no entity leaves the first
+design until they close.
+
 ## 2026-08-20 — the borrow-elision design enters the RFC as GC horizon, and the chain rule amends two normative sections
 
 **Decided (Edmond):** the algorithm named `proof-horizon` in the code

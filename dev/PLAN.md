@@ -1,6 +1,6 @@
 # PLAN
 
-Updated: 2026-08-20 · Active: S3
+Updated: 2026-08-21 · Active: S5
 
 Destination: the GC horizon algorithm is readable in this repository as a case
 book — every entity kind and every event that can end a proof has its own case,
@@ -175,6 +175,41 @@ marked Final.
       tier: T2 · role: Critic
 - [ ] S3.2 Critic round 2 over round 1's fixes; unresolved findings to Sage
       tier: T2 · role: Critic → Sage
+
+## S5 — The second design: the horizon pays by publishing  [in progress]
+
+Goal: the second design is written, reviewed and placed against the prior art
+that already occupies its space, so that the choice between it and the first
+design rests on named differences rather than on which text is newer.
+Done when: every step below is closed and `dev/tools/linkcheck.php` reports zero
+broken links.
+
+- [x] S5.1 Write the top level into `model/gc/gc-horizon-v2/`
+      done: the folder carries a README marking it the current design and a
+        `top-level.md` holding the problem, the three answers, the two prices,
+        the three collector treatments, the header states, the unresolved-site
+        rule and six open questions; `model/gc/README.md` lists the folder and
+        `model/gc/gc-horizon.md` carries a banner pointing here; linkcheck green
+      tier: T2 · role: —
+- [ ] S5.2 Find the prior art and place this design against it
+      done: the family this design belongs to is named with citations —
+        deferred reference counting, ulterior reference counting and their
+        descendants at least — and each is compared on the four axes that
+        matter here: who publishes a root, where it is published, who clears
+        the publication, and what the mutator pays; any algorithm that already
+        does publication-into-the-header with an ageing clear is named as such
+        rather than as an analogue
+      tier: T2 · role: —
+- [ ] S5.3 Two Critic rounds over the second design, then Sage on what does not close
+      done: both rounds are recorded here, every finding is fixed or refused
+        with a reason, and any surviving dispute carries a Sage verdict marked
+        Final
+      tier: T2 · role: Critic → Sage
+- [ ] S5.4 Fold the outcome back into the case book
+      done: each of the sixteen cases either states that the second design
+        leaves it unchanged or carries the case's new shape under it, and
+        `gc-horizon-states.md` carries the header states this design adds
+      tier: T2 · role: Critic
 
 ## S4 — Code from the cases
 

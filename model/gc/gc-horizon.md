@@ -15,6 +15,12 @@ collector is not a party to it: nothing in this document changes
 `rc-walk`'s protocol, the header layout, or what the mutator does at a
 checkpoint.
 
+> **Superseded in part by [gc-horizon-v2/](gc-horizon-v2/README.md),
+> the current design.** That folder keeps everything below except the
+> payment at a horizon, which it makes a publication the collector reads
+> instead of a `retain`. This document stays as the record of the first
+> design and of the four Critic rounds that shaped it.
+>
 > **Status: design sketch, closed pending Phase D.** Nothing is
 > implemented and no pre-Phase-D step can open it: the corpus scan below
 > can only kill, the publish census that could open it is undated and

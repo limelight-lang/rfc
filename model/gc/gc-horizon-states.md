@@ -10,6 +10,12 @@ projections are in [gc-horizon-cases/](gc-horizon-cases/README.md); each
 case's "states touched" section names axes from the tables below and
 nothing else.
 
+This state set enumerates adopted Form A only. Form C's
+`ImmediateCounted`, `DeferredCounted`, boundary-count and local-root-token
+states are a gated candidate in
+[gc-horizon.md](gc-horizon.md#candidate-inversion-selective-collector-computed-counts),
+not runtime states this companion claims the current design creates.
+
 The counts here are **derived by enumerating the axes, not measured**.
 How much traffic each configuration carries is what the corpus scan of
 [gc-horizon.md](gc-horizon.md#economics) exists to find out, and no

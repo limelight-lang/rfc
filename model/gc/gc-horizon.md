@@ -197,8 +197,10 @@ paths are the cheap population.
 
 A GC horizon is any of:
 
-- a call without a trusted summary;
-- dynamic dispatch the class set cannot close;
+- a call for which the compiler lacks sufficient trusted, fresh effects
+  from any admitted source;
+- dynamic dispatch whose possible-target set or joined effects the
+  compiler cannot bound;
 - reflection;
 - a by-reference escape;
 - **a release of a class whose transitive-purity closure is not
@@ -413,10 +415,11 @@ nothing replaces the table: owning locals never leave the count, and
 proofs replace reconciliation for borrows only. In Perceus terms the
 dup/drop pairs stay at ownership transfers and the borrow inference
 is pushed across summarized calls. The delta from plain borrow
-inference is the summary system: without summaries every call is a
-horizon and the scheme reduces to the five-axis review's extraction
-— a covering-borrow elision over maintained RC; with them the free
-region grows call-deep, through callees that are transitively
+inference is the trusted-effect system: without sufficient effects from
+any admitted source every call is a horizon and the scheme reduces to the
+five-axis review's extraction — a covering-borrow elision over maintained
+RC; with those effects the free region grows call-deep, through callees
+that are transitively
 store-free with pure-closure internal releases — the condition the
 sound-configuration paragraph states (`model/dev/RESEARCH.md`,
 2026-08-18, the static family).
@@ -734,12 +737,16 @@ under [gc-horizon-cases/](gc-horizon-cases/) carry the failing shape.
     retain from the other. The demotion trigger set names convention
     retains and horizon-reaching borrows, and does not name the
     base-case retains, so the intersection has no defined lowering.
-11. **Runtime entry points are not PHP calls, and the horizon list
-    does not say so.** Read literally, every `ll_*` entry the lowering
-    emits is "a call without a trusted summary", which makes the free
-    region empty. The line the design intends — a horizon is a
-    PHP-level call, runtime entries being nothrow, effect-known and
-    summarized by construction — is not written anywhere.
+11. **The trusted-effect boundary is not specified.** A stored callee
+    summary is not the compiler's only source of effect knowledge:
+    interprocedural body analysis, builtin and intrinsic models, runtime
+    ABI contracts, and the joined models of a closed multi-target call may
+    establish the same facts. Read literally, "without a trusted summary"
+    rejects those sources and makes common effect-known calls horizons;
+    drawing the line at PHP calls instead would reject valid knowledge in
+    the other direction. The design needs one source-independent rule for
+    sufficiency, trust, composition, freshness and invalidation of call
+    effects.
 
 ## The record
 

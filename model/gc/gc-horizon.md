@@ -455,11 +455,16 @@ The line continued rather than ending with URC:
 - **LXR** (PLDI 2022) combines coalescing RC for young and old objects,
   implicitly-dead new objects, concurrent decrements, Immix regions and
   occasional concurrent SATB tracing for cycles and stuck counts. Its
-  unified field-logging barrier measured 1.6% mutator overhead; the
-  paper's Lucene configuration reported six times the throughput and
-  thirty times lower 99.9-percentile latency than default Shenandoah,
-  figures specific to that configuration
-  ([paper](https://arxiv.org/abs/2210.17175)). As of the current
+  unified field-logging barrier measured 1.6% mutator overhead. Its
+  arXiv extended version reports, for the Lucene search engine in a
+  tight heap, 7.8 times the throughput and 10 times better 99.99%
+  tail latency than Shenandoah, and across 17 workloads in a moderate
+  heap 4% over G1 and 43% over Shenandoah on throughput — figures
+  specific to those configurations
+  ([extended version](https://arxiv.org/pdf/2210.17175)). An earlier
+  revision of this section cited six times the throughput and thirty
+  times lower 99.9-percentile latency; those numbers are not in the
+  extended version and the camera-ready has not been read here. As of the current
   [MMTk status](https://www.mmtk.io/status), LXR exists in MMTk/OpenJDK
   forks and is not merged into MMTk master.
 

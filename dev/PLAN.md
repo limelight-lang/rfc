@@ -191,7 +191,7 @@ broken links.
         rule and six open questions; `model/gc/README.md` lists the folder and
         `model/gc/gc-horizon.md` carries a banner pointing here; linkcheck green
       tier: T2 · role: —
-- [ ] S5.2 Find the prior art and place this design against it
+- [x] S5.2 Find the prior art and place this design against it
       done: the family this design belongs to is named with citations —
         deferred reference counting, ulterior reference counting and their
         descendants at least — and each is compared on the four axes that
@@ -200,6 +200,15 @@ broken links.
         does publication-into-the-header with an ageing clear is named as such
         rather than as an analogue
       tier: T2 · role: —
+      handoff: `model/gc/gc-horizon-v2/prior-art.md`. Three of the four
+        mechanisms are known — deferred RC, URC's partition, Nim-style cursor
+        elision — and the fourth, publishing roothood into the collected
+        object's own header with the collector's stamp as the clearing
+        operation, was not found in a bounded search of eight queries and six
+        sources. Free-threaded CPython ships the same header flag for "who
+        counts" and keeps a root registry for "who roots"; Pony ORCA matches
+        the philosophy and avoids the question by collecting only when the
+        actor's stack is empty.
 - [ ] S5.3 Two Critic rounds over the second design, then Sage on what does not close
       done: both rounds are recorded here, every finding is fixed or refused
         with a reason, and any surviving dispute carries a Sage verdict marked

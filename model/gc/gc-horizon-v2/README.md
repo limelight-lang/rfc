@@ -18,13 +18,16 @@ class of entities carry no mutator-maintained reference count at all.
   problem, the three answers to it, the two prices of protection, the
   three treatments the collector owes an entity, the header states, and
   what changes in `rc-walk`.
+- [prior-art.md](prior-art.md) — the four mechanisms this design
+  combines, which three are known and where they ship, the comparison on
+  who publishes a root and what the mutator pays, and the one mechanism
+  the search did not find.
 
 ## Status
 
 Discussion record, written 2026-08-21 from a working session with
 Edmond, who is the author of the algorithm. It is neither reviewed nor
-adopted: no Critic round has run over it, the prior-art search it needs
-has not been done, and six questions listed at the end of
+adopted: no Critic round has run over it and six questions listed at the end of
 [top-level.md](top-level.md) are open. The parts of the first design it
 does not touch — the ownership lattice, the horizon list, the placement
 rule — hold unchanged and are read from [../gc-horizon.md](../gc-horizon.md).

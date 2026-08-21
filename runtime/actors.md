@@ -151,6 +151,15 @@ collection for an actor's arenas runs there:
   other actors never notice (stop-the-actor, not stop-the-world);
 - the collection scope is one actor's arenas, small by construction.
 
+The same bet is measured elsewhere. Iso collects each request's objects
+privately, on the premise that object lifetimes are tied to request
+lifetimes and that most objects never leave the request that allocated
+them, and it beats OpenJDK's G1 by 32% and 22% in execution time in a
+modest heap ([Qiu and Blackburn, PLDI 2025](https://www.steveblackburn.org/pubs/papers/iso-pldi-2025.pdf)).
+Its corollary of the Doligez-Leroy-Gonthier invariant applies directly to
+an actor's arena: only the thread that allocated a private object can
+publish it, since no other thread knows the object exists.
+
 This delivers the Erlang pause story through the existing `rc-trace`
 machinery, and shrinks the role of concurrent SATB
 ([../model/gc/satb.md](../model/gc/satb.md)) to what remains truly

@@ -324,6 +324,35 @@ is deferred by an unbounded amount. Against it: roughly two words per object
 the compacted 8-byte `RcHeader`; multithreading is stated as unimplemented;
 the evaluation is synthetic. Watch, do not adopt.
 
+### Iso: request-private GC (PLDI 2025)
+
+"Iso: Request-Private Garbage Collection", Tianle Qiu and Stephen M.
+Blackburn, Proc. ACM Program. Lang. 9, PLDI, Article 182, June 2025
+([PDF](https://www.steveblackburn.org/pubs/papers/iso-pldi-2025.pdf)).
+
+Each request collects its own objects. The premise is that object lifetimes
+are tied to request lifetimes, that most objects never leave the request
+that allocated them, and that global operations are what limits
+responsiveness at scale; the motivating figure puts PHP WordPress heap
+composition beside Java's, both falling to zero occupancy between requests.
+The instrument is the Doligez-Leroy-Gonthier invariant — a private object is
+referenced from outside only by its owning thread's stack — maintained
+dynamically by a per-object `public` bit and a write barrier on
+public-to-private stores, which publishes the stored object's transitive
+closure. Opportunistic copying pins public objects during a private
+collection and private objects during a global one, which is how Iso gets
+thread-local collection in a language without exploitable immutability.
+Measured: 2% for the visibility tracking on Tomcat and Spring, and 32% and
+22% better execution time than G1 in a modest heap.
+
+**Bearing on Limelight:** the premise is this runtime's own, and the barrier
+is the category barrier under another name
+([../memory/arena-promotion.md](../memory/arena-promotion.md)). The copying
+half does not apply — the heap is non-moving. What does apply is the
+corollary that only the allocating thread can publish an object, which bounds
+who can create a cross-regime edge
+([gc-horizon-v2/prior-art.md](gc-horizon-v2/prior-art.md)).
+
 ### Concurrent Deferred Partial Tracing (PLDI 2026)
 
 "Revisiting Partial Tracing for Safe, Efficient, and Concurrent Garbage
@@ -405,6 +434,8 @@ Targeting the LXR architecture, implemented incrementally via MMTK.
 | Reinking, Xie et al., PLDI 2021 | Perceus: compile-time precise RC, drop specialization, reuse analysis |
 | Arborescent GC, ISMM 2025 | Immediate cycle reclamation via a spanning forest |
 | Kim et al., PLDI 2026 | Partial tracing: count the roots, trace the heap; concurrent, no stack maps |
+| Qiu & Blackburn, PLDI 2025 | Iso: request-private collection, the public bit and its measured 2% |
+| Zhao et al., OOPSLA 2025 | Work packets: all GC work as schedulable packets, LXR's current form |
 
 ---
 
@@ -416,7 +447,9 @@ Targeting the LXR architecture, implemented incrementally via MMTK.
 - [PHP: Collecting Cycles — PHP Manual](https://www.php.net/manual/en/features.gc.collecting-cycles.php)
 - [Bacon & Rajan, ECOOP 2001 (PDF)](https://pages.cs.wisc.edu/~cymen/misc/interests/Bacon01Concurrent.pdf)
 - [CPython GC internals — Python Developer's Guide](https://devguide.python.org/garbage_collector/)
-- [MMTK status page](https://www.mmtk.io/status)
+- [MMTK status page](https://www.mmtk.io/status) — LXR is still unmerged, living in `mmtk-core` and `mmtk-openjdk` forks alongside Iso (checked 2026-08-21)
+- [Iso: Request-Private Garbage Collection, PLDI 2025](https://www.steveblackburn.org/pubs/papers/iso-pldi-2025.pdf)
+- [Work Packets, OOPSLA 2025](https://www.steveblackburn.org/pubs/papers/packet-oopsla-2025.pdf)
 - [Ruby 3.4 Modular GC + MMTK — Rails at Scale](https://railsatscale.com/2025-01-08-new-for-ruby-3-4-modular-garbage-collectors-and-mmtk/)
 - [Immix paper, PLDI 2008](https://www.steveblackburn.org/pubs/papers/immix-pldi-2008.pdf)
 - [LXR paper, arxiv](https://arxiv.org/abs/2210.17175)

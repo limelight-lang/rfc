@@ -60,6 +60,22 @@ death, per 64 KB block — retention in place or evacuation
 into an arena container) goes to the release-at-reset list
 ([arenas.md](arenas.md)).
 
+**Prior art for the barrier.** Iso, a request-private collector for Java,
+maintains the same kind of invariant with the same kind of instrument, and
+measures it. It keeps a per-object `public` bit and a write barrier that
+fires when a store's source is public and its destination private, and it
+reports 2% overhead for the whole visibility-tracking scheme on Tomcat and
+Spring ([Qiu and Blackburn, PLDI 2025](https://www.steveblackburn.org/pubs/papers/iso-pldi-2025.pdf),
+"Iso: Request-Private Garbage Collection"; its motivating figure puts PHP
+WordPress heap composition beside Java's). Two differences bound how far
+that number carries. Iso reads the source object's bit, where `owner_cat`
+is a compiler-supplied parameter here and costs no load; and Iso publishes
+the stored object's transitive closure inside the barrier, where the escape
+count defers the closure to arena death, per block. The barrier here
+therefore does less per store and more at reset, which makes 2% a ceiling
+for it rather than an estimate. Discussion of the fit is in
+[../gc/gc-horizon-v2/prior-art.md](../gc/gc-horizon-v2/prior-art.md).
+
 ### Slot category resolution
 
 (Closes what an earlier revision left open.) `owner_cat` is always a

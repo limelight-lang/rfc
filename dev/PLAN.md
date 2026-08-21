@@ -214,12 +214,27 @@ broken links.
         answers the cross-regime edge question for actor-private entities;
         and with LXR's current status: still unmerged in MMTk, continued in
         the 2025 work-packets paper.
-- [ ] S5.3 Two Critic rounds over the second design, then Sage on what does not close
+- [x] S5.3 Build the question graph
+      done: `model/gc/gc-horizon-v2/questions.md` holds every open question of
+        the second design as a node with what would answer it and what it
+        blocks, a mermaid dependency graph over them, and the session's
+        resolved nodes kept in place; the README lists it
+      tier: T2 · role: —
+      handoff: nine nodes A-I plus the economics gate Z. A is the root — does
+        a deferred regime exist outside actor-private memory — and it bounds
+        every node below.
+- [ ] S5.4 Resolve the graph node by node, root first
+      done: every node in `questions.md` carries either an answer with its
+        argument, or a recorded reason for staying open; nodes whose answer
+        changes another document are folded into it rather than left in the
+        graph alone
+      tier: T2 · role: Critic
+- [ ] S5.5 Two Critic rounds over the second design, then Sage on what does not close
       done: both rounds are recorded here, every finding is fixed or refused
         with a reason, and any surviving dispute carries a Sage verdict marked
         Final
       tier: T2 · role: Critic → Sage
-- [ ] S5.4 Fold the outcome back into the case book
+- [ ] S5.6 Fold the outcome back into the case book
       done: each of the sixteen cases either states that the second design
         leaves it unchanged or carries the case's new shape under it, and
         `gc-horizon-states.md` carries the header states this design adds

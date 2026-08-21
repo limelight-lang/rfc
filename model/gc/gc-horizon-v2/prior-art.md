@@ -40,6 +40,7 @@ and whether the scheme stops the world.
 | Ulterior RC (2003) | mutator, per mutated object | two bits in the object header | collector, at each collection | a coalescing write barrier, first mutation per object per epoch | nursery collection; stacks still enumerated |
 | RC Immix (2013), LXR (2022) | as above | object header | collector, per epoch | field-logging barrier, 1.6% mutator overhead measured for LXR | brief; concurrent decrements and SATB tracing |
 | Free-threaded CPython (3.14) | mutator, per C-stack reference | `tstate->c_stack_refs`, a side registry | the frame's own exit | nothing on deferred objects' `INCREF`/`DECREF` | the tracing GC |
+| Partial tracing (PLDI 2026) | mutator, by counting roots | a root count per handle | the handle's own release | a count operation per root acquisition | none |
 | Iso (PLDI 2025) | mutator, on publication | a per-object `public` bit | never — publication is one-way | a write barrier on public-to-private stores; 2% measured | private collections stop only their own thread |
 | Pony ORCA | nobody — the actor collects only when its own stack is empty | — | — | nothing: no read or write barrier | none |
 | ZGC, JDK 16 | mutator, per stack frame | the frame, via a watermark | the collector, on scanning the frame | a check at every method return | none for the root scan |
@@ -200,12 +201,45 @@ logging both charge the mutator per operation. Deutsch–Bobrow's stack
 enumeration and CPython's root registry both need a structure the
 mutator maintains outside the heap.
 
+## The quadrant this design sits in
+
+Bacon, Cheng and Rajan's unified theory places tracing and reference
+counting as dual computations over the same graph, which leaves a fourth
+quadrant: **count the roots and trace the heap**, the exact dual of
+deferred reference counting, which counts heap edges and traces the roots.
+That quadrant is where the second design sits, and it is where the capture
+count belongs by definition — a count of code-side captures is a root
+count.
+
+The recent instance is Kim, Park, Kwon and Kang's concurrent deferred
+partial tracing (PLDI 2026,
+[doi](https://dl.acm.org/doi/10.1145/3808310)), a collector library for
+C++ and Rust. Counting roots buys them precise root identification with
+no stack maps and no conservative scanning, and tracing the heap from the
+objects whose root count is non-zero collects cycles without a separate
+cycle collector — the two properties this design is after, reached from
+the same direction. Their cost is that a root count is maintained by
+smart-pointer handles, so every root acquisition pays; their contributions
+are the two mechanisms that make it concurrent, phase consensus and a
+hazard-pointer replacement for atomic root updates.
+
+The delta is where the root count comes from. Theirs is maintained at
+every handle, ours only at a horizon — and it degrades further to a mark
+that costs one store and expires by itself, which is the mechanism the
+next section says was not found. This entry was already in this
+repository's own survey before the search
+([../gc-research.md](../gc-research.md), "Concurrent Deferred Partial
+Tracing"), and the search below missed it; the survey should be read
+before the web next time.
+
 ## What the search did not find, and how far it looked
 
 No system was found that publishes roothood into the collected object's
 own header and relies on the collector's own stamping to end the
-publication. This is a negative result of a bounded search — eight
-queries and six sources, listed below — and not a claim of novelty. Two
+publication. The claim is narrow after the section above: the quadrant is
+occupied and named, and what was not found is the cheap expiring form of
+the root publication. This is a negative result of a bounded search and
+not a claim of novelty. Two
 things would settle it: a reading of the deferred-RC literature that
 predates the web-indexed part, and the framework Edmond has in mind,
 which he reported as an existing implementation and which the search did
@@ -221,6 +255,7 @@ not "who roots".
 - [Free threading internals: deferred reference counting, Victor Stinner](https://vstinner.github.io/free-threading-deferred-reference-counting.html)
 - [ZGC in JDK 16: concurrent thread-stack processing](https://malloc.se/blog/zgc-jdk16)
 - [Iso: Request-Private Garbage Collection, PLDI 2025](https://www.steveblackburn.org/pubs/papers/iso-pldi-2025.pdf)
+- [Revisiting Partial Tracing for Safe, Efficient, and Concurrent Garbage Collection in Unmanaged Languages, PLDI 2026](https://dl.acm.org/doi/10.1145/3808310)
 - [Work Packets: A New Abstraction for GC Software Engineering, Optimization, and Innovation, OOPSLA 2025](https://www.steveblackburn.org/pubs/papers/packet-oopsla-2025.pdf)
 - [MMTk status page](https://www.mmtk.io/status)
 - [Nim: destructors and move semantics](https://nim-lang.org/docs/destructors.html)

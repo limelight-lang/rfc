@@ -18,6 +18,9 @@ class of entities carry no mutator-maintained reference count at all.
   problem, the three answers to it, the two prices of protection, the
   three treatments the collector owes an entity, the header states, and
   what changes in `rc-walk`.
+- [questions.md](questions.md) — the question graph: what is still open,
+  in the order the answers unlock each other, with the session's resolved
+  nodes kept in place.
 - [prior-art.md](prior-art.md) — the four mechanisms this design
   combines, which three are known and where they ship, the comparison on
   who publishes a root and what the mutator pays, and the one mechanism

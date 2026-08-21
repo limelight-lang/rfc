@@ -76,6 +76,31 @@ LXR's unified field-logging barrier is measured at 1.6% mutator
 overhead, which is the number to beat with a scheme that has no such
 barrier at all.
 
+**LXR's premise does not carry to a non-moving collector.** Its stated
+design premise is "that regular, brief stop-the-world collections will
+yield sufficient responsiveness and far greater efficiency than
+concurrent evacuation", and the target of that sentence is evacuation:
+"concurrent evacuation requires expensive barriers to prevent mutator
+and collector races, which is intrinsically more expensive than
+stop-the-world evacuation. LXR does not require a read barrier." A
+collector that never moves an object needs no read barrier for that
+reason either, and Limelight fixed non-moving as a cross-strategy
+decision ([../heap-design.md](../heap-design.md)), so `rc-walk` is
+outside the choice LXR poses.
+
+Two of its measurements do carry. On `lusearch` in a heap 1.3 times the
+minimum, LXR's own pauses are longer than G1's at every percentile —
+0.9 ms against 0.4 ms at the median — and its query latency is better at
+every percentile, 3.0 ms against 12.0 ms at the 99th. Pause length was
+not what set the latency; the mutator's per-operation cost and the
+collector's ability to keep up with a 9.5 GB/s allocation rate were.
+The second measurement bounds the first: given ten times the minimum
+heap, Shenandoah reaches 170K queries per second against LXR's 119K, so
+the premise is a claim about tight heaps and not about collectors in
+general. Both numbers are from 2022, with Shenandoah and ZGC
+non-generational at the time — the paper says their generational
+variants were then under development.
+
 **Free-threaded CPython** is the shipped instance of the header flag.
 `PyUnstable_Object_EnableDeferredRefcount` sets `_PyGC_BITS_DEFERRED`
 in the object's `_ob_gc_bits` and writes `_Py_REF_DEFERRED` into

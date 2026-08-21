@@ -3,12 +3,16 @@
 ## 1. The case
 
 Three of the eight horizon kinds are shaped like a call, and they belong
-in one case because one fact ends the proof in all three: the callee's
-instructions are not in the caller's IR, so no analysis over the caller
-covers what runs inside. [gc-horizon.md](../gc-horizon.md#the-horizon-list)
-lists them separately because a different instrument lifts each — a
-summary for the first, a closed class set for the second, nothing at all
-for the third
+in one case because one fact ends the proof in all three: the compiler
+cannot establish sufficiently precise effects for every target that may
+run at the site. Caller-local analysis alone cannot cover instructions
+outside the caller, but it is not the only admissible source of knowledge:
+interprocedural analysis, builtin and intrinsic models, runtime ABI
+contracts, and fresh stored summaries may all supply trusted effects.
+[gc-horizon.md](../gc-horizon.md#the-horizon-list) lists the three kinds
+separately because a different instrument lifts each — a sufficient
+trusted effect model for the first, resolution and effect coverage of all
+possible targets for the second, and nothing at all for the third
 ([gc-horizon-states.md](../gc-horizon-states.md#the-eight-horizon-kinds)).
 
 ```php
@@ -55,37 +59,45 @@ which is open question 1.
 
 Three points, one per row.
 
-- `audit($o)` — **a call without a trusted summary**. The callee may
-  sever any path and release anything, so nothing about `$o->rate`
-  survives it.
+- `audit($o)` — **a call without sufficient trusted effects**. Those
+  effects may come from analysis of the body, a builtin or intrinsic
+  model, a runtime ABI contract, or a fresh stored summary. None is
+  available here, so the callee may sever any path and release anything,
+  and nothing about `$o->rate` survives it.
 - `$o->shipper->quote()` — **dynamic dispatch the class set cannot
   close**. The compiler resolves a call site by the dispatch decision
   tree ([classes.md](../../classes.md#dispatch-decision-tree)); rows 1
-  to 3 name a target, row 4 names none and reaches the inline cache.
-  Summaries are per callee, so an unclosed set has no callee to summarize.
+  to 3 name a target, row 4 names none and reaches the inline cache. A
+  singleton callee is not required: a finite target set can be lifted when
+  the joined trusted effects of every possible target preserve the proof.
+  Here the set is not closed, so its effect union cannot be bounded.
 - `$rp->setValue($o, null)` — **reflection**. Nothing lifts it, and this
   site shows why: a `ReflectionProperty` write is one of the dynamic
   paths that resolve a property at runtime
   ([classes.md](../../classes.md#property-access)), so it can sever the
   very slot the borrow's path runs through.
 
-**Read literally, the first row also covers the runtime's own entry
-points, and the design does not say otherwise.** The lowering emits
+**The first row does not define what counts as trusted effect knowledge.**
+The lowering emits
 `ll_retain` and `ll_release` around counted references
 ([lowering.md](../../lowering.md#retain--release)), `store_ptr`,
 `store_box` and `drop` at every reference store
 ([strategies.md](../strategies.md#1-the-store-barrier-as-micro-operations)),
 `ll_cow_separate` before a write to a shared value
 ([values.md](../../values.md#copy-on-write-protocol)), and an allocation
-entry per `new` ([lowering.md](../../lowering.md#allocation)). None of
-them carries a summary, because summaries are written for PHP functions.
-Under the row as written every one of them is a horizon, every borrow's
-live range contains at least one, and the free region is empty. The line
-the design intends is that a **horizon is a PHP-level call**, runtime
-entries being nothrow, effect-known and summarized by construction. That
-line is written nowhere in [gc-horizon.md](../gc-horizon.md), and open
-question 11 records the gap. One half of the intended criterion needs
-care where it is drawn: a COW-separating store allocates, and the barrier
+entry per `new` ([lowering.md](../../lowering.md#allocation)). Requiring a
+stored call summary as the only proof source would classify every one of
+these effect-known operations as a horizon and make the free region empty.
+Conversely, restricting horizons to PHP-level calls would discard effects
+the compiler already knows for builtins, intrinsics, analyzable PHP
+functions, runtime entries, and closed multi-target dispatch. The missing
+rule is therefore source-independent: a call is lifted exactly when the
+compiler has a trusted, fresh effect model, from any admitted source,
+sufficient to prove that every possible target preserves this borrow's
+anchor path and performs no impure release relevant to it. Open question
+11 records the still-missing registry, trust and invalidation rules for
+those sources. One part of the criterion needs care: a COW-separating
+store allocates, and the barrier
 reports refusal rather than raising, so the entry is nothrow and the
 generated code that reads the refusal raises memory-exhausted
 ([values.md](../../values.md#copy-on-write-protocol),
@@ -164,8 +176,8 @@ loses the saving and gains no cost.
   a summary for `audit()` exists.
 - **promotion point**: the instruction after the load for `$rate` in both
   snippets; ⊥ for `$tax`.
-- **call summary**: absent for `audit()`, so the row stands; present and
-  version-fresh, so it lifts.
+- **call effect model**: no admitted source supplies sufficient effects
+  for `audit()`, so the row stands; a fresh sufficient model lifts it.
 - **class regime**: `Shipper` is unnarrowable at that site, which is the
   counted default ([gc-horizon.md](../gc-horizon.md#the-hybrid-counted-class-horizon-class)).
 - **landing-pad set**: `$rate` joins the owned set live at all three call
@@ -175,14 +187,12 @@ loses the saving and gains no cost.
 
 ```mermaid
 flowchart TD
-    S["call site in the caller's IR"] --> R{"a PHP-level call?"}
-    R -->|"no: an ll_* runtime entry"| Q11["open question 11 —<br/>the line is not drawn"]
-    R -->|yes| D{"dispatch tree row"}
-    D -->|"1-3: target named"| SUM{"summary present?"}
-    D -->|"4: inline cache only"| HZ["HORIZON"]
+    S["call site in the caller's IR"] --> T{"all possible targets bounded?"}
+    T -->|no| HZ["HORIZON"]
+    T -->|yes| SUM{"sufficient trusted effects<br/>for every target?"}
     SUM -->|no| HZ
-    SUM -->|"yes, version stale"| HZ
-    SUM -->|"yes, version fresh"| CH{"severs a path edge,<br/>or releases something impure?"}
+    SUM -->|"yes, but stale"| HZ
+    SUM -->|"yes and fresh"| CH{"joined effects sever a path edge,<br/>or release something impure?"}
     CH -->|yes| HZ
     CH -->|no| FREE["not a horizon:<br/>the free region grows call-deep"]
     HZ --> PR["promote: one retain at the<br/>dominating point"]
@@ -225,7 +235,7 @@ collector this design does not target
   and [release.md](release.md) the impure release it must exclude; a
   summary is exactly the claim that a callee contains neither.
 - [unwind.md](unwind.md) owns the raise-site half of the placement rule
-  that the runtime-entry boundary above touches.
+  that the effect-model boundary above touches.
 - The dispatch decision tree is
   [classes.md](../../classes.md#dispatch-decision-tree), the inline cache
   is [caches.md](../../caches.md#the-sites), and the Borrowed state this
@@ -234,11 +244,13 @@ collector this design does not target
 
 ## 9. Open items
 
-1. **The PHP-call boundary is not drawn.** Section 3 states it; the
-   algorithm does not. Open question 11 of
+1. **The trusted-effect boundary is not drawn.** Section 3 states it; the
+   algorithm does not define the admitted sources, their trust rules, how
+   their effects compose, or how each is invalidated. Open question 11 of
    [gc-horizon.md](../gc-horizon.md#open-questions).
 2. **A monomorphic inline cache is a runtime class check, and the lift is
-   stated statically.** The row is lifted by "a closed class set", while
+   stated statically.** The row is lifted by a bounded target set with
+   sufficient joined effects, while
    the mechanism that resolves an untyped receiver is a per-site cache
    holding one `(class, target)` pair checked at run time
    ([classes.md](../../classes.md#inline-caches)). Whether a guarded

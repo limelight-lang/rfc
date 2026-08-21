@@ -79,7 +79,7 @@ feature.
 | promotion point | promoted borrow | the closest point dominated by the birth that dominates every horizon and every exit — or ⊥, which sends the borrow to owned-from-birth | the emitter; the landing-pad sets |
 | landing-pad set | call site | the owned locals live at that site, static per site | unwind lowering |
 | class regime | class | counted, horizon, or unnarrowable (which is counted) | the emitter's default under the hybrid |
-| call summary | function | severable anchor paths, purity of internal releases, destructor reachability, **version** | the call-horizon lift; invalidation on stdlib updates |
+| call effect model | call target or closed target set | source and trust, severable anchor paths, purity of internal releases, destructor reachability, **freshness identity** | the call-horizon lift; invalidation when its source changes |
 | always-provable rule registry | admitted rule | statement, proof sketch, reviewer, date — one `model/dev/DECISIONS.md` entry each | the granularity ruling's bound |
 | demotion worklist | unique entity | trigger sites: convention retains and horizon-reaching borrows | the whole-program uniqueness fixpoint |
 | per-site certificate | deviating site, future | anchor chain, summary IDs, horizon set | the independent checker |
@@ -88,8 +88,8 @@ feature.
 
 | Horizon | Why the proofs end there | What lifts it |
 |---|---|---|
-| a call without a trusted summary | the callee may sever or release anything | a summary: no severable path, pure internal releases |
-| dynamic dispatch the class set cannot close | the callee is unknown | a closed class set |
+| a call without sufficient trusted, fresh effects | the callee may sever or release anything | an admitted effect model: no severable path, pure internal releases |
+| dynamic dispatch whose possible targets or joined effects cannot be bounded | some callee or effect is unknown | a closed target set with sufficient trusted effects for every target |
 | reflection | unbounded effects | nothing |
 | a by-reference escape | the local becomes writable elsewhere | nothing |
 | a release of a class whose purity closure is not pure | eager death runs `__destruct` at the release site | transitive purity of the closure, NR counting as impure |

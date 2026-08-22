@@ -76,9 +76,7 @@ flowchart TD
     C4[C4 do the rungs earn their keep<br/>measure] --> C3
 
     D1[D1 the hand-back channel<br/>design] --> D5
-    D2[D2 cutting a garland<br/>Sage] --> D4
     D3[D3 the batch constants<br/>measure]
-    D4[D4 the indivisible verification<br/>design]
     D5[D5 collector-side destructor calls<br/>design]
     D6[D6 WeakMap ephemerons<br/>design]
 
@@ -99,7 +97,7 @@ flowchart TD
     H1[H1 the checker models the old protocol<br/>today]
 
     F1[F1 coalescing RC<br/>read] --> A5
-    F2[F2 arborescent GC<br/>read] --> D2 & D4
+    F2[F2 arborescent GC<br/>read]
     F3[F3 partial tracing, read<br/>record only]
 ```
 
@@ -289,30 +287,39 @@ needs the other direction, and `../pure-destructors.md` names it as the
 missing piece of the hand-off drain. **What would answer it:** the protocol,
 with the reentrancy gates the pickup already has.
 
-### D2. Cutting a garland  [Sage]
+### D2. Cutting a garland  [closed]
 
 Components are weakly connected — "a garland of linked garbage rings is
-judged as one unit", decided 2026-07-26 (`ll-model` `src/walk.rs`). A
-garland is therefore larger than any ring in it, and its verification is one
-indivisible stretch on the mutator. Cutting it bounds the pause and costs
-completeness: a ring cut between two of its members is not recognised as
-dead on that pass. **Deferred to Sage by Edmond, 2026-08-22.**
+judged as one unit", decided 2026-07-26 (`ll-model` `src/walk.rs`). Cutting
+one would bound the confirmation's pause and cost completeness: a ring cut
+between two of its members is not recognised as dead on that pass.
+
+**Closed by ruling 10**: the pause is accepted, so the reason to cut is gone.
+The garland is judged whole. Edmond deferred this to Sage earlier the same
+day, on the premise that the pause had to be bounded; the ruling removes the
+premise, and the deferral with it.
 
 ### D3. The batch constants  [measure]
 
 Ruling 3. The time ceiling of a freeing batch, and how far memory pressure
 relaxes it.
 
-### D4. What bounds the indivisible verification  [design]
+### D4. The indivisible verification  [closed]
 
 The exact test compares every member's count against its in-component
-in-degree, recomputed from current fields. Stopping halfway and resuming
-invalidates the first half, because the mutator itself moves counts in
-between, so the test cannot be split. At 32–108 ns per entity a component of
-a million members freezes its thread for 32–108 ms, and no bound on
-component size appears anywhere in the design. **What would answer it:** a
-bound, and what it costs in collection completeness. D2 is the first
-candidate and not the only one.
+in-degree, recomputed from current fields, and it cannot be split. Splitting
+is not merely expensive but unsound, and one example shows it: a component of
+X and Y with a local holding Y. Check X — count 1, in-degree 1, passes. The
+mutator then reads `$y->x` into a local, raising X's count to 2, and releases
+Y. Check Y — count 1, in-degree 1, passes. Both halves agree and X is held.
+
+Nothing beats the bound either: carrying the walk's in-degree instead of
+recomputing it uses the stale number the recomputation exists to replace;
+summing over the component still reads every member; trial deletion costs the
+same. The test is Ω(N) reads in one uninterrupted stretch.
+
+**Closed by ruling 10**, which accepts the pause rather than bounding it. The
+lever was never the test but N itself, and N is no longer to be reduced.
 
 ### D6. WeakMap ephemerons  [design]
 

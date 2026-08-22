@@ -279,15 +279,22 @@ broken links.
         it costs epoch duration. D6 charged a kind branch a cell read's
         price. B6's numbers reproduced; its mechanism did not. Accepted
         whole; every one is open again with what the round established.
-      handoff: the graph moved to `model/gc/walk/questions.md` on 2026-08-22
-        with the refusal of the capture-count regime. Eleven rulings bound
-        it, and rulings 10 and 11 were written into the list on 2026-08-22,
-        having been cited by D2, D4 and G1 and listed nowhere. Closed: A1
-        (measured), B3 (already built), D2, D4 and G1. B1's rate is
-        measured and its share is corpus. G3 and G4 were attacked, not
-        closed: both are now `[design]` and carry what the two rounds
-        established. `gc-horizon.md` gains question 13 and loses question 7,
-        which ruling 11 closed and whose base case is now in the lattice.
+      handoff: state at the end of 2026-08-22. **Closed and holding:** A1,
+        A5 (the width is not the lever; the prefetch is measured and
+        unsettled), A7 (the discriminant is a bit of the retired condemned
+        byte, which makes unique ownership rc-walk-only), B3, B4 (a cell
+        costs the same in array storage as in an object body, so the walk's
+        mass is edges), D2, D4, G1, G4 (COW outranks the uniqueness proof,
+        Edmond), and the heap half of A6 (about 31 % of entities are
+        strings, 1.4-1.6 counted edges per entity, Laravel 13).
+        **Open, and every one carries what a review round established
+        rather than a guess:** A2-A4, A6's store side, A8, B1's share, B2,
+        B5, B6 (shape 1 refuted by measurement, shape 2 priced at 8 tail
+        blocks), C1-C4, D1, D3, D5, D6, E1-E3, G2, G3's generator half,
+        G5-G9, H1. **The rule this stage taught:** every closure written by
+        argument broke under review and every closure written by
+        measurement held. Close by measurement where an instrument exists;
+        where none does, write what would answer the node and stop.
 - [~] S5.4a Measure what the mutator's confirming trace costs
       note: dropped with the capture-count regime, 2026-08-22 — the trace it
         was to price belonged to the deferred regime's finalise arm, and

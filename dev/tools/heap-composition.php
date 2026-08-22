@@ -64,14 +64,29 @@ const SIZE_CLASSES = [
 const BLOCK_BYTES = 64 * 1024;
 
 /**
- * Header plus class word: what an entity carries before its own payload.
+ * Header plus class word: what an object carries before its properties.
  *
- * An object is this plus one 16-byte slot per property, and an inline string
- * is this plus its bytes. Both are the layouts `ll-model` uses, quoted here
- * so the size-class arithmetic below is checkable against it rather than
- * guessed.
+ * An object is this plus one 16-byte slot per property (`ll-model`
+ * `src/object.rs`), quoted here so the size-class arithmetic below is
+ * checkable against the layout rather than guessed.
  */
-const ENTITY_PREFIX = 16;
+const OBJECT_PREFIX = 16;
+
+/**
+ * What an inline string carries before its bytes: the 8-byte header, the
+ * 4-byte length, four bytes of padding and the 8-byte hash (`ll-model`
+ * `src/string.rs`, `struct LLString`). A string has no class word, so this
+ * is not the object prefix.
+ */
+const STRING_PREFIX = 24;
+
+/**
+ * The largest request the small-slot heap serves (`ll-model`
+ * `src/memory/heap.rs`, `MAX_SMALL`), and so the point where a string takes
+ * the out-of-line layout: a payload allocated through the buffer machinery
+ * beside a 32-byte slot (`src/string.rs`, `placement`).
+ */
+const MAX_SMALL = 8192;
 
 /** The size class a request of `$bytes` lands in, or null past the last. */
 function size_class(int $bytes): ?int
@@ -110,6 +125,20 @@ final class Tally
     public int $arrayElements = 0;
     /** Arrays reached, counted per slot: no identity is available. */
     public int $arraysWalked = 0;
+
+    /**
+     * Arrays holding at least one element, which are the ones whose storage
+     * is a second allocation: an empty vector allocates none (`ll-model`
+     * `src/array/vector.rs`), and storage is freed through `body_free`
+     * rather than with the entity slot.
+     */
+    public int $nonEmptyArrays = 0;
+
+    /**
+     * Distinct strings past [`MAX_SMALL`], which take the out-of-line
+     * layout and so park a payload record beside the entity slot.
+     */
+    public int $outOfLineStrings = 0;
     /** Objects whose properties could not be read. */
     public int $unreadable = 0;
 
@@ -187,7 +216,7 @@ function walk(array $roots, Tally $tally, int $maxDepth): void
             $declared = properties_of($value);
             $count = count($declared);
             $tally->slotCounts[$count] = ($tally->slotCounts[$count] ?? 0) + 1;
-            record_class($tally, 'object', ENTITY_PREFIX + 16 * $count);
+            record_class($tally, 'object', OBJECT_PREFIX + 16 * $count);
             foreach ($declared as $slot) {
                 classify($slot, $tally);
                 if (is_object($slot) || is_array($slot)) {
@@ -200,6 +229,10 @@ function walk(array $roots, Tally $tally, int $maxDepth): void
 
         if (is_array($value)) {
             $tally->arraysWalked++;
+            if ($value !== []) {
+                $tally->nonEmptyArrays++;
+            }
+
             foreach ($value as $element) {
                 $tally->arrayElements++;
                 classify($element, $tally);
@@ -234,7 +267,11 @@ function classify(mixed $slot, Tally $tally): void
         $tally->stringSlots++;
         if (!isset($tally->strings[$slot])) {
             $tally->strings[$slot] = true;
-            record_class($tally, 'string', ENTITY_PREFIX + strlen($slot));
+            $bytes = STRING_PREFIX + strlen($slot);
+            record_class($tally, 'string', $bytes);
+            if ($bytes > MAX_SMALL) {
+                $tally->outOfLineStrings++;
+            }
         }
     } elseif (in_array($type, SCALAR_TYPES, true)) {
         $tally->scalarSlots++;
@@ -286,6 +323,24 @@ printf(
 printf(
     "  ring-capable slots       %s\n",
     $share($ringCapableSlots, $countedSlots)
+);
+// A dying entity parks its own slot; a non-empty array parks its storage and
+// an out-of-line string parks its payload as headerless records beside it.
+// Only a record with a header can carry an epoch byte, so the entity share of
+// all parked records bounds what the young-free exemption can remove (node C2
+// of model/gc/walk/questions.md).
+$entities = $objects + $strings + $tally->arraysWalked;
+$companions = $tally->nonEmptyArrays + $tally->outOfLineStrings;
+printf(
+    "  headerless companions    %d — non-empty arrays %d, out-of-line strings %d, %.2f per entity\n",
+    $companions,
+    $tally->nonEmptyArrays,
+    $tally->outOfLineStrings,
+    $entities === 0 ? 0.0 : $companions / $entities
+);
+printf(
+    "  entity share of records  %s — what bounds the exemption\n",
+    $share($entities, $entities + $companions)
 );
 printf(
     "  counted edges per object %.2f (every counted slot over the exact object count)\n",

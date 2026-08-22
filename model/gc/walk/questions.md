@@ -290,6 +290,27 @@ row's 40-54, so the walk's cost is carried by edges as much as by rows, and
 which of B1 and B6 is worth building turns on that ratio as well as on the
 share of leaf kinds.
 
+**A fourth, added the same day for node C2: headerless companion records.**
+A dying entity parks its own slot; a non-empty array parks its table storage
+and an out-of-line string parks its payload as records with no header, which
+no epoch byte can exempt. The scan counts 800 non-empty arrays booted and
+746 after the request, against 0 out-of-line strings in either — a `GcHeap`
+string stays inline up to `MAX_SMALL`, 8 192 bytes, and the widest string
+here lands in the 7 168 class. That is **0.31 to 0.32 companion records per
+entity, so entity records are 76 % of what a heap of this shape would park**,
+and 76 % is the ceiling on C2's exemption before any question of age.
+
+**Two things the re-run of 2026-08-22 established about the instrument
+itself.** The tool sized a string's fixed part at 16 bytes, the object's
+header and class word, where `LLString` is 24 — an 8-byte header, a 4-byte
+length, four bytes of padding and the hash (`ll-model` `src/string.rs`).
+Corrected, the booted scan's extra tail blocks fall from 6 to 5 and the
+request scan's stay at 8, so the figure recorded for B6 is unaffected; the
+control run with the old constant is what says so. And the booted scan now
+reports 3 764 counted slots where the table above says 3 765, twice in a
+row, so the container is not identical from day to day at one slot in four
+thousand.
+
 ## B. What the walk reads
 
 ### B1. Skip the kinds that cannot sit on a ring  [rate measured, share corpus]
@@ -652,9 +673,11 @@ array's table storage and every buffer-arena chunk park whatever the
 entity's age (`ll-model` `src/string.rs`, `src/memory/buffer_arena.rs`).
 Nor are the collector's own confirmed members ever exempt: they are torn
 down before the epoch closes and every one of them was enrolled, so each
-reads an older epoch's number. The measured share is a ceiling over entity
-records alone, and what lowers it is payload records per entity, node A6's
-corpus question in another form.
+reads an older epoch's number. **The corpus figure that bounds this is
+taken**, node A6, 2026-08-22: 0.31 to 0.32 companion records per entity in a
+booted Laravel container, all of them array storage and none of them string
+payload, so entity records are **76 % of what such a heap would park**. The
+epoch table above is a share of that 76 %, not of the parked list.
 
 ### C4. Do the fixpoint and stratification rungs earn their keep  [open; the first pricing was in the wrong currency]
 

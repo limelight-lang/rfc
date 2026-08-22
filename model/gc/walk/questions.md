@@ -297,8 +297,13 @@ no epoch byte can exempt. The scan counts 800 non-empty arrays booted and
 746 after the request, against 0 out-of-line strings in either — a `GcHeap`
 string stays inline up to `MAX_SMALL`, 8 192 bytes, and the widest string
 here lands in the 7 168 class. That is **0.31 to 0.32 companion records per
-entity, so entity records are 76 % of what a heap of this shape would park**,
-and 76 % is the ceiling on C2's exemption before any question of age.
+entity, so entity records are 76 % of what the deaths in a heap of this shape
+would park**, which bounds C2's exemption before any question of age. Two
+things the figure is not: it counts arrays per slot in both halves of the
+ratio, so a shared array raises numerator and denominator together and the
+direction of the residual error is unresolved; and it counts a stock of live
+entities where the parked list is a rate, which leaves out every payload
+freed by *growth* rather than by death — those park and are never exempt.
 
 **Two things the re-run of 2026-08-22 established about the instrument
 itself.** The tool sized a string's fixed part at 16 bytes, the object's
@@ -436,22 +441,29 @@ What a review round found beside it:
   into flushable memory and nothing more. The workload that crosses a
   parked-volume watermark is a mutator allocating without reaching a
   checkpoint, and that is exactly the one the abort cannot relieve.
-- **The abort costs the walk and nothing after it.** A draft charged it
-  with leaving stamps that make the next epoch enrol more, and the
-  counterfactual is wrong: a watermark decides abort against continue, not
-  abort against never having opened. `walk_rows` is one uninterrupted loop
-  over every block with no check inside it and `run_epoch` chains whole
-  phases (`ll-model` `src/collector.rs`), so the earliest an abort can fire
-  is after every slot has been stamped — at which point the heap's stamps
-  are what a completed epoch would have left, and the next epoch enrols the
-  same set either way. Parked volume is untouched besides: parking is
-  unconditional while the window is open, so enrolment does not enter it at
-  all, and the only route from "enrols more" to "parks more" runs through
-  epoch duration.
-- **Threading the check into the walk would reverse the sign.** Blocks the
-  aborted walk had not reached keep 0, the next walk stamps them and skips
-  them, and under C2's predicate those entities then die exempt where a
-  completed epoch would have made them park.
+- **What the abort costs depends on where it fires**, and two drafts have
+  now priced one firing point as though it were all of them. `walk_rows` is
+  one uninterrupted loop over every block and `run_epoch` chains whole
+  phases (`ll-model` `src/collector.rs`), which leaves three points:
+  - **Before the ack.** `Epoch::open` raises the deferral bit and then the
+    protocol waits for the handshake, so parking is on while the collector
+    makes no progress at all — the workload of the bullet above, and the
+    first place a watermark would fire. Nothing has been stamped, so the
+    next epoch meets the young cohort at zero, stamps it and skips it: the
+    abandoned epoch leaves *less* enrolled rather than more, and under C2's
+    predicate those entities then die exempt. What it costs is coverage, a
+    cycle in that cohort waiting another epoch, and the handshake state the
+    bullet below describes.
+  - **After the walk.** Every slot carries the number a completed epoch
+    would have left, the next epoch enrols the same set, and the abort
+    costs the walk alone. Parked volume is untouched either way while
+    parking stays unconditional.
+  - **Inside the walk.** Swept blocks carry the number and the rest carry
+    zero, which is the second case for part of the heap and the first for
+    the remainder.
+
+  So a watermark policy has to name its firing point before its cost can be
+  stated, which puts it with C1's cadence rather than beside it.
 - **The handshake flag and the ack counter are cross-epoch state.** An
   abort before any ack leaves the request raised with no epoch behind it,
   and the ack counter is a single global whose first ack lowers the flag
@@ -547,23 +559,39 @@ or is commissioned (`ll-model` `src/memory/heap.rs`). A request that
 allocates arena memory and no counted entity moves it; a cycle population
 growing inside blocks already committed does not.
 
-**The per-block occupancy counter is the quantity itself.**
-`HeapBlockPrivate.used` is raised in `alloc` and lowered in `free` over the
-entity-block population, one word per block written where the block header is
-already in hand, and the crate sums it in `live_slots_after_collect` for this
-exact reason — counting the thing directly rather than through `blocks_out`
-(`ll-model` `src/memory/heap.rs`). The sum is O(blocks) where `blocks_out` is
-O(1), which a cadence check can pay. Two caveats travel with it: `used` is
-owner-private and a cross-thread free deliberately leaves it alone until the
-owner collects, so a remotely freed slot reads live until then; and a
-collector reading it races the owner's plain writes.
+**The per-block occupancy counter is nearer the quantity, and is cheap for a
+reason that does not survive being read.** `BlockPrivate.used` is raised in
+`alloc` and lowered in `free` over the entity-block population, one word per
+block written where the block header is already in hand (`ll-model`
+`src/memory/heap.rs`). It shares a cache line with the block's owner, free
+list and bump cursor, and the crate has the price of making a word of that
+line collector-visible: an atomic bump cursor cost 14 % on larson
+(`ll-model` `dev/BENCHMARKS.md`, 2026-08-10), on a word that moves once per
+carve where this one moves on every allocation and every free. The counter is
+free to the mutator and not free to a collector that reads it.
 
-**The walk hands back a rate for nothing.** `EpochStats` carries
-`stamped_new`, the entities born since the previous walk, and `confirmed`,
-the epoch's yield (`ll-model` `src/collector.rs`); `close` returns the struct
-and every caller drops it. The first is an allocation meter the walk produces
-as a by-product; the second is the back-off signal a cadence needs to stop
-re-walking a heap that returns nothing.
+**And it covers one of the four populations the walk enumerates.** The
+snapshot takes entity blocks, pooled large-entity blocks, retained
+former-arena blocks and OS-direct entity runs; only the first keeps `used`, a
+retained block holding its occupancy in its own index and a large-entity
+block holding one occupant and no count (`ll-model` `src/memory/heap.rs`,
+`src/memory/retained.rs`). An arena reset that promotes survivors into
+retained blocks rewrites their category to `GcHeap` in place, so the walkable
+population grows while the sum does not move. What sums `used` today is a
+per-thread test oracle over one thread's owned chain, not a global
+instrument, and it is owner-private besides: a cross-thread free deliberately
+leaves the counter alone until the owner collects.
+
+**The walk hands back two numbers for nothing, and neither is an allocation
+rate.** `EpochStats` carries `stamped_new` — the slots the walk met reading
+zero or the current number, so entities born since the previous walk *and
+still alive when the walk reached them*, of any category, the stamp preceding
+the category test — and `confirmed`, the epoch's yield (`ll-model`
+`src/collector.rs`); `close` returns the struct and every caller drops it. The
+first misses everything born and dead between two walks: at a churn of three
+populations per epoch it reported 9 497 against 30 000 births (`ll-model`
+`dev/BENCHMARKS.md`, 2026-08-22). The second is the back-off a cadence needs
+to stop re-walking a heap that returns nothing.
 
 **What would answer this node:** a threshold over occupied entity slots with
 the back-off `confirmed` supplies, or a further quantity nobody has named.
@@ -621,11 +649,21 @@ removes their protection too.
   `../rc-walk.md`'s ladder lets it run while an epoch is in flight on the
   argument that frees still park. A young entity is in its tables, and the
   exemption recycles that slot from under them.
-- **A block can empty and retire.** A retained block's snapshot carries a
-  frozen array of occupant addresses that the walk dereferences on every
-  pass; parking is what keeps the block from emptying, returning to the
-  pool and being re-commissioned at a different stride mid-epoch, which
-  [`../domains.md`](../domains.md) already names as a hole.
+- **A block can empty and retire, and the failure is corruption rather
+  than a missed verdict.** Parking is what keeps a block from emptying,
+  returning to the pool and being re-commissioned mid-epoch. The epoch's
+  snapshot holds that block's payload address, stride and slot count, so a
+  block re-commissioned as a buffer is still walked as entity slots: the
+  walk reads raw bytes as headers and `collector_stamp_epoch` writes into
+  them. A retained block is the case [`../domains.md`](../domains.md)
+  already names, and an ordinary entity block is the same case on the
+  commonest event in the system. **The condition is cheap where the free
+  already is:** `Heap::free` holds the block's occupancy in a register and
+  branches on it reaching zero two lines later (`ll-model`
+  `src/memory/heap.rs`), so the exemption can be refused on exactly that
+  branch. Two gaps in that: a cross-thread free never touches the counter
+  and so can never empty a block, and a retained block empties through its
+  own index rather than through this one.
 
 So the exemption needs a second condition, no synchronous collection active
 and nothing that would retire a block under a live snapshot, or it is
@@ -637,18 +675,25 @@ and skips the entity, which the exemption reads as exempt in turn. So an
 entity is exempt until the **second** walk that meets it: through the rest
 of the epoch it was born in, and through the whole of the next one.
 
+**The free variable is the interval between two walks**, which is the
+epoch's own churn plus whatever the collector idles between epochs. A death
+at position `t` of an epoch is exempt exactly when the entity's age is under
+`t + W` for `W` deaths between walks, so the epoch's length alone does not
+decide the share and **C1's cadence does**.
+
 **The number is taken against that rule** (`ll-model` `dev/BENCHMARKS.md`,
 2026-08-22, probe `collector::tests::what_the_young_free_exemption_removes`,
-which runs three epochs of churn before the one it measures). Over a
-constant population of 10 000 entities the exemption removes nothing while a
-lifetime spans more than two epochs, 15 % where an epoch is a tenth of the
-mean lifetime, 58 % at six tenths, 77 % at one and 98 % at three. Both
-disjuncts of the predicate carry weight rather than one: at an epoch per
+which runs three epochs of churn before the one it measures and sweeps the
+idle gap). Over a constant population of 10 000 entities, a collector that
+never idles: nothing exempt while a lifetime spans more than two walk
+intervals, 15 % where an epoch is a tenth of the mean lifetime, 58 % at six
+tenths, 77 % at one, 98 % at three. At a duty cycle of a half the same cells
+read 22 %, 77 % and 91 %, and the fixed-lifetime arm goes from a third to
+everything. Both disjuncts of the predicate carry weight: at an epoch per
 lifetime the exempt records split 3 669 never met by a walk against 4 042
 stamped and skipped by that epoch's own walk. **So "large by construction"
-is withdrawn and replaced by a curve**, and what a corpus has to supply is
-the age at death against the interval from birth to the second walk rather
-than a churn rate.
+is withdrawn and replaced by a surface**, and what a corpus has to supply is
+the age at death against the walk interval rather than a churn rate.
 
 **The first measurement of the day is retracted**, and how it failed is
 worth keeping: its arm opened one epoch and churned after the walk, so
@@ -671,13 +716,20 @@ is the price.
 slot carries a header, so a dying string's out-of-line payload, a dying
 array's table storage and every buffer-arena chunk park whatever the
 entity's age (`ll-model` `src/string.rs`, `src/memory/buffer_arena.rs`).
-Nor are the collector's own confirmed members ever exempt: they are torn
-down before the epoch closes and every one of them was enrolled, so each
-reads an older epoch's number. **The corpus figure that bounds this is
-taken**, node A6, 2026-08-22: 0.31 to 0.32 companion records per entity in a
-booted Laravel container, all of them array storage and none of them string
-payload, so entity records are **76 % of what such a heap would park**. The
-epoch table above is a share of that 76 %, not of the parked list.
+**Nor does a companion record need a death at all**: `body_ensure` grows a
+payload by allocating, copying and freeing the old chunk, and that free parks
+like any other (`ll-model` `src/memory/routing.rs`). An epoch in which a
+script appends to one array parks a record per growth step with no entity
+dying, and the exemption reaches none of them. Nor are the collector's own
+confirmed members ever exempt: they are torn down before the epoch closes and
+every one of them was enrolled, so each reads an older epoch's number.
+
+**The corpus figure for the death half is taken**, node A6, 2026-08-22: 0.31
+companion records per entity in a booted Laravel container, all of them array
+storage and none of them string payload, so entity records are 76 % of what
+the deaths in such a heap would park. The measured tables are a share of that
+76 %, and the growth records sit outside both — unmeasured, and the reason
+the parked list is not a picture of the live heap.
 
 ### C4. Do the fixpoint and stratification rungs earn their keep  [open; the first pricing was in the wrong currency]
 
@@ -1264,8 +1316,9 @@ epoch that meets a slot reading zero or the current number stamps it
 whatever its category, while only the `GcHeap` ones ever get a row. The set
 that reaches the walk is `GcHeap` and `LongLived` together — the entity
 blocks both allocate from, the walker skipping the second by category per
-entity (`ll-model` `src/memory/routing.rs`) — plus the retained
-former-arena blocks and the OS-direct runs the same snapshot adds.
+entity (`ll-model` `src/memory/routing.rs`) — plus the three populations the
+same snapshot adds: pooled large-entity blocks, retained former-arena blocks
+and OS-direct entity runs.
 
 What actually keeps one writer is that the protocol is one-at-a-time by
 construction: the epoch number, the handshake flag, the ack counter, the

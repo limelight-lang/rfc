@@ -13,7 +13,7 @@ graph TD
     C["C. Cross-regime edges<br/>counted source, deferred target"]
     D["D. The mark vs the walk<br/>CLOSED"]
     E["E. Phase 4's exact test<br/>CLOSED"]
-    F["F. Cycles<br/>publication is not reachability"]
+    F["F. Cycles<br/>CLOSED"]
     G["G. Where the mark lives<br/>CLOSED"]
     H["H. Renewal placement<br/>CLOSED"]
     I["I. Compiler-owned entities<br/>in the walk"]
@@ -170,7 +170,44 @@ whether that read can be trusted.
 **What would answer it:** the deferred arm of the exact test, stated as
 what it reads and under which exclusivity.
 
-## F. Cycles — publication answers roothood, not reachability
+## F. Cycles  [closed 2026-08-21]
+
+**Closed: the collector already traces.** `rc-walk` does not decide by
+arithmetic. It computes a root set, marks what is reachable from it, and
+condemns what stays unmarked, which is why it collects cycles at all. The
+deferred regime changes the first step only — roothood is read from the
+capture count instead of derived from `RC - IN` — so an unreachable cycle
+among deferred entities has no root, is never marked, and is condemned like
+any other.
+
+```php
+final class Node { public ?Node $next = null; }
+
+$a = new Node();
+$b = new Node();
+$a->next = $b;   // no count work: declared type
+$b->next = $a;   // the cycle closes
+                 // at scope exit both capture counts reach zero
+```
+
+Neither is a root, the mark never reaches them, both are collected. What
+the Form C text meant by "that number alone does not collect cycles" is
+that the snapshot *sum* does not, and the trace is what does — a step
+`rc-walk` performs already.
+
+Two consequences survive and are recorded rather than closed:
+
+- **An acyclic deferred class must be walked.** Today the walk skips an
+  acyclic entity completely, because the count answers for it
+  ([../rc-walk.md](../rc-walk.md)); a deferred entity has no such answer,
+  so the acyclic skip does not apply to it. That is new collector work
+  proportional to the share of such classes.
+- **The second source of truth is gone.** Today a verdict rests on two
+  independent accounts — the mutator's count and the collector's edges —
+  and a disagreement is visible. For a deferred entity only the trace
+  remains.
+
+The original entry:
 
 **Open.** A mark pins one entity and a capture count pins one entity; an
 unreachable cycle among deferred entities has neither, so reclaiming it

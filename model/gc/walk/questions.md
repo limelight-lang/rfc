@@ -184,6 +184,12 @@ the store path is where the work belongs. **What would answer it:** a scan
 of real PHP programs, which the repository has needed for three separate
 questions and has never had.
 
+**A third quantity for the same scan, added 2026-08-22: the ratio of
+counted edges to entities.** B4 measured a cell at 43-47 ns against a leaf
+row's 40-54, so the walk's cost is carried by edges as much as by rows, and
+which of B1 and B6 is worth building turns on that ratio as well as on the
+share of leaf kinds.
+
 ## B. What the walk reads
 
 ### B1. Skip the kinds that cannot sit on a ring  [rate measured, share corpus]
@@ -202,7 +208,10 @@ entry and the count store and skips only the edge trace. The walk is about
 
 **What is left is the share.** How many entities of these kinds a real PHP
 heap holds is a corpus question and nothing here measures it. The same scan
-answers node A6, so the two travel together.
+answers node A6, so the two travel together. B4's measurement of 2026-08-22
+bounds what the skip can be worth: it removes rows and no edges, and an edge
+costs about what a row does, so its ceiling is the leaf share times the row
+alone.
 
 ### B2. The acyclic class flag  [compiler]
 
@@ -250,6 +259,11 @@ Two shapes, and their prices differ by more than their benefits.
 The second costs nothing in layout and is where to start. **What would
 answer it:** the share of blocks that come out uniform under a real
 allocation pattern, which is the corpus question of A6 again, one level up.
+
+Against B1 this node gained ground on 2026-08-22: a skipped block skips its
+rows **and** its edges, where B1 skips rows only, and B4 measured an edge at
+about what a row costs. A skipped block of arrays saves the storage-head read
+as well, 23 ns each.
 
 ### B5. The epoch-abort watermark  [design + measure]
 

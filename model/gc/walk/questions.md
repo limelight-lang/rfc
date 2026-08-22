@@ -62,7 +62,8 @@ flowchart TD
     A5[A5 a cheaper count word<br/>today]
     A7[A7 the unique-ownership discriminant<br/>today]
 
-    B1[B1 skip kinds that cannot ring<br/>today] --> C1
+    B1[B1 skip kinds that cannot ring<br/>rate measured, share corpus] --> C1
+    A6 --> B1
     B2[B2 the acyclic class flag<br/>compiler] --> C1
     B4[B4 arrays as the commonest spine<br/>today]
     B5[B5 the epoch-abort watermark<br/>design + measure] --> C1
@@ -166,15 +167,23 @@ questions and has never had.
 
 ## B. What the walk reads
 
-### B1. Skip the kinds that cannot sit on a ring  [today]
+### B1. Skip the kinds that cannot sit on a ring  [rate measured, share corpus]
 
-The census enrols every `GcHeap` entity (`ll-model` `src/walk.rs`), strings
-and weak references among them, although a string holds no reference and
-cannot be a ring member; the acyclic skip is described in `../rc-walk.md`
-and is not taken in code. The walk is about 70 % of an epoch
-(`dev/BENCHMARKS.md`), so the win is the share of such entities in the
-population. **What would answer it:** `entity_census.by_kind` over a
-representative workload, then the epoch cost measured with and without.
+The census enrols every `GcHeap` entity (`ll-model` `src/walk.rs`), strings,
+weak cells and FFI boxes among them, although `trace_entity` files all three
+under "the kinds with no counted children" and a leaf cannot be a ring
+member. The acyclic skip is described in `../rc-walk.md` and is not taken in
+code.
+
+**The rate is answered**, 2026-08-22 (`ll-model` `dev/BENCHMARKS.md`):
+skipping such an entity returns about 40 ns, give or take a fifth — roughly
+half what an object row costs, since a leaf pays the header read, the id-map
+entry and the count store and skips only the edge trace. The walk is about
+70 % of an epoch.
+
+**What is left is the share.** How many entities of these kinds a real PHP
+heap holds is a corpus question and nothing here measures it. The same scan
+answers node A6, so the two travel together.
 
 ### B2. The acyclic class flag  [compiler]
 

@@ -281,6 +281,18 @@ because Phase 1 visits every slot of the snapshotted blocks already
 **What would answer the rest:** the share of the heap under compiler
 ownership, which decides whether the added rows matter.
 
+**And it feeds the confirming pass, not only the walk** (Edmond, 2026-08-21,
+who calls the whole case an optimisation and is right — nothing in the
+collector depends on it). A compiler-owned entity is never condemned, so a
+deferred entity it holds is live by that fact alone. The pass therefore
+counts compiler-owned entities among its roots, which puts them into its
+cost and makes them a case of the repair Fable's first review attached to
+the road: elision is licensed only when the destination slot's owner is
+itself deferred, and a counted or compiler-owned owner with a
+deferred-typed field keeps a boundary count instead. Without one, a pass
+that traces only "the deferred subgraph from the deferred roots" cannot see
+that in-edge.
+
 ## J. Is the arena an unwalked root source, or should the walk enter it?
 
 **Open, raised by Edmond 2026-08-21 as a question of its own.** Today the

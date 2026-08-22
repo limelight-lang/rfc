@@ -566,7 +566,7 @@ block written where the block header is already in hand (`ll-model`
 `src/memory/heap.rs`). It shares a cache line with the block's owner, free
 list and bump cursor, and the crate has the price of making a word of that
 line collector-visible: an atomic bump cursor cost 14 % on larson
-(`ll-model` `dev/BENCHMARKS.md`, 2026-08-10), on a word that moves once per
+(`ll-model` `dev/BENCHMARKS.md`, 2026-07-26), on a word that moves once per
 carve where this one moves on every allocation and every free. The counter is
 free to the mutator and not free to a collector that reads it.
 

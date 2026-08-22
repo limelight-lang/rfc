@@ -89,11 +89,11 @@ flowchart TD
     D6[D6 WeakMap ephemerons<br/>deferral stands, reason given]
 
     E1[E1 what an owner is<br/>the stamp half answered] --> E3
-    E3[E3 the domains proposal<br/>design]
+    E3[E3 the domains proposal<br/>sorted; waits on E1]
     E2[E2 AArch64 header access<br/>hardware]
 
     G2[G2 the counted-out categories<br/>open, wider than question 8] --> G7
-    G3[G3 placement, raise sites and pad sets<br/>design]
+    G3[G3 placement, raise sites and pad sets<br/>ruled 2026-08-22]
     G8[G8 anchored parameters<br/>design] --> G6
     G9[G9 one borrow analysis or two<br/>design] --> G6
     G4[G4 the trigger set against the sentinel<br/>design]
@@ -805,7 +805,7 @@ protocol, which `../gc-horizon-cases/arena.md` open item 3 already calls
 underivable; and what a long-lived actor does to its arena at a message
 boundary.
 
-### G3. Placement, raise sites, and what a landing pad releases  [partly ruled]
+### G3. Placement, raise sites, and what a landing pad releases  [ruled; one sentence owed to gc-horizon.md]
 
 `../gc-horizon.md` question 9. Three review rounds ran over this node on
 2026-08-22 and each broke the closure the one before it produced. What
@@ -855,18 +855,31 @@ which discards the in-flight exception
 resumes. A `finally` that rethrows into a `catch` of the same frame is the
 shape that defeats the syntactic reading.
 
-**Open: the execute-once condition.** A promotion must run once per
-instance of the live range, and dominance does not say so. The shape that
-needs it: a borrow that is a loop-header phi is born inside the cycle, so
-any condition phrased over "a cycle the birth lies outside of" admits a
-retain per iteration. The balancing release is the one the phi's own kill
-owes when it overwrites the previous instance, and no rule states it.
+**The execute-once condition is not a condition on placement: a phi is an
+overwrite.** The shape that raised it is a borrow that is a loop-header
+phi, where the promotion sits at the phi and runs once per iteration. That
+is correct rather than leaking, provided each iteration's value is released
+when the next one replaces it — and that is the rule the design already
+has everywhere else: an overwrite releases what it displaces. The lattice
+is assigned over SSA-form borrows and reads the phi as its disagreement
+detector ([`../gc-horizon.md`](../gc-horizon.md#the-ownership-lattice)), so
+a phi is a definition like any other and the value it replaces dies there.
+What was missing is the sentence saying so; no execution-count clause is
+owed once it is written, and one retain per value produced meets one
+release per value killed.
 
-**Open: a suspended generator's pads.** Both released sets above are
-functions of a raise site, and a generator destroyed at a suspension
-enters its `finally` blocks from a destruction instead
-([`../gc-horizon-cases/unwind.md`](../gc-horizon-cases/unwind.md), open
-item 4). There is no edge for the per-edge state to key on.
+**A suspended generator's pads take the cleanup set, with the suspension
+point standing in for the raise site.** A generator destroyed while
+suspended has its segment unwound separately, so its `finally` blocks run
+and the frame dies
+([`../../../runtime/exceptions.md`](../../../runtime/exceptions.md#inlining-and-generators)).
+A frame that dies is the case `../gc-horizon.md` already states: release
+the owned set live at the site. There is exactly one incoming edge — the
+destruction — so PH22's per-edge state has nothing to distinguish, and an
+anchored borrow in that frame is uncounted and goes with the frame. What
+stays open is not the pad but the arena half of the same shape: a fiber
+suspended across a reset carries frame borrows the reset cannot see, which
+is node G7.
 
 **Owed elsewhere:** oracle A1 of `unwind.md` asserts the pad's set equals
 the owned locals live at the raise site, which is now true of a dying
@@ -1041,8 +1054,16 @@ The two cannot both hold. An actor creates a weak reference while mounted
 on one thread, so the row lands in that thread's table; the actor migrates;
 the entity dies on the new thread, which looks in its own table, finds no
 row, and never nulls the cell. The old thread then exits and disposes a
-table still holding rows for live entities. Nothing in either document
-covers the crossing.
+table still holding rows for live entities.
+
+**Half of this is already recorded, for a different resource.**
+[`../domains.md`](../domains.md) noted on 2026-07-28 that a transferable
+entity promoted out of an actor's arena lands in the entity heap of
+whichever pool thread was mounting the actor, "so its host is a thread while
+its holder is an actor", and called the payload table and the allocation-site
+selection owed a re-derivation. The weak table is the same crossing over a
+second resource, and the drain gates, the reset window, the journal ring and
+the park list are the same crossing over four more.
 
 The same question decides the rest of the protocol's TLS: `MID_DRAIN` and
 `TEARDOWN_DEPTH` are thread-locals guarding a drain whose entities belong
@@ -1065,19 +1086,48 @@ whose channels cannot be routed to an owner that is not defined.
 prefix, no read-modify-write. The instruction half of the AArch64 claim is
 settled too; the cost half is not, and no machine here can take it.
 
-### E3. The domains proposal sits behind E1  [design]
+### E3. The domains proposal sits behind E1  [sorted; the largest hole is named by the proposal itself]
 
 [`../domains.md`](../domains.md) is the standing multi-mutator design and
-carries its own open list, which E1 as a single node hides: a domain dying
-mid-epoch, per-domain enumeration, the drain-window invariant re-derived for
-a second mutator — [`../drain-window.md`](../drain-window.md) names that as a
-kill variant of the proven invariant — the move's counter semantics, and the
-shared-class destructor question.
+carries its own open list, which E1 as a single node hides. Sorted by what
+the epoch protocol actually needs:
 
-## F. Prior art, round two
+**E1's question wearing another hat.** The list's actors item, recorded
+2026-07-28, says `actors.md`'s allocation-site selection assumes a general
+heap owned by no domain, that this memory model has none, and that a
+transferable entity promoted out of an actor's arena therefore has a thread
+for a host and an actor for a holder. That is E1, and it is owed a
+re-derivation there rather than here.
 
-Round two of the search is [prior-art.md](prior-art.md). Its three findings
-that change a node:
+**What the epoch protocol needs before anything else.** Three items, and
+the proposal ranks the first itself:
+
+- **A domain dying mid-epoch** — an epoch nobody will close, a parked list,
+  a weak table — which `../domains.md` calls the largest hole in the model.
+  It is also what makes D1's constraint 4 sharp: a channel routed to an
+  owner has to say what happens when the owner goes.
+- **Per-domain enumeration does not exist.** The snapshot is global today
+  (`ll-model` `src/memory/heap.rs`), which the same file's inventory of
+  single-mutator points already records.
+- **The drain-exclusivity window is proven for one mutator**, and the
+  re-derivation is owed — the same third link node D1 rewrites for the
+  hand-off, now for a second reason.
+
+**What is the movable-value design and does not touch the walk.** Frozen
+from birth or after the send, `~=` on a DAG, the move's counter semantics,
+where the resurrection ban is raised, what the arena copy of I6 owes, and
+whether a `shared` class may have a destructor at all. They belong to the
+proposal and are cited here so nobody folds them into the collector's
+questions.
+
+**One hard limit worth surfacing, because it is the same shape as A7's.**
+The box that gives a shared entity its per-domain handle needs an entity
+kind, and the kind field has **exactly one code left**, which `resource`
+also wants ([`../../layouts.md`](../../layouts.md)). Three bits, seven kinds
+assigned, one spare, two claimants.
+
+**What would answer this node:** nothing here, until E1 says what an owner
+is. The sorting above is what this node contributes.
 
 ### F1. Barrier forms  [read]
 

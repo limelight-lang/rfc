@@ -294,8 +294,10 @@ lowering of the same borrow. Placement rules:
 
 - The promotion point is the **latest point dominated by the borrow's
   birth that dominates every horizon, every exit and every raise site
-  of the borrow's live range, and that executes at most once per
-  instance of that live range**. The birth always qualifies, so the
+  of the borrow's live range**. A phi is an overwrite: the value it
+  replaces is released there, so a promotion at a loop-header phi pairs
+  one retain per value produced with one release per value killed, and
+  no execution-count clause is owed. The birth always qualifies, so the
   rule is total, and promotion at the birth is today's lowering for
   that borrow. Those points form a dominator chain, so the latest is
   unique. The word was "closest" until 2026-08-22, and it reads as the
@@ -1173,24 +1175,18 @@ under [gc-horizon-cases/](gc-horizon-cases/) carry the failing shape.
    runs user code in rounds and is a severing point the horizon list
    does not name.
 9. **The placement rule is stated over horizons and exits, and stores
-   raise.** Ruled in part, 2026-08-22, and the ruling is the reading
-   this question offered first: the raise sites join the quantifier,
+   raise.** Ruled 2026-08-22, and the ruling is the reading this
+   question offered first: the raise sites join the quantifier,
    every set in it is computed over the graph including its exceptional
    edges, a pad release is a release like any other, and pad state is
    per edge. PH9 and three case files asserted the same, and the reading
    that avoided the clause was tried and failed — a horizon inside a
    `catch` is dominated by no promotion placed after the raise site,
-   and a handler pad's releases run destructors that sever. **What is
-   left open** is the exact form of "executes at most once per instance
-   of the live range": a borrow that is a loop-header phi is born inside
-   the cycle, so a dominance-and-cycle condition admits a retain per
-   iteration, and the release that would balance it is the one the phi's
-   own kill owes and no rule states. Beside it, the pad taxonomy over a
-   suspended generator's frames, which enter their `finally` blocks from
-   a destruction rather than a raise
-   ([gc-horizon-cases/unwind.md](gc-horizon-cases/unwind.md), open item
-   4). The argument and the three review rounds are in
-   [walk/questions.md](walk/questions.md#g3-placement-raise-sites-and-what-a-landing-pad-releases--partly-ruled).
+   and a handler pad's releases run destructors that sever. The phi rule above is what
+   closes the loop-header shape, and a suspended generator's pads need
+   no rule of their own: the frame dies, so the cleanup set applies with
+   the suspension point standing in for the raise site. The argument and the three review rounds are in
+   [walk/questions.md](walk/questions.md#g3-placement-raise-sites-and-what-a-landing-pad-releases--ruled-one-sentence-owed-to-gc-horizonmd).
 10. ~~**The COW and unique-ownership base cases intersect
     inconsistently.**~~ Ruled by Edmond, 2026-08-22: COW wins. The
     unique-ownership proof establishes lifetime, and lifetime is not

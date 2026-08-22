@@ -138,7 +138,9 @@ identity obligation only runs from walk to drain of posted messages)
 and a young-free exemption (an entity whose epoch byte reads
 0/current at free time is in no snapshot row and no component; its
 slot appears recyclable at the cost of one byte test on the cold
-parked path) — both unbuilt, both needing their own proof pass.
+parked path, plus a publication of the current epoch number, which
+nothing performs today) — both unbuilt, both needing their own proof
+pass.
 
 ## The central identity: roots are derived, not enumerated
 

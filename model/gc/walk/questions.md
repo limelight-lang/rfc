@@ -78,7 +78,7 @@ flowchart TD
     B1 --> B6
 
     C1[C1 background cadence<br/>open; two candidates eliminated] --> C3
-    C2[C2 the young-free exemption<br/>share measured; open on soundness] --> C1
+    C2[C2 the young-free exemption<br/>curve measured; open on soundness] --> C1
     C3[C3 the pressure ladder's constants<br/>measure]
     C4[C4 do the rungs earn their keep<br/>open; priced wrongly once] --> C3
 

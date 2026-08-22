@@ -231,12 +231,28 @@ broken links.
         nodes whose answer changes another document are folded into it
         rather than left in the graph alone
       tier: T2 · role: Critic
+      Critic 2026-08-22 round 1: the closures written for G3 and G4 both
+        fail — a shared `finally` pad is reached from raise sites on both
+        sides of the promotion (PH22 already asserts per-edge pad state);
+        borrow-is-use puts the anchor *into* the pad's released set, not
+        out of it; the trigger-set closure oscillates on the
+        unique-crossing base case and misses release sites. Accepted whole,
+        both nodes rewritten as open.
+      Critic 2026-08-22 round 2: the rewrite's case analysis still
+        overlapped, "every loop has a back-edge poll" is false for actor
+        code and the poll-free strategies, "closest is the latest" was a
+        silent ruling rather than a repair, and the third pad rule was
+        dropped from the node's own list. Accepted whole; the placement
+        bullet reverted and question 13 restated over both readings.
       handoff: the graph moved to `model/gc/walk/questions.md` on 2026-08-22
         with the refusal of the capture-count regime. Eleven rulings bound
-        it. Closed: A1 (measured), B3 (already built), D2, D4 and G1 (by
-        rulings 10 and 11). B1's rate is measured and its share is corpus.
-        Fifteen nodes open, three of them roots: A6 the corpus share, G7
-        borrow scopes across suspensions, and the compiler-owed group.
+        it, and rulings 10 and 11 were written into the list on 2026-08-22,
+        having been cited by D2, D4 and G1 and listed nowhere. Closed: A1
+        (measured), B3 (already built), D2, D4 and G1. B1's rate is
+        measured and its share is corpus. G3 and G4 were attacked, not
+        closed: both are now `[design]` and carry what the two rounds
+        established. `gc-horizon.md` gains question 13 and loses question 7,
+        which ruling 11 closed and whose base case is now in the lattice.
 - [~] S5.4a Measure what the mutator's confirming trace costs
       note: dropped with the capture-count regime, 2026-08-22 — the trace it
         was to price belonged to the deferred regime's finalise arm, and
@@ -280,7 +296,11 @@ broken links.
       done: each of the sixteen cases either states that the rulings of
         2026-08-22 leave it unchanged or carries the case's new shape under
         them — ruling 11 touches the weak-reference case directly — and the
-        cases that cite `gc-horizon-v2/` as current are re-pointed
+        cases that cite `gc-horizon-v2/` as current are re-pointed;
+        `model/gc/gc-horizon-cases/weakref.md` still calls the weak-cell
+        base case missing, which ruling 11 supplied, and
+        `model/gc/gc-horizon-states.md` is folded on the same terms,
+        being the case book's state document without being a case
       tier: T2 · role: Critic
 
 ## S4 — Code from the cases

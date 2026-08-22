@@ -49,6 +49,11 @@ Edmond, in the session that refused the capture-count regime.
    destructor keeps its call on the mutator.
 9. **The purity ladder keeps four rungs and every destructor call.** No
    rung folds into another, and no proof licenses skipping a call.
+10. **The confirmation's pause is accepted rather than bounded.** A
+    component is judged whole, and the exact test runs in one
+    uninterrupted stretch over it (nodes D2 and D4).
+11. **A value read through a weak cell is always counted.** It is an
+    owned base case, and no elision rule reaches it (node G1).
 
 ## The graph
 
@@ -85,10 +90,10 @@ flowchart TD
     E2[E2 AArch64 header access<br/>hardware]
 
     G2[G2 promotion in two categories<br/>today]
-    G3[G3 placement must dominate raises<br/>today]
+    G3[G3 placement, raise sites and pad sets<br/>design]
     G8[G8 anchored parameters<br/>design] --> G6
     G9[G9 one borrow analysis or two<br/>design] --> G6
-    G4[G4 COW and unique intersect<br/>today]
+    G4[G4 COW and unique intersect<br/>design]
     G7[G7 borrow scopes across suspensions<br/>design] --> G6
     G6[G6 the summary language<br/>design] --> G5
     G5[G5 the trusted-effect boundary<br/>design]
@@ -333,10 +338,17 @@ keeps that deferral or closes it.
 
 Ruling 8 lets the collector call a destructor proven pure. Purity is
 transitive, so nothing inside an eligible component writes anything
-observable and no order inside it is observable either. **What remains
+observable. The order of child releases inside it is observable: it is
+specified language surface, which is why P2 keeps its call
+([`../pure-destructors.md`](../pure-destructors.md#the-purity-ladder)). **What remains
 open:** where the call sits relative to the sever and the weak nulling, and
 what the collector owes the owner for the external children the component
-displaces.
+displaces. The two boundaries the answer
+has to keep are already stated as races 4 and 5 of
+[`../pure-destructors.md`](../pure-destructors.md#the-five-owner-bound-races):
+the weak table is a per-thread plain map no other thread may reach, and
+external-child releases decrement the counts of live entities and must
+round-trip to the owner in every design.
 
 ## G. The proof side, inherited
 
@@ -376,19 +388,149 @@ protects a borrow of an arena-resident referent across an actor's message
 boundary, where the arena resets. The reset's own destructor fixpoint runs
 user code in rounds and is a severing point the horizon list does not name.
 
-### G3. Placement must dominate every raise site  [today]
+### G3. Placement, raise sites, and what a landing pad releases  [design]
 
-`../gc-horizon.md` question 9. A copy-on-write separating store allocates and
-can throw, so the raise sites of a live range are not a subset of its call
-sites. Either the placement rule reads "dominates every horizon, every exit
-and every raise site", or the landing-pad claim is weaker than it states.
+`../gc-horizon.md` question 9 asked whether the placement rule must name
+raise sites beside horizons and exits. It asks too little: three rules are
+missing rather than one, and the first of them already has a decided
+counterexample in this repository.
 
-### G4. COW and unique ownership intersect inconsistently  [today]
+**The landing-pad set is not static per site.** A `finally` is one pad
+that runs and resumes unwinding
+([`../../../runtime/exceptions.md`](../../../runtime/exceptions.md#semantics)),
+so a raise site before the promotion and a raise site after it reach the
+same pad. The pad owes a release of the promoted borrow on the second
+incoming edge and not on the first; a union release frees a reference no
+retain ever took, an intersection release leaks the promotion. This is
+PH22 ([`../gc-horizon-cases/adversarial.md`](../gc-horizon-cases/adversarial.md)),
+which asserts the remedy: pad state per edge and per SSA generation, by
+split pads, an ownership phi or a tag.
+[`../gc-horizon-states.md`](../gc-horizon-states.md#the-axes-the-lattice-creates)
+records the pad set as static per site, and that row stands only once one
+of those mechanisms is chosen.
 
-`../gc-horizon.md` question 10. A referent that is both COW-eligible and
-unique needs a counted holder by one base case and forbids every retain by
-the other, and the demotion trigger set does not name the base-case retains.
-The intersection has no defined lowering.
+**A handler pad and a cleanup pad release different sets, and only the
+cleanup pad's is stated.** `../gc-horizon.md` says a pad releases the
+owned set live at its call site, which describes a frame that dies. Phase 2 of
+unwinding restores each frame up to the one phase 1 selected
+([`../../../runtime/exceptions.md`](../../../runtime/exceptions.md#channel-u-how-the-tables-work)),
+and that frame's handler runs on over its locals, so a borrow live in it
+cannot run over released ones.
+
+**A pad release of an anchor severs a chain no horizon kind names.** Every
+point of a live borrow is a use of its anchor, so the anchor is live at
+the raise site and is therefore in the set the pad releases — the case
+book shows it, pads A and B both releasing `$n`, the anchor of `$kind`
+([`../gc-horizon-cases/unwind.md`](../gc-horizon-cases/unwind.md)) — where
+both pads are cleanup pads in a dying frame and the release harms nothing.
+The hazard needs the frame to survive the pad, which is the previous
+bullet's condition. Where every class the pad releases is transitively
+pure no release is a horizon,
+and the anchor's own release still drives its referent to zero and frees
+what the borrow reads. The store-to-anchor rule covers assignment and
+`unset` of an anchor regardless of the released class's purity
+([`../gc-horizon.md`](../gc-horizon.md#the-ownership-lattice)) and does not
+cover a pad release.
+
+**What the dominance argument gives, once those are ruled.** Over the
+normal control-flow graph, a site reachable both with the promotion point
+P executed and without must share a cycle with P: a path reaching it
+without P extends to an exit of the live range, which P dominates, so P
+lies on that continuation, while another path runs P first. The shapes
+that produces split on two questions — whether a horizon lies inside the
+loop, and whether the borrow is born inside it — and the loop clause
+reaches only the two cells where a horizon does: born before the loop,
+promote before it; born inside, fail the back-edge dominance test and be
+owned. The two cells with no horizon in the loop are unreached. One of
+them is harmless, the borrow being born inside a horizon-free loop and
+dying there. The other is `../gc-horizon.md` question 13: born before the
+loop, a live-range exit inside it, and under the latest reading of
+"closest" the retain lands in the body and runs once per iteration
+against one release. A back-edge poll would close it, being a checkpoint
+and so a horizon until certified, and the poll is not universal — actor
+code carries none at all
+([`../../../runtime/actors.md`](../../../runtime/actors.md#per-actor-collection-at-message-boundaries)),
+and the strategies that never stop threads compile it away
+([`../strategies.md`](../strategies.md)), so the shape is reachable in
+those regimes today.
+
+Two steps of the argument carry preconditions worth naming. "Extends to
+an exit of the live range" assumes an exit is reachable, which fails on a
+non-terminating loop and on a path whose only continuation is a raise.
+And the case analysis is stated over natural loops: an irreducible region
+has no header, so neither "the back-edge test" nor "born inside the loop"
+names anything there, and no rule says placement falls back to owned over
+one.
+
+**What would answer this node:** four rulings — the control-flow graph
+over which placement and liveness are computed, the released set of a
+handler pad against a cleanup pad, whether a pad release of an anchor is
+a horizon kind, and the pad-state mechanism PH22 asserts. The dominance
+argument closes the residue after them, not before.
+
+**The reading this node argues for disagrees with PH9**, which asserts
+the retain before the invoke on every normal and exceptional path
+([`../gc-horizon-cases/adversarial.md`](../gc-horizon-cases/adversarial.md)),
+and with `unwind.md`, `call.md` and `array.md`, which state the
+raise-site clause as the alternative. The disagreement is recorded, not
+reconciled: PH9's shape — a handler using a borrow the severing callee
+killed — is decided by the second and third rulings, not by the
+placement rule alone.
+
+### G4. COW and unique ownership intersect inconsistently  [design]
+
+`../gc-horizon.md` question 10. The obvious repair — read the demotion
+trigger set as a closure over every site whose lowering emits a retain
+against the entity — was tried and does not hold. What the round leaves is
+a narrower question and one source the base case reads too narrowly.
+
+**The trigger set cannot be a closure over the lowering.** The
+unique-crossing base case
+([`../gc-horizon.md`](../gc-horizon.md#the-ownership-lattice)) classifies a
+borrow as owned *because* the entity is unique. Where the borrow's target
+is that entity — `$n = $this->e` on the owning slot — the retain lands on
+it, so the retain is a trigger, so the entity demotes, so the base case
+stops firing, so the retain is gone and the proof stands again. A borrow
+of a descendant retains a counted child instead and triggers nothing, so
+the oscillation is the endpoint case rather than the whole base case. A rule evaluated once against the lowering
+computed under the assumption of uniqueness, and never revisited, does
+terminate — each entity demotes at most once — and that is a different rule
+from a closure. Neither is written anywhere.
+
+**Widening the set to every retain site empties the proof rather than
+repairing it.** Under the one-pass reading every load of a unique entity
+into a local is a trigger, and the convention sites already remove every
+entity that is returned, passed or received, so what survives is an entity
+stored and overwritten and never loaded. What that costs is node A3's
+share, which A6 has not measured, so the repair is refused for reaching
+past the collision rather than for a priced loss.
+
+**A release against the sentinel is the hazard the trigger set misses.**
+`new` is owned by the lattice, which absorbs the creation reference and
+releases at the drop point
+([`../gc-horizon.md`](../gc-horizon.md#the-ownership-lattice)), while the
+owning store into a unique slot is plain and takes no count — so the
+temporary's release drives the occupancy sentinel to zero, which is eager
+death, a destructor call, a free, and a walker reading an occupied slot as
+free. Either the trigger set names release sites as well as retain sites,
+or the owner's allocation is specified as a move that consumes the
+temporary.
+
+**The suppression side has a source the base case drops.**
+[`../../values.md`](../../values.md#refcount-is-always-maintained-on-cow-entities)
+states the invariant and its licence in one sentence: a second holder
+retains before it can write, "and the compiler may elide a retain/release
+pair only where it has proved that no second holder arises". Uniqueness is
+that proof. The lattice's COW base case cites the same section for the
+prohibition alone, and the case book sets the licence aside as a different
+instrument
+([`../gc-horizon-cases/README.md`](../gc-horizon-cases/README.md)). The
+ruling to make is therefore narrower than the question reads: whether the
+licence `values.md` already grants is what governs a proven-unique COW
+entity, which is Edmond's call.
+
+**What would answer this node:** that ruling, and, whichever way it goes, a
+trigger rule that is one-pass and that names release sites.
 
 ### G5. The trusted-effect boundary  [design]
 

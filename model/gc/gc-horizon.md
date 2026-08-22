@@ -111,6 +111,14 @@ by construction:
   box — because their uniqueness test reads the count and an
   uncounted holder falsifies it
   ([values.md](../values.md#refcount-is-always-maintained-on-cow-entities));
+- **the value a weak-cell read produces** — a cell references its
+  target with no count
+  ([weak-references.md](../weak-references.md#the-weak-cell-is-the-canonical-weakreference-itself)),
+  so a chain anchored through one is anchored on nothing. Counted
+  always, elided never, by Edmond's ruling 11 of 2026-08-22; this is
+  what the calling convention already does for a call result, and the
+  ruling makes it a rule rather than an accident of lowering
+  ([walk/questions.md](walk/questions.md#g1-the-weak-cell-is-an-uncounted-edge--closed));
 - **every borrow whose target's class is not transitively
   destructor-free**: eliding such a borrow's count lets a severing
   store between the borrow's last use and the scope's end reach
@@ -282,7 +290,9 @@ lowering of the same borrow. Placement rules:
 - The promotion point is the **closest point dominated by the
   borrow's birth that dominates every horizon and every exit of the
   borrow's live range**; a borrow with no such point is owned from
-  birth by the lattice's failure default, so the rule is total.
+  birth by the lattice's failure default, so the rule is total. Which
+  end of the dominator chain "closest" names is open question 13, and
+  the two readings differ in what they cost.
 - Promotion cannot precede the birth: the retain's operand exists
   only after the load. This is also the static argument that death
   order is preserved — a promoted borrow holds its count over a
@@ -292,7 +302,16 @@ lowering of the same borrow. Placement rules:
   dominance test and the borrow is owned.
 - On unwind, a landing pad releases the owned set live at its call
   site; the promotion point dominating the sites after it makes that
-  set static per site. Which sites can raise is open question 9.
+  set static per site. That holds for a cleanup pad reached from one
+  raise site. A `finally` is one pad reached from raise sites on both
+  sides of the promotion, and there the set is per edge rather than
+  per site — open question 9, with the argument and the two further
+  pad rules it needs in
+  [walk/questions.md](walk/questions.md#g3-placement-raise-sites-and-what-a-landing-pad-releases--design).
+  The kinds of raise site this repository supports are listed in
+  [gc-horizon-cases/unwind.md](gc-horizon-cases/unwind.md), which also
+  records that the set is not enumerable while runtime entries are
+  unclassified.
 - **A borrow of a unique-ownership entity cannot be promoted**: the
   count word holds the occupancy sentinel and a retain written into
   it protects nothing. And the convention retains are the same
@@ -1079,8 +1098,14 @@ which read the algorithm against the entity and memory RFCs. Each is a
 gap in this document, not in the case that found it; the case files
 under [gc-horizon-cases/](gc-horizon-cases/) carry the failing shape.
 
-7. **The weak cell is an uncounted edge, and no base case excludes
-   it.** A weak cell's `target` field references its referent without
+7. ~~**The weak cell is an uncounted edge, and no base case excludes
+   it.**~~ Closed by Edmond's ruling 11 of 2026-08-22: the value a
+   weak-cell read produces is an owned base case, counted always and
+   elided never
+   ([walk/questions.md](walk/questions.md#g1-the-weak-cell-is-an-uncounted-edge--closed)).
+   The precondition the question offered as the alternative — "the
+   region contains no weak-cell load" — was refused for forbidding more
+   than the hazard. The question as it stood: A weak cell's `target` field references its referent without
    a count ([weak-references.md](../weak-references.md#the-weak-cell-is-the-canonical-weakreference-itself)),
    so a path through it is not the counted chain the invariant
    requires, and the exact test — which balances counted references
@@ -1108,16 +1133,42 @@ under [gc-horizon-cases/](gc-horizon-cases/) carry the failing shape.
    raise.** A COW-separating store allocates and can throw
    ([exceptions.md](../../runtime/exceptions.md#allocation-failure-is-an-ordinary-exception)),
    so the raise sites of a live range are not a subset of its call
-   sites, and a landing pad's owned set is only static per site if
-   placement dominates every raise. Either the rule reads "dominates
-   every horizon, every exit and every raise site", or the landing-pad
-   sentence is weaker than it claims.
+   sites. The rule needs no raise-site clause **provided** a pad that
+   keeps its frame releases nothing a borrow live after it depends on;
+   four rulings decide that: the control-flow graph over which
+   placement and liveness are computed, the released set of a handler
+   pad against a cleanup pad, whether a pad release of an anchor is a
+   horizon kind, and pad state per edge rather than per site, which
+   PH22 already asserts
+   ([gc-horizon-cases/adversarial.md](gc-horizon-cases/adversarial.md)).
+   A `finally` reached from raise sites on both sides of the promotion
+   is the shape that decides the fourth. **This reading disagrees with
+   PH9**, which asserts the retain before the invoke on every normal
+   and exceptional path, and with the three case files that state the
+   raise-site clause as the alternative
+   ([gc-horizon-cases/unwind.md](gc-horizon-cases/unwind.md),
+   [call.md](gc-horizon-cases/call.md),
+   [array.md](gc-horizon-cases/array.md)); the disagreement is recorded
+   here rather than reconciled, and the rulings settle it. The argument
+   is in
+   [walk/questions.md](walk/questions.md#g3-placement-raise-sites-and-what-a-landing-pad-releases--design).
 10. **The COW and unique-ownership base cases intersect
     inconsistently.** A COW-eligible referent that is also unique
     demands a counted holder from one base case and forbids every
     retain from the other. The demotion trigger set names convention
     retains and horizon-reaching borrows, and does not name the
     base-case retains, so the intersection has no defined lowering.
+    Widening the set to every retain site was tried on 2026-08-22 and
+    does not repair it: the unique-crossing base case fires because the
+    entity is unique, so the widened set oscillates, and read as a
+    one-pass rule instead it demotes every entity ever loaded into a
+    local, which empties the proof. The set also has to name release
+    sites, an owned temporary's drop-point release driving the
+    occupancy sentinel to zero. The narrower ruling this reduces to —
+    whether the elision licence
+    [values.md](../values.md#refcount-is-always-maintained-on-cow-entities)
+    already grants is what governs a proven-unique COW entity — is in
+    [walk/questions.md](walk/questions.md#g4-cow-and-unique-ownership-intersect-inconsistently--design).
 11. **The trusted-effect boundary is not specified.** A stored callee
     summary is not the compiler's only source of effect knowledge:
     interprocedural body analysis, builtin and intrinsic models, runtime
@@ -1137,6 +1188,33 @@ under [gc-horizon-cases/](gc-horizon-cases/) carry the failing shape.
     binding may host the experiment, but neither stock MMTk nor its
     pinning API discharges these obligations. Until all six are ruled,
     every entity remains Form A.
+
+13. **"Closest" names one end of a dominator chain and the document
+    does not say which.** The points dominating every horizon and every
+    exit form a chain, so both readings are well defined and they cost
+    differently. Read as the **latest**, a `do {} while ()` body always
+    executes, so a point inside it dominates everything after the loop;
+    with a live-range exit inside the loop and every horizon outside
+    it, that point is the latest one and the retain runs once per
+    iteration against a single release. The loop clause is written for
+    a loop containing a horizon and does not reach that shape. A
+    back-edge poll would, being a checkpoint and so a horizon until
+    certified — but actor code carries no poll safepoints at all
+    ([actors.md](../../runtime/actors.md#per-actor-collection-at-message-boundaries))
+    and the poll-free strategies compile them away
+    ([strategies.md](strategies.md)), so the shape is reachable today
+    rather than after a future analysis. Read as the **earliest**, the
+    birth is always a candidate, because an anchored borrow's birth
+    dominates every horizon and exit by the lattice's own precondition;
+    promotion then lands at birth, which is today's lowering for every
+    borrow that meets a horizon, and the design keeps only the case
+    where the horizon set is empty. The ruling is Edmond's. Under the
+    latest reading it needs one of two repairs: the loop clause reads
+    "a loop containing a horizon or a live-range exit", or placement
+    excludes every point inside a loop the borrow is born outside of.
+    Placement over an irreducible region is unstated under either
+    reading: such a region has no header, so neither the back-edge test
+    nor "born inside the loop" names anything there.
 
 ## The record
 

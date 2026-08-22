@@ -52,7 +52,7 @@ question of the design.
 | COW eligibility | yes, no | header flag 10, and per-entity rather than per-class ([values.md](../values.md#cow-is-a-per-object-flag)) | yes → owned, because the uniqueness test reads the count |
 | transitive purity closure | pure (P0, P1, P2) or not (NR, impure, unresolved) | class-level verdict ([pure-destructors.md](pure-destructors.md#purity-is-transitive)) | not pure → the borrow is owned from birth, keeping `__destruct` on the scope-end pin |
 | unique ownership on the path | crossed, not crossed | the entity's count word holds the sentinel ([rc-walk.md](rc-walk.md#unique-ownership-one-owning-slot-and-no-count)) | crossed → owned: the chain invariant's premise (every path edge counted) fails |
-| a weak cell on the path | present, absent | the cell's `target` field is uncounted ([weak-references.md](../weak-references.md#the-weak-cell-is-the-canonical-weakreference-itself)) | present → the path is not a counted chain. Not in the base-case list yet — question 7 |
+| a weak cell on the path | present, absent | the cell's `target` field is uncounted ([weak-references.md](../weak-references.md#the-weak-cell-is-the-canonical-weakreference-itself)) | present → the path is not a counted chain. The value a read of the cell produces is an owned base case, by the ruling of 2026-08-22 that closed question 7 ([gc-horizon.md](gc-horizon.md#open-questions)) |
 
 Three further per-entity axes bound the design without deciding a
 verdict: `DESTRUCTOR_PENDING` and `DESTRUCTOR_RAN` (flags 8–9) are the
@@ -83,11 +83,11 @@ feature.
 | anchor chain | borrow | path edges ending in a counted root: frame slot, arena slot, static, immortal, FFI handle | the chain invariant; the checkpoint reclamation discharge |
 | horizon set | live range | any subset of the eight horizon kinds below | promotion placement; the failure default |
 | promotion point | promoted borrow | the closest point dominated by the birth that dominates every horizon and every exit — or ⊥, which sends the borrow to owned-from-birth | the emitter; the landing-pad sets |
-| landing-pad set | call site | the owned locals live at that site, static per site | unwind lowering |
+| landing-pad set | raise site | the owned locals live at that site, static per site — per edge rather than per site at a pad shared by raise sites on both sides of a promotion, question 9 | unwind lowering |
 | class regime | class | counted, horizon, or unnarrowable (which is counted) | the emitter's default under the hybrid |
 | call effect model | call target or closed target set | source and trust, severable anchor paths, purity of internal releases, destructor reachability, **freshness identity** | the call-horizon lift; invalidation when its source changes |
 | always-provable rule registry | admitted rule | statement, proof sketch, reviewer, date — one `model/dev/DECISIONS.md` entry each | the granularity ruling's bound |
-| demotion worklist | unique entity | trigger sites: convention retains and horizon-reaching borrows | the whole-program uniqueness fixpoint |
+| demotion worklist | unique entity | trigger sites: convention retains and horizon-reaching borrows; whether the set is one-pass and whether it names release sites is question 10 | the whole-program uniqueness fixpoint |
 | per-site certificate | deviating site, future | anchor chain, summary IDs, horizon set | the independent checker |
 
 ## The eight horizon kinds
@@ -126,7 +126,7 @@ flowchart TD
     D -->|yes| U{"anchor path crosses a<br/>unique-ownership entity?"}
     U -->|yes| O
     U -->|no| W{"anchor path crosses a weak cell,<br/>or an arena or immortal referent?"}
-    W -->|"yes — open questions 7 and 8"| O
+    W -->|"yes — question 7 ruled, question 8 open"| O
     W -->|no| B{"birth dominates every horizon<br/>and every exit of the live range?"}
     B -->|no| O
     B -->|yes| A["ANCHORED — free until a horizon"]
@@ -139,9 +139,11 @@ parameter dies to re-entrancy. COW values, because the uniqueness test
 reads the count. Destructor-bearing targets, because elision would move
 `__destruct` off the drop-point pin. Unique entities, because a retain
 would write the occupancy sentinel. The last two rungs are the 2026-08-20
-open questions, drawn dashed in the sense that the design has not yet
+open questions, drawn dashed in the sense that the design had not yet
 adopted them: a weak cell's target edge is uncounted, and a promotion
-retain into the arena or immortal categories is a no-op.
+retain into the arena or immortal categories is a no-op. The first was
+ruled on 2026-08-22 — a weak-cell read produces an owned value, counted
+always — and the rung stays, its verdict now stated rather than open.
 
 ## A borrow's life
 
@@ -222,7 +224,8 @@ read as an equation rather than as a rule:
 2. **Not transitively pure ⇒ owned.** The purity axis stops being free:
    only the pure value survives.
 3. **Unique on the path ⇒ owned**, and **weak cell on the path ⇒ not a
-   counted chain** (question 7). Both axes stop being free the same way.
+   counted chain**, which the ruling of 2026-08-22 answers with an owned
+   base case for the read. Both axes stop being free the same way.
 4. **FFI classes own their pointers**, so their destructor is never
    absent ([ffi.md](../memory/ffi.md#freeing)) and the FFIBox kind falls
    out through identity 2 rather than needing one of its own.

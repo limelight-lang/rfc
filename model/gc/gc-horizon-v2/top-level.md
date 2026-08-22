@@ -93,6 +93,17 @@ holds the entity nowhere, not that the entity is dead. No death branch
 runs at zero and no destructor fires: reclamation is the collector's,
 by reachability.
 
+**The capture count is not a new kind of header state.** The runtime
+already reuses the count word for a count that is not a lifetime count,
+gated by a flag: `IS_ESCAPEE` says that a request-arena entity is
+referenced from one or more longer-lived containers, and "while set,
+`refcount` holds the escape hold-count instead of a lifetime count —
+arena objects are not lifetime-counted, so the field is free"
+(`model/src/refcount.rs`). The entity joins the arena's escapee list on the
+0 to 1 transition and the flag is cleared when the count returns to zero.
+The deferred regime's flag plays the same role for a different population,
+and the capture count is that hold-count generalised.
+
 **Which price the compiler picks** follows the shape of the borrow's
 live range. A live range crossing one horizon takes the mark: one store,
 nothing to undo. A live range crossing a loop or a run of horizons takes
@@ -118,6 +129,43 @@ pair.
 chain holds through every iteration and its live range reaches no
 horizon. A loop matters only for a borrow whose proof the loop body
 breaks.
+
+## Which slots must publish
+
+The axis is not the memory category and not the actor: it is whether the
+walk sees the slot. `rc-walk` derives its roots from the count precisely
+because every slot it cannot see is counted — "a stack local, a static
+block, an arena slot, an immortal container, an FFI handle. Every one of
+those is counted" ([../rc-walk.md](../rc-walk.md)). The deferred regime
+removes the count, so each of those slots needs its own answer.
+
+- **A slot the walk sees** — a field of a walked GC-heap entity. The
+  collector enumerates the edge itself and the mutator pays nothing.
+- **A frame slot.** Nothing records it and no owner can retract it at a
+  known point, which is what the mark is for.
+- **An arena slot, a static, an immortal container, an FFI handle.** Each
+  has an owner that ends at a known point — the reset, the overwrite, the
+  handle's close — so each can carry a capture count, and the arena's store
+  barrier already takes the matching `retain`
+  ([../../memory/arena-promotion.md](../../memory/arena-promotion.md)).
+
+The arena slot gets a cheaper rule when its target is deferred, and the
+reason is that eager death is what forces a count in the first place.
+Today a heap reference stored into an arena container takes `retain(new)`
+and an entry on the arena's release-at-reset list, because between that
+store and the next collection the source may die, the count may reach zero
+and the entity may be freed under the arena slot
+([../../memory/arenas.md](../../memory/arenas.md)). A deferred entity is
+never freed by reaching zero, so the count buys nothing: the store appends
+the entity's address to a root list the collector reads each epoch, and
+nothing is released at reset. Because no release is paired with the entry,
+the prohibition on compacting that list — deduplication would release early
+while an arena slot may hold the only reference — does not apply to the
+deferred half, and the list may be a set.
+
+What that costs is a change of reading schedule. The release-at-reset list
+is read once, at reset; a root list is read at every epoch while the arena
+lives, and it grows monotonically through the request.
 
 ## The three treatments the collector owes an entity
 
@@ -298,3 +346,9 @@ argument that settled it:
   on every store, which is a write barrier.
 - An unresolved call site emits both the retain and the mark, the mark
   being sound in both regimes.
+- The deferred regime is a property of the entity and is available in any
+  memory, so what decides who must publish is whether the walk sees the
+  slot, not where the memory came from (Edmond, correcting the first
+  derivation).
+- An arena store whose target is deferred takes no `retain` and no
+  release-at-reset entry: the target's address goes on a root list instead.

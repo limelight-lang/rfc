@@ -8,7 +8,7 @@ rests on one.
 
 ```mermaid
 graph TD
-    A["A. Scope<br/>is there a deferred regime<br/>outside actor-private memory?"]
+    A["A. Which slots must publish<br/>RESOLVED"]
     B["B. Regime selection<br/>class, category, or both"]
     C["C. Cross-regime edges<br/>counted source, deferred target"]
     D["D. The mark against<br/>a concurrent walk"]
@@ -17,6 +17,7 @@ graph TD
     G["G. Where the mark lives<br/>header byte or side metadata"]
     H["H. Renewal placement<br/>and its measured cost"]
     I["I. Compiler-owned entities<br/>in the walk"]
+    J["J. Is the arena an unwalked<br/>root source?"]
     Z["Z. The economics gate"]
 
     A --> B
@@ -28,13 +29,35 @@ graph TD
     D --> E
     F --> I
     G --> H
+    A --> J
+    J --> Z
     E --> Z
     H --> Z
     I --> Z
     C --> Z
 ```
 
-## A. Scope — is there a deferred regime outside actor-private memory?
+## A. Scope — which slots must publish  [resolved 2026-08-21]
+
+**Resolved, and the question was posed wrongly.** The deferred regime is a
+property of the entity and is available in any memory; it is not tied to
+actors (Edmond). What decides who must publish is whether the walk sees the
+slot holding the reference, not where the memory came from. A slot inside a
+walked GC-heap entity costs nothing, because the collector enumerates the
+edge. Every slot the walk does not see needs its own answer, and
+[top-level.md](top-level.md), "Which slots must publish", gives it: the
+frame takes the mark, and an arena slot, a static, an immortal container
+and an FFI handle take a capture count, each having an owner that ends at a
+known point.
+
+The arena's store rule is cheaper when the target is deferred: no `retain`
+and no release-at-reset entry, only the target's address on a root list the
+collector reads each epoch. What licenses that is eager death — the count
+exists on that path to stop the entity being freed under the arena slot,
+and a deferred entity is never freed by reaching zero.
+
+The original framing, kept because a later node's argument rests on the
+correction:
 
 **Open, and it is the root.** An actor's arenas are already collected at
 message boundaries, where the stack is empty and the state consistent
@@ -71,18 +94,21 @@ count means.
 
 ## C. Cross-regime edges — a counted source with a deferred target
 
-**Half answered.** An `ImmediateCounted` source may die between two
-collector reads and remove its edge into deferred space. Iso's corollary of
-the Doligez-Leroy-Gonthier invariant closes the actor-private half: only
-the thread that allocated a private entity can publish it, so the edge is
-always installed by its owner and integration needs no synchronisation
-([prior-art.md](prior-art.md)). The general-heap half is open, and the first
-design's Form C names the two instruments for it — a boundary count, or a
-barrier with a snapshot ([../gc-horizon.md](../gc-horizon.md)).
+**Open, and less closed than an earlier revision of this file claimed.**
+An `ImmediateCounted` source may die between two collector reads and remove
+its edge into deferred space. Iso's corollary of the Doligez-Leroy-Gonthier
+invariant — only the thread that allocated a private entity can publish it —
+covers private entities only ([prior-art.md](prior-art.md)), and A resolved
+against confining the deferred regime to private memory, so the corollary
+covers a part of the population rather than half the question. The first
+design's Form C names the two instruments — a boundary count, or a barrier
+with a snapshot ([../gc-horizon.md](../gc-horizon.md)) — and neither is
+chosen.
 
-**What would answer it:** whether a deferred entity may ever be reachable
-from a counted source that is not its owner. If not, this node closes with
-A.
+**What would answer it:** whether the counted source's own death path can
+be made to publish the target instead of dropping the edge silently, which
+is the same operation as the arena's release-at-reset list performed at a
+different owner's end.
 
 ## D. The mark against a concurrent walk
 
@@ -165,6 +191,22 @@ because Phase 1 visits every slot of the snapshotted blocks already
 
 **What would answer the rest:** the share of the heap under compiler
 ownership, which decides whether the added rows matter.
+
+## J. Is the arena an unwalked root source, or should the walk enter it?
+
+**Open, raised by Edmond 2026-08-21 as a question of its own.** Today the
+walk does not enter arena memory, so an arena's edges never appear in `IN`,
+`RC - IN` stays positive for their targets and the targets are roots — the
+identity's own corollary that an un-walked region is a root source
+([../rc-walk.md](../rc-walk.md)). The deferred regime removes the count
+that makes that corollary work, and node A's arena rule replaces it with a
+root list. Whether that is the right answer, or whether the walk should
+enter arena memory and enumerate its edges like any other, is undecided.
+
+**What would answer it:** the cost of one walk over live arena memory
+against the cost of maintaining and re-reading the root list, and whether
+arena memory can be scanned at all — the walk finds object boundaries in
+entity blocks by slot arithmetic, and an arena hands out memory by cursor.
 
 ## Z. The economics gate
 

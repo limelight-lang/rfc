@@ -78,7 +78,7 @@ flowchart TD
     B1 --> B6
 
     C1[C1 background cadence<br/>open; two candidates eliminated] --> C3
-    C2[C2 the young-free exemption<br/>open; two more readers] --> C1
+    C2[C2 the young-free exemption<br/>share measured; open on soundness] --> C1
     C3[C3 the pressure ladder's constants<br/>measure]
     C4[C4 do the rungs earn their keep<br/>open; priced wrongly once] --> C3
 
@@ -527,7 +527,7 @@ entities born and died inside one epoch, and B4's figure makes an epoch's
 price edges as much as rows, so a threshold written in entities is not
 written in the walk's currency.
 
-### C2. The young-free exemption  [the proof pass found two more readers; open]
+### C2. The young-free exemption  [share measured; two readers and a missing publication keep it open]
 
 `../rc-walk.md` carries it in the backlog: an entity whose epoch byte reads
 0 or the current number at free time is in no snapshot row and no
@@ -570,15 +570,43 @@ removes their protection too.
   pool and being re-commissioned at a different stride mid-epoch, which
   [`../domains.md`](../domains.md) already names as a hole.
 
-So the exemption needs a second condition — no synchronous collection
-active, and nothing that would retire a block under a live snapshot — or it
-is unsound on the design's own self-help path. **What is left besides** is
-the number, which is C1's and C3's currency: how much parked volume the
-exemption removes on a real churn rate. Parked records
-are one for one with mid-epoch deaths, births included
-(`ll-model` `dev/BENCHMARKS.md`), and every one of those deaths is of an
-entity born this epoch or the last, so the exemption's share is large by
-construction and unmeasured in fact.
+So the exemption needs a second condition, no synchronous collection active
+and nothing that would retire a block under a live snapshot, or it is
+unsound on the design's own self-help path.
+
+**The number is taken, and it is a distribution rather than a figure**
+(`ll-model` `dev/BENCHMARKS.md`, 2026-08-22, probe
+`collector::tests::what_the_young_free_exemption_removes`). A record is
+exempt when its entity died younger than the epoch it died in, so the share
+follows the workload's lifetimes against the epoch's duration. Over a
+constant population of 10 000 entities the exemption removes nothing while
+every lifetime exceeds the epoch, 37 % where the epoch runs as long as the
+mean lifetime, and 75 % where it runs four times as long; a prediction
+computed from each arm's lifetime distribution tracks the count in every
+cell. **So "large by construction" is withdrawn**: the share is zero by
+construction for a heap whose entities outlive the epoch, and what a corpus
+has to supply is the age-at-death distribution over an epoch's duration
+rather than a churn rate.
+
+**Two mechanical conditions the measurement uncovered.** The current epoch
+number is published nowhere a free path can read it, `deferred_free` holding
+one activity bit while the counter behind `Epoch::open` stays private to the
+collector (`ll-model` `src/memory/deferred_free.rs`, `src/collector.rs`), so
+the number has to be published before the exemption's test can be written at
+all. The byte itself does reach the park site: the releasing decrement
+stores the counter half only and teardown's flag writes preserve the byte
+(`ll-model` `src/refcount.rs`), so the one-byte test `../rc-walk.md` prices
+is the price.
+
+**The exemption's reach is narrower than the parked list.** Only an entity
+slot carries a header, so a dying string's out-of-line payload, a dying
+array's table storage and every buffer-arena chunk park whatever the
+entity's age (`ll-model` `src/string.rs`, `src/memory/buffer_arena.rs`).
+Nor are the collector's own confirmed members ever exempt: they are torn
+down before the epoch closes and every one of them was enrolled, so each
+reads an older epoch's number. The measured share is a ceiling over entity
+records alone, and what lowers it is payload records per entity, node A6's
+corpus question in another form.
 
 ### C4. Do the fixpoint and stratification rungs earn their keep  [open; the first pricing was in the wrong currency]
 

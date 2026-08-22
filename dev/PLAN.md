@@ -274,7 +274,7 @@ broken links.
         direction is settled and the magnitude is not. Node N's unmeasured
         ~80 ns estimate is inside the range and near its median. Probe:
         `memory::barrier::tests::what_a_counted_pair_costs_when_headers_miss`.
-- [ ] S5.5 Give the design of record one home
+- [x] S5.5 Give the design of record one home
       done: `model/gc/walk/` carries the protocol and the proof side under
         one banner, or `gc-horizon.md` stays the proof-side text in force
         with `walk/` above it — Edmond's call; either way no document says
@@ -282,10 +282,19 @@ broken links.
         linkcheck is green
       tier: T2 · role: Critic
       note: reversed on 2026-08-22. The step used to move the proof side
-        *into* `gc-horizon-v2/`, which is now the refused regime. The banner
-        work is done — `gc-horizon.md` and `model/gc/README.md` name `walk/`
-        as the design of record — and what is left is whether the proof side
-        moves house.
+        *into* `gc-horizon-v2/`, which is now the refused regime.
+      handoff: closed 2026-08-22 with the second option, which the
+        documents already carried. `walk/README.md` says the design of
+        record keeps the compiler proofs of `gc-horizon.md`, and
+        `gc-horizon-v2/README.md` says that document is again the text in
+        force for the proof side, `walk/` ruling where the two disagree.
+        The proof side does not move: `gc-horizon.md` is the only text on
+        its subject, so there are no two current documents to reduce to
+        one. `rc-walk.md` is the old collector document and is left
+        untouched, its COW-and-unique permission among the stale text. No
+        document calls `gc-horizon-v2/` current — its two inbound
+        citations reach `prior-art.md` as a record. Linkcheck green at
+        1448 links.
 
 - [ ] S5.6 Two Critic rounds over the design of record, then Sage on what does not close
       done: both rounds are recorded here, every finding is fixed or refused

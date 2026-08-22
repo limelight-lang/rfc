@@ -244,6 +244,17 @@ broken links.
         silent ruling rather than a repair, and the third pad rule was
         dropped from the node's own list. Accepted whole; the placement
         bullet reverted and question 13 restated over both readings.
+      Critic 2026-08-22 round 3: the four rulings taken to close G3 broke
+        too — computing liveness over the normal graph alone releases a
+        value the handler reads before the raise site; a horizon inside a
+        `catch` is dominated by no promotion placed after the raise site,
+        which is PH9's shape unanswered; a pad release runs `__destruct`
+        and is a release like any other. Accepted whole. The node is
+        `[partly ruled]`: the raise sites join the quantifier, which is
+        the reading question 9 offered first and PH9 asserts, and the
+        execute-once condition and the generator pads stay open. Three
+        rounds, three broken closures — the node is not to be closed
+        again without a shape nobody has attacked.
       handoff: the graph moved to `model/gc/walk/questions.md` on 2026-08-22
         with the refusal of the capture-count regime. Eleven rulings bound
         it, and rulings 10 and 11 were written into the list on 2026-08-22,

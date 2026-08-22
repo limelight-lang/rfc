@@ -292,12 +292,25 @@ borrow is an owned local, released per the same drop-point policy as
 any other — so promotion changes no lifetime against today's owned
 lowering of the same borrow. Placement rules:
 
-- The promotion point is the **closest point dominated by the
-  borrow's birth that dominates every horizon and every exit of the
-  borrow's live range**; a borrow with no such point is owned from
-  birth by the lattice's failure default, so the rule is total. Which
-  end of the dominator chain "closest" names is open question 13, and
-  the two readings differ in what they cost.
+- The promotion point is the **latest point dominated by the borrow's
+  birth that dominates every horizon, every exit and every raise site
+  of the borrow's live range, and that executes at most once per
+  instance of that live range**. The birth always qualifies, so the
+  rule is total, and promotion at the birth is today's lowering for
+  that borrow. Those points form a dominator chain, so the latest is
+  unique. The word was "closest" until 2026-08-22, and it reads as the
+  latest: read as the earliest it names the birth always, and the
+  mechanism would buy nothing over marking the borrow owned. **The
+  raise sites are in the quantifier**, which is the first of the two
+  readings open question 9 offered, and which PH9 and three case files
+  assert
+  ([gc-horizon-cases/adversarial.md](gc-horizon-cases/adversarial.md));
+  the cost is that a promotion is not hoisted past an allocating store.
+  Every set the rule quantifies over — horizons, exits, raise sites —
+  and the liveness behind them are computed over the control-flow graph
+  **including its exceptional edges**: a use inside a `catch` is a use,
+  and deleting those edges would put the drop point of a value the
+  handler reads before the raise site.
 - Promotion cannot precede the birth: the retain's operand exists
   only after the load. This is also the static argument that death
   order is preserved — a promoted borrow holds its count over a
@@ -305,15 +318,30 @@ lowering of the same borrow. Placement rules:
 - A loop containing a horizon promotes before the loop when the
   borrow is born before it; born inside, the back-edge fails the
   dominance test and the borrow is owned.
-- On unwind, a landing pad releases the owned set live at its call
-  site; the promotion point dominating the sites after it makes that
-  set static per site. That holds for a cleanup pad reached from one
-  raise site. A `finally` is one pad reached from raise sites on both
-  sides of the promotion, and there the set is per edge rather than
-  per site — open question 9, with the argument and the two further
-  pad rules it needs in
-  [walk/questions.md](walk/questions.md#g3-placement-raise-sites-and-what-a-landing-pad-releases--design).
-  The kinds of raise site this repository supports are listed in
+- On unwind, what a landing pad releases depends on whether the frame
+  survives it, and that turns on where phase 1 selected the handler
+  ([exceptions.md](../../runtime/exceptions.md#channel-u-how-the-tables-work)).
+  Selected in an outer frame, this frame dies and its pad releases the
+  owned set live at the raise site. Selected in this frame — a `catch`
+  here, or a `finally` that returns — the frame runs on, and the pad
+  releases only those owned values that are dead where control resumes:
+  a value the handler reads cannot be released before it runs.
+- **A pad release is a release.** The horizon list names a release of a
+  class whose purity closure is impure, because eager death runs
+  `__destruct` at it, and a pad's releases are not exempt: a destructor
+  run there can store into a live anchor path exactly as one run on the
+  normal path can. With the raise sites in the placement quantifier the
+  promotion dominates the pad, so the hazard is paid rather than
+  unnamed.
+- **Pad state is per edge, not per site.** A `finally` is one pad
+  reached from several raise sites, and a value born on one branch and
+  not another is owned on one incoming edge and not on the other; the
+  pad carries the state per exceptional edge and per SSA generation, by
+  split pads or an ownership phi, which is what PH22 asserts
+  ([gc-horizon-cases/adversarial.md](gc-horizon-cases/adversarial.md)).
+  PH22's third option, a tag, is a runtime flag written on the normal
+  path, which the granularity ruling of 2026-08-18 excludes. The kinds
+  of raise site this repository supports are listed in
   [gc-horizon-cases/unwind.md](gc-horizon-cases/unwind.md), which also
   records that the set is not enumerable while runtime entries are
   unclassified.
@@ -1135,28 +1163,24 @@ under [gc-horizon-cases/](gc-horizon-cases/) carry the failing shape.
    runs user code in rounds and is a severing point the horizon list
    does not name.
 9. **The placement rule is stated over horizons and exits, and stores
-   raise.** A COW-separating store allocates and can throw
-   ([exceptions.md](../../runtime/exceptions.md#allocation-failure-is-an-ordinary-exception)),
-   so the raise sites of a live range are not a subset of its call
-   sites. The rule needs no raise-site clause **provided** a pad that
-   keeps its frame releases nothing a borrow live after it depends on;
-   four rulings decide that: the control-flow graph over which
-   placement and liveness are computed, the released set of a handler
-   pad against a cleanup pad, whether a pad release of an anchor is a
-   horizon kind, and pad state per edge rather than per site, which
-   PH22 already asserts
-   ([gc-horizon-cases/adversarial.md](gc-horizon-cases/adversarial.md)).
-   A `finally` reached from raise sites on both sides of the promotion
-   is the shape that decides the fourth. **This reading disagrees with
-   PH9**, which asserts the retain before the invoke on every normal
-   and exceptional path, and with the three case files that state the
-   raise-site clause as the alternative
-   ([gc-horizon-cases/unwind.md](gc-horizon-cases/unwind.md),
-   [call.md](gc-horizon-cases/call.md),
-   [array.md](gc-horizon-cases/array.md)); the disagreement is recorded
-   here rather than reconciled, and the rulings settle it. The argument
-   is in
-   [walk/questions.md](walk/questions.md#g3-placement-raise-sites-and-what-a-landing-pad-releases--design).
+   raise.** Ruled in part, 2026-08-22, and the ruling is the reading
+   this question offered first: the raise sites join the quantifier,
+   every set in it is computed over the graph including its exceptional
+   edges, a pad release is a release like any other, and pad state is
+   per edge. PH9 and three case files asserted the same, and the reading
+   that avoided the clause was tried and failed — a horizon inside a
+   `catch` is dominated by no promotion placed after the raise site,
+   and a handler pad's releases run destructors that sever. **What is
+   left open** is the exact form of "executes at most once per instance
+   of the live range": a borrow that is a loop-header phi is born inside
+   the cycle, so a dominance-and-cycle condition admits a retain per
+   iteration, and the release that would balance it is the one the phi's
+   own kill owes and no rule states. Beside it, the pad taxonomy over a
+   suspended generator's frames, which enter their `finally` blocks from
+   a destruction rather than a raise
+   ([gc-horizon-cases/unwind.md](gc-horizon-cases/unwind.md), open item
+   4). The argument and the three review rounds are in
+   [walk/questions.md](walk/questions.md#g3-placement-raise-sites-and-what-a-landing-pad-releases--partly-ruled).
 10. ~~**The COW and unique-ownership base cases intersect
     inconsistently.**~~ Ruled by Edmond, 2026-08-22: COW wins. The
     unique-ownership proof establishes lifetime, and lifetime is not
@@ -1191,32 +1215,19 @@ under [gc-horizon-cases/](gc-horizon-cases/) carry the failing shape.
     pinning API discharges these obligations. Until all six are ruled,
     every entity remains Form A.
 
-13. **"Closest" names one end of a dominator chain and the document
-    does not say which.** The points dominating every horizon and every
-    exit form a chain, so both readings are well defined and they cost
-    differently. Read as the **latest**, a `do {} while ()` body always
-    executes, so a point inside it dominates everything after the loop;
-    with a live-range exit inside the loop and every horizon outside
-    it, that point is the latest one and the retain runs once per
-    iteration against a single release. The loop clause is written for
-    a loop containing a horizon and does not reach that shape. A
-    back-edge poll would, being a checkpoint and so a horizon until
-    certified — but actor code carries no poll safepoints at all
+13. ~~**"Closest" names one end of a dominator chain and the document
+    does not say which.**~~ Closed 2026-08-22: the latest. Read as the
+    earliest it names the birth, and the mechanism buys nothing over
+    marking the borrow owned. The leak the latest reading admits — a
+    `do {} while ()` body always executes, so with a live-range exit
+    inside the loop and every horizon outside it the latest point is in
+    the body and the retain runs once per iteration — is what the
+    execute-at-most-once condition beside the quantifier excludes, and
+    its exact form is open question 9. A back-edge poll does not
+    exclude it: actor code carries no poll safepoints at all
     ([actors.md](../../runtime/actors.md#per-actor-collection-at-message-boundaries))
-    and the poll-free strategies compile them away
-    ([strategies.md](strategies.md)), so the shape is reachable today
-    rather than after a future analysis. Read as the **earliest**, the
-    birth is always a candidate, because an anchored borrow's birth
-    dominates every horizon and exit by the lattice's own precondition;
-    promotion then lands at birth, which is today's lowering for every
-    borrow that meets a horizon, and the design keeps only the case
-    where the horizon set is empty. The ruling is Edmond's. Under the
-    latest reading it needs one of two repairs: the loop clause reads
-    "a loop containing a horizon or a live-range exit", or placement
-    excludes every point inside a loop the borrow is born outside of.
-    Placement over an irreducible region is unstated under either
-    reading: such a region has no header, so neither the back-edge test
-    nor "born inside the loop" names anything there.
+    and the strategies that never stop threads compile the poll away
+    ([strategies.md](strategies.md)).
 
 ## The record
 

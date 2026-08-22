@@ -83,7 +83,7 @@ feature.
 | anchor chain | borrow | path edges ending in a counted root: frame slot, arena slot, static, immortal, FFI handle | the chain invariant; the checkpoint reclamation discharge |
 | horizon set | live range | any subset of the eight horizon kinds below | promotion placement; the failure default |
 | promotion point | promoted borrow | the closest point dominated by the birth that dominates every horizon and every exit — or ⊥, which sends the borrow to owned-from-birth | the emitter; the landing-pad sets |
-| landing-pad set | raise site | the owned locals live at that site, static per site — per edge rather than per site at a pad shared by raise sites on both sides of a promotion, question 9 | unwind lowering |
+| landing-pad set | exceptional edge and SSA generation | a pad whose frame dies releases the owned locals live at the raise site; a pad whose frame runs on, those of them dead where control resumes. Per edge, not per site, ruled 2026-08-22 ([gc-horizon.md](gc-horizon.md#at-the-horizon-promotion)) | unwind lowering |
 | class regime | class | counted, horizon, or unnarrowable (which is counted) | the emitter's default under the hybrid |
 | call effect model | call target or closed target set | source and trust, severable anchor paths, purity of internal releases, destructor reachability, **freshness identity** | the call-horizon lift; invalidation when its source changes |
 | always-provable rule registry | admitted rule | statement, proof sketch, reviewer, date — one `model/dev/DECISIONS.md` entry each | the granularity ruling's bound |

@@ -403,94 +403,74 @@ protects a borrow of an arena-resident referent across an actor's message
 boundary, where the arena resets. The reset's own destructor fixpoint runs
 user code in rounds and is a severing point the horizon list does not name.
 
-### G3. Placement, raise sites, and what a landing pad releases  [design]
+### G3. Placement, raise sites, and what a landing pad releases  [partly ruled]
 
-`../gc-horizon.md` question 9 asked whether the placement rule must name
-raise sites beside horizons and exits. It asks too little: three rules are
-missing rather than one, and the first of them already has a decided
-counterexample in this repository.
+`../gc-horizon.md` question 9. Three review rounds ran over this node on
+2026-08-22 and each broke the closure the one before it produced. What
+survived is in `../gc-horizon.md`, in the promotion section; what did not
+is here, so the road is not walked a fourth time.
 
-**The landing-pad set is not static per site.** A `finally` is one pad
-that runs and resumes unwinding
-([`../../../runtime/exceptions.md`](../../../runtime/exceptions.md#semantics)),
-so a raise site before the promotion and a raise site after it reach the
-same pad. The pad owes a release of the promoted borrow on the second
-incoming edge and not on the first; a union release frees a reference no
-retain ever took, an intersection release leaks the promotion. This is
-PH22 ([`../gc-horizon-cases/adversarial.md`](../gc-horizon-cases/adversarial.md)),
-which asserts the remedy: pad state per edge and per SSA generation, by
-split pads, an ownership phi or a tag.
-[`../gc-horizon-states.md`](../gc-horizon-states.md#the-axes-the-lattice-creates)
-records the pad set as static per site, and that row stands only once one
-of those mechanisms is chosen.
+**Ruled: the raise sites join the quantifier.** That is the reading
+question 9 offered first, and PH9 asserts it — "the retain is before the
+invoke on every normal and exceptional path"
+([`../gc-horizon-cases/adversarial.md`](../gc-horizon-cases/adversarial.md))
+— as do `unwind.md`, `call.md` and `array.md`. The cost is that a
+promotion is not hoisted past an allocating store, and since most loop
+bodies allocate, a borrow live across one is promoted at or near its
+birth. What the design keeps whole is the case it exists for: a borrow
+whose horizon set is empty pays nothing at all.
 
-**A handler pad and a cleanup pad release different sets, and only the
-cleanup pad's is stated.** `../gc-horizon.md` says a pad releases the
-owned set live at its call site, which describes a frame that dies. Phase 2 of
-unwinding restores each frame up to the one phase 1 selected
-([`../../../runtime/exceptions.md`](../../../runtime/exceptions.md#channel-u-how-the-tables-work)),
-and that frame's handler runs on over its locals, so a borrow live in it
-cannot run over released ones.
+**Ruled: every set the quantifier names is computed over the graph
+including its exceptional edges.** The alternative was tried and it
+breaks liveness itself. A value read only inside a `catch` has its last
+normal-path use before the `try`, so the drop-point policy
+([`../../memory/static-lifetimes.md`](../../memory/static-lifetimes.md#drop-point-policy))
+releases it before the raise site and the handler reads freed memory. The
+same deletion strands borrow-is-use: a borrow used only in a handler
+keeps its anchor live nowhere.
 
-**A pad release of an anchor severs a chain no horizon kind names.** Every
-point of a live borrow is a use of its anchor, so the anchor is live at
-the raise site and is therefore in the set the pad releases — the case
-book shows it, pads A and B both releasing `$n`, the anchor of `$kind`
-([`../gc-horizon-cases/unwind.md`](../gc-horizon-cases/unwind.md)) — where
-both pads are cleanup pads in a dying frame and the release harms nothing.
-The hazard needs the frame to survive the pad, which is the previous
-bullet's condition. Where every class the pad releases is transitively
-pure no release is a horizon,
-and the anchor's own release still drives its referent to zero and frees
-what the borrow reads. The store-to-anchor rule covers assignment and
-`unset` of an anchor regardless of the released class's purity
-([`../gc-horizon.md`](../gc-horizon.md#the-ownership-lattice)) and does not
-cover a pad release.
+**Ruled: a pad release is a release.** The claim that no horizon kind is
+owed for one was wrong. A pad releases the frame's owned values, their
+classes unconstrained, and eager death runs `__destruct` at each — a
+destructor that stores into a live anchor path severs it there exactly as
+it would on the normal path. The earlier argument proved only that a pad
+does not release the *anchor itself*, which is a smaller claim, and it does
+not hold for an anchor that is a static or an arena slot, neither of which
+has the liveness borrow-is-use reasons from.
 
-**What the dominance argument gives, once those are ruled.** Over the
-normal control-flow graph, a site reachable both with the promotion point
-P executed and without must share a cycle with P: a path reaching it
-without P extends to an exit of the live range, which P dominates, so P
-lies on that continuation, while another path runs P first. The shapes
-that produces split on two questions — whether a horizon lies inside the
-loop, and whether the borrow is born inside it — and the loop clause
-reaches only the two cells where a horizon does: born before the loop,
-promote before it; born inside, fail the back-edge dominance test and be
-owned. The two cells with no horizon in the loop are unreached. One of
-them is harmless, the borrow being born inside a horizon-free loop and
-dying there. The other is `../gc-horizon.md` question 13: born before the
-loop, a live-range exit inside it, and under the latest reading of
-"closest" the retain lands in the body and runs once per iteration
-against one release. A back-edge poll would close it, being a checkpoint
-and so a horizon until certified, and the poll is not universal — actor
-code carries none at all
-([`../../../runtime/actors.md`](../../../runtime/actors.md#per-actor-collection-at-message-boundaries)),
-and the strategies that never stop threads compile it away
-([`../strategies.md`](../strategies.md)), so the shape is reachable in
-those regimes today.
+**Ruled: pad state is per edge and per SSA generation**, by split pads or
+an ownership phi. PH22's third option, a tag, is a runtime flag written on
+the normal path, and the granularity ruling of 2026-08-18 excludes mutator
+work beyond the program's own code.
 
-Two steps of the argument carry preconditions worth naming. "Extends to
-an exit of the live range" assumes an exit is reachable, which fails on a
-non-terminating loop and on a path whose only continuation is a raise.
-And the case analysis is stated over natural loops: an irreducible region
-has no header, so neither "the back-edge test" nor "born inside the loop"
-names anything there, and no rule says placement falls back to owned over
-one.
+**Ruled: what a pad releases turns on where phase 1 selected the
+handler**, not on the pad's syntactic kind. Selected in an outer frame,
+the frame dies and the pad releases the owned set live at the raise site.
+Selected in this frame — a `catch` here, or a `finally` that returns,
+which discards the in-flight exception
+([`../../../runtime/exceptions.md`](../../../runtime/exceptions.md#semantics))
+— the frame runs on and the pad releases only what is dead where control
+resumes. A `finally` that rethrows into a `catch` of the same frame is the
+shape that defeats the syntactic reading.
 
-**What would answer this node:** four rulings — the control-flow graph
-over which placement and liveness are computed, the released set of a
-handler pad against a cleanup pad, whether a pad release of an anchor is
-a horizon kind, and the pad-state mechanism PH22 asserts. The dominance
-argument closes the residue after them, not before.
+**Open: the execute-once condition.** A promotion must run once per
+instance of the live range, and dominance does not say so. The shape that
+needs it: a borrow that is a loop-header phi is born inside the cycle, so
+any condition phrased over "a cycle the birth lies outside of" admits a
+retain per iteration. The balancing release is the one the phi's own kill
+owes when it overwrites the previous instance, and no rule states it.
 
-**The reading this node argues for disagrees with PH9**, which asserts
-the retain before the invoke on every normal and exceptional path
-([`../gc-horizon-cases/adversarial.md`](../gc-horizon-cases/adversarial.md)),
-and with `unwind.md`, `call.md` and `array.md`, which state the
-raise-site clause as the alternative. The disagreement is recorded, not
-reconciled: PH9's shape — a handler using a borrow the severing callee
-killed — is decided by the second and third rulings, not by the
-placement rule alone.
+**Open: a suspended generator's pads.** Both released sets above are
+functions of a raise site, and a generator destroyed at a suspension
+enters its `finally` blocks from a destruction instead
+([`../gc-horizon-cases/unwind.md`](../gc-horizon-cases/unwind.md), open
+item 4). There is no edge for the per-edge state to key on.
+
+**Owed elsewhere:** oracle A1 of `unwind.md` asserts the pad's set equals
+the owned locals live at the raise site, which is now true of a dying
+frame only; the promotion-point wording is quoted without the amendment in
+`../gc-horizon-states.md` and in six case files. Both are step S5.7 of
+`../../../dev/PLAN.md`.
 
 ### G4. COW and unique ownership intersect  [ruled; the trigger set stays open]
 

@@ -72,12 +72,12 @@ flowchart TD
     A6 --> B1
     B2[B2 the acyclic class flag<br/>compiler] --> C1
     B4[B4 arrays as the commonest spine<br/>measured 2026-08-22] --> A6
-    B5[B5 the epoch-abort watermark<br/>design + measure] --> C1
+    B5[B5 the epoch-abort watermark<br/>proof done, watermark open] --> C1
     B6[B6 skip by block, not by entity<br/>design + measure]
     B1 --> B6
 
     C1[C1 background cadence<br/>measure] --> C3
-    C2[C2 the young-free exemption<br/>design + measure] --> C1
+    C2[C2 the young-free exemption<br/>proof done, number open] --> C1
     C3[C3 the pressure ladder's constants<br/>measure]
     C4[C4 do the rungs earn their keep<br/>measure] --> C3
 
@@ -85,9 +85,9 @@ flowchart TD
     E1 --> D1
     D3[D3 the batch constants<br/>measure]
     D5[D5 collector-side destructor calls<br/>open, blocked on D1]
-    D6[D6 WeakMap ephemerons<br/>design]
+    D6[D6 WeakMap ephemerons<br/>deferral stands, reason given]
 
-    E1[E1 actors and per-thread epochs<br/>design] --> E3
+    E1[E1 what an owner is<br/>the stamp half answered] --> E3
     E3[E3 the domains proposal<br/>design]
     E2[E2 AArch64 header access<br/>hardware]
 
@@ -344,11 +344,33 @@ rows **and** its edges, where B1 skips rows only, and B4 measured an edge at
 about what a row costs. A skipped block of arrays saves the storage-head read
 as well, 23 ns each.
 
-### B5. The epoch-abort watermark  [design + measure]
+### B5. The epoch-abort watermark  [the proof pass is done; the watermark is not chosen]
 
-The second collector-side bounding mechanism in the backlog beside C2's
-young-free exemption, and `../rc-walk.md` says it needs its own proof pass.
-C2 alone does not bound a long epoch.
+The second collector-side bounding mechanism beside C2's exemption:
+abandon the epoch when parked volume crosses a watermark. `../rc-walk.md`
+says it is sound while nothing is posted, the identity obligation running
+only from walk to drain of posted messages, and asks for its own proof
+pass.
+
+**The pass holds.** Before the first post no id is in flight, so no
+address has to stay stable, so the parked frees can be returned and the
+walk's tables — rows, edges, versions, all collector-private — discarded
+with the epoch. Nothing on the mutator side has to be told: the handshake
+it acked was a request for a checkpoint, not a promise of a verdict.
+
+**The one obligation the abort inherits is the epoch number, and the code
+already discharges it.** An aborted epoch's stamps stay on the entities it
+skipped, so a number reused immediately would make them read current and
+be skipped again. `Epoch::open` takes its number from a counter that
+advances on every open (`ll-model` `src/collector.rs`), so an abort
+consumes its number like any other epoch, and the 1-255 cycle's wrap is
+already accounted as latency rather than error.
+
+**What is left is the watermark itself**, and it is not one number but a
+policy: parked volume against what — the live heap, the allocation rate,
+a fixed ceiling — and what the collector does after an abort, since
+re-walking immediately would abort again under the same pressure. That
+sits with C1's cadence and C3's constants rather than apart from them.
 
 ### B4. Arrays as the spine of the commonest ring  [measured and closed]
 
@@ -393,14 +415,39 @@ justifies a background epoch while nothing is failing. The pressure half is
 decided — the allocation-failure path climbs the self-help ladder.
 **What it blocks:** every threshold in C3.
 
-### C2. The young-free exemption  [design + measure]
+### C2. The young-free exemption  [the proof pass is done; the number is not measured]
 
-`../rc-walk.md` carries it in the backlog. Parked records are one for one
-with mid-epoch deaths, births included (`dev/BENCHMARKS.md`), and parked
-memory bounded by churn times duration is the epoch's currency. Removing
-the records of entities born and died inside one epoch makes a long epoch
-cheap, which is what lets C1's cadence fall. **What would answer it:** the
-proof pass the design already asks for, then the measurement.
+`../rc-walk.md` carries it in the backlog: an entity whose epoch byte reads
+0 or the current number at free time is in no snapshot row and no
+component, so its slot appears recyclable rather than parked, at the cost
+of one byte test on the cold parked path. The design asks for a proof pass
+before the measurement. **The pass holds, and the reason is that the test
+is the walk's own skip predicate spelled backwards.**
+
+`walk_rows` enrols a slot only when its count is non-zero, its stamp is
+neither 0 nor the current number, and its category is `GcHeap` (`ll-model`
+`src/collector.rs`). A stamp of 0 or current is exactly the allocate-black
+branch: the walk stamps such an entity with the current number and skips
+it, and it stamps **only** there, so an enrolled entity keeps the older
+number it was met with. So the byte at free time answers the question the
+exemption needs — whether this entity was enrolled — and answers it with
+the same predicate rather than an inference about it.
+
+What the parking protects is slot identity: an id must name one entity from
+walk to drain. Every consumer of an id names an enrolled entity — the row
+vector, the edge list, and the members of a posted message. An exempt
+entity is in none of them, so recycling its slot confuses nothing. A
+recycled slot refilled mid-epoch takes a fresh header with stamp 0, which
+the walk skips in turn, so no slot gains a row after the fact; and a slot
+whose entity is mid-teardown carries count 0, which `walk_rows` skips
+before it reads the stamp at all.
+
+**What is left is the number**, which is C1's and C3's currency: how much
+parked volume the exemption removes on a real churn rate. Parked records
+are one for one with mid-epoch deaths, births included
+(`ll-model` `dev/BENCHMARKS.md`), and every one of those deaths is of an
+entity born this epoch or the last, so the exemption's share is large by
+construction and unmeasured in fact.
 
 ### C4. Do the fixpoint and stratification rungs earn their keep  [measure]
 
@@ -532,14 +579,39 @@ same. The test is Ω(N) reads in one uninterrupted stretch.
 **Closed by ruling 10**, which accepts the pause rather than bounding it. The
 lever was never the test but N itself, and N is no longer to be reduced.
 
-### D6. WeakMap ephemerons  [design]
+### D6. WeakMap ephemerons  [the deferral stands, and now with a reason]
 
-[`../../weak-references.md`](../../weak-references.md) records the mechanism
-and defers it: a map's key-to-value edge is conditional on the key's
-liveness, so the walk must not treat it as an ordinary edge — and the
-recorded decision is a known limitation, behaviour matching PHP 8.0-8.2, with
-the gap logged in the backlog. This node asks whether the design of record
-keeps that deferral or closes it.
+[`../../weak-references.md`](../../weak-references.md#weakmap-cleanup-is-eager-not-lazy)
+records the mechanism and defers it: a value that references its own key
+keeps that key's count positive forever, so the key never dies, no
+notification fires and the entry is never removed. Behaviour matches PHP
+8.0-8.2; Zend gained the special support in 8.3 after shipping the leak
+for three years. The node asked whether the design of record closes it.
+
+**It cannot, and the reason is the shape of the exact test.** There is no
+cycle to find. With `$map[$k] = $v` and `$v->key = $k`, the map holds `$v`
+by a counted edge and `$v` holds `$k` by another, so `$v` is reachable from
+a live root and `$k` is reachable from `$v`. Every count is right and every
+entity is live by the rules the walk applies. What PHP's `WeakMap` means
+instead is that the map-to-value edge exists only while the key is
+reachable **otherwise**, and a conditional edge is not something a balance
+of counted references can express: the judgement is `RC − IN` arithmetic
+over counted edges, while an ephemeron needs a fixpoint over reachability —
+mark the key live only if something outside the map reaches it, then mark
+its value, then repeat until nothing new is marked.
+
+**What closing it would cost.** The walk's stride is uniform and
+kind-dispatched (`ll-model` `src/walk.rs`), and an ephemeron fixpoint needs
+the collector to know a map's structure rather than trace its cells like
+any other entity's. That is a per-kind hook in the middle of the stride
+whose per-cell cost B4 measured at 43-47 ns, and a second pass over the
+condemned set besides.
+
+**So the deferral stands**, and the entry it needs is not "implement
+ephemerons" but a ruling on whether the walk gains a per-kind hook at all.
+**What would answer it:** that ruling, and, before it, how many real
+programs hold a value that names its own key — the corpus question of A6
+in one more form.
 
 ### D5. Collector-side destructor calls  [open; the case for moving them is stronger than it looked]
 
@@ -879,15 +951,60 @@ than a task beside it — which is what
 [`../gc-horizon-cases/README.md`](../gc-horizon-cases/README.md) already
 tells the case book about its third candidate oracle.
 
-### E1. Actors and the epoch protocol  [design]
+### E1. Actors and the epoch protocol  [the stamp half is answered; the ownership half is a hole]
 
 Refcounts are non-atomic and the crate is single-mutator
-(`../rc-walk.md`). Actor isolation keeps that valid — a reference into
-actor memory never crosses the boundary raw
-([`../../../runtime/actors.md`](../../../runtime/actors.md)), so a count
-keeps one writer. **What remains open:** whether each actor runs its own
-epoch, and what the collector's single shared write — the epoch stamp —
-becomes across several of them.
+(`../rc-walk.md`). The node asked whether each actor runs its own epoch,
+and what the collector's single shared write — the epoch stamp — becomes
+across several of them.
+
+**The stamp stays single-writer, because only one heap has an epoch.** The
+walk enrols the `GcHeap` category and nothing else (`ll-model`
+`src/walk.rs`, phase 1), and an actor's own memory is its arenas, which are
+reclaimed by reset rather than walked
+([`../../memory/arenas.md`](../../memory/arenas.md#request-arena)). What
+`../../../runtime/actors.md` calls per-actor collection at message
+boundaries is arena work over one actor's arenas, and per-actor GC
+selection binds which routine runs there. The general heap outside every
+actor keeps one collector, so the epoch byte keeps one writer and needs no
+partitioning. What multiplies is the mutator side: several actors are
+several owners for the verdict protocol, and that is the routing problem
+[`../domains.md`](../domains.md) inventories — one global handshake flag
+whose first ack lowers it for everyone, one ack counter, one global verdict
+queue, one outstanding counter.
+
+**The ownership half is worse than "undecided": two in-force documents
+disagree about what an owner is.**
+[`../../../runtime/actors.md`](../../../runtime/actors.md#serial-execution-without-thread-affinity)
+says an actor is not bound to a thread — the scheduler runs it on whatever
+pool thread is free and it may migrate between messages, the invariant
+being only that at most one thread executes it at a time.
+[`../../weak-references.md`](../../weak-references.md#the-weak-table-address--subscriber-row)
+builds the weak table **per thread**, calls entities thread-confined, runs
+every notification on the owning thread, and disposes the table at thread
+exit. It never mentions actors.
+
+The two cannot both hold. An actor creates a weak reference while mounted
+on one thread, so the row lands in that thread's table; the actor migrates;
+the entity dies on the new thread, which looks in its own table, finds no
+row, and never nulls the cell. The old thread then exits and disposes a
+table still holding rows for live entities. Nothing in either document
+covers the crossing.
+
+The same question decides the rest of the protocol's TLS: `MID_DRAIN` and
+`TEARDOWN_DEPTH` are thread-locals guarding a drain whose entities belong
+to an actor, the reset window and the journal ring are owner-bound the same
+way
+([`../pure-destructors.md`](../pure-destructors.md#the-five-owner-bound-races),
+race 5), and the deferred-free park list is thread-local and flushed by its
+own thread ([`../domains.md`](../domains.md)). Each is correct while the
+owner is a thread and wrong once the owner is an actor that migrates.
+
+**What would answer this node:** one ruling on what an owner is — a thread,
+or an actor context the scheduler mounts — after which the weak table, the
+drain gates, the reset window, the journal ring and the park list follow it
+rather than each being decided separately. **What it blocks:** node D1,
+whose channels cannot be routed to an owner that is not defined.
 
 ### E2. AArch64 header access  [hardware]
 

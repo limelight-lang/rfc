@@ -73,13 +73,14 @@ flowchart TD
     B2[B2 the acyclic class flag<br/>compiler] --> C1
     B4[B4 arrays as the commonest spine<br/>measured 2026-08-22] --> A6
     B5[B5 the epoch-abort watermark<br/>proof done, watermark open] --> C1
-    B6[B6 skip by block, not by entity<br/>design + measure]
+    C1 --> B5
+    B6[B6 skip by block, not by entity<br/>measured; segregate, not count]
     B1 --> B6
 
-    C1[C1 background cadence<br/>measure] --> C3
+    C1[C1 background cadence<br/>quantity settled, thresholds open] --> C3
     C2[C2 the young-free exemption<br/>proof done, number open] --> C1
     C3[C3 the pressure ladder's constants<br/>measure]
-    C4[C4 do the rungs earn their keep<br/>measure] --> C3
+    C4[C4 do the rungs earn their keep<br/>kept; rate unmeasured] --> C3
 
     D1[D1 the hand-off and hand-back channels<br/>open, five constraints] --> D5
     E1 --> D1
@@ -290,7 +291,10 @@ heap holds is a corpus question and nothing here measures it. The same scan
 answers node A6, so the two travel together. B4's measurement of 2026-08-22
 bounds what the skip can be worth: it removes rows and no edges, and an edge
 costs about what a row does, so its ceiling is the leaf share times the row
-alone.
+alone. B6's measurement of the same day removes its rival's cheap
+shape rather than the skip itself: no block comes out uniform under any
+interleaving, so a per-entity skip is what is available until entity blocks
+are segregated by kind.
 
 ### B2. The acyclic class flag  [compiler]
 
@@ -314,35 +318,42 @@ ring; `BLOCK_KIND_ENTITY_LARGE_RUN` (kind 10) holds one entity and is the
 registered kind. The comment saying huge allocations stay outside the walk is
 about the first.
 
-### B6. Skip by block, not by entity  [design + measure]
+### B6. Skip by block, not by entity  [measured; the two shapes swapped places]
 
 B1 skips a leaf after reading its header; this node asks whether the walk
 can decline to touch the block at all. Today it cannot: entity blocks are
 divided by block kind and then by size class only (`ll-model`
-`src/memory/heap.rs`), so a string and an object of the same size share one.
+`src/memory/heap.rs`), so a string and an object of the same size share
+one.
 
-Two shapes, and their prices differ by more than their benefits.
+Two shapes, and the node used to say the second was where to start.
+**Measurement reversed that**, 2026-08-22, `ll-model` `dev/BENCHMARKS.md`.
 
-- **Segregate entity blocks by entity kind.** The walk then skips whole
-  blocks untouched, which is worth more than B1's 40 ns per entity — most of
-  that 40 is the header miss the walk would no longer take. The price is a
-  partly-filled tail block per pair of size class and kind, paid in footprint
-  and fragmentation.
-- **Count the ring-capable entities in each block.** Zero means skip the
-  block. One word per block, maintained where a slot is handed out and
-  returned — paths that touch the block header already. Mixed blocks are read
-  as they are today, and a block that came out uniform by itself, which
-  consecutive allocation of same-size strings makes common, is skipped for
-  almost nothing.
+- **Count the ring-capable entities in each block and skip at zero.** One
+  word per block on paths that touch the block header already. Measured
+  with a one-property object and a string sized into the same class 32, so
+  the two kinds really do share blocks: **one object per sixteen strings
+  contaminates every block**, and every interleaving ratio tried leaves
+  zero skippable blocks. A block at that class holds 2 000 slots and the
+  allocator bumps through it, so one ring-capable entity anywhere in a
+  block's fill is enough. A same-kind run has to exceed a whole block
+  before any block comes out uniform, and a run of 10 000 — five blocks'
+  worth — still leaves 40 %, the boundaries landing mid-block. The shape
+  costs nothing in layout and returns nothing without runs no interleaved
+  program produces. Probe:
+  `collector::tests::how_uniform_a_block_comes_out`.
+- **Segregate entity blocks by entity kind as well as by size class.** The
+  walk then skips whole blocks untouched, which is worth more than B1's
+  per-entity skip: B4 measured a leaf row at 40-54 ns and an edge at
+  43-47, and a skipped block saves both for every slot plus the
+  storage-head read for any array. The price is a partly-filled tail block
+  per pair of size class and kind, paid in footprint and fragmentation.
+  **This is the shape that delivers**, and it is the one to price.
 
-The second costs nothing in layout and is where to start. **What would
-answer it:** the share of blocks that come out uniform under a real
-allocation pattern, which is the corpus question of A6 again, one level up.
-
-Against B1 this node gained ground on 2026-08-22: a skipped block skips its
-rows **and** its edges, where B1 skips rows only, and B4 measured an edge at
-about what a row costs. A skipped block of arrays saves the storage-head read
-as well, 23 ns each.
+**What would answer what is left:** the footprint of the tail blocks under
+a real class population, which is the corpus question of A6 once more, and
+whether the allocator's fill can be steered by kind without a second free
+list per class.
 
 ### B5. The epoch-abort watermark  [the proof pass is done; the watermark is not chosen]
 
@@ -407,13 +418,32 @@ of A6 as a quantity that decides between them.
 entity, so the `IN` increments hit one cache line where a real heap
 scatters them; both cell figures are lower bounds.
 
-### C1. The background cadence  [measure]
+### C1. The background cadence  [the quantity is settled; the thresholds are not]
 
 Open question 1 of `../rc-walk.md`, undecided since 2026-07-28: how much
 deferred memory, how many suspects, or how long since the last epoch
 justifies a background epoch while nothing is failing. The pressure half is
 decided — the allocation-failure path climbs the self-help ladder.
-**What it blocks:** every threshold in C3.
+
+**Of the three candidate triggers, one is the quantity that actually
+bounds.** Parked volume is churn rate times epoch duration
+(`../rc-walk.md`), so it is the thing that grows without limit while
+nothing collects, and it is what a stall converts into memory. A suspect
+count measures the collector's opportunity rather than the program's cost,
+and time since the last epoch measures neither. So the background trigger
+is parked volume, and **it is the same measurement B5's watermark takes,
+one threshold lower**: cross the first and start an epoch, cross the second
+and abandon the one in flight.
+
+Two answers below it change the numbers rather than the shape. C2's
+exemption removes the parked records of entities born and died inside one
+epoch, which is what lets the cadence fall — its share is unmeasured. And
+B4's figure moves the cost side: an epoch's price is edges as much as rows,
+so the walk's cost per unit of heap is not the entity count the threshold
+would naturally be written in.
+
+**What is left:** the two thresholds, which are C3's, and the measurement
+of what C2 removes.
 
 ### C2. The young-free exemption  [the proof pass is done; the number is not measured]
 
@@ -449,11 +479,34 @@ are one for one with mid-epoch deaths, births included
 entity born this epoch or the last, so the exemption's share is large by
 construction and unmeasured in fact.
 
-### C4. Do the fixpoint and stratification rungs earn their keep  [measure]
+### C4. Do the fixpoint and stratification rungs earn their keep  [decided by the philosophy; the rate is not measured]
 
-`../rc-walk.md` open question 3: whether either rung beats simply re-running
-the epoch plus the forced verdict. C3 prices their constants and assumes they
-exist; this node asks whether they should.
+`../rc-walk.md` open question 3: whether rung 2 (re-walk the candidate set
+to a fixpoint) or rung 3 (stratify a repeatedly-acquitted garland) beats
+re-running the epoch plus the forced verdict of rung 4.
+
+**Neither rung carries the termination guarantee, and the design says so.**
+Rung 2's guarantee "rests on monotone marking, which this rung alone lacks:
+one touch resets the round", and it is rung 4 that restores it; rung 3 is
+called an optional refinement outright. So the question is not soundness or
+termination but precision: how many forced drains the two rungs remove.
+
+**And precision here is paid in the currency the philosophy ranks.** A
+forced post costs the mutator one exact test over the component, `O(N)`
+reads in one uninterrupted stretch (node D4). Rung 3 is collector-private
+arithmetic on edges already recorded — no new shared state, nothing on the
+mutator — so under "the mutator does nothing beyond the program's own code,
+and a design that spends collector cycles to remove mutator cycles wins" it
+earns its keep the moment it cuts one garland. Rung 2 is not quite free: it
+costs one handshake ack per round, which is `O(1)` on the mutator against
+rung 4's `O(component)`, so it wins unless the component is small or the
+fixpoint needs many rounds.
+
+**So both rungs are kept, and what is unmeasured is the rate**: how many
+rounds rung 2 takes to converge on a real candidate set, and how often a
+repeatedly-acquitted component has a stratum with no in-edge from the
+acquitted remainder. Those are the numbers C3 needs, and neither is a
+reason to remove a rung before it is taken.
 
 ### C3. The pressure ladder's constants  [measure]
 

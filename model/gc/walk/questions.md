@@ -1,10 +1,13 @@
 # The question graph
 
-Every open question of the second version of the walk, as a node with what
-would answer it and what it blocks. A node carries one of three marks:
+Every open question of the design of record, as a node with what would
+answer it and what it blocks. The graph covers the collector, the barrier,
+the proof side inherited from [`../gc-horizon.md`](../gc-horizon.md), and the
+verification debt. A node carries one of three marks:
 **today** — answerable with the code and instruments that exist;
 **compiler** — blocked on a compiler that does not exist;
-**corpus** — blocked on a measurement of real PHP programs.
+**corpus** — blocked on a measurement of real PHP programs;
+**hardware** — blocked on a machine this project does not have.
 
 The rulings below bound the graph and are not nodes.
 
@@ -67,7 +70,18 @@ flowchart TD
     D4[D4 the indivisible verification<br/>design]
     D5[D5 collector-side destructor calls<br/>design]
 
-    E1[E1 actors and per-thread epochs<br/>design]
+    E1[E1 actors and per-thread epochs<br/>design] --> E3
+    E3[E3 the domains proposal<br/>design]
+    E2[E2 AArch64 header access<br/>hardware]
+
+    G1[G1 the weak cell is uncounted<br/>today] --> G4
+    G3[G3 placement must dominate raises<br/>today]
+    G4[G4 COW and unique intersect<br/>today]
+    G7[G7 borrow scopes across suspensions<br/>design] --> G6
+    G6[G6 the summary language<br/>design] --> G5
+    G5[G5 the trusted-effect boundary<br/>design]
+
+    H1[H1 the checker models the old protocol<br/>today]
 
     F1[F1 coalescing RC<br/>read] --> A5
     F2[F2 arborescent GC<br/>read] --> D2 & D4
@@ -108,6 +122,12 @@ through a side door.
 Form A of `../gc-horizon.md`: a borrow anchored by a counted holder emits no
 pair. **What would answer it:** the share of borrows whose anchor the
 compiler can prove.
+
+### A7. The unique-ownership header discriminant  [today]
+
+`../rc-walk.md` leaves it undecided: a sentinel value in the count word, or a
+bit of the freed byte. A3 asks what share of entities the proof reaches; this
+asks how the runtime tells one apart.
 
 ### A5. A cheaper count word  [today]
 
@@ -153,6 +173,12 @@ list, because the address alone finds the block; enumeration does.
 already marked cold, so its cost is not expected to appear in a measurement
 — which is a prediction to check, not a result.
 
+### B5. The epoch-abort watermark  [design + measure]
+
+The second collector-side bounding mechanism in the backlog beside C2's
+young-free exemption, and `../rc-walk.md` says it needs its own proof pass.
+C2 alone does not bound a long epoch.
+
 ### B4. Arrays as the spine of the commonest ring  [today]
 
 `../rc-walk.md` calls the array the spine of the commonest PHP cycle, and
@@ -179,6 +205,12 @@ memory bounded by churn times duration is the epoch's currency. Removing
 the records of entities born and died inside one epoch makes a long epoch
 cheap, which is what lets C1's cadence fall. **What would answer it:** the
 proof pass the design already asks for, then the measurement.
+
+### C4. Do the fixpoint and stratification rungs earn their keep  [measure]
+
+`../rc-walk.md` open question 3: whether either rung beats simply re-running
+the epoch plus the forced verdict. C3 prices their constants and assumes they
+exist; this node asks whether they should.
 
 ### C3. The pressure ladder's constants  [measure]
 
@@ -221,6 +253,13 @@ component size appears anywhere in the design. **What would answer it:** a
 bound, and what it costs in collection completeness. D2 is the first
 candidate and not the only one.
 
+### D6. WeakMap ephemerons  [design]
+
+[`../../weak-references.md`](../../weak-references.md) records the PHP 8.3
+parity obligation: a map's key-to-value edge is conditional on the key's
+liveness, so the walk must not treat it as an ordinary edge. Nothing in this
+graph or in the walk's population rules says how.
+
 ### D5. Collector-side destructor calls  [design]
 
 Ruling 8 lets the collector call a destructor proven pure. Purity is
@@ -229,6 +268,94 @@ observable and no order inside it is observable either. **What remains
 open:** where the call sits relative to the sever and the weak nulling, and
 what the collector owes the owner for the external children the component
 displaces.
+
+## G. The proof side, inherited
+
+`gc-horizon.md` supplies the compiler proofs this design keeps, so its open
+questions are open questions of the design of record. They were not in the
+first draft of this graph. Numbering here is local; the number in
+`gc-horizon.md` is given for each.
+
+### G1. The weak cell is an uncounted edge, and no base case excludes it  [today]
+
+`../gc-horizon.md` question 7, opened by the case-book review of 2026-08-20.
+A weak cell references its target with no count, so a path through it is not
+the counted chain the anchor-chain invariant requires, and the exact test —
+which balances counted references only — would free the referent under a live
+borrow. **This is a soundness hole, not a gap in the prose**, and it is the
+most severe node in this graph. **What would answer it:** naming the
+weak-cell edge in the owned base-case list, and deciding whether the
+always-provable elision rules need "the region contains no weak-cell load"
+among their preconditions.
+
+### G2. Promotion buys nothing in two memory categories  [today]
+
+`../gc-horizon.md` question 8. Retain and release return early on immortal
+entities and are absent for request-arena ones, so a promotion retain is a
+no-op there, while the lattice reads the static class and never the category.
+Two parts: whether the category becomes an axis of the lattice, and what
+protects a borrow of an arena-resident referent across an actor's message
+boundary, where the arena resets. The reset's own destructor fixpoint runs
+user code in rounds and is a severing point the horizon list does not name.
+
+### G3. Placement must dominate every raise site  [today]
+
+`../gc-horizon.md` question 9. A copy-on-write separating store allocates and
+can throw, so the raise sites of a live range are not a subset of its call
+sites. Either the placement rule reads "dominates every horizon, every exit
+and every raise site", or the landing-pad claim is weaker than it states.
+
+### G4. COW and unique ownership intersect inconsistently  [today]
+
+`../gc-horizon.md` question 10. A referent that is both COW-eligible and
+unique needs a counted holder by one base case and forbids every retain by
+the other, and the demotion trigger set does not name the base-case retains.
+The intersection has no defined lowering.
+
+### G5. The trusted-effect boundary  [design]
+
+`../gc-horizon.md` question 11. A stored callee summary is not the only
+source of effect knowledge — body analysis, builtin models, ABI contracts,
+the joined models of a closed multi-target call establish the same facts.
+The design needs one source-independent rule for sufficiency, trust,
+composition, freshness and invalidation.
+
+### G6. The summary language  [design]
+
+`../gc-horizon.md` question 1. What a summary states, who writes the ones for
+the standard library, the conservative default at every unknown, and the
+versioning rule.
+
+### G7. Borrow scopes across suspensions  [design]
+
+`../gc-horizon.md` question 2, and the case book's two hole reports
+(`../gc-horizon-cases/closure.md`, `../gc-horizon-cases/suspension.md`). A
+yield is a horizon unless the summary system learns resumption points, and a
+fiber suspended across an arena reset carries frame borrows the reset cannot
+see. `gc-horizon.md` marks it as shaping the IR early, which puts it before
+most of section A.
+
+### G8. Anchored parameters  [design]
+
+`../gc-horizon.md` question 6. Whether caller-guarantee summaries can lift
+the receiver and by-value parameters out of the owned default, and what the
+re-entrancy obligation costs there.
+
+**Closed by the refusal of 2026-08-22:** `../gc-horizon.md` question 12,
+selective collector-computed counts. That is Form C, and the capture-count
+regime is its descendant.
+
+## H. Verification debt
+
+### H1. Both model-checker specifications model a protocol that is gone  [today]
+
+`../../../dev/tools/rc-walk/README.md` and `../drain-window.md` record it:
+the TLA+ specifications were written against the pre-amendment protocol,
+while eager death is the premise of everything since. The design of record
+therefore has no verified model of the protocol it actually states, and any
+new scenario written against the checker inherits the drift. **What would
+answer it:** re-deriving the specifications, which is a precondition of any
+model-checker work rather than a task beside it.
 
 ## E. Threads
 
@@ -241,6 +368,21 @@ actor memory never crosses the boundary raw
 keeps one writer. **What remains open:** whether each actor runs its own
 epoch, and what the collector's single shared write — the epoch stamp —
 becomes across several of them.
+
+### E2. AArch64 header access  [hardware]
+
+`../rc-walk.md` open question 2. x86-64 is settled — plain moves, no lock
+prefix, no read-modify-write. The instruction half of the AArch64 claim is
+settled too; the cost half is not, and no machine here can take it.
+
+### E3. The domains proposal sits behind E1  [design]
+
+[`../domains.md`](../domains.md) is the standing multi-mutator design and
+carries its own open list, which E1 as a single node hides: a domain dying
+mid-epoch, per-domain enumeration, the drain-window invariant re-derived for
+a second mutator — [`../drain-window.md`](../drain-window.md) names that as a
+kill variant of the proven invariant — the move's counter semantics, and the
+shared-class destructor question.
 
 ## F. Prior art, round two
 

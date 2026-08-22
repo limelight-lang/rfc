@@ -105,14 +105,21 @@ flowchart TD
 ### A1. What the counted pair costs against its working set  [measured]
 
 Answered 2026-08-22, `ll-model` `dev/BENCHMARKS.md`. The pair an overwriting
-store adds over a plain one costs 4.1 ns where the headers are warm and
-88 ns at a population of a million entities, median of eight runs, spread of
-seven at the wide end. The figure is the difference between two arms of one
-run, not the store's whole cost. The direction is settled and the magnitude is not.
+store adds over a plain one costs 2.9 ns where both foreign headers are warm
+and 33 ns at a population of a million entities, median of six runs, spread
+of 12 % at the wide end. The figure is the difference between two arms of one
+run, not the store's whole cost.
 
-**What it changed:** an elided publication is worth up to 88 ns rather than
-the 2.4 ns the hot figure suggested, which raises every compiler proof
-below against every collector-side lever.
+An earlier measurement the same day read 88 ns and is retracted in that file:
+its probe published every store into one slot, so the displaced header was
+warm where the retained one was cold, and it charged the counted arm for
+scattered owner traffic the plain arm did not pay.
+
+**What it changed:** an elided publication is worth up to 33 ns rather than
+the 2.4 ns the hot figure suggested — about eleven times — which raises every
+compiler proof below against every collector-side lever. Node N's estimate of
+roughly 80 ns for the same quantity is high by a factor of 2.4, so the
+crossover it draws must be re-derived on the measured figure.
 
 ### A2. What the birth count removes  [compiler]
 

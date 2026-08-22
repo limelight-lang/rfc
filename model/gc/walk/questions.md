@@ -545,14 +545,15 @@ as a by-product; the second is the back-off signal a cadence needs to stop
 re-walking a heap that returns nothing.
 
 **What would answer this node:** a threshold over occupied entity slots with
-the back-off `confirmed` supplies, or a further quantity nobody has named. The threshold is not this crate's to give.
-Every workload in `ll-model` is hand-built, so a rate measured over one is
+the back-off `confirmed` supplies, or a further quantity nobody has named.
+The threshold is not this crate's to give: every workload in `ll-model` is
+hand-built, so a rate measured over one is
 the probe's own loop bound read back, and the gate `../rc-walk.md` puts on
 a starvation measurement stands. Two answers below it change the numbers
 rather than the shape: C2's exemption removes the parked records of
-entities dying before the second walk that meets them, and B4's figure makes an epoch's
-price edges as much as rows, so a threshold written in entities is not
-written in the walk's currency.
+entities dying before the second walk that meets them, and B4's figure
+makes an epoch's price edges as much as rows, so a threshold written in
+entities is not written in the walk's currency.
 
 ### C2. The young-free exemption  [curve measured; two readers and a missing publication keep it open]
 

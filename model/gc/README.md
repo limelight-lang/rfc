@@ -12,7 +12,8 @@ Covers GC algorithms, collection strategies, interaction with the Memory Manager
 - [gc-horizon.md](gc-horizon.md) — the compiler-side rule that decides which locals carry a count and where the uncounted ones pay: the ownership lattice, the eight horizon kinds, promotion
 - [gc-horizon-states.md](gc-horizon-states.md) — its state set: what the runtime must not change, the axes the lattice reads and creates, the product and the identities that collapse it
 - [gc-horizon-cases/](gc-horizon-cases/README.md) — sixteen cases instantiating the algorithm on one entity kind or one proof-ending event each, with the coverage table over the repository's own cases
-- [gc-horizon-v2/](gc-horizon-v2/README.md) — the current GC horizon design: the horizon pays by publishing to the collector rather than by a count, which removes the mutator's reference count from a class of entities
+- [walk/](walk/README.md) — the design of record from 2026-08-22: the counted heap edge stays the write barrier and the walk stays the cycle collector, with the open questions as a graph
+- [gc-horizon-v2/](gc-horizon-v2/README.md) — the capture-count regime, considered and refused 2026-08-22: the horizon pays by publishing to the collector rather than by a count; kept for nodes M and N, which record why it fails
 - [pure-destructors.md](pure-destructors.md) — the purity ladder P0/P1/P2/NR, the transitive closure, and the hand-off drain it makes sound
 - [retained-block-walk.md](retained-block-walk.md) — proposal: keep the reset's survivor list as an object index so retained former-arena blocks can be walked, retiring the "cycles among promoted survivors" limit
 - [domains.md](domains.md) — proposal: `rc-walk` with more than one mutator — one writer per refcount, `#[Moved]` and the frozen handover, `~=`, each domain collecting itself, and the cases

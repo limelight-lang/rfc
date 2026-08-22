@@ -959,3 +959,29 @@ checker; two design changes and one canonisation came out of it.
   limits recorded in rc-walk-proof.md.
 - **Cost:** acquitted components keep their bytes until the owner's
   next checkpoint; one more message kind on the queue.
+
+## 2026-08-22 — the capture-count regime is refused; the counted walk is the design of record
+
+The second design (`model/gc/gc-horizon-v2/`) stopped counting heap edges
+and left the concurrent walk to find them. Two findings closed it.
+
+**Soundness.** A walk reads each entity once, at different times. A
+reference moved from an unread entity into an already-read one is invisible
+to it, and under the regime no count moves to record the move. With zero
+per-store instructions the collector's observations are identical between
+"moved and live" and "dropped and garbage" — node M of that folder's
+`questions.md`, verified against the text in two review rounds.
+
+**Semantics.** The count is not only a barrier. It frees promptly at zero,
+answers the copy-on-write uniqueness test, and carries the arena's escape
+hold-count. Removing it from heap edges costs prompt `__destruct` for every
+entity held only through the heap, which `model/weak-references.md` already
+refused for one map type, and which `model/gc/gc-horizon.md` refused once
+before for Form B.
+
+The design of record is `model/gc/walk/`: the counted heap edge stays the
+write barrier, the walk stays the cycle collector, and the work moves to
+making each cheaper. The rulings that bound it and the open questions are in
+`model/gc/walk/questions.md`. `gc-horizon-v2/` is kept as the record of the
+refused road; its nodes M and N are the argument and are not re-derived
+elsewhere.

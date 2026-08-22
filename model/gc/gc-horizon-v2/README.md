@@ -1,9 +1,16 @@
-# GC Horizon, second design — the current one
+# GC Horizon, second design — the capture-count regime
 
-**This folder holds the current GC horizon design.** It supersedes
-[../gc-horizon.md](../gc-horizon.md), which is revision 6 of the first
-design and stays in place as the record of what that design decided and
-why. Where the two disagree, this folder is the later text; nothing here
+> **Considered and refused, 2026-08-22.** The design of record is
+> [`../walk/`](../walk/README.md): the counted heap edge stays the write
+> barrier. This folder is kept as the record of the capture-count regime and
+> of why it fails — nodes M and N of [questions.md](questions.md). Do not
+> build from it.
+
+**This folder holds the capture-count regime, refused on 2026-08-22.** It
+was written against [../gc-horizon.md](../gc-horizon.md), revision 6 of the
+first design, which stays in place and is again the text in force for the
+proof side. Where the two disagree, [../walk/](../walk/README.md) rules
+over both; nothing here
 is implemented and nothing there has been deleted.
 
 The two differ in one thing: what a borrow pays at a horizon. The first

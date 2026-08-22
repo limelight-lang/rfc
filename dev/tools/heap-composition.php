@@ -46,6 +46,46 @@ declare(strict_types=1);
 const SCALAR_TYPES = ['integer', 'double', 'boolean', 'NULL'];
 
 /**
+ * The heap's size classes, in bytes, copied from `ll-model`
+ * `src/memory/heap.rs`. The smallest class at or above a request is the one
+ * used; a request past the last goes to the large-entity path.
+ */
+const SIZE_CLASSES = [
+    16, 32, 48, 64, 80, 96, 112, 128,
+    160, 192, 224, 256,
+    320, 384, 448, 512,
+    640, 768, 896, 1024,
+    1280, 1536, 1792, 2048,
+    2560, 3072, 3584, 4096,
+    5120, 6144, 7168, 8192,
+];
+
+/** A block of the pooled heap, from the same file. */
+const BLOCK_BYTES = 64 * 1024;
+
+/**
+ * Header plus class word: what an entity carries before its own payload.
+ *
+ * An object is this plus one 16-byte slot per property, and an inline string
+ * is this plus its bytes. Both are the layouts `ll-model` uses, quoted here
+ * so the size-class arithmetic below is checkable against it rather than
+ * guessed.
+ */
+const ENTITY_PREFIX = 16;
+
+/** The size class a request of `$bytes` lands in, or null past the last. */
+function size_class(int $bytes): ?int
+{
+    foreach (SIZE_CLASSES as $class) {
+        if ($bytes <= $class) {
+            return $class;
+        }
+    }
+
+    return null;
+}
+
+/**
  * One scan's tally.
  *
  * Slot counts are per occupied slot, so an object with three properties
@@ -72,6 +112,23 @@ final class Tally
     public int $arraysWalked = 0;
     /** Objects whose properties could not be read. */
     public int $unreadable = 0;
+
+    /**
+     * Objects per slot count, which is what picks an object's size class:
+     * a header, a class word and one slot per property.
+     *
+     * @var array<int, int>
+     */
+    public array $slotCounts = [];
+
+    /**
+     * Size classes each entity kind lands in, as kind => class => count.
+     * What node B6 prices: segregating blocks by kind needs a tail block
+     * per pair that is in use, where today one class shares one.
+     *
+     * @var array<string, array<int, int>>
+     */
+    public array $classesByKind = [];
 }
 
 /**
@@ -127,7 +184,11 @@ function walk(array $roots, Tally $tally, int $maxDepth): void
             $class = $value::class;
             $tally->classes[$class] = ($tally->classes[$class] ?? 0) + 1;
 
-            foreach (properties_of($value) as $slot) {
+            $declared = properties_of($value);
+            $count = count($declared);
+            $tally->slotCounts[$count] = ($tally->slotCounts[$count] ?? 0) + 1;
+            record_class($tally, 'object', ENTITY_PREFIX + 16 * $count);
+            foreach ($declared as $slot) {
                 classify($slot, $tally);
                 if (is_object($slot) || is_array($slot)) {
                     $stack[] = [$slot, $depth + 1];
@@ -150,6 +211,17 @@ function walk(array $roots, Tally $tally, int $maxDepth): void
     }
 }
 
+/** Record which size class one entity of `$kind` lands in. */
+function record_class(Tally $tally, string $kind, int $bytes): void
+{
+    $class = size_class($bytes);
+    if ($class === null) {
+        return;
+    }
+
+    $tally->classesByKind[$kind][$class] = ($tally->classesByKind[$kind][$class] ?? 0) + 1;
+}
+
 /** Count one occupied slot by what it holds. */
 function classify(mixed $slot, Tally $tally): void
 {
@@ -160,7 +232,10 @@ function classify(mixed $slot, Tally $tally): void
         $tally->arraySlots++;
     } elseif ($type === 'string') {
         $tally->stringSlots++;
-        $tally->strings[$slot] = true;
+        if (!isset($tally->strings[$slot])) {
+            $tally->strings[$slot] = true;
+            record_class($tally, 'string', ENTITY_PREFIX + strlen($slot));
+        }
     } elseif (in_array($type, SCALAR_TYPES, true)) {
         $tally->scalarSlots++;
     } else {
@@ -221,6 +296,53 @@ printf(
     $tally->objectSlots,
     $objects === 0 ? 0.0 : $tally->objectSlots / $objects
 );
+
+// The size class an object lands in follows from its slot count, so the
+// spread of slot counts bounds how many classes a kind-segregated heap
+// would need a tail block for (node B6).
+$slots = $tally->slotCounts;
+ksort($slots);
+$distinct = count($slots);
+$widest = $distinct === 0 ? 0 : max(array_keys($slots));
+printf(
+    "  object slot counts       %d distinct, widest %d, spread %s\n",
+    $distinct,
+    $widest,
+    implode(
+        ' ',
+        array_map(
+            static fn (int $n, int $count): string => "{$n}:{$count}",
+            array_keys($slots),
+            array_values($slots)
+        )
+    )
+);
+
+// Node B6: segregating entity blocks by kind needs one partly-filled tail
+// block per pair of size class and kind that is in use, where today the
+// kinds sharing a class share its tail. The extra is therefore the pairs
+// beyond the first in each class.
+$pairs = 0;
+$classesInUse = [];
+foreach ($tally->classesByKind as $kind => $classes) {
+    foreach (array_keys($classes) as $class) {
+        $pairs++;
+        $classesInUse[$class] = true;
+    }
+}
+
+$extraTails = $pairs - count($classesInUse);
+printf(
+    "  size classes in use      %d over %d kind pairs — %d extra tail blocks, %.1f MiB\n",
+    count($classesInUse),
+    $pairs,
+    $extraTails,
+    $extraTails * BLOCK_BYTES / 1048576
+);
+foreach ($tally->classesByKind as $kind => $classes) {
+    ksort($classes);
+    printf("    %-7s %s\n", $kind, implode(' ', array_keys($classes)));
+}
 
 $top = $tally->classes;
 arsort($top);

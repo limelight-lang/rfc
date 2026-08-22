@@ -266,6 +266,19 @@ broken links.
         rewrites. Accepted whole; both nodes are open and carry the
         constraints. D5's costs were overstated in both legs and the case
         for moving a P2 call is stronger than the attempt said.
+      Critic 2026-08-22 round 5 (nine nodes closed by argument): eight broke.
+        The placement rule needs the cycle condition *and* an edge rule for
+        phis, and "a phi is an overwrite" was block-granular where PH20
+        requires edge liveness. C1 picked parked volume, which is zero while
+        nothing collects — a free parks only inside an epoch. C2's exemption
+        is unsound against the synchronous collection, which enrols every
+        GcHeap slot with no stamp test, and against block retirement. B5's
+        abort returns no memory when it fires and leaves the next epoch
+        parking more. E1's stamp half argued from a general heap that this
+        memory model does not have. C4 priced rung 2 in mutator cycles where
+        it costs epoch duration. D6 charged a kind branch a cell read's
+        price. B6's numbers reproduced; its mechanism did not. Accepted
+        whole; every one is open again with what the round established.
       handoff: the graph moved to `model/gc/walk/questions.md` on 2026-08-22
         with the refusal of the capture-count regime. Eleven rulings bound
         it, and rulings 10 and 11 were written into the list on 2026-08-22,

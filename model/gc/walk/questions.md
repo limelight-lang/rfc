@@ -72,28 +72,28 @@ flowchart TD
     A6 --> B1
     B2[B2 the acyclic class flag<br/>compiler] --> C1
     B4[B4 arrays as the commonest spine<br/>measured 2026-08-22] --> A6
-    B5[B5 the epoch-abort watermark<br/>proof done, watermark open] --> C1
+    B5[B5 the epoch-abort watermark<br/>open; returns no memory when it fires] --> C1
     C1 --> B5
     B6[B6 skip by block, not by entity<br/>measured; segregate, not count]
     B1 --> B6
 
-    C1[C1 background cadence<br/>quantity settled, thresholds open] --> C3
-    C2[C2 the young-free exemption<br/>proof done, number open] --> C1
+    C1[C1 background cadence<br/>open; parked volume eliminated] --> C3
+    C2[C2 the young-free exemption<br/>open; two more readers] --> C1
     C3[C3 the pressure ladder's constants<br/>measure]
-    C4[C4 do the rungs earn their keep<br/>kept; rate unmeasured] --> C3
+    C4[C4 do the rungs earn their keep<br/>open; priced wrongly once] --> C3
 
     D1[D1 the hand-off and hand-back channels<br/>open, five constraints] --> D5
     E1 --> D1
     D3[D3 the batch constants<br/>measure]
     D5[D5 collector-side destructor calls<br/>open, blocked on D1]
-    D6[D6 WeakMap ephemerons<br/>deferral stands, reason given]
+    D6[D6 WeakMap ephemerons<br/>open; edge-conditional shape unpriced]
 
-    E1[E1 what an owner is<br/>the stamp half answered] --> E3
+    E1[E1 what an owner is<br/>open, both halves] --> E3
     E3[E3 the domains proposal<br/>sorted; waits on E1]
     E2[E2 AArch64 header access<br/>hardware]
 
     G2[G2 the counted-out categories<br/>open, wider than question 8] --> G7
-    G3[G3 placement, raise sites and pad sets<br/>ruled 2026-08-22]
+    G3[G3 placement, raise sites and pad sets<br/>ruled; generator half open]
     G8[G8 anchored parameters<br/>design] --> G6
     G9[G9 one borrow analysis or two<br/>design] --> G6
     G4[G4 the trigger set against the sentinel<br/>design]
@@ -362,10 +362,20 @@ Two shapes, and the node used to say the second was where to start.
   allocator bumps through it, so one ring-capable entity anywhere in a
   block's fill is enough. A same-kind run has to exceed a whole block
   before any block comes out uniform, and a run of 10 000 — five blocks'
-  worth — still leaves 40 %, the boundaries landing mid-block. The shape
-  costs nothing in layout and returns nothing without runs no interleaved
-  program produces. Probe:
-  `collector::tests::how_uniform_a_block_comes_out`.
+  worth — still leaves 40 %. A first reading blamed run boundaries landing
+  mid-block; the arithmetic refutes it, a sequential one-block-at-a-time
+  fill predicting 50 / 60 / 50 % where 0 / 40 / 40 was measured with every
+  block full. The allocator keeps a per-class chain of available blocks
+  rather than one open block, which makes the result stronger: exact block
+  multiples still come out mixed. The shape costs nothing in layout and
+  returns nothing without runs no interleaved program produces. Probe:
+  `collector::tests::how_uniform_a_block_comes_out`, which now asserts the
+  size-class collision the measurement rests on.
+
+  Two limits on reading it as more than shape 1's refutation: the probe
+  classifies on `kind_may_close_a_cycle`, which is B1's rung and not the
+  walk's enrolment test, and the population is quiescent, where a running
+  epoch's stamp test would skip most young entities anyway.
 - **Segregate entity blocks by entity kind as well as by size class.** The
   walk then skips whole blocks untouched, which is worth more than B1's
   per-entity skip: B4 measured a leaf row at 40-54 ns and an edge at
@@ -374,12 +384,19 @@ Two shapes, and the node used to say the second was where to start.
   per pair of size class and kind, paid in footprint and fragmentation.
   **This is the shape that delivers**, and it is the one to price.
 
-**What would answer what is left:** the footprint of the tail blocks under
-a real class population, which is the corpus question of A6 once more, and
-whether the allocator's fill can be steered by kind without a second free
-list per class.
+**Shape 2's price has a first measurement**, 2026-08-22, taken with
+`../../../dev/tools/heap-composition.php` over a booted Laravel 13 after one
+handled request. Objects there occupy 15 size classes and strings 10, for 25
+pairs of class and kind over 17 distinct classes — so segregation costs **8
+extra tail blocks, half a mebibyte** at the 64 KiB block. Against the ~28 MiB
+that boot holds, under two per cent. The figure covers two kinds; the other
+five add pairs of their own, and one framework is not a class population.
 
-### B5. The epoch-abort watermark  [the proof pass is done; the watermark is not chosen]
+**What would answer what is left:** the same figure over more than one
+program, and whether the allocator's fill can be steered by kind without a
+second free list per class.
+
+### B5. The epoch-abort watermark  [open; the identity half holds and three others do not]
 
 The second collector-side bounding mechanism beside C2's exemption:
 abandon the epoch when parked volume crosses a watermark. `../rc-walk.md`
@@ -387,14 +404,30 @@ says it is sound while nothing is posted, the identity obligation running
 only from walk to drain of posted messages, and asks for its own proof
 pass.
 
-**The pass holds.** Before the first post no id is in flight, so no
-address has to stay stable, so the parked frees can be returned and the
-walk's tables — rows, edges, versions, all collector-private — discarded
-with the epoch. Nothing on the mutator side has to be told: the handshake
-it acked was a request for a checkpoint, not a promise of a verdict.
+**The identity half holds; three other halves do not.** Before the first
+post no id is in flight, so no address has to stay stable and the walk's
+tables — rows, edges, versions, all collector-private — go with the epoch.
+What a review round found beside it:
 
-**The one obligation the abort inherits is the epoch number, and the code
-already discharges it.** An aborted epoch's stamps stay on the entities it
+- **The abort returns no memory when it fires.** The park list is
+  thread-local and flushed by its own thread at a checkpoint (`ll-model`
+  `src/memory/deferred_free.rs`), so ending the window turns parked memory
+  into flushable memory and nothing more. The workload that crosses a
+  parked-volume watermark is a mutator allocating without reaching a
+  checkpoint, and that is exactly the one the abort cannot relieve.
+- **The next epoch parks more, not less.** `walk_rows` stamps every
+  occupied slot it passes with the current number before it tests the
+  category, so an aborted epoch leaves the heap stamped with its number.
+  At the next epoch those entities read neither zero nor current and are
+  enrolled — including everything born during the abandoned epoch, which
+  allocate-black had exempted.
+- **The handshake flag and the ack counter are cross-epoch state.** An
+  abort before any ack leaves the request raised with no epoch behind it,
+  and the ack counter is a single global whose first ack lowers the flag
+  for everyone, so a second mutator can be counted as having acked an
+  epoch it never saw.
+
+**The epoch number, at least, the code already discharges.** An aborted epoch's stamps stay on the entities it
 skipped, so a number reused immediately would make them read current and
 be skipped again. `Epoch::open` takes its number from a counter that
 advances on every open (`ll-model` `src/collector.rs`), so an abort
@@ -446,34 +479,35 @@ scatters them; both cell figures are lower bounds.
 per entity in a booted Laravel container, node A6. At that ratio edges carry
 about three fifths of the walk and rows two.
 
-### C1. The background cadence  [the quantity is settled; the thresholds are not]
+### C1. The background cadence  [open; one candidate is eliminated, and it was the one picked]
 
 Open question 1 of `../rc-walk.md`, undecided since 2026-07-28: how much
 deferred memory, how many suspects, or how long since the last epoch
 justifies a background epoch while nothing is failing. The pressure half is
 decided — the allocation-failure path climbs the self-help ladder.
 
-**Of the three candidate triggers, one is the quantity that actually
-bounds.** Parked volume is churn rate times epoch duration
-(`../rc-walk.md`), so it is the thing that grows without limit while
-nothing collects, and it is what a stall converts into memory. A suspect
-count measures the collector's opportunity rather than the program's cost,
-and time since the last epoch measures neither. So the background trigger
-is parked volume, and **it is the same measurement B5's watermark takes,
-one threshold lower**: cross the first and start an epoch, cross the second
-and abandon the one in flight.
+**Parked volume was picked on 2026-08-22 and is eliminated, by the formula
+that was cited for it.** Parked volume is churn rate times epoch duration,
+so with no epoch in flight it is zero, and the code says the same
+mechanically: a free parks only while `deferred_free::active()`, a bit that
+`begin_epoch` sets and `end_epoch` clears (`ll-model`
+`src/memory/deferred_free.rs`, `src/memory/stdapi.rs`). The quantity cannot
+cross a threshold under the condition the trigger exists for — nothing
+collecting.
 
-Two answers below it change the numbers rather than the shape. C2's
-exemption removes the parked records of entities born and died inside one
-epoch, which is what lets the cadence fall — its share is unmeasured. And
-B4's figure moves the cost side: an epoch's price is edges as much as rows,
-so the walk's cost per unit of heap is not the entity count the threshold
-would naturally be written in.
+**So the candidate that measures the program's cost while nothing collects
+is the suspect count**, which the same draft dismissed for measuring the
+collector's opportunity. It is the only available proxy for the uncollected
+cycle population, which is what actually grows in the quiet case.
 
-**What is left:** the two thresholds, which are C3's, and the measurement
-of what C2 removes.
+**What would answer this node:** a trigger over the suspect count with its
+threshold, or a fourth quantity nobody has named. Two answers below it
+change the numbers rather than the shape: C2's exemption removes the parked
+records of entities born and died inside one epoch, and B4's figure makes
+an epoch's price edges as much as rows, so a threshold written in entities
+is not written in the walk's currency.
 
-### C2. The young-free exemption  [the proof pass is done; the number is not measured]
+### C2. The young-free exemption  [the proof pass found two more readers; open]
 
 `../rc-walk.md` carries it in the backlog: an entity whose epoch byte reads
 0 or the current number at free time is in no snapshot row and no
@@ -500,14 +534,33 @@ the walk skips in turn, so no slot gains a row after the fact; and a slot
 whose entity is mid-teardown carries count 0, which `walk_rows` skips
 before it reads the stamp at all.
 
-**What is left is the number**, which is C1's and C3's currency: how much
-parked volume the exemption removes on a real churn rate. Parked records
+**The proof is incomplete, and a review round found where.** Two readers of
+a slot identity live outside the epoch's own vectors, and the exemption
+removes their protection too.
+
+- **The synchronous collection is a second walker.** `collect_cycles_inner`
+  enrols every `GcHeap` slot with no epoch-stamp test at all, keys a map by
+  address and places raw guards (`ll-model` `src/walk.rs`), and
+  `../rc-walk.md`'s ladder lets it run while an epoch is in flight on the
+  argument that frees still park. A young entity is in its tables, and the
+  exemption recycles that slot from under them.
+- **A block can empty and retire.** A retained block's snapshot carries a
+  frozen array of occupant addresses that the walk dereferences on every
+  pass; parking is what keeps the block from emptying, returning to the
+  pool and being re-commissioned at a different stride mid-epoch, which
+  [`../domains.md`](../domains.md) already names as a hole.
+
+So the exemption needs a second condition — no synchronous collection
+active, and nothing that would retire a block under a live snapshot — or it
+is unsound on the design's own self-help path. **What is left besides** is
+the number, which is C1's and C3's currency: how much parked volume the
+exemption removes on a real churn rate. Parked records
 are one for one with mid-epoch deaths, births included
 (`ll-model` `dev/BENCHMARKS.md`), and every one of those deaths is of an
 entity born this epoch or the last, so the exemption's share is large by
 construction and unmeasured in fact.
 
-### C4. Do the fixpoint and stratification rungs earn their keep  [decided by the philosophy; the rate is not measured]
+### C4. Do the fixpoint and stratification rungs earn their keep  [open; the first pricing was in the wrong currency]
 
 `../rc-walk.md` open question 3: whether rung 2 (re-walk the candidate set
 to a fixpoint) or rung 3 (stratify a repeatedly-acquitted garland) beats
@@ -519,22 +572,28 @@ one touch resets the round", and it is rung 4 that restores it; rung 3 is
 called an optional refinement outright. So the question is not soundness or
 termination but precision: how many forced drains the two rungs remove.
 
-**And precision here is paid in the currency the philosophy ranks.** A
-forced post costs the mutator one exact test over the component, `O(N)`
-reads in one uninterrupted stretch (node D4). Rung 3 is collector-private
-arithmetic on edges already recorded — no new shared state, nothing on the
-mutator — so under "the mutator does nothing beyond the program's own code,
-and a design that spends collector cycles to remove mutator cycles wins" it
-earns its keep the moment it cuts one garland. Rung 2 is not quite free: it
-costs one handshake ack per round, which is `O(1)` on the mutator against
-rung 4's `O(component)`, so it wins unless the component is small or the
-fixpoint needs many rounds.
+**A draft priced both rungs in mutator cycles and both prices were wrong.**
 
-**So both rungs are kept, and what is unmeasured is the rate**: how many
-rounds rung 2 takes to converge on a real candidate set, and how often a
-repeatedly-acquitted component has a stratum with no in-edge from the
-acquitted remainder. Those are the numbers C3 needs, and neither is a
-reason to remove a rung before it is taken.
+- **Rung 2 does not cost an ack; it costs epoch duration.** The ack is two
+  atomics, but a handshake is the collector *waiting* for one, and the wait
+  is a mutator-checkpoint interval per round, repeated until two rounds
+  agree. `../rc-walk.md` prices that itself — "the queue of deferred
+  releases also grows for the duration of an epoch: a slower collector
+  costs memory" — and epoch duration is the multiplicand of the quantity
+  that bounds the whole design. Against it, rung 4's exact test runs at a
+  checkpoint the thread was reaching anyway.
+- **Rung 3's arithmetic is private; its output is not.** Condensing one
+  component into strata posts several messages where the design charged
+  one, and the mutator's cost table charges one verification pass per
+  confirmed component. The epoch cannot close until all of them are acked,
+  and the hot stratum is re-posted every round.
+
+**So the question is open on both rungs**, and the comparison it needs is
+between epoch duration and verification passes rather than between mutator
+cycles alone. What is unmeasured is still the rate — rounds to convergence
+for rung 2, and how often a repeatedly-acquitted component has a stratum
+with no in-edge from the acquitted remainder — but the rate now decides a
+different trade.
 
 ### C3. The pressure ladder's constants  [measure]
 
@@ -660,7 +719,7 @@ same. The test is Ω(N) reads in one uninterrupted stretch.
 **Closed by ruling 10**, which accepts the pause rather than bounding it. The
 lever was never the test but N itself, and N is no longer to be reduced.
 
-### D6. WeakMap ephemerons  [the deferral stands, and now with a reason]
+### D6. WeakMap ephemerons  [open; the cost was overstated and a cheaper shape exists]
 
 [`../../weak-references.md`](../../weak-references.md#weakmap-cleanup-is-eager-not-lazy)
 records the mechanism and defers it: a value that references its own key
@@ -681,18 +740,27 @@ over counted edges, while an ephemeron needs a fixpoint over reachability —
 mark the key live only if something outside the map reaches it, then mark
 its value, then repeat until nothing new is marked.
 
-**What closing it would cost.** The walk's stride is uniform and
-kind-dispatched (`ll-model` `src/walk.rs`), and an ephemeron fixpoint needs
-the collector to know a map's structure rather than trace its cells like
-any other entity's. That is a per-kind hook in the middle of the stride
-whose per-cell cost B4 measured at 43-47 ns, and a second pass over the
-condemned set besides.
+**What closing it would cost was overstated once.** A draft charged the
+per-kind hook B4's 43-47 ns per cell; B4 measured the cost of *reading* a
+cell, and the stride is already kind-dispatched (`ll-model` `src/walk.rs`),
+so one more arm on an existing dispatch is a predicted branch rather than a
+cell read.
 
-**So the deferral stands**, and the entry it needs is not "implement
-ephemerons" but a ruling on whether the walk gains a per-kind hook at all.
-**What would answer it:** that ruling, and, before it, how many real
-programs hold a value that names its own key — the corpus question of A6
-in one more form.
+**And the shape the source names is cheaper than the one that draft
+rejected.** `../../weak-references.md` asks that the map's key-to-value
+edges be treated as conditional on key liveness — a rule over edges already
+recorded, which is the same material rung 3 of the pressure ladder works
+over. Expressed in this design's terms: drop those edges from `IN`, re-add
+the ones whose key still shows `RC − IN > 0`, iterate. The design already
+owns a fixpoint rung and edge-condensation arithmetic, and Phase 4 already
+walks the weak table at every death, which is where Zend put its own fix in
+8.3.
+
+**So the deferral is a choice rather than a consequence**, and what would
+answer the node is a ruling on the edge-conditional form above — where it
+runs, in the walk's judgement or in the drain's weak pass — and, before it,
+how many real programs hold a value that names its own key, which is the
+corpus question of A6 in one more form.
 
 ### D5. Collector-side destructor calls  [open; the case for moving them is stronger than it looked]
 
@@ -833,7 +901,7 @@ protocol, which `../gc-horizon-cases/arena.md` open item 3 already calls
 underivable; and what a long-lived actor does to its arena at a message
 boundary.
 
-### G3. Placement, raise sites, and what a landing pad releases  [ruled; one sentence owed to gc-horizon.md]
+### G3. Placement, raise sites, and what a landing pad releases  [ruled for pads and placement; the generator half is open]
 
 `../gc-horizon.md` question 9. Three review rounds ran over this node on
 2026-08-22 and each broke the closure the one before it produced. What
@@ -883,31 +951,42 @@ which discards the in-flight exception
 resumes. A `finally` that rethrows into a `catch` of the same frame is the
 shape that defeats the syntactic reading.
 
-**The execute-once condition is not a condition on placement: a phi is an
-overwrite.** The shape that raised it is a borrow that is a loop-header
-phi, where the promotion sits at the phi and runs once per iteration. That
-is correct rather than leaking, provided each iteration's value is released
-when the next one replaces it — and that is the rule the design already
-has everywhere else: an overwrite releases what it displaces. The lattice
-is assigned over SSA-form borrows and reads the phi as its disagreement
-detector ([`../gc-horizon.md`](../gc-horizon.md#the-ownership-lattice)), so
-a phi is a definition like any other and the value it replaces dies there.
-What was missing is the sentence saying so; no execution-count clause is
-owed once it is written, and one retain per value produced meets one
-release per value killed.
+**Two rules, not one, and the first was written and withdrawn twice.** The
+placement rule needs the cycle condition *and* an edge rule for phis, and
+they cover different shapes.
 
-**A suspended generator's pads take the cleanup set, with the suspension
-point standing in for the raise site.** A generator destroyed while
-suspended has its segment unwound separately, so its `finally` blocks run
-and the frame dies
-([`../../../runtime/exceptions.md`](../../../runtime/exceptions.md#inlining-and-generators)).
-A frame that dies is the case `../gc-horizon.md` already states: release
-the owned set live at the site. There is exactly one incoming edge — the
-destruction — so PH22's per-edge state has nothing to distinguish, and an
-anchored borrow in that frame is uncounted and goes with the frame. What
-stays open is not the pad but the arena half of the same shape: a fiber
-suspended across a reset carries frame borrows the reset cannot see, which
-is node G7.
+- **The cycle condition** — the promotion point lies inside no cycle the
+  birth lies outside of — is what a loop-invariant borrow needs. Without
+  it the latest point dominating a horizon inside a loop is inside the
+  loop, and the retain runs per iteration against one release. Nothing
+  else reaches that shape: the borrow is loop-invariant, so SSA gives it
+  no header phi.
+- **The edge rule** is what a loop-carried borrow needs, and it is PH20's
+  own assertion rather than a new invention: phi liveness belongs to
+  incoming edges, so a promoted phi is owned on each edge, the retain
+  sits there, and where the edge replaces a previous instance the order
+  is the store barrier's — retain the arriving value, then release the
+  replaced one. An earlier draft said "a phi is an overwrite, so the value
+  it replaces is released there"; that is block-granular, which PH20
+  refuses, and it left the order unstated, so two edges naming one entity
+  could drive its count through zero. It also generalised a rule the
+  repository states for heap-slot stores only, and which
+  [`../../memory/arenas.md`](../../memory/arenas.md#the-reverse-direction-request-arena--heap)
+  makes an exception to.
+
+**The generator half is not derivable and is back open.** A draft closed it
+by treating the destruction of a suspended generator as a cleanup pad with
+the suspension point for a raise site. The frame model is undecided:
+[`../../../runtime/exceptions.md`](../../../runtime/exceptions.md#inlining-and-generators)
+is a deferral naming two shapes that "differ completely", and under the one
+PHP's own rule points at, a suspended generator has no frames at all, only
+a data structure — no frame, no pad. `Generator::throw()` is a second way
+into a `finally` around a `yield`, with the frame alive, so the "exactly
+one incoming edge" the draft rested on is wrong. And selecting a set per
+suspension point needs a resume index, which is a runtime tag written on
+the normal path — PH22's third option, excluded by the granularity ruling
+of 2026-08-18. [`../gc-horizon-cases/suspension.md`](../gc-horizon-cases/suspension.md)
+is a hole report for exactly this, and it stays one.
 
 **Owed elsewhere:** oracle A1 of `unwind.md` asserts the pad's set equals
 the owned locals live at the raise site, which is now true of a dying
@@ -1045,27 +1124,35 @@ than a task beside it — which is what
 [`../gc-horizon-cases/README.md`](../gc-horizon-cases/README.md) already
 tells the case book about its third candidate oracle.
 
-### E1. Actors and the epoch protocol  [the stamp half is answered; the ownership half is a hole]
+### E1. Actors and the epoch protocol  [open; both halves rest on the same scaffolding]
 
 Refcounts are non-atomic and the crate is single-mutator
 (`../rc-walk.md`). The node asked whether each actor runs its own epoch,
 and what the collector's single shared write — the epoch stamp — becomes
 across several of them.
 
-**The stamp stays single-writer, because only one heap has an epoch.** The
-walk enrols the `GcHeap` category and nothing else (`ll-model`
-`src/walk.rs`, phase 1), and an actor's own memory is its arenas, which are
-reclaimed by reset rather than walked
-([`../../memory/arenas.md`](../../memory/arenas.md#request-arena)). What
-`../../../runtime/actors.md` calls per-actor collection at message
-boundaries is arena work over one actor's arenas, and per-actor GC
-selection binds which routine runs there. The general heap outside every
-actor keeps one collector, so the epoch byte keeps one writer and needs no
-partitioning. What multiplies is the mutator side: several actors are
-several owners for the verdict protocol, and that is the routing problem
-[`../domains.md`](../domains.md) inventories — one global handshake flag
-whose first ack lowers it for everyone, one ack counter, one global verdict
-queue, one outstanding counter.
+**The stamp is single-writer today, and not for the reason a draft gave.**
+That draft argued that only the general heap has an epoch, so the byte has
+one writer. Two things refute it. There is no general heap in this memory
+model — every block belongs to some thread's heap, which
+`../../../runtime/actors.md`'s own open list records and node E3 repeats —
+and an actor's memory is not only its arenas: a provably transferable
+object is born directly in the general-heap category and held by the actor
+while hosted by whichever pool thread mounts it. Second, the walk stamps
+far more than it enrols: `walk_rows` writes the stamp and *then* tests the
+memory category (`ll-model` `src/collector.rs`), so every occupied slot of
+every category is stamped and only the `GcHeap` ones get a row.
+
+What actually keeps one writer is that the protocol is one-at-a-time by
+construction: the epoch number, the handshake flag, the ack counter, the
+verdict queue and the outstanding count are process-global statics and
+opening an epoch asserts that epochs do not nest. Two collectors would
+reach the same header through the global block registry, each reading the
+other's number as an old stamp — [`../domains.md`](../domains.md) invented
+a per-block "epoch it was snapshotted in" field for that reason and noted
+that a bare 1-255 number does not say whose epoch it is. **So the stamp
+half is not answered; it is held by the same single-mutator scaffolding
+E1's other half is about.**
 
 **The ownership half is worse than "undecided": two in-force documents
 disagree about what an owner is.**
@@ -1125,7 +1212,9 @@ the epoch protocol actually needs:
 heap owned by no domain, that this memory model has none, and that a
 transferable entity promoted out of an actor's arena therefore has a thread
 for a host and an actor for a holder. That is E1, and it is owed a
-re-derivation there rather than here.
+re-derivation there rather than here. It is also the sentence that refuted
+E1's first draft, which argued from a general heap that this item says does
+not exist.
 
 **What the epoch protocol needs before anything else.** Three items, and
 the proposal ranks the first itself:

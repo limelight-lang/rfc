@@ -294,10 +294,12 @@ lowering of the same borrow. Placement rules:
 
 - The promotion point is the **latest point dominated by the borrow's
   birth that dominates every horizon, every exit and every raise site
-  of the borrow's live range**. A phi is an overwrite: the value it
-  replaces is released there, so a promotion at a loop-header phi pairs
-  one retain per value produced with one release per value killed, and
-  no execution-count clause is owed. The birth always qualifies, so the
+  of the borrow's live range, and that lies inside no cycle the birth
+  lies outside of**. The cycle condition is what keeps the retain out of
+  a loop body for a borrow born before the loop, and it subsumes the
+  loop clause below for that case; a borrow born *inside* a cycle — a
+  loop-header phi — is not touched by it, and its own balance is the
+  edge rule beside it. The birth always qualifies, so the
   rule is total, and promotion at the birth is today's lowering for
   that borrow. Those points form a dominator chain, so the latest is
   unique. The word was "closest" until 2026-08-22, and it reads as the
@@ -313,6 +315,16 @@ lowering of the same borrow. Placement rules:
   **including its exceptional edges**: a use inside a `catch` is a use,
   and deleting those edges would put the drop point of a value the
   handler reads before the raise site.
+- **A promoted borrow that is a phi is owned on each incoming edge.**
+  The retain sits on the edge rather than at the merge, which is what
+  PH20 asserts — phi liveness belongs to incoming edges, and no release
+  of an anchor may precede a phi-edge use carrying its borrow
+  ([gc-horizon-cases/adversarial.md](gc-horizon-cases/adversarial.md)).
+  Where the edge replaces a previous instance, the order is the store
+  barrier's: retain the arriving value, then release the replaced one,
+  so two edges naming the same entity never drive its count through
+  zero. PH15 bounds which phis reach this rule at all: a phi falls to
+  owned unless the same chain dominates every incoming edge.
 - Promotion cannot precede the birth: the retain's operand exists
   only after the load. This is also the static argument that death
   order is preserved — a promoted borrow holds its count over a
@@ -1182,11 +1194,16 @@ under [gc-horizon-cases/](gc-horizon-cases/) carry the failing shape.
    per edge. PH9 and three case files asserted the same, and the reading
    that avoided the clause was tried and failed — a horizon inside a
    `catch` is dominated by no promotion placed after the raise site,
-   and a handler pad's releases run destructors that sever. The phi rule above is what
-   closes the loop-header shape, and a suspended generator's pads need
-   no rule of their own: the frame dies, so the cleanup set applies with
-   the suspension point standing in for the raise site. The argument and the three review rounds are in
-   [walk/questions.md](walk/questions.md#g3-placement-raise-sites-and-what-a-landing-pad-releases--ruled-one-sentence-owed-to-gc-horizonmd).
+   and a handler pad's releases run destructors that sever. **What is left open:** the pads
+   of a suspended generator. The frame model is undecided — one of the
+   two shapes `exceptions.md` names has no frames at all, only a data
+   structure — so what such a pad releases cannot be derived, and
+   `gc-horizon-cases/suspension.md` is a hole report for that reason.
+   `Generator::throw()` also enters a `finally` around a `yield` with
+   the frame alive, so there is more than one way in, and selecting a
+   set per suspension point needs a resume index — a runtime tag on the
+   normal path, which the granularity ruling of 2026-08-18 excludes. The argument and the three review rounds are in
+   [walk/questions.md](walk/questions.md#g3-placement-raise-sites-and-what-a-landing-pad-releases--ruled-for-pads-and-placement-the-generator-half-is-open).
 10. ~~**The COW and unique-ownership base cases intersect
     inconsistently.**~~ Ruled by Edmond, 2026-08-22: COW wins. The
     unique-ownership proof establishes lifetime, and lifetime is not

@@ -64,7 +64,7 @@ flowchart TD
     A2[A2 the birth count<br/>compiler]
     A3[A3 unique ownership<br/>compiler]
     A4[A4 anchor-chain elision<br/>compiler]
-    A5[A5 a cheaper count word<br/>today]
+    A5[A5 a cheaper count word<br/>answered, prefetch unsettled]
     A7[A7 the unique-ownership discriminant<br/>answered 2026-08-22]
     A8[A8 clearing the COW flag by proof<br/>compiler] --> A3
 
@@ -187,12 +187,48 @@ cannot be strategy-neutral. Either unique ownership is declared
 131 070 positions today, and the fallback for an out-of-range index is a
 linear scan rather than an error.
 
-### A5. A cheaper count word  [today]
+### A5. A cheaper count word  [answered in direction; one lever unpriced]
 
 The narrow mutator already writes back four bytes rather than eight
-(`../rc-walk.md`). **What would answer it:** whether any further shape —
-coalescing repeated updates within a region, a per-thread deferred log —
-pays after A1's figure. F1 feeds this node.
+(`../rc-walk.md`). The node asked whether any further shape pays after
+A1's figure. **The width is not the lever, and A1 says so**: the pair
+costs 2.9 ns with both foreign headers warm and 33 ns at a population of a
+million. The store is inside the 2.9; what the other 30 buys is the miss.
+A narrower or cheaper store cannot reach it.
+
+**Coalescing is bounded by the checkpoint cadence.** F1's shape — one log
+entry per object per epoch instead of one pair per write — pays only where
+the same header is touched more than once inside the window, and the
+window cannot be an epoch here: the exact test recomputes in-degree from
+current fields and compares it against the count, and only the owner reads
+the counts current
+([`../pure-destructors.md`](../pure-destructors.md#the-five-owner-bound-races)).
+A log must therefore drain before any checkpoint that can run the test,
+and checkpoints sit on every loop back edge. What is left to coalesce is
+one straight-line stretch.
+
+**A deferred log is already refused where the count matters most.**
+[`../../values.md`](../../values.md#refcount-is-always-maintained-on-cow-entities)
+rules deferred ARC out for COW entities at any tier, the sharing test
+being consumed at the instant of the write. Every COW-eligible reference
+is counted by base case, so the log would apply to the remainder only, and
+the remainder is what the compiler proofs of section A are trying to
+remove anyway.
+
+**The lever is the miss, and a prefetch was measured against it**,
+2026-08-22, `ll-model` `dev/BENCHMARKS.md`. Two arms, both counted,
+identical but for a read prefetch of the retained and the displaced header
+issued eight stores ahead. Where nothing misses it costs 0.9 ns per store,
+stable across runs. At a million entities seven repeats recovered +11.6,
++7.3, −0.3, −1.3, +20.3, +1.3 and +7.2 ns — median +7.2, five of seven
+positive, and the spread crosses zero while the bare arm's own median moves
+between 79 and 107 ns. **The direction is suggestive and the magnitude is
+unmeasured.** Probe:
+`memory::barrier::tests::what_a_prefetch_recovers_from_a_cold_pair`.
+
+**What would settle it:** a wide point that holds still — a pinned core and
+a longer round, or a machine that is not WSL2 — and then the prefetch
+distance varied, which is fixed at eight and not tuned.
 
 ### A8. Clearing the COW flag by proof  [compiler]
 

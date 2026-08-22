@@ -45,8 +45,8 @@ reclamation runs in the middle of ordinary program code.
   exact test, cycles.
 
 **The epoch serves both.** It is what tells either mode what it must not
-judge — an entity stamped new is skipped by both — and it is what ends a
-mark without anyone retracting it.
+judge: an entity stamped new is skipped by both, and its age is left
+intact for every policy that reads it.
 
 Two things this owes, neither settled. The candidate set is a mechanism
 this repository has removed once: the header's candidate-buffer index went
@@ -100,80 +100,64 @@ edges are all internal to the walked heap needs no header count for the
 walk to judge it; what the walk cannot see is the reference held in a
 frame, and that is exactly what the publication supplies.
 
-## The two prices of one protection
+## The one price: the capture count
 
-Both prices answer the same question — *is this entity held from outside
-the heap* — and differ in how long the answer stands and who ends it.
+For an entity in the deferred regime the count word stops counting
+references and counts **captures by code** — the places where the program
+itself holds the entity. Heap-internal edges are absent from it, the
+collector enumerating those by walking. `retain` increments the captures
+and the collector reads a positive capture count as roothood; `release`
+decrements, and zero means the code holds the entity nowhere, not that the
+entity is dead. No death branch runs at zero and no destructor fires:
+reclamation is the collector's, by reachability.
 
-**The mark: one byte, expires by itself.** The epoch byte at object
-offset 6 already means "created during the current epoch", and the walk
-answers it by stamping the current epoch number and skipping the slot;
-a skipped entity and its targets are pinned as roots
-([../rc-walk.md](../rc-walk.md#the-one-header-byte)). Writing 0 into
-that byte at a horizon publishes the same thing about an entity that is
-not new. The mutator already performs this store once per entity, at
-allocation, so the operation is not a new one.
+The operation is today's, unchanged. Under `rc-walk` `ll_retain` loads the
+header once as a relaxed atomic word, branches on the category bits, and
+stores back only the four-byte counter half — a narrow write, no atomic
+read-modify-write anywhere, because the count has one writer and the
+collector never writes it (`model/src/refcount.rs`). What the deferred bit
+changes is the meaning of the word, not the instructions.
 
-Nothing has to clear the mark, because the walk clears it: the stamp
-ages, and an entity stamped with an older epoch is walked and judged
-again. That is the property a sticky bit lacks — the first design's
-Form C states the lack outright ("without a stack scan or a
-reassertion handshake the collector has no sound operation that clears
-it", [../gc-horizon.md](../gc-horizon.md)) and answers it with a
-canonical root owner and a demotion path, machinery the ageing byte
-does not need. Two locals holding one entity both write 0, and neither
-has to know about the other.
+**This is not a new kind of header state.** The runtime already reuses the
+count word for a count that is not a lifetime count, gated by a flag:
+`IS_ESCAPEE` says that a request-arena entity is referenced from one or
+more longer-lived containers, and "while set, `refcount` holds the escape
+hold-count instead of a lifetime count — arena objects are not
+lifetime-counted, so the field is free" (`model/src/refcount.rs`). The
+capture count is that hold-count generalised to a second population.
 
-The mark expires, so it does not accumulate: it is placed at each
-horizon rather than once at a point dominating them all.
+**An expiring mark was considered and dropped** (Edmond, 2026-08-21). The
+proposal was to publish roothood by writing 0 into the epoch byte at each
+horizon, which costs one byte store and needs no release, the walk clearing
+it by ageing. Two objections killed it. It overwrites the collector's
+maturity stamp, so an entity that has lived for many epochs reads as
+newborn and every policy that reads age loses its input. And "new" in Phase
+1 means skip-entirely, so the marked entity's children lose their in-edges,
+`RC - IN` inflates for all of them and none can be judged. Moving the mark
+to its own free byte answers both, and was dropped in turn for a plainer
+reason: a count is already being maintained for the durable case, and one
+mechanism is better than two. What the mark would have saved is one
+retain/release pair on a live range that crosses exactly one horizon —
+which is Form A's cost for that borrow, so the second design simply does
+not compete on the local-reference path.
 
-**The capture count: durable, and released explicitly.** For an entity
-in the deferred regime the count word stops counting references and
-counts **captures by code** — the places where the program itself holds
-the entity. Heap-internal edges are absent from it, the collector
-enumerating those. So `retain` increments the captures and the collector
-reads a positive capture count as a root, exactly as it reads the mark
-but without an expiry; `release` decrements, and zero means the code
-holds the entity nowhere, not that the entity is dead. No death branch
-runs at zero and no destructor fires: reclamation is the collector's,
-by reachability.
-
-**The capture count is not a new kind of header state.** The runtime
-already reuses the count word for a count that is not a lifetime count,
-gated by a flag: `IS_ESCAPEE` says that a request-arena entity is
-referenced from one or more longer-lived containers, and "while set,
-`refcount` holds the escape hold-count instead of a lifetime count —
-arena objects are not lifetime-counted, so the field is free"
-(`model/src/refcount.rs`). The entity joins the arena's escapee list on the
-0 to 1 transition and the flag is cleared when the count returns to zero.
-The deferred regime's flag plays the same role for a different population,
-and the capture count is that hold-count generalised.
-
-**Which price the compiler picks** follows the shape of the borrow's
-live range. A live range crossing one horizon takes the mark: one store,
-nothing to undo. A live range crossing a loop or a run of horizons takes
-the pair, placed once at a point dominating them all — the first
-design's placement rule, unchanged
-([../gc-horizon.md](../gc-horizon.md#at-the-horizon-promotion)).
+**Where the saving is, then.** On the store path, and only there:
 
 ```php
-$c = $a->property;
-foreach ($items as $x) {
-    work();            // no trusted effects: a horizon
-    $c->method();
+final class Chain {
+    private ?Node $head = null;
+
+    public function push(Node $n): void {
+        $n->next    = $this->head;   // today: retain + release
+        $this->head = $n;            // today: retain + release
+    }                                // deferred regime: nothing
 }
 ```
 
-Marking `$c` here would store once per iteration, because a mark placed
-before the loop is aged out by the first walk that runs inside it. The
-pair costs two operations for the whole loop, so this shape takes the
-pair.
-
-`$x` is a different case and takes neither price: it is a borrow of
-`$items`, which is an owned local live across the whole loop, so its
-chain holds through every iteration and its live range reaches no
-horizon. A loop matters only for a borrow whose proof the loop body
-breaks.
+Locals keep the first design's rule and pay a pair at a horizon; fields of
+a declared deferred type pay nothing at all. That is the population the
+optimisation was aimed at from the start — entities whose properties are
+written often.
 
 ## Which slots must publish
 
@@ -186,8 +170,10 @@ removes the count, so each of those slots needs its own answer.
 
 - **A slot the walk sees** — a field of a walked GC-heap entity. The
   collector enumerates the edge itself and the mutator pays nothing.
-- **A frame slot.** Nothing records it and no owner can retract it at a
-  known point, which is what the mark is for.
+- **A frame slot.** Nothing records it, so the compiler takes a capture at
+  the horizon its live range reaches and releases it at the end of that
+  range — the first design's placement rule, with the capture count in
+  place of the reference count.
 - **An arena slot, a static, an immortal container, an FFI handle.** Each
   has an owner that ends at a known point — the reset, the overwrite, the
   handle's close — so each can carry a capture count, and the arena's store
@@ -281,7 +267,7 @@ unique ownership applies here unchanged.
 1. **Walk it, and it may be condemned** — an ordinary GC-heap entity,
    in either regime.
 2. **Walk it as a root, never condemn it** — an entity the compiler
-   owns, an immortal or arena entity, and an entity a mark or a capture
+   owns, an immortal or arena entity, and an entity a positive capture
    count protects.
 3. **Skip it entirely** — no `rc[]` row, no out-edges, no in-edges.
 
@@ -345,11 +331,9 @@ narrow-mutator amendment of 2026-07-27 (`model/src/refcount.rs`,
   read. The word is loaded on that path already. The bit is cleared by
   whoever frees the slot, and the collector frees deferred entities, so
   the mutator pays nothing for it.
-- **The mark is the epoch byte, written 0.** A single-byte relaxed
-  store, which is what the collector's own stamp is. The 2026-07-27
-  amendment bars the mutator from storing the whole flags half, because
-  such a store buries a fresh stamp; a byte store to offset 6 buries
-  nothing else.
+- **The epoch byte is untouched.** The mutator writes it once, at
+  construction, exactly as today; nothing in this design gives it a second
+  writer, so the maturity stamp keeps its meaning.
 - **The capture count is bytes 0-3**, the half `ll_retain` already loads
   and branches on.
 
@@ -373,67 +357,54 @@ function f(mixed $x) {
 }
 ```
 
-The compiler cannot pick the regime here, and the first design's answer —
-analysis failure selects counted — is unsound once the two regimes differ
-at runtime, because a `retain` on a deferred entity writes into a word no
-one maintains.
+The compiler cannot pick the regime here, and it does not have to. It
+emits today's counted lowering, and the runtime does the right thing from
+the header: `ll_retain` already branches on the flags word before touching
+the count, so one more state in that word makes the same call increment a
+reference count on a counted entity and a capture count on a deferred one.
+Both are correct.
 
-The way out is an asymmetry: **the mark is sound in both regimes and the
-retain is not.** Marking a counted entity costs one epoch of survival,
-since the walk skips it and skipping costs recall rather than
-correctness. So an unresolved site emits the retain and the mark
-together and needs no regime test of its own; the retain's header test,
-which already exists for arenas and immortals, absorbs the rest.
+What an unresolved site cannot do is elide a store. `$bag->data = $n` on an
+untyped slot emits `retain(new)` and `release(old)` as today, and on a
+deferred target that pair moves the capture count for what is really a heap
+edge. The collector also enumerates that edge, so the entity is counted
+twice — which keeps it alive longer than necessary and never less, and the
+pair still balances under any number of overwrites. Conservative, and the
+declared-type rule is what turns it back into nothing.
 
 ## What changes in `rc-walk`
 
 The first design changes nothing in the collector, and says so in its
 scope ("nothing in this document changes `rc-walk`'s protocol, the
 header layout, or what the mutator does at a checkpoint",
-[../gc-horizon.md](../gc-horizon.md)). This one changes four things.
+[../gc-horizon.md](../gc-horizon.md)). This one changes five things, and
+the header layout is not among them.
 
-1. **The epoch byte becomes a safety gate.** Today no byte is one:
-   Phase 3 decides only what is worth posting and Phase 4 re-reads
-   counts race-free, so a lost or stale byte costs a wasted message
-   ([../rc-walk.md](../rc-walk.md#the-one-header-byte)). Under this
-   design a lost mark is a freed live entity.
+1. **Roothood for a deferred entity is read, not derived.** `RC - IN > 0`
+   holds because every slot the walk cannot see is counted
+   ([../rc-walk.md](../rc-walk.md#the-central-identity-roots-are-derived-not-enumerated));
+   for a deferred entity the count holds captures only, so roothood is the
+   capture count itself and `IN` is what the walk enumerates beside it.
 2. **The occupancy test gains the regime bit**, a zero count no longer
    meaning a free slot.
 3. **Skipping stops being total** for a source with uncounted children,
    which narrows treatment 3 as described above.
 4. **The walk enrols compiler-owned entities as roots** rather than
    passing over them.
+5. **The drain's corpse rule splits.** Today a member reading `refcount ==
+   0` is a corpse and drops the message whole. For a deferred member zero
+   is the ordinary condemned state, so occupancy comes from the regime bit
+   and liveness from the capture count, read from the same word.
 
 ## Open questions
 
-1. **Phase 4's exact test for a deferred entity.** Its exactness today
-   comes from re-reading counts and edge sources; a deferred entity has
-   no count to re-read, and what separates "a local holds it" from
-   "garbage" is the mark, read in a race.
-2. **The mark against a concurrent walk.** A walker that read an older
-   epoch has already recorded the row, so a mark stored after that read
-   arrives too late and the entity is judged this epoch. The mark
-   therefore needs an ordering rule against the walk, or a second
-   race-free channel.
-3. **Class property, allocation category, or both.** The regime is a
-   class property in the emitter's terms, but retain and release are
-   already absent for arena entities and return early for immortal ones
-   ([../../memory/arenas.md](../../memory/arenas.md#object-categories-by-memory-strategy)),
-   so the capture count exists only in the GC-heap category.
-4. **Cross-regime edges.** A counted source may die between two
-   collector reads and remove its edge into a deferred target. The first
-   design's Form C names the two instruments — a boundary count, or a
-   barrier and a snapshot — and picks the first
-   ([../gc-horizon.md](../gc-horizon.md)); this design has not chosen.
-5. **Cycles.** A mark or a capture count pins an entity, and an
-   unreachable cycle among deferred entities has neither, so reclaiming
-   it still needs a trace from the roots. Publication answers roothood
-   and not reachability.
-6. **The prior art.** Deferred reference counting, ulterior reference
-   counting and their descendants occupy this space, and the specific
-   combination here — publication into the header instead of a stack
-   scan, with an ageing byte as the clearing operation — has not been
-   searched for yet. That search is the next step.
+Kept in full, with their dependencies, in
+[questions.md](questions.md). In brief, what is still open after
+2026-08-21: the cross-regime edge from a counted source into deferred
+space; cycles, which no publication answers; whether the arena stays an
+unwalked root source or the walk enters it; the moment a weak cell reads
+null; the collector called from inside the mutator; and the profitability
+threshold that selects the regime, which needs measurement.
 
 ## Record
 
@@ -443,9 +414,10 @@ argument that settled it:
 
 - The payment at a horizon is a publication rather than a count, and the
   mutator's only obligation is to publish at points of uncertainty.
-- The mark is placed at every horizon, because it expires and does not
-  accumulate; a live range crossing many horizons takes the pair
-  instead.
+- The horizon is paid with a capture, and only with a capture: the
+  expiring mark was proposed, refined and dropped in one session, the
+  deciding reason being that a count is maintained for the durable case
+  anyway and one mechanism beats two.
 - The regime lives in its own flags bit, because a category code would
   remove the entity from the walk that counts it.
 - Occupancy is `refcount != 0 || deferred`, cleared by whoever frees the
@@ -453,8 +425,9 @@ argument that settled it:
 - A compiler-owned entity is walked as a root and never condemned, and
   it may hold deferred children; forbidding that edge would need a test
   on every store, which is a write barrier.
-- An unresolved call site emits both the retain and the mark, the mark
-  being sound in both regimes.
+- An unresolved call site emits today's counted lowering unchanged; the
+  runtime reads the regime from the header and the same `retain` moves the
+  right counter.
 - The deferred regime is a property of the entity and is available in any
   memory, so what decides who must publish is whether the walk sees the
   slot, not where the memory came from (Edmond, correcting the first

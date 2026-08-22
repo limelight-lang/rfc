@@ -11,11 +11,11 @@ graph TD
     A["A. Which slots must publish<br/>RESOLVED"]
     B["B. Regime selection<br/>class, category, or both"]
     C["C. Cross-regime edges<br/>counted source, deferred target"]
-    D["D. The mark against<br/>a concurrent walk"]
-    E["E. Phase 4's exact test<br/>without a count"]
+    D["D. The mark vs the walk<br/>CLOSED"]
+    E["E. Phase 4's exact test<br/>CLOSED"]
     F["F. Cycles<br/>publication is not reachability"]
-    G["G. Where the mark lives<br/>header byte or side metadata"]
-    H["H. Renewal placement<br/>and its measured cost"]
+    G["G. Where the mark lives<br/>CLOSED"]
+    H["H. Renewal placement<br/>CLOSED"]
     I["I. Compiler-owned entities<br/>in the walk"]
     J["J. Is the arena an unwalked<br/>root source?"]
     K["K. The weak-reference<br/>moment"]
@@ -133,7 +133,12 @@ be made to publish the target instead of dropping the edge silently, which
 is the same operation as the arena's release-at-reset list performed at a
 different owner's end.
 
-## D. The mark against a concurrent walk
+## D. The mark against a concurrent walk  [closed 2026-08-21]
+
+**Closed by removing the mark.** The horizon is paid with a capture count
+and nothing else, so no mutator write races the walk and the epoch byte
+keeps its single meaning ([top-level.md](top-level.md), "The one price").
+The original entry:
 
 **Open.** A walker that has already read an older epoch for a slot has
 recorded its `rc[]` row, so a mark stored after that read arrives too late
@@ -149,7 +154,13 @@ exclusivity window ([../drain-window.md](../drain-window.md)).
 
 **Blocks:** E.
 
-## E. Phase 4's exact test without a count
+## E. Phase 4's exact test without a count  [closed 2026-08-21]
+
+**Closed with D.** A deferred entity has a count — of captures — so the
+drain reads the same word it reads today. What splits is the corpse rule:
+occupancy comes from the regime bit, liveness from the capture count, and
+a zero capture count on an occupied slot is the ordinary condemned state
+rather than a corpse. The original entry:
 
 **Open.** Phase 4 is exact because it re-reads counts and edge sources
 race-free. A deferred entity has no count to re-read, so the only thing
@@ -173,7 +184,14 @@ the backup trace over deferred space, and what triggers it.
 
 **Blocks:** I.
 
-## G. Where the mark lives — header byte or side metadata
+## G. Where the mark lives — header byte or side metadata  [closed 2026-08-21]
+
+**Closed by removing the mark.** Two placements were considered and both
+dropped: the epoch byte, which overwrites the maturity stamp and costs the
+children of a marked entity their in-edges, and a free byte of its own,
+which answers both objections and was dropped in turn because a count is
+maintained for the durable case anyway. LXR's dense side metadata stays on
+file for any future per-object collector state. The original entry:
 
 **Open, and the prior art moved it.** The header byte is cheaper for the
 mutator: the cache line is already loaded by the operation next to it. Dense
@@ -191,7 +209,13 @@ the cost of one collector sweep in each, measured rather than argued.
 
 **Blocks:** H.
 
-## H. Renewal placement and its cost
+## H. Renewal placement and its cost  [closed 2026-08-21]
+
+**Closed with D.** Nothing expires, so nothing is renewed. What replaces
+this node is the placement obligation a `release` carries and a mark did
+not: a drop point at the end of the live range and landing-pad coverage at
+every raise site, which is the first design's open question 9 and is
+inherited unchanged. The original entry:
 
 **Provisionally decided, cost open.** The mark is placed at every horizon
 rather than once at a dominating point, because it expires and does not

@@ -307,6 +307,26 @@ of a narrower population: license the deferred regime only for classes
 whose instances provably do not leave a region, and `N` inherits that
 region's bound.
 
+## The acquittal rate as a control signal
+
+**Edmond's proposal, 2026-08-21, under review.** The confirming pass ends
+knowing two numbers it did not have to gather: how many suspects it was
+handed and how many it freed. When the share it could not free runs high,
+the collector's opinion is worth less, and the response is to run it less
+often for a while. The signal costs nothing — the mutator has just finished
+the pass and holds both numbers — and it is local, so no coordination is
+needed. LXR modulates its collections from a related signal, predicted
+survival rate, with a work budget beside it
+([prior-art.md](prior-art.md)).
+
+Two things have to be settled before it can be trusted. A high acquittal
+rate has two possible causes — a live set that is simply stable, where
+backing off is right, and a walk being blinded structurally, where backing
+off hides a defect instead of answering it. And backing off is exactly
+wrong when the rate is high while allocation pressure rises, which is when
+collection is wanted most, so the controller needs pressure as a second
+input.
+
 ## The three treatments the collector owes an entity
 
 1. **Walk it, and it may be condemned** — an ordinary GC-heap entity,

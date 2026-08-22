@@ -65,7 +65,7 @@ flowchart TD
     A3[A3 unique ownership<br/>compiler]
     A4[A4 anchor-chain elision<br/>compiler]
     A5[A5 a cheaper count word<br/>today]
-    A7[A7 the unique-ownership discriminant<br/>today]
+    A7[A7 the unique-ownership discriminant<br/>answered 2026-08-22]
     A8[A8 clearing the COW flag by proof<br/>compiler] --> A3
 
     B1[B1 skip kinds that cannot ring<br/>rate measured, share corpus] --> C1
@@ -149,11 +149,43 @@ Form A of `../gc-horizon.md`: a borrow anchored by a counted holder emits no
 pair. **What would answer it:** the share of borrows whose anchor the
 compiler can prove.
 
-### A7. The unique-ownership header discriminant  [today]
+### A7. The unique-ownership header discriminant  [answered against the header; one consequence is new]
 
-`../rc-walk.md` leaves it undecided: a sentinel value in the count word, or a
-bit of the freed byte. A3 asks what share of entities the proof reaches; this
-asks how the runtime tells one apart.
+`../rc-walk.md` left it between a sentinel value in the count word and a
+bit of the freed byte. Read against the header as it stands (`ll-model`
+`src/refcount.rs`, and [`../../classes.md`](../../classes.md#flags-layout) for the flag map),
+the first option is not a discriminant at all and the second exists in
+only one build.
+
+**The sentinel value cannot discriminate.** `../rc-walk.md` names the
+sentinel as the value 1, which is exactly what an ordinary entity holding
+one reference reads. It is an occupancy marker — it keeps the walker's
+"is this slot live" test working — and it says nothing about whether the
+word is a count. A discriminant made of a value would have to reserve one
+no real count reaches, `u32::MAX` being the only candidate, and that rests
+on a count never arriving there rather than on a proof.
+
+**The flag word has no free bit below the epoch byte.** Bits 0-1 are the
+memory category, 2-3 the GC state, 4-5 the collector colour, 6 the
+buffered bit, 7 the weak-reference bit, 8 and 9 the two destructor bits,
+10 COW, 11 the live-escapee bit and **12-14 the entity kind**. Bit 15 is
+the string's out-of-line bit for one kind, and the whole of 15-31 is the
+candidate-buffer index in an `rc-trace` build.
+
+**So the discriminant is a bit of the retired condemned byte, 24-31**,
+free under `rc-walk` since the eager-death amendment of 2026-07-27 and
+used by nothing today.
+
+**The consequence nobody has recorded: unique ownership is then an
+`rc-walk`-only feature.** Under `rc-trace` bits 15-31 are the candidate
+index, so no bit is free and the count word is the only place left, which
+is the option this node just refused. Strategy selection is a build-time
+feature precisely because the two cannot share the top half of the word
+(`../strategies.md`), so a proof that changes what the count word means
+cannot be strategy-neutral. Either unique ownership is declared
+`rc-walk`-only, or the candidate index is narrowed to make room —
+131 070 positions today, and the fallback for an out-of-range index is a
+linear scan rather than an error.
 
 ### A5. A cheaper count word  [today]
 

@@ -84,7 +84,6 @@ flowchart TD
     E3[E3 the domains proposal<br/>design]
     E2[E2 AArch64 header access<br/>hardware]
 
-    G1[G1 the weak cell is uncounted<br/>today] --> G4
     G2[G2 promotion in two categories<br/>today]
     G3[G3 placement must dominate raises<br/>today]
     G8[G8 anchored parameters<br/>design] --> G6
@@ -346,17 +345,26 @@ questions are open questions of the design of record. They were not in the
 first draft of this graph. Numbering here is local; the number in
 `gc-horizon.md` is given for each.
 
-### G1. The weak cell is an uncounted edge, and no base case excludes it  [today]
+### G1. The weak cell is an uncounted edge  [closed]
 
 `../gc-horizon.md` question 7, opened by the case-book review of 2026-08-20.
-A weak cell references its target with no count, so a path through it is not
-the counted chain the anchor-chain invariant requires, and the exact test —
-which balances counted references only — would free the referent under a live
-borrow. **This is a soundness hole, not a gap in the prose**, and it is the
-most severe node in this graph. **What would answer it:** naming the
-weak-cell edge in the owned base-case list, and deciding whether the
-always-provable elision rules need "the region contains no weak-cell load"
-among their preconditions.
+A weak cell references its target with no count, so a chain anchored on a
+path through it is anchored on nothing, and the exact test — which balances
+counted references only — would free the referent under a live borrow. It was
+the one soundness hole among the open nodes.
+
+**Closed by ruling 11**: the value a weak-cell read produces is an owned base
+case. It is counted always and elided never, which is what happens today by
+the convention that a call result is owned, and is now a rule rather than an
+accident of lowering. The alternative considered and refused was a
+precondition on the elision rules — "the region contains no weak-cell load" —
+which forbids more than the hazard: it would strip elision from every value
+in a region that merely contains a `get()`.
+
+The collector's side of the same edge is covered elsewhere: a weak cell is an
+in-edge the equality cannot see, so a component naming one is judged by the
+mutator, which nulls the cells inside the visit that frees, with no user code
+between — ruling 8 keeps such a component off the collector's arm.
 
 ### G2. Promotion buys nothing in two memory categories  [today]
 

@@ -1,6 +1,6 @@
 # PLAN
 
-Updated: 2026-08-21 · Active: S5
+Updated: 2026-08-22 · Active: S5
 
 Destination: the GC horizon algorithm is readable in this repository as a case
 book — every entity kind and every event that can end a proof has its own case,
@@ -176,11 +176,13 @@ marked Final.
 - [ ] S3.2 Critic round 2 over round 1's fixes; unresolved findings to Sage
       tier: T2 · role: Critic → Sage
 
-## S5 — The second design: the horizon pays by publishing  [in progress]
+## S5 — The second design, refused; the counted walk is the design of record  [in progress]
 
-Goal: the second design is written, reviewed and placed against the prior art
-that already occupies its space, so that the choice between it and the first
-design rests on named differences rather than on which text is newer.
+Goal, as amended 2026-08-22: the capture-count regime is refused with its
+reasons recorded, the counted walk is the design of record with its open
+questions as a graph, and the work that follows is ranked against measurement
+rather than against which text is newer. The stage keeps its number and its
+closed steps; steps S5.4 onward were re-aimed the day the regime fell.
 Done when: every step below is closed and `dev/tools/linkcheck.php` reports zero
 broken links.
 
@@ -224,23 +226,21 @@ broken links.
         a deferred regime exist outside actor-private memory — and it bounds
         every node below.
 - [ ] S5.4 Resolve the graph node by node, root first
-      done: every node in `questions.md` carries either an answer with its
-        argument, or a recorded reason for staying open; nodes whose answer
-        changes another document are folded into it rather than left in the
-        graph alone
+      done: every node in `model/gc/walk/questions.md` carries either an
+        answer with its argument, or a recorded reason for staying open;
+        nodes whose answer changes another document are folded into it
+        rather than left in the graph alone
       tier: T2 · role: Critic
-- [ ] S5.4a Measure what the mutator's confirming trace costs
-      done: a probe in the code repository, built on the pattern of
-        `memory::barrier::tests::what_a_store_costs_by_working_set`, reports
-        the cost of tracing N entities with F reference fields against
-        working-set size, with a null-sweep control and the same
-        hot/cold split; the curve is recorded in the code repository's
-        `dev/BENCHMARKS.md` with the machine named, and the number of
-        entities that fit a stated pause budget is read off it
-      tier: T2 · role: —
-      note: this gates the road taken in `gc-horizon-v2/top-level.md`, "Who
-        judges a deferred entity". Buildable today: no compiler is needed,
-        only a synthetic object graph and the existing probe's skeleton.
+      handoff: the graph moved to `model/gc/walk/questions.md` on 2026-08-22
+        with the refusal of the capture-count regime. Eleven rulings bound
+        it. Closed: A1 (measured), B3 (already built), D2, D4 and G1 (by
+        rulings 10 and 11). B1's rate is measured and its share is corpus.
+        Fifteen nodes open, three of them roots: A6 the corpus share, G7
+        borrow scopes across suspensions, and the compiler-owed group.
+- [~] S5.4a Measure what the mutator's confirming trace costs
+      note: dropped with the capture-count regime, 2026-08-22 — the trace it
+        was to price belonged to the deferred regime's finalise arm, and
+        there is no such arm in the design of record.
 - [x] S5.4b Measure what a counted store really costs when it misses
       done: a cold-mode canary for the `retain`/`release` pair, on the
         existing probe pattern, reports the pair's cost when the two foreign
@@ -258,30 +258,29 @@ broken links.
         direction is settled and the magnitude is not. Node N's unmeasured
         ~80 ns estimate is inside the range and near its median. Probe:
         `memory::barrier::tests::what_a_counted_pair_costs_when_headers_miss`.
-- [ ] S5.5 Absorb the proof side into `gc-horizon-v2/` and retire `gc-horizon.md`
-      done: the ownership lattice with its owned base cases, the anchor-chain
-        invariant, the horizon list, the placement rule and the class/site
-        hybrid live in `model/gc/gc-horizon-v2/`; every inbound citation is
-        re-pointed — 32 files reference `gc-horizon.md` today, the sixteen
-        case files heaviest among them — and what remains of the old document
-        is either a dated record of the first variant with its four Critic
-        rounds and the roads not taken, or nothing, per Edmond's call at the
-        time; linkcheck green
+- [ ] S5.5 Give the design of record one home
+      done: `model/gc/walk/` carries the protocol and the proof side under
+        one banner, or `gc-horizon.md` stays the proof-side text in force
+        with `walk/` above it — Edmond's call; either way no document says
+        `gc-horizon-v2/` is current, every inbound citation resolves, and
+        linkcheck is green
       tier: T2 · role: Critic
-      note: Edmond asked for the old algorithm to go (2026-08-21). It is a
-        move rather than a deletion because `v2` took the proof side as given
-        and defines none of its terms. Scheduled after S5.4 deliberately: half
-        the graph's nodes still cite the old document, and moving text under
-        wording that is still changing is the work done twice.
-- [ ] S5.6 Two Critic rounds over the second design, then Sage on what does not close
+      note: reversed on 2026-08-22. The step used to move the proof side
+        *into* `gc-horizon-v2/`, which is now the refused regime. The banner
+        work is done — `gc-horizon.md` and `model/gc/README.md` name `walk/`
+        as the design of record — and what is left is whether the proof side
+        moves house.
+
+- [ ] S5.6 Two Critic rounds over the design of record, then Sage on what does not close
       done: both rounds are recorded here, every finding is fixed or refused
         with a reason, and any surviving dispute carries a Sage verdict marked
         Final
       tier: T2 · role: Critic → Sage
 - [ ] S5.7 Fold the outcome back into the case book
-      done: each of the sixteen cases either states that the second design
-        leaves it unchanged or carries the case's new shape under it, and
-        `gc-horizon-states.md` carries the header states this design adds
+      done: each of the sixteen cases either states that the rulings of
+        2026-08-22 leave it unchanged or carries the case's new shape under
+        them — ruling 11 touches the weak-reference case directly — and the
+        cases that cite `gc-horizon-v2/` as current are re-pointed
       tier: T2 · role: Critic
 
 ## S4 — Code from the cases

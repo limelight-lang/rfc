@@ -66,6 +66,7 @@ flowchart TD
     A4[A4 anchor-chain elision<br/>compiler]
     A5[A5 a cheaper count word<br/>today]
     A7[A7 the unique-ownership discriminant<br/>today]
+    A8[A8 clearing the COW flag by proof<br/>compiler] --> A3
 
     B1[B1 skip kinds that cannot ring<br/>rate measured, share corpus] --> C1
     A6 --> B1
@@ -93,7 +94,7 @@ flowchart TD
     G3[G3 placement, raise sites and pad sets<br/>design]
     G8[G8 anchored parameters<br/>design] --> G6
     G9[G9 one borrow analysis or two<br/>design] --> G6
-    G4[G4 COW and unique intersect<br/>design]
+    G4[G4 the trigger set against the sentinel<br/>design]
     G7[G7 borrow scopes across suspensions<br/>design] --> G6
     G6[G6 the summary language<br/>design] --> G5
     G5[G5 the trusted-effect boundary<br/>design]
@@ -160,6 +161,20 @@ The narrow mutator already writes back four bytes rather than eight
 (`../rc-walk.md`). **What would answer it:** whether any further shape —
 coalescing repeated updates within a region, a per-thread deferred log —
 pays after A1's figure. F1 feeds this node.
+
+### A8. Clearing the COW flag by proof  [compiler]
+
+The road Edmond's ruling of 2026-08-22 opens
+(`../../../dev/DECISIONS.md`). COW is one bit of `RcHeader.flags` and
+non-COW arrays and objects already exist
+([`../../values.md`](../../values.md#cow-is-a-per-object-flag)), so an
+entity the compiler proves never needs the separation test can leave COW
+outright and become eligible for A3. **What would answer it:** the proof
+obligation — every write to the entity is through a holder the compiler
+knows to be sole, over the entity's whole life — and what the flag's other
+readers do when it is clear. **What it does not reach:** strings, where
+the flag is the layout, set meaning bytes inline, and is fixed at
+creation.
 
 ### A6. What share of stores survives every proof  [corpus]
 
@@ -477,60 +492,51 @@ reconciled: PH9's shape — a handler using a borrow the severing callee
 killed — is decided by the second and third rulings, not by the
 placement rule alone.
 
-### G4. COW and unique ownership intersect inconsistently  [design]
+### G4. COW and unique ownership intersect  [ruled; the trigger set stays open]
 
-`../gc-horizon.md` question 10. The obvious repair — read the demotion
-trigger set as a closure over every site whose lowering emits a retain
-against the entity — was tried and does not hold. What the round leaves is
-a narrower question and one source the base case reads too narrowly.
+`../gc-horizon.md` question 10. **Ruled by Edmond, 2026-08-22: COW wins**
+(`../../../dev/DECISIONS.md`). The unique-ownership proof establishes
+lifetime — one owning slot, death at the overwrite — and lifetime is not
+what the separation test asks, so the proof neither answers that test nor
+licenses removing the count. A COW-eligible entity keeps its count
+whatever else is proved about it, and the intersection is empty rather
+than contradictory: the occupancy sentinel and the COW flag never sit in
+one header.
 
-**The trigger set cannot be a closure over the lowering.** The
-unique-crossing base case
-([`../gc-horizon.md`](../gc-horizon.md#the-ownership-lattice)) classifies a
-borrow as owned *because* the entity is unique. Where the borrow's target
-is that entity — `$n = $this->e` on the owning slot — the retain lands on
-it, so the retain is a trigger, so the entity demotes, so the base case
-stops firing, so the retain is gone and the proof stands again. A borrow
-of a descendant retains a counted child instead and triggers nothing, so
-the oscillation is the endpoint case rather than the whole base case. A rule evaluated once against the lowering
-computed under the assumption of uniqueness, and never revisited, does
-terminate — each entity demotes at most once — and that is a different rule
-from a closure. Neither is written anywhere.
-
-**Widening the set to every retain site empties the proof rather than
-repairing it.** Under the one-pass reading every load of a unique entity
-into a local is a trigger, and the convention sites already remove every
-entity that is returned, passed or received, so what survives is an entity
-stored and overwritten and never loaded. What that costs is node A3's
-share, which A6 has not measured, so the repair is refused for reaching
-past the collision rather than for a priced loss.
-
-**A release against the sentinel is the hazard the trigger set misses.**
-`new` is owned by the lattice, which absorbs the creation reference and
-releases at the drop point
-([`../gc-horizon.md`](../gc-horizon.md#the-ownership-lattice)), while the
-owning store into a unique slot is plain and takes no count — so the
-temporary's release drives the occupancy sentinel to zero, which is eager
-death, a destructor call, a free, and a walker reading an occupied slot as
-free. Either the trigger set names release sites as well as retain sites,
-or the owner's allocation is specified as a move that consumes the
-temporary.
-
-**The suppression side has a source the base case drops.**
+The elision licence
 [`../../values.md`](../../values.md#refcount-is-always-maintained-on-cow-entities)
-states the invariant and its licence in one sentence: a second holder
-retains before it can write, "and the compiler may elide a retain/release
-pair only where it has proved that no second holder arises". Uniqueness is
-that proof. The lattice's COW base case cites the same section for the
-prohibition alone, and the case book sets the licence aside as a different
-instrument
-([`../gc-horizon-cases/README.md`](../gc-horizon-cases/README.md)). The
-ruling to make is therefore narrower than the question reads: whether the
-licence `values.md` already grants is what governs a proven-unique COW
-entity, which is Edmond's call.
+grants — a pair may be elided "only where it has proved that no second
+holder arises" — is therefore not discharged by the uniqueness proof. The
+road it does open is node A8: prove COW itself unnecessary and clear the
+flag, after which the entity is no longer COW-eligible and unique
+ownership applies to it normally.
 
-**What would answer this node:** that ruling, and, whichever way it goes, a
-trigger rule that is one-pass and that names release sites.
+**What stays open is the trigger set, which the collision only exposed.**
+Two defects survive the ruling because neither is about COW.
+
+- **A retain against the sentinel from a base case.** The unique-crossing
+  base case ([`../gc-horizon.md`](../gc-horizon.md#the-ownership-lattice))
+  classifies a borrow as owned *because* the entity is unique. Where the
+  borrow's target is that entity — `$n = $this->e` on the owning slot —
+  the retain lands on the sentinel, and the demotion trigger set names
+  convention retains and horizon-reaching borrows only, so nothing fires.
+  Reading the set as a closure over the lowering does not repair it: the
+  base case's predicate is the verdict the set computes, so the two
+  oscillate. Evaluated once against the lowering computed under the
+  assumption of uniqueness, and never revisited, it terminates — and that
+  one-pass rule then demotes every entity ever loaded into a local, whose
+  cost is node A3's share and A6 has not measured it.
+- **A release against the sentinel.** `new` is owned by the lattice, which
+  absorbs the creation reference and releases at the drop point
+  ([`../gc-horizon.md`](../gc-horizon.md#the-ownership-lattice)), while
+  the owning store into a unique slot takes no count — so the temporary's
+  release drives the sentinel to zero, which is eager death, a destructor
+  call, a free, and a walker reading an occupied slot as free. Either the
+  trigger set names release sites, or the owner's allocation is specified
+  as a move that consumes the temporary.
+
+**What would answer this node:** a written trigger rule that is one-pass
+and that names release sites as well as retain sites.
 
 ### G5. The trusted-effect boundary  [design]
 

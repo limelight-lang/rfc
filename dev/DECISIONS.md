@@ -10,6 +10,60 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-22 — copy-on-write outranks the unique-ownership proof
+
+**Decided (Edmond):** where a COW-eligible entity is also proved uniquely
+owned, COW wins and the count is maintained. The unique-ownership proof
+establishes lifetime — one owning slot, death at the overwrite — and
+lifetime is not what the separation test asks, so the proof neither
+answers it nor licenses removing the count.
+
+**Why:** the separation test reads the count to decide whether a write
+copies ([values.md](../model/values.md#refcount-is-always-maintained-on-cow-entities)),
+which is value semantics rather than bookkeeping. A count word holding the
+occupancy sentinel would answer that test with a constant.
+
+**The other road is a separate instrument.** The compiler may prove COW
+itself unnecessary for an entity and **clear the COW flag**, one bit of
+`RcHeader.flags`, non-COW arrays and objects already existing
+([values.md](../model/values.md#cow-is-a-per-object-flag)). That proof is
+explicit and owed on its own terms, and only after it does the entity
+leave COW and become eligible for the unique-ownership treatment. Strings
+are outside it: there the flag is the layout and is fixed at creation.
+
+**Rejected:** reading `values.md`'s elision licence — "only where it has
+proved that no second holder arises" — as discharged by the uniqueness
+proof.
+
+**Cost:** a uniquely-owned array keeps today's count and today's
+separation check until the COW-clearing proof exists.
+
+## 2026-08-22 — the capture-count regime is refused; the counted walk is the design of record
+
+The second design (`model/gc/gc-horizon-v2/`) stopped counting heap edges
+and left the concurrent walk to find them. Two findings closed it.
+
+**Soundness.** A walk reads each entity once, at different times. A
+reference moved from an unread entity into an already-read one is invisible
+to it, and under the regime no count moves to record the move. With zero
+per-store instructions the collector's observations are identical between
+"moved and live" and "dropped and garbage" — node M of that folder's
+`questions.md`, verified against the text in two review rounds.
+
+**Semantics.** The count is not only a barrier. It frees promptly at zero,
+answers the copy-on-write uniqueness test, and carries the arena's escape
+hold-count. Removing it from heap edges costs prompt `__destruct` for every
+entity held only through the heap, which `model/weak-references.md` already
+refused for one map type, and which `model/gc/gc-horizon.md` refused once
+before for Form B.
+
+The design of record is `model/gc/walk/`: the counted heap edge stays the
+write barrier, the walk stays the cycle collector, and the work moves to
+making each cheaper. The rulings that bound it and the open questions are in
+`model/gc/walk/questions.md`. `gc-horizon-v2/` is kept as the record of the
+refused road; its nodes M and N are the argument and are not re-derived
+elsewhere.
+
 ## 2026-08-21 — the horizon pays by publishing, and the second design gets its own folder
 
 **Decided (Edmond):** the payment at a GC horizon is a publication the
@@ -959,29 +1013,3 @@ checker; two design changes and one canonisation came out of it.
   limits recorded in rc-walk-proof.md.
 - **Cost:** acquitted components keep their bytes until the owner's
   next checkpoint; one more message kind on the queue.
-
-## 2026-08-22 — the capture-count regime is refused; the counted walk is the design of record
-
-The second design (`model/gc/gc-horizon-v2/`) stopped counting heap edges
-and left the concurrent walk to find them. Two findings closed it.
-
-**Soundness.** A walk reads each entity once, at different times. A
-reference moved from an unread entity into an already-read one is invisible
-to it, and under the regime no count moves to record the move. With zero
-per-store instructions the collector's observations are identical between
-"moved and live" and "dropped and garbage" — node M of that folder's
-`questions.md`, verified against the text in two review rounds.
-
-**Semantics.** The count is not only a barrier. It frees promptly at zero,
-answers the copy-on-write uniqueness test, and carries the arena's escape
-hold-count. Removing it from heap edges costs prompt `__destruct` for every
-entity held only through the heap, which `model/weak-references.md` already
-refused for one map type, and which `model/gc/gc-horizon.md` refused once
-before for Form B.
-
-The design of record is `model/gc/walk/`: the counted heap edge stays the
-write barrier, the walk stays the cycle collector, and the work moves to
-making each cheaper. The rulings that bound it and the open questions are in
-`model/gc/walk/questions.md`. `gc-horizon-v2/` is kept as the record of the
-refused road; its nodes M and N are the argument and are not re-derived
-elsewhere.

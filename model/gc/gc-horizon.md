@@ -110,7 +110,12 @@ by construction:
 - every reference to a COW-eligible value — array, string, reference
   box — because their uniqueness test reads the count and an
   uncounted holder falsifies it
-  ([values.md](../values.md#refcount-is-always-maintained-on-cow-entities));
+  ([values.md](../values.md#refcount-is-always-maintained-on-cow-entities)).
+  This base case outranks the unique-ownership proof, ruled 2026-08-22:
+  that proof establishes lifetime, and lifetime is not what the
+  separation test asks. An entity leaves the case only by a proof that
+  clears the COW flag itself
+  ([dev/DECISIONS.md](../../dev/DECISIONS.md));
 - **the value a weak-cell read produces** — a cell references its
   target with no count
   ([weak-references.md](../weak-references.md#the-weak-cell-is-the-canonical-weakreference-itself)),
@@ -1152,23 +1157,20 @@ under [gc-horizon-cases/](gc-horizon-cases/) carry the failing shape.
    here rather than reconciled, and the rulings settle it. The argument
    is in
    [walk/questions.md](walk/questions.md#g3-placement-raise-sites-and-what-a-landing-pad-releases--design).
-10. **The COW and unique-ownership base cases intersect
-    inconsistently.** A COW-eligible referent that is also unique
-    demands a counted holder from one base case and forbids every
-    retain from the other. The demotion trigger set names convention
-    retains and horizon-reaching borrows, and does not name the
-    base-case retains, so the intersection has no defined lowering.
-    Widening the set to every retain site was tried on 2026-08-22 and
-    does not repair it: the unique-crossing base case fires because the
-    entity is unique, so the widened set oscillates, and read as a
-    one-pass rule instead it demotes every entity ever loaded into a
-    local, which empties the proof. The set also has to name release
-    sites, an owned temporary's drop-point release driving the
-    occupancy sentinel to zero. The narrower ruling this reduces to —
-    whether the elision licence
-    [values.md](../values.md#refcount-is-always-maintained-on-cow-entities)
-    already grants is what governs a proven-unique COW entity — is in
-    [walk/questions.md](walk/questions.md#g4-cow-and-unique-ownership-intersect-inconsistently--design).
+10. ~~**The COW and unique-ownership base cases intersect
+    inconsistently.**~~ Ruled by Edmond, 2026-08-22: COW wins. The
+    unique-ownership proof establishes lifetime, and lifetime is not
+    what the separation test asks, so a COW-eligible entity keeps its
+    count whatever else is proved about it and the intersection is
+    empty ([dev/DECISIONS.md](../../dev/DECISIONS.md)). The separate
+    instrument the ruling names is a proof that COW itself is
+    unnecessary, which clears the flag and takes the entity out of the
+    COW base case altogether. **What the question exposed and the
+    ruling does not settle:** the demotion trigger set names convention
+    retains and horizon-reaching borrows, and a base-case retain
+    against the occupancy sentinel fires none of them, while an owned
+    temporary's drop-point release drives that sentinel to zero
+    ([walk/questions.md](walk/questions.md#g4-cow-and-unique-ownership-intersect--ruled-the-trigger-set-stays-open)).
 11. **The trusted-effect boundary is not specified.** A stored callee
     summary is not the compiler's only source of effect knowledge:
     interprocedural body analysis, builtin and intrinsic models, runtime

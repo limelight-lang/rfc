@@ -41,3 +41,24 @@ work that is the same for every task.
   and decides nothing. **Sage** settles a dispute Critic did not close after two
   rounds, and the verdict is marked `Final`. A role line is written when the call
   happened, never in advance.
+
+## Consolidation check
+
+Every set of documents written or amended in one sitting goes through a
+**consolidation agent** before the work is called done. It is a separate
+reader, not the author, and it looks for four things:
+
+- **A citation that does not say what it is cited for.** Quote against
+  source, line by line.
+- **A superseded document used as if it were in force.** `rc-walk.md` is the
+  first version of the walk; `gc-horizon-v2/` is a refused regime. Text taken
+  from either is a record, never an obligation the new work must satisfy, and
+  a new document that reconciles itself against them has taken the wrong
+  authority.
+- **Two of the new documents contradicting each other**, or a banner, status
+  line or index row contradicting the body it introduces.
+- **A claim with no source at all** — a number, a mechanism or a rule stated
+  as fact and traceable to nothing.
+
+It reports; it changes nothing. Errors of fact only: style is `style-en.md`
+and is not this pass's business.

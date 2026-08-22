@@ -11,13 +11,14 @@ graph TD
     A["A. Which slots must publish<br/>RESOLVED"]
     B["B. Regime selection<br/>class, category, or both"]
     C["C. Cross-regime edges<br/>counted source, deferred target"]
-    D["D. The mark vs the walk<br/>CLOSED"]
-    E["E. Phase 4's exact test<br/>CLOSED"]
-    F["F. Cycles<br/>CLOSED"]
+    D["D. The mark vs the walk<br/>REOPENED"]
+    E["E. Phase 4's exact test<br/>REOPENED"]
+    F["F. Cycles<br/>REOPENED"]
     G["G. Where the mark lives<br/>CLOSED"]
     H["H. Renewal placement<br/>CLOSED"]
     I["I. Compiler-owned entities<br/>in the walk"]
     J["J. Is the arena an unwalked<br/>root source?"]
+    M["M. The heap-edge channel<br/>OPEN, blocks D E F"]
     K["K. The weak-reference<br/>moment"]
     L["L. The collector called<br/>from inside the mutator"]
     Z["Z. The economics gate"]
@@ -33,6 +34,10 @@ graph TD
     G --> H
     A --> J
     J --> Z
+    B --> M
+    M --> D
+    M --> E
+    M --> F
     B --> K
     K --> Z
     B --> L
@@ -133,7 +138,7 @@ be made to publish the target instead of dropping the edge silently, which
 is the same operation as the arena's release-at-reset list performed at a
 different owner's end.
 
-## D. The mark against a concurrent walk  [closed 2026-08-21]
+## D. The mark against a concurrent walk  [reopened 2026-08-21]
 
 **Closed by removing the mark.** The horizon is paid with a capture count
 and nothing else, so no mutator write races the walk and the epoch byte
@@ -154,7 +159,7 @@ exclusivity window ([../drain-window.md](../drain-window.md)).
 
 **Blocks:** E.
 
-## E. Phase 4's exact test without a count  [closed 2026-08-21]
+## E. Phase 4's exact test without a count  [reopened 2026-08-21]
 
 **Closed with D.** A deferred entity has a count — of captures — so the
 drain reads the same word it reads today. What splits is the corpse rule:
@@ -170,7 +175,7 @@ whether that read can be trusted.
 **What would answer it:** the deferred arm of the exact test, stated as
 what it reads and under which exclusivity.
 
-## F. Cycles  [closed 2026-08-21]
+## F. Cycles  [reopened 2026-08-21]
 
 **Closed: the collector already traces.** `rc-walk` does not decide by
 arithmetic. It computes a root set, marks what is reachable from it, and
@@ -291,6 +296,62 @@ enter arena memory and enumerate its edges like any other, is undecided.
 against the cost of maintaining and re-reading the root list, and whether
 arena memory can be scanned at all — the walk finds object boundaries in
 entity blocks by slot arithmetic, and an arena hands out memory by cursor.
+
+## M. The heap-edge channel: the walk cannot see a deferred in-edge
+
+**Open, and it reopens D, E and F.** Found by a Fable review, 2026-08-21,
+with every citation checked against the text.
+
+The capture count restores roothood for holders outside the walked heap.
+It restores nothing for **heap edges into deferred space**, and the walk
+has two ways of never seeing one.
+
+*The race.* With `addr(P) < addr(Q)`, both mature, `Q.f = T` and T's
+captures zero: the walker scans P, the mutator executes `$p->f = $q->f;
+$q->f = null;` — neither store touches a count — the walker scans Q and
+finds nothing. Phase 3 acquits on "any difference" between the snapshot
+and the re-read, but the filter compares *recorded* locations
+([../rc-walk.md](../rc-walk.md)) and this race lives entirely in
+unrecorded ones. Phase 4 then confirms rather than catches: its equality
+is "every member's refcount equals its in-component in-degree", and for T
+that is 0 = 0. The exact test's own boundary already says why — "the exact
+test balances **counted** references only" — so a deferred heap edge is a
+permanent DC5 with no covering-root obligation behind it.
+
+*The straight line, with no race at all.* A newborn is skipped whole by
+Phase 1 and its targets are pinned by the count corollary. Remove the
+count and the pin goes with it:
+
+```php
+$w = new Wrapper();   // stamped new this epoch: skipped, out-edges never read
+$w->node = $t;        // declared deferred type: no count work
+                      // T's captures are zero; nothing else holds it
+```
+
+T is condemned under a live newborn, in ordinary code, on every run.
+
+**What would answer it:** an ordering between the mutator's stores and the
+walker's loads, of which there are three sources — the mutator writes
+something the collector reads (a count, a card, a queue entry, all
+per-store costs); hardware records the writes (priced and rejected in
+[../rc-walk.md](../rc-walk.md)); or the reads happen where the mutator
+provably is not. Fable's impossibility argument closes the rest: with zero
+per-store instructions the collector's whole observation trace is
+bit-identical between "T was moved and is live" and "T was dropped and is
+garbage", so no verdict function can separate them.
+
+**The recommendation on the table:** partition. The concurrent walk never
+judges deferred space; deferred entities are judged only in
+mutator-context passes at points where the mutator is not running — the
+`unset` attempt over its candidate set, a checkpoint, an arena reset, an
+actor message boundary, the request end. Deferred space then becomes an
+un-walked region for the collector thread, which is sound by the identity's
+own corollary provided every deferred-to-counted edge stays counted. Two
+repairs ride with it: elision is licensed only when the destination's owner
+is itself deferred, and a boundary count covers counted-source-to-deferred-
+target stores ([../gc-horizon.md](../gc-horizon.md)). The measurement that
+would overturn it is the live deferred set at quiescent points: the pass is
+race-free only if it completes inside one such interval.
 
 ## K. The weak-reference moment
 

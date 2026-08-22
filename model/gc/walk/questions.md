@@ -69,8 +69,9 @@ flowchart TD
 
     E1[E1 actors and per-thread epochs<br/>design]
 
-    F1[F1 prior art: barrier forms] --> A5
-    F2[F2 prior art: cycle collection] --> D2 & D4
+    F1[F1 coalescing RC<br/>read] --> A5
+    F2[F2 arborescent GC<br/>read] --> D2 & D4
+    F3[F3 phase consensus<br/>read] --> D1 & E1
 ```
 
 ## A. What the count costs, and what removes it
@@ -243,22 +244,32 @@ becomes across several of them.
 
 ## F. Prior art, round two
 
-### F1. Barrier forms
+Round two of the search is [prior-art.md](prior-art.md). Its three findings
+that change a node:
 
-LXR's field logging, the coalescing reference counting of Levanoni and
-Petrank, card marking, and what each costs against A1's measured figure.
-Feeds A5.
+### F1. Barrier forms  [read]
 
-### F2. Cycle collection
+LXR's field logging and SATB are already in this repository. Coalescing
+(sliding-view) reference counting, Levanoni and Petrank, is not, and is the
+shape A5 asks for: one log entry per object per epoch rather than one pair
+per write. Feeds A5.
 
-Bacon and Rajan's trial deletion, Lins's lazy variant, partial tracing, and
-what MMTk ships. Feeds D2 and D4, which are the two nodes where this
-design has no answer of its own.
+### F2. Cycle collection  [read]
 
-### F3. The hand-back, elsewhere
+Arborescent GC (ISMM 2025) is the only published shape found that decomposes
+D4's global question into local ones — a spanning forest inside the program's
+own graph, checked locally on each edge removal. It costs about two words per
+object. Feeds D2 and D4, which have no other candidate.
 
-Whether Iso and free-threaded CPython run their reclamation on the
-collector's side, and what channel each uses. Feeds D1.
+### F3. Phase consensus  [read]
+
+**Concurrent Deferred Partial Tracing (PLDI 2026) is the published form of
+the capture-count regime** — "DRC counts heap edges and traces the roots; PT
+counts the roots and traces the heap" — and it carries the same blocker this
+design refused it for, destruction timing. Its **phase consensus** is
+separable from it: an agreement on a phase change with nobody suspended.
+Feeds D1, which needs the verdict protocol's second direction, and E1, which
+needs an epoch protocol across actor threads.
 
 ## Inherited record
 

@@ -31,3 +31,9 @@ each of them cheaper.
 
 - [questions.md](questions.md) — the open questions as a graph, with the
   rulings of 2026-08-22 that bound them.
+- [compiler-proofs.md](compiler-proofs.md) — the analyses the compiler must
+  run for each elision the design depends on, what each needs, and which PHP
+  construct defeats it.
+- [prior-art.md](prior-art.md) — round two of the search, read against the
+  graph's nodes: barrier forms, cycle collection without an indivisible
+  verification, and how others hand reclamation to a collector thread.

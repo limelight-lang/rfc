@@ -15,11 +15,16 @@ collector is not a party to it: nothing in this document changes
 `rc-walk`'s protocol, the header layout, or what the mutator does at a
 checkpoint.
 
-> **Superseded in part by [gc-horizon-v2/](gc-horizon-v2/README.md),
-> the current design.** That folder keeps everything below except the
-> payment at a horizon, which it makes a publication the collector reads
-> instead of a `retain`. This document stays as the record of the first
-> design and of the four Critic rounds that shaped it.
+> **The proof side below is in force; the design of record is
+> [walk/](walk/README.md)** (2026-08-22). Its open questions are carried
+> into [walk/questions.md](walk/questions.md), section G.
+>
+> [gc-horizon-v2/](gc-horizon-v2/README.md) proposed replacing the payment
+> at a horizon with a publication the collector reads, and was **refused**
+> on 2026-08-22 — the walk cannot judge an uncounted heap edge, and the
+> count also supplies prompt destruction, the copy-on-write uniqueness test
+> and the arena's escape hold-count (`dev/DECISIONS.md`). That folder is a
+> record; nothing here defers to it.
 >
 > **Status: design sketch, closed pending Phase D.** Nothing is
 > implemented and no pre-Phase-D step can open it: the corpus scan below

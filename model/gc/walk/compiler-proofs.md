@@ -14,23 +14,27 @@ purity ladder is [`../pure-destructors.md`](../pure-destructors.md). The
 descriptions of published work are taken from this repository's own survey,
 [`../gc-research.md`](../gc-research.md), not from the papers.
 
-## The one structure all five share
+## The structure three of the five share
 
-Four of the five proofs below are closures over the **class field-type
-graph**: a node per class, an edge from a class to every class its declared
-fields can hold. Build it once and all four read it.
+Three of the five proofs below — unique ownership, the acyclic flag and the
+purity closure — are closures over the **class field-type graph**: a node per
+class, an edge from a class to every class its declared fields can hold.
+Build it once and all three read it. The other two, anchor-chain elision and
+the birth count, are intraprocedural and read the graph not at all.
 
-All four also fail on the same three constructs, and fail closed:
+All three also fail on the same three constructs, and fail closed:
 
 - a field typed `mixed`, or untyped;
 - an array whose element class is unknown;
 - an open class, one a subclass can extend at run time, which widens what a
   field of that type may hold.
 
-That gives one corpus measurement rather than four: how often those three
-appear in real PHP field declarations bounds every proof at once. Node A6 of
-[questions.md](questions.md) is that measurement, and it is why A6 is drawn
-as the root of the section rather than as one node among the others.
+That gives one corpus measurement rather than three: how often those three
+constructs appear in real PHP field declarations bounds all three proofs at
+once. Node A6 of [questions.md](questions.md) is that measurement, and it is
+why A6 is drawn as the root of the section rather than as one node among the
+others. The two intraprocedural proofs are bounded by a different quantity —
+how often a call's effects are unknown — which A6 must measure separately.
 
 ## 1. Anchor-chain elision — is this borrow covered by a live count
 
@@ -107,12 +111,12 @@ type of every slot.
 **What defeats it.** Subclassing, which admits an instance into slots the
 analysis did not count. Arrays, which hold anything. `mixed`.
 
-**The open rule, and it is not a detail.** What happens when the owning slot
-moves. It must resolve as a copy, or as a proof that the entity never moves.
-A move that emits a barrier readmits the fatal ordering of node M
-([`../gc-horizon-v2/questions.md`](../gc-horizon-v2/questions.md)) through a
-side door: the reference leaves a slot the walk has not read and arrives in
-one it has.
+**The open rule, and it is not a detail.** `../rc-walk.md` leaves three
+options for a move of the owning slot: copy the entity, include "never moved"
+in the proof, or emit a barrier. This design narrows the rule to the first
+two: a barriered move readmits the fatal ordering of node M
+([`../gc-horizon-v2/questions.md`](../gc-horizon-v2/questions.md)) — the
+reference leaves a slot the walk has not read and arrives in one it has.
 
 ## 4. The acyclic class flag — can an instance of this class sit on a ring
 
@@ -151,7 +155,7 @@ external. A no-throw proof, because an exception leaving `__destruct` carries
 `$this` in its backtrace. A transitive closure over the field-type graph,
 which is the same closure as the acyclic flag and fails on the same three
 constructs. The developed published form of the first part is an effect
-system; Koka's is the one this project's survey names.
+system; this repository's survey names none, so the reading is owed.
 
 **What defeats it.** PHP 8 arithmetic and typed properties can throw, so the
 no-throw obligation is the hardest part, and

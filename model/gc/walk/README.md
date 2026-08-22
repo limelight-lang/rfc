@@ -8,15 +8,16 @@ capture-count regime of [`../gc-horizon-v2/`](../gc-horizon-v2/README.md).
 ## What decided it
 
 The capture count stopped counting heap edges and left the concurrent walk
-to find them. Two findings closed that road, both recorded in
-[`../gc-horizon-v2/questions.md`](../gc-horizon-v2/questions.md):
+to find them. Two findings closed that road; the first is recorded in
+[`../gc-horizon-v2/questions.md`](../gc-horizon-v2/questions.md), the second
+in [`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md), 2026-08-22:
 
 - **Node M.** A walk reads each entity once, at different times. A
   reference moved from an entity the walk has not read into one it has
   already read is invisible to it, and no count moves to record the move.
   With no per-store instruction the collector's observations are identical
   between "moved and live" and "dropped and garbage".
-- **Node N and the review of 2026-08-22.** The count is not only a barrier.
+- **The semantics, 2026-08-22.** The count is not only a barrier.
   It also frees promptly at zero, answers the copy-on-write uniqueness
   test, and carries the arena's escape hold-count. Removing it from heap
   edges costs prompt `__destruct` for every deferred class, which

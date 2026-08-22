@@ -3,11 +3,15 @@
 Every open question of the design of record, as a node with what would
 answer it and what it blocks. The graph covers the collector, the barrier,
 the proof side inherited from [`../gc-horizon.md`](../gc-horizon.md), and the
-verification debt. A node carries one of three marks:
+verification debt. A node carries a mark for what blocks it:
 **today** — answerable with the code and instruments that exist;
+**measure** — a number nobody has taken, on instruments that exist;
+**design** — a decision to be made and written, no instrument involved;
 **compiler** — blocked on a compiler that does not exist;
 **corpus** — blocked on a measurement of real PHP programs;
-**hardware** — blocked on a machine this project does not have.
+**hardware** — blocked on a machine this project does not have;
+**Sage** — deferred to the arbitrating role;
+**read** — prior art already read, feeding another node.
 
 The rulings below bound the graph and are not nodes.
 
@@ -31,9 +35,11 @@ Edmond, in the session that refused the capture-count regime.
 5. **The collector is the main freeing path.** Verification stays on the
    mutator: its thread is the one place a verdict is checked against the
    true graph with no race ([`../rc-walk.md`](../rc-walk.md), Phase 4).
-6. **Large OS-direct entities enter a registry and the walk.** They are
-   outside the region registry today, so a ring through one is never
-   collected (node B3).
+6. **Large OS-direct entities are walked.** Ruled on the premise that they
+   were not, which was wrong: the registry landed on 2026-08-10 and both
+   enumerators read it (`ll-model` `src/memory/large_entity.rs`). The ruling
+   stands as a statement of what the design requires and closes node B3
+   rather than opening it.
 7. **An FFI wrapper holds the references itself.** Every PHP reference the
    C side can reach lies in a declared field of the wrapper; the C
    structure holds at most a raw address of what the wrapper already holds.
@@ -54,28 +60,34 @@ flowchart TD
     A3[A3 unique ownership<br/>compiler]
     A4[A4 anchor-chain elision<br/>compiler]
     A5[A5 a cheaper count word<br/>today]
+    A7[A7 the unique-ownership discriminant<br/>today]
 
     B1[B1 skip kinds that cannot ring<br/>today] --> C1
     B2[B2 the acyclic class flag<br/>compiler] --> C1
-    B3[B3 large entities into the registry<br/>today]
     B4[B4 arrays as the commonest spine<br/>today]
+    B5[B5 the epoch-abort watermark<br/>design + measure] --> C1
 
     C1[C1 background cadence<br/>measure] --> C3
     C2[C2 the young-free exemption<br/>design + measure] --> C1
     C3[C3 the pressure ladder's constants<br/>measure]
+    C4[C4 do the rungs earn their keep<br/>measure] --> C3
 
     D1[D1 the hand-back channel<br/>design] --> D5
     D2[D2 cutting a garland<br/>Sage] --> D4
     D3[D3 the batch constants<br/>measure]
     D4[D4 the indivisible verification<br/>design]
     D5[D5 collector-side destructor calls<br/>design]
+    D6[D6 WeakMap ephemerons<br/>design]
 
     E1[E1 actors and per-thread epochs<br/>design] --> E3
     E3[E3 the domains proposal<br/>design]
     E2[E2 AArch64 header access<br/>hardware]
 
     G1[G1 the weak cell is uncounted<br/>today] --> G4
+    G2[G2 promotion in two categories<br/>today]
     G3[G3 placement must dominate raises<br/>today]
+    G8[G8 anchored parameters<br/>design] --> G6
+    G9[G9 one borrow analysis or two<br/>design] --> G6
     G4[G4 COW and unique intersect<br/>today]
     G7[G7 borrow scopes across suspensions<br/>design] --> G6
     G6[G6 the summary language<br/>design] --> G5
@@ -92,10 +104,11 @@ flowchart TD
 
 ### A1. What the counted pair costs against its working set  [measured]
 
-Answered 2026-08-22, `ll-model` `dev/BENCHMARKS.md`. An overwriting store
-costs 4.1 ns where the two foreign headers are warm and 88 ns at a
-population of a million entities, median of eight runs, spread of seven at
-the wide end. The direction is settled and the magnitude is not.
+Answered 2026-08-22, `ll-model` `dev/BENCHMARKS.md`. The pair an overwriting
+store adds over a plain one costs 4.1 ns where the headers are warm and
+88 ns at a population of a million entities, median of eight runs, spread of
+seven at the wide end. The figure is the difference between two arms of one
+run, not the store's whole cost. The direction is settled and the magnitude is not.
 
 **What it changed:** an elided publication is worth up to 88 ns rather than
 the 2.4 ns the hot figure suggested, which raises every compiler proof
@@ -163,15 +176,20 @@ The per-class form of B1: a class whose field types cannot close a ring.
 graph, with the same failure modes the purity closure has — subclassing,
 `mixed`, arrays of unknown element class.
 
-### B3. Large OS-direct entities enter the walk  [today]
+### B3. Large OS-direct entities are in the walk  [closed]
 
-Ruling 6. `BLOCK_KIND_LARGE_RUN` allocations are not regions and are not in
-the registry the walker enumerates (`ll-model` `src/memory/block_pool.rs`),
-so a ring through a huge entity is never collected. Freeing needs no such
-list, because the address alone finds the block; enumeration does.
-**What would answer it:** the list, with removal on free. The huge path is
-already marked cold, so its cost is not expected to appear in a measurement
-— which is a prediction to check, not a result.
+Closed before this graph was written, on 2026-08-10. An entity too large for
+a pooled block lives in an OS-direct run, which no region contains, so it is
+enumerated from its own registry — `ll-model` `src/memory/large_entity.rs`,
+one address per run, entered before the memory and removed before the free —
+and both `for_each_entity_slot` and the concurrent epoch's snapshot read it
+(`src/memory/heap.rs`).
+
+**The confusion this node was opened on**, recorded so it is not repeated:
+`BLOCK_KIND_LARGE_RUN` (kind 4) is a raw C buffer, holds no entity and cannot
+ring; `BLOCK_KIND_ENTITY_LARGE_RUN` (kind 10) holds one entity and is the
+registered kind. The comment saying huge allocations stay outside the walk is
+about the first.
 
 ### B5. The epoch-abort watermark  [design + measure]
 
@@ -255,10 +273,12 @@ candidate and not the only one.
 
 ### D6. WeakMap ephemerons  [design]
 
-[`../../weak-references.md`](../../weak-references.md) records the PHP 8.3
-parity obligation: a map's key-to-value edge is conditional on the key's
-liveness, so the walk must not treat it as an ordinary edge. Nothing in this
-graph or in the walk's population rules says how.
+[`../../weak-references.md`](../../weak-references.md) records the mechanism
+and defers it: a map's key-to-value edge is conditional on the key's
+liveness, so the walk must not treat it as an ordinary edge — and the
+recorded decision is a known limitation, behaviour matching PHP 8.0-8.2, with
+the gap logged in the backlog. This node asks whether the design of record
+keeps that deferral or closes it.
 
 ### D5. Collector-side destructor calls  [design]
 
@@ -340,6 +360,13 @@ most of section A.
 `../gc-horizon.md` question 6. Whether caller-guarantee summaries can lift
 the receiver and by-value parameters out of the owned default, and what the
 re-entrancy obligation costs there.
+
+### G9. One borrow analysis, or two  [design]
+
+`../gc-horizon.md` question 5. One IR-level borrow analysis parameterized by
+the invalidation set, serving unique ownership and the horizon together. The
+working default recorded 2026-08-18 is one analysis with two invalidation
+sets, with Edmond's veto open.
 
 **Closed by the refusal of 2026-08-22:** `../gc-horizon.md` question 12,
 selective collector-computed counts. That is Form C, and the capture-count

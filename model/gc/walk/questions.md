@@ -81,9 +81,10 @@ flowchart TD
     C3[C3 the pressure ladder's constants<br/>measure]
     C4[C4 do the rungs earn their keep<br/>measure] --> C3
 
-    D1[D1 the hand-off and hand-back channels<br/>specified 2026-08-22] --> D5
+    D1[D1 the hand-off and hand-back channels<br/>open, five constraints] --> D5
+    E1 --> D1
     D3[D3 the batch constants<br/>measure]
-    D5[D5 collector-side destructor calls<br/>answered 2026-08-22]
+    D5[D5 collector-side destructor calls<br/>open, blocked on D1]
     D6[D6 WeakMap ephemerons<br/>design]
 
     E1[E1 actors and per-thread epochs<br/>design] --> E3
@@ -415,64 +416,87 @@ so.
 
 ## D. The verdict, and who frees
 
-### D1. The hand-off and hand-back channels  [specified against the queue that exists]
+### D1. The hand-off and hand-back channels  [open; the constraints are now known]
 
-Ruling 5 needs them. The verdict protocol runs one way today, collector to
-mutator, and the hand-off drain of
-[`../pure-destructors.md`](../pure-destructors.md#the-hand-off-drain) needs
-two more crossings: the mutator handing a confirmed component to the
-collector, and the collector posting the external children its sever
-displaced back to the owner.
+Ruling 5 needs them. A specification was attempted on 2026-08-22 against
+the queue in `ll-model` `src/epoch.rs` and a review round broke it in five
+places. What the round produced is the requirement list any design has to
+satisfy, and it is worth more than the attempt was.
 
-**What exists, read from `ll-model` `src/epoch.rs`.** One mutex-guarded
-queue of confirmation messages, each a vector of raw member pointers that
-the collector treats as opaque ids. Three statics beside it: a handshake
-flag the collector raises and the next checkpoint lowers, a monotonic ack
-count whose `AcqRel` bump is the handshake's release fence, and
-`OUTSTANDING_VERDICTS`, which the post increments **before** the message
-becomes visible and whose zero is the collector's licence to end the
-epoch. Pickup is gated by two thread-locals: `MID_DRAIN`, which closes the
-recursion when a drained destructor's release checkpoints inside the
-drain, and `TEARDOWN_DEPTH`, which refuses a pickup while any entity on
-this thread is between its committing zero store and the end of its
-dispose. The queue is a mutex rather than a lock-free structure because
-verdicts are a cold per-epoch trickle.
+**What exists.** One process-global mutex queue of confirmation messages,
+each a bare vector of member pointers with **no owner field**. Beside it a
+handshake flag, an ack count, and `OUTSTANDING_VERDICTS`, incremented
+before the message becomes visible, whose zero is the collector's licence
+to end the epoch. A checkpoint attends only when the flag is up, the count
+is non-zero, or a flush is due, and then refuses a pickup while `MID_DRAIN`
+is set, `TEARDOWN_DEPTH` is non-zero, **or `walk_active()` is true** — the
+third gate covering the synchronous collection, which holds guards a
+message may name.
 
-**The hand-off, mutator to collector.** The mirror image, with one rule
-that is not symmetric: **the mutator does not decrement
-`OUTSTANDING_VERDICTS` when it hands off.** The count is the epoch's
-licence to end, the work is not finished, and it has only changed hands —
-so the collector decrements it when its tail is done. This is the
-mechanical form of what the drain already states, that the verdict stays
-outstanding until the tail completes and the component holds the epoch open
-longer. The collector polls this queue between its own steps; it needs no
-handshake, having no reentrancy to close.
+**Constraint 1: the collector cannot run the tail on an ungated thread.**
+The tail is the sever and the release, and every release goes through
+`ll_release`, whose death branch calls `checkpoint_ack`, while every
+dispose is bracketed by `teardown_enter`/`teardown_exit` and the outermost
+exit calls the full `checkpoint`. On the collector's thread all three gates
+are in their open default, so a tail would ack the mutator's handshake with
+no mutator having reached a checkpoint — `snapshot` then runs against a
+mutator that has not observed the deferred-free activity bit — and would
+pick up a confirmation and drain it, running user destructors against
+another thread's weak table and reset window. The reentrancy the queue
+closes is a property of the release path, not of the mutator.
 
-**The hand-back, collector to mutator.** A second message kind on the
-existing queue rather than a second queue, because the pickup gating is
-exactly what a batch of releases needs: those releases run destructors, and
-`MID_DRAIN` and `TEARDOWN_DEPTH` are what keep a destructor's own release
-from picking up another message mid-teardown. **The hand-back message must
-not touch `OUTSTANDING_VERDICTS`**: its payload is live entities whose
-deaths are ordinary deaths, and counting it would make the epoch wait for
-ordinary release work.
+**Constraint 2: an uncounted hand-back never wakes anybody.** The three
+pickup triggers are the only ones there are. A message that touches none of
+them sits in the queue until something else raises one, so the counts it
+holds pin a subgraph for an unbounded time.
 
-Two orderings the channels owe:
+**Constraint 3: a counted hand-back must not outlive its epoch.** The
+counter's documented invariant is that an id names one entity from walk to
+drain and that at most one epoch's verdicts are in flight. A hand-back
+carries raw member pointers like a confirmation, so a message surviving a
+close falsifies it — and while it survives, the external children still
+carry the dead component's edges, so the next walk computes `RC − IN > 0`
+for them and calls them roots. Today the window does not exist: the drain
+releases the external children inside the same visit.
 
-- The collector posts the hand-back **after** the sever is complete for the
-  whole component. Posted earlier, the owner could release a child whose
-  in-edge from the component still exists, and the count would go one below
-  the truth.
-- An undrained hand-back at thread exit is drained there like any other
-  pending message. The thread-exit teardown already walks the static blocks
-  and disposes the thread's weak table
-  ([`../../weak-references.md`](../../weak-references.md#the-weak-table-address--subscriber-row));
-  a batch left on the queue instead leaks every child in it.
+**Constraint 4: the queue has no owner routing, and the thread model is
+undecided.** One global queue, one global ack counter, and a pickup that
+pops the front unconditionally under a comment asserting single-mutator
+ownership. Owner-bound duties are exactly what the hand-off exists to
+respect, so the channel cannot be specified before node E1 decides whether
+each actor runs its own epoch — and `../../../runtime/actors.md` closes the
+other end, an actor taking outside business only at a mailbox boundary.
 
-**What stays open:** the tail's completion bound, which
-[`../pure-destructors.md`](../pure-destructors.md#the-hand-off-drain) calls
-part of the design rather than an option on it, and whose number is node
-D3's.
+**Constraint 5: `drain-window.md`'s exclusivity must be re-derived, not
+assumed.** [`../drain-window.md`](../drain-window.md) states that from the
+post until the mutator's drain acks, the collector performs no access to
+that component. Under a hand-off the collector is the party that severs and
+frees after the post, so the invariant's third link is the one the design
+rewrites. `DW_touch_after_post.cfg` is the kill variant that models exactly
+that access.
+
+**Two more the attempt got wrong and the round corrected.** The reason to
+post the hand-back late is not that an early release would undercount — the
+sever nulls a slot before it lists the child, so the release is against the
+truth — but that between sever and free no user code runs at all, which
+requires posting after the members are freed rather than after they are
+severed. And there is no thread-exit drain to lean on: `ll_thread_exit` is
+a five-step sequence with no epoch-queue step, and its own ordering rules
+say where such a step could go and where it could not.
+
+**A contradiction the round surfaced, and it decides constraint 2's
+shape.** [`../pure-destructors.md`](../pure-destructors.md#purity-is-transitive)
+says the external children of a pure component are inside the closure, so
+the owner's release batch "runs no user code" and is mechanical and
+bounded. But the closure admits P2, which keeps its destructor call by
+ruling 9 — so an external child of a P2 class does run user code in that
+batch. Either the sentence is wrong, or the hand-off's eligibility must
+exclude a component with a P2 external child. Which it is decides whether
+the hand-back needs the gated queue at all, and whether a bounded
+mechanical batch could be counted the way constraint 2 wants.
+
+**What would answer this node:** a channel design that satisfies the five,
+which needs E1 first.
 
 ### D2. Cutting a garland  [closed]
 
@@ -517,42 +541,44 @@ recorded decision is a known limitation, behaviour matching PHP 8.0-8.2, with
 the gap logged in the backlog. This node asks whether the design of record
 keeps that deferral or closes it.
 
-### D5. Collector-side destructor calls  [answered: the permission stays unused]
+### D5. Collector-side destructor calls  [open; the case for moving them is stronger than it looked]
 
-Ruling 8 lets the collector call a destructor proven pure. **The design of
-record does not use the permission, and should not.**
-
-**Where the calls sit is already fixed.** The hand-off drain runs every
-destructor call in the mutator's prologue, after the weak nulling and
-before the component is handed over, and the collector's share is the sever
-and the physical release — never a user destructor
+Ruling 8 lets the collector call a destructor proven pure, and the design
+of record does not use the permission: every destructor call sits in the
+mutator's prologue, after the weak nulling and before the hand-off, while
+the collector's share is the sever and the physical release
 ([`../pure-destructors.md`](../pure-destructors.md#the-hand-off-drain)).
-Death timing is unchanged for the members: the weak nulling is where their
-death becomes observable, exactly as today.
+`../gc-horizon.md` assumes the same two-arm shape independently, so a
+ruling to move a call would amend two in-force documents.
 
-**Moving a P2 call to the collector buys nothing and costs two things.**
-The mechanical work the collector could take is the sever, and it already
-takes it. What a P2 destructor does beyond that is null its own counted
-slots, which releases children — and an external child's release is
-owner-bound, counts being plain single-writer fields
-([`../pure-destructors.md`](../pure-destructors.md#the-five-owner-bound-races),
-race 5), so the call would have to round-trip what the sever round-trips
-anyway. The second cost is order: P2 differs from P0 in the order of child
-releases alone, and that order is specified language surface, which is why
-ruling 9 keeps the rung and its call at all
-([`../pure-destructors.md`](../pure-destructors.md#the-purity-ladder)).
+An argument that the permission should stay unused was written on
+2026-08-22 and does not hold. Both of its costs were overstated.
 
-**So the permission stays available and unused**, recorded here so the
-question is not re-derived: what makes the tail sound off-thread is that
-the exact test proved no external counted reference exists, the weak cells
-are nulled, and purity rules out a destructor minting a new channel — and
-that argument licenses the sever, which is all the collector needs.
+- **The round-trip.** A P2 body nulls in-component slots as well as
+  external ones, and in-component releases do not round-trip — the sever
+  does them in place. So a collector-side call round-trips the same
+  external set the sever already round-trips and gets the in-component set
+  for nothing.
+- **The order.** P2 differs from P0 in the order of child releases and that
+  order is specified language surface, which is why ruling 9 keeps the
+  call. That is a reason the call exists, not a cost of where it runs: the
+  same order comes out whether the call precedes the collector's sever or
+  the mutator's hand-off.
 
-**What remains open** is not the call but the fallback: the same pipeline
-entirely on the mutator with its tail sliced across checkpoints, which
-[`../pure-destructors.md`](../pure-destructors.md#the-hand-off-drain) keeps
-while the residual duties are unresolved. D1 resolves the channels; whether
-the fallback is retired with them is the ruling that closes this node.
+**And there is a real gain the argument missed.** P2 is P1 plus null-only
+counted writes, and P1 permits arbitrary computation and external reads. The
+prologue must complete within one checkpoint visit with no return to program
+code, and ruling 10 accepts that pause rather than bounding it — so a P2
+destructor with a long pure loop runs uninterruptibly inside the mutator's
+prologue. Moving the call removes unbounded user computation from the one
+stretch the design refuses to bound, which is what the stated philosophy
+asks for: a design that spends collector cycles to remove mutator cycles
+wins.
+
+**What blocks the ruling** is not this argument but D1: a collector that
+runs user code needs the thread it runs on to be gated, and constraint 1
+there says it is not. **What would answer this node:** D1's channels first,
+then a ruling on whether P2 calls travel with them.
 
 ### G1. The weak cell is an uncounted edge  [closed]
 

@@ -255,6 +255,17 @@ broken links.
         execute-once condition and the generator pads stay open. Three
         rounds, three broken closures — the node is not to be closed
         again without a shape nobody has attacked.
+      Critic 2026-08-22 round 4 (D1, D5): the channel specification broke in
+        five places — the collector's tail runs `ll_release`, whose death
+        branch acks the handshake and whose outermost teardown exit picks
+        up messages, so the collector thread is ungated; an uncounted
+        hand-back matches none of the three pickup triggers; a counted one
+        outliving its epoch falsifies the id invariant and makes the next
+        walk read the displaced children as roots; the queue has no owner
+        field; and `drain-window.md`'s third link is the one a hand-off
+        rewrites. Accepted whole; both nodes are open and carry the
+        constraints. D5's costs were overstated in both legs and the case
+        for moving a P2 call is stronger than the attempt said.
       handoff: the graph moved to `model/gc/walk/questions.md` on 2026-08-22
         with the refusal of the capture-count regime. Eleven rulings bound
         it, and rulings 10 and 11 were written into the list on 2026-08-22,

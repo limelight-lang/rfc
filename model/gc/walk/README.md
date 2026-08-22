@@ -29,6 +29,9 @@ each of them cheaper.
 
 ## Files
 
+- [algorithm.md](algorithm.md) — the protocol: phase-critical sections, the
+  quiescent point, and the collector confirming and reclaiming on its own
+  thread.
 - [questions.md](questions.md) — the open questions as a graph, with the
   rulings of 2026-08-22 that bound them.
 - [compiler-proofs.md](compiler-proofs.md) — the analyses the compiler must

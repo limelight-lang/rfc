@@ -31,9 +31,17 @@ into proper RFCs when picked up.
   epoch byte reads 0/current at free time is in no snapshot row and no
   posted component, so recycling its slot immediately appears sound
   (a reused slot re-reads as new and is skipped; child validation
-  drops edges to it). One byte test on the cold parked path; removes
-  most churn parking. Needs a proof pass (interaction with the
-  epoch-byte wrap and with buffer frees).
+  drops edges to it). One byte test on the cold parked path, **and a
+  publication of the current epoch number**, which nothing performs
+  today: `deferred_free` holds one activity bit and the counter behind
+  an epoch's number is private to the collector (`ll-model`). What it
+  removes is the parked records of entities that died younger than the
+  epoch they died in, measured 2026-08-22 as a share of the workload's
+  lifetimes rather than a constant — zero where entities outlive the
+  epoch (`ll-model` `dev/BENCHMARKS.md`,
+  [walk/questions.md](model/gc/walk/questions.md), node C2). Needs a
+  proof pass (interaction with the epoch-byte wrap and with buffer
+  frees).
 
 ## Model — remaining documents
 

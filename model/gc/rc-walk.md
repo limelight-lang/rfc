@@ -329,9 +329,9 @@ before it bump-carves (`heap.rs`), so a slot below any snapshotted cursor
 can be handed out mid-epoch — a cursor test alone misclassifies every
 reused slot. Instead: the initializing store writes the flags word with
 byte 6 = 0, which costs the mutator nothing it was not already writing.
-The walker, meeting an occupied slot stamped 0, writes the current epoch
-number into the byte and skips the entity; a slot stamped with an *older*
-epoch is walked. Numbers cycle 1-255, skipping 0: after a wrap an entity
+The walker, meeting an occupied slot whose byte reads 0 or the current
+number, writes the current epoch number into the byte and skips the entity;
+a slot stamped with an *older* epoch is walked. Numbers cycle 1-255, skipping 0: after a wrap an entity
 can read as current and be skipped once more — latency, not error. Races
 lose stamps, never invent them — and since the narrow-mutator amendment
 (2026-07-27) the mutator's counter operations no longer store the flags

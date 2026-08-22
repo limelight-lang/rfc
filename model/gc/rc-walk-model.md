@@ -141,7 +141,7 @@ identity bugs live.
 | C1 | `snapshot` | record the registry and each block's cursor |
 | C2 | `readCount(s)` | read one slot's refcount |
 | C3 | `readField(s,f)` | read one field |
-| C4 | `stamp(s)` | write the current epoch byte into an occupied unstamped slot |
+| C4 | `stamp(s)` | write the current epoch byte into an occupied slot whose byte reads 0 or the current number |
 | C5 | `condemn(s)` | write the condemned byte |
 | C6 | `request` | raise the handshake flag |
 | C7 | `ack` | observe the mutator's answer; establishes the ordering edge |

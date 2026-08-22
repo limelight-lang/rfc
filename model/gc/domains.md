@@ -325,9 +325,13 @@ running over that block. The header is in hand on all three paths.
 > needed is the shipped registry rule — a block is retired or
 > re-commissioned only between epochs — re-derived per domain; the
 > field gates the queue only. The comparison also needs a readable
-> right-hand side: a bare number 1–255 does not say *whose* epoch it is
-> or whether it has closed, and after abandonment the block's `owner`
-> is null.
+> right-hand side, and today there is none at all: no epoch number is
+> published outside the collector — `deferred_free` exports one activity
+> bit and the counter behind `Epoch::open` is a private static
+> (`ll-model`) — so the right-hand side has to be built before it can be
+> read. Built, a bare number 1–255 still does not say *whose* epoch it is
+> or whether it has closed, and after abandonment the block's `owner` is
+> null.
 
 ## 8. Sequence: an object sent to another thread
 

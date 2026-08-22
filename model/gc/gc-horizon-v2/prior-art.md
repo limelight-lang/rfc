@@ -183,6 +183,48 @@ statically typed, so the inference is cheaper than the one this design
 needs, but the shape is the same: a local that pays nothing because
 something else already owns the value.
 
+## Choosing the regime: the published selectors
+
+The regime has to be chosen for each class, and four lines of work bear on
+how.
+
+**Connectivity-based collection** partitions the heap by a pointer analysis
+of what can point at what, and gives each partition its own collection
+policy (Hirzel, Diwan and Hertz, OOPSLA 2003,
+[paper](https://dl.acm.org/doi/10.1145/949305.949337)); a companion report
+by Hirzel, Gabow and Diwan treats choosing which partitions to collect as
+its own optimisation problem. A deferred class is such a partition, and the
+analysis that decides membership is the same kind of analysis.
+
+**Pretenuring** chooses the allocation policy per allocation site, and its
+premise is the finding that matters here: object lifetimes are homogeneous
+at each allocation site in Java, so a per-site prediction is accurate and
+cheap (Blackburn, Singhai, Hertz, McKinley and Moss, OOPSLA 2001,
+[paper](https://www.steveblackburn.org/pubs/papers/pretenure-oopsla-2001.pdf);
+profile-based in TOPLAS 2007). The same paper records the counter-case: C
+programs are not homogeneous per site and need the dynamic call chain, so
+whether PHP behaves like Java or like C is a measurement this design owes
+before it trusts per-site advice. Its delivery model is the transferable
+part — advice is neutral with respect to the collector, combined across
+several applications, and built into the runtime, so an application gets
+the benefit without profiling itself.
+
+**RC subsumption and overlooking roots** is the closest published algorithm
+to the first design rather than this one. Joisha's static analysis removes
+redundant reference-count updates on stack references when an *overlooking
+root* already covers them (ISMM 2006,
+[paper](https://dl.acm.org/doi/abs/10.1145/1133956.1133976); ISMM 2007 for
+the unifying framework). An overlooking root is the anchor of the chain
+invariant under another name, which makes this the prior art
+[../gc-horizon.md](../gc-horizon.md) should cite for its own elision and
+not only for the borrow inference it takes from Perceus.
+
+**Nim** ships the cheapest form of the same idea: the compiler analyses the
+types and emits cycle-collector calls only where a type is potentially
+cyclic, with an `acyclic` annotation to help it. A whole-program
+type-level classification driving code generation is exactly the shape of
+the regime bit.
+
 ## Fit against the philosophy
 
 **Takes the philosophy and the mechanism:** URC's partition and its
@@ -258,4 +300,7 @@ not "who roots".
 - [Revisiting Partial Tracing for Safe, Efficient, and Concurrent Garbage Collection in Unmanaged Languages, PLDI 2026](https://dl.acm.org/doi/10.1145/3808310)
 - [Work Packets: A New Abstraction for GC Software Engineering, Optimization, and Innovation, OOPSLA 2025](https://www.steveblackburn.org/pubs/papers/packet-oopsla-2025.pdf)
 - [MMTk status page](https://www.mmtk.io/status)
+- [Connectivity-based garbage collection, OOPSLA 2003](https://dl.acm.org/doi/10.1145/949305.949337)
+- [Pretenuring for Java, OOPSLA 2001](https://www.steveblackburn.org/pubs/papers/pretenure-oopsla-2001.pdf)
+- [Compiler optimizations for nondeferred reference counting, ISMM 2006](https://dl.acm.org/doi/abs/10.1145/1133956.1133976)
 - [Nim: destructors and move semantics](https://nim-lang.org/docs/destructors.html)

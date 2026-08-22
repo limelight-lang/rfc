@@ -435,6 +435,9 @@ Targeting the LXR architecture, implemented incrementally via MMTK.
 | Arborescent GC, ISMM 2025 | Immediate cycle reclamation via a spanning forest |
 | Kim et al., PLDI 2026 | Partial tracing: count the roots, trace the heap; concurrent, no stack maps |
 | Qiu & Blackburn, PLDI 2025 | Iso: request-private collection, the public bit and its measured 2% |
+| Joisha, ISMM 2006 and 2007 | RC subsumption and overlooking roots: the static elision GC horizon rediscovered |
+| Blackburn et al., OOPSLA 2001 | Pretenuring: per-allocation-site advice, and the homogeneity premise it rests on |
+| Hirzel, Diwan & Hertz, OOPSLA 2003 | Connectivity-based collection: partition by pointer analysis, policy per partition |
 | Zhao et al., OOPSLA 2025 | Work packets: all GC work as schedulable packets, LXR's current form |
 
 ---

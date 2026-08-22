@@ -71,7 +71,7 @@ flowchart TD
 
     F1[F1 coalescing RC<br/>read] --> A5
     F2[F2 arborescent GC<br/>read] --> D2 & D4
-    F3[F3 phase consensus<br/>read] --> D1 & E1
+    F3[F3 partial tracing, read<br/>record only]
 ```
 
 ## A. What the count costs, and what removes it
@@ -261,15 +261,13 @@ D4's global question into local ones — a spanning forest inside the program's
 own graph, checked locally on each edge removal. It costs about two words per
 object. Feeds D2 and D4, which have no other candidate.
 
-### F3. Phase consensus  [read]
+### F3. Partial tracing  [read, record only]
 
 **Concurrent Deferred Partial Tracing (PLDI 2026) is the published form of
 the capture-count regime** — "DRC counts heap edges and traces the roots; PT
 counts the roots and traces the heap" — and it carries the same blocker this
-design refused it for, destruction timing. Its **phase consensus** is
-separable from it: an agreement on a phase change with nobody suspended.
-Feeds D1, which needs the verdict protocol's second direction, and E1, which
-needs an epoch protocol across actor threads.
+design refused it for, destruction timing. Recorded so that the refusal is
+findable against the literature. Nothing in it is proposed for this design.
 
 ## Inherited record
 

@@ -40,11 +40,10 @@ was not refused for want of a mechanism, and the mechanism it wanted exists.
 If the corpus ever says prompt destruction is not observed where it would be
 lost, this is the paper to reopen from.
 
-**Phase consensus is separable from partial tracing**, and that is the
-transferable part. Node D1 needs a hand-back channel between the mutator and
-the collector, and node E1 will need an epoch protocol across several actor
-threads. Both are agreements on a phase change without suspension. Read the
-paper for the mechanism before designing either.
+**Nothing here is proposed for this design.** The section is the record that
+the refused regime has a published form and a published treatment of its
+coordination problem, so that a later reader finds the literature rather than
+re-deriving it.
 
 ## F1. Barrier forms cheaper than the counted pair
 
@@ -123,9 +122,7 @@ component and hands it back.
 
 ## What to read first
 
-1. Concurrent Deferred Partial Tracing, for phase consensus alone. It feeds
-   D1 and E1, and both are blocked on the same shape.
-2. Arborescent GC, against node D4. It is the only local answer found to a
+1. Arborescent GC, against node D4. It is the only local answer found to a
    question that has no other candidate.
-3. Levanoni and Petrank, against node A5, and only if A6 says a large
+2. Levanoni and Petrank, against node A5, and only if A6 says a large
    population of stores survives the compiler's proofs.

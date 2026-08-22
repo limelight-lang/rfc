@@ -262,6 +262,51 @@ detector is the shadow-count lowering
 and the whole-program condition the first design already states for
 unique ownership applies here unchanged.
 
+## Who judges a deferred entity
+
+**Provisionally settled 2026-08-21, conditional on one measurement.** The
+concurrent walk cannot judge deferred space: with no count on a heap edge
+into it, the collector's observations are identical whether a reference was
+moved or dropped, so no verdict function separates the two
+([questions.md](questions.md), M). The division that answers it is the one
+`rc-walk` already uses, with a different re-check:
+
+- **The collector supplies suspects.** It walks as it does today, deferred
+  entities included, and posts what looks dead. Nothing it says is acted
+  on, exactly as now — "the collector never frees anything itself — and the
+  drain trusts nothing it was told" ([../rc-walk.md](../rc-walk.md)).
+- **The mutator finalises.** For a counted member the re-check is
+  arithmetic: the count equals the in-component in-degree. For a deferred
+  member there is no arithmetic, so the re-check is a **trace over the
+  deferred subgraph from the deferred roots**, run in a window where the
+  mutator executes nothing else.
+
+The collector may therefore err in one direction only, and both directions
+are already handled: a missed corpse waits for the next epoch, and a live
+entity wrongly suspected is acquitted by the trace. What the suspect list
+buys is not the verdict but the decision whether to run the pass at all.
+
+**The cost, and what is not yet known.** The trace visits `N` live deferred
+entities and their `F` reference fields each — the dead are never visited,
+and neither is the rest of the heap, so `N` is the only quantity that
+decides the question. Two points pay nothing extra, because a traversal
+happens there already for other reasons: the arena reset, which traces
+survivors to place escapees
+([../../memory/arena-reset.md](../../memory/arena-reset.md)), and the end of
+a request. The pass is new work only at intermediate checkpoints, and those
+are needed only when memory is wanted before the request ends.
+
+`N` at an intermediate checkpoint is unmeasured, and the design is taken on
+condition that it be measured. Two instruments settle it between them: a
+probe on the existing crate, built on the pattern of
+`memory::barrier::tests::what_a_store_costs_by_working_set`, giving trace
+cost against working-set size and so the number of entities that fit a
+pause budget; and the corpus scan's channel for how many are live at a
+quiescent point. A third road removes the dependence altogether at the cost
+of a narrower population: license the deferred regime only for classes
+whose instances provably do not leave a region, and `N` inherits that
+region's bound.
+
 ## The three treatments the collector owes an entity
 
 1. **Walk it, and it may be condemned** — an ordinary GC-heap entity,
@@ -442,3 +487,7 @@ argument that settled it:
   entity is not collected by the walk at all.
 - `unset` on a deferred entity lowers to an explicit reclamation attempt
   rather than to nothing (Edmond).
+- The collector supplies suspects and proves nothing; the mutator
+  finalises, by arithmetic for a counted member and by a bounded trace for
+  a deferred one (Edmond, sharpening the partition a Fable review
+  recommended). Taken on condition that the trace measures cheap.

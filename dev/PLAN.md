@@ -229,6 +229,18 @@ broken links.
         changes another document are folded into it rather than left in the
         graph alone
       tier: T2 · role: Critic
+- [ ] S5.4a Measure what the mutator's confirming trace costs
+      done: a probe in the code repository, built on the pattern of
+        `memory::barrier::tests::what_a_store_costs_by_working_set`, reports
+        the cost of tracing N entities with F reference fields against
+        working-set size, with a null-sweep control and the same
+        hot/cold split; the curve is recorded in the code repository's
+        `dev/BENCHMARKS.md` with the machine named, and the number of
+        entities that fit a stated pause budget is read off it
+      tier: T2 · role: —
+      note: this gates the road taken in `gc-horizon-v2/top-level.md`, "Who
+        judges a deferred entity". Buildable today: no compiler is needed,
+        only a synthetic object graph and the existing probe's skeleton.
 - [ ] S5.5 Absorb the proof side into `gc-horizon-v2/` and retire `gc-horizon.md`
       done: the ownership lattice with its owned base cases, the anchor-chain
         invariant, the horizon list, the placement rule and the class/site

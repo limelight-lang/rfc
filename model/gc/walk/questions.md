@@ -77,7 +77,7 @@ flowchart TD
     B6[B6 skip by block, not by entity<br/>measured; segregate, not count]
     B1 --> B6
 
-    C1[C1 background cadence<br/>open; parked volume eliminated] --> C3
+    C1[C1 background cadence<br/>open; two candidates eliminated] --> C3
     C2[C2 the young-free exemption<br/>open; two more readers] --> C1
     C3[C3 the pressure ladder's constants<br/>measure]
     C4[C4 do the rungs earn their keep<br/>open; priced wrongly once] --> C3
@@ -415,12 +415,14 @@ What a review round found beside it:
   into flushable memory and nothing more. The workload that crosses a
   parked-volume watermark is a mutator allocating without reaching a
   checkpoint, and that is exactly the one the abort cannot relieve.
-- **The next epoch parks more, not less.** `walk_rows` stamps every
-  occupied slot it passes with the current number before it tests the
-  category, so an aborted epoch leaves the heap stamped with its number.
-  At the next epoch those entities read neither zero nor current and are
-  enrolled — including everything born during the abandoned epoch, which
-  allocate-black had exempted.
+- **The next epoch parks more, not less.** `walk_rows` writes the stamp in
+  one branch only, the allocate-black skip taken when the byte reads zero
+  or the current number (`ll-model` `src/collector.rs`), so an aborted
+  epoch leaves its number on everything born since the previous one. Those
+  entities read neither zero nor current at the next epoch and are
+  enrolled, which spends allocate-black's exemption on an epoch that
+  produced no verdict. A mature entity keeps the older stamp it was met
+  with, so it is enrolled either way.
 - **The handshake flag and the ack counter are cross-epoch state.** An
   abort before any ack leaves the request raised with no epoch behind it,
   and the ack counter is a single global whose first ack lowers the flag
@@ -479,7 +481,7 @@ scatters them; both cell figures are lower bounds.
 per entity in a booted Laravel container, node A6. At that ratio edges carry
 about three fifths of the walk and rows two.
 
-### C1. The background cadence  [open; one candidate is eliminated, and it was the one picked]
+### C1. The background cadence  [open; two of the three candidates are eliminated and a fourth is named]
 
 Open question 1 of `../rc-walk.md`, undecided since 2026-07-28: how much
 deferred memory, how many suspects, or how long since the last epoch
@@ -495,17 +497,35 @@ mechanically: a free parks only while `deferred_free::active()`, a bit that
 cross a threshold under the condition the trigger exists for — nothing
 collecting.
 
-**So the candidate that measures the program's cost while nothing collects
-is the suspect count**, which the same draft dismissed for measuring the
-collector's opportunity. It is the only available proxy for the uncollected
-cycle population, which is what actually grows in the quiet case.
+**The suspect count was named next, and the design of record does not have
+one.** A suspect is an entity whose count was decremented to a non-zero
+value, and enrolling one is the candidate buffer of `rc-trace`, the regime
+this design replaced (`ll-model` `src/gc.rs`). Under `rc-walk` that arm of
+`ll_release` is not compiled: the path calls `release_word`, the death
+branch acks the handshake, and the non-final release carries no test at all
+(`ll-model` `src/refcount.rs`), candidates being computed by the walk
+instead — which the same file calls the design's advertised net reduction
+on this path. So the quantity does not exist to be read, and creating it
+means restoring the store on the release path that the regime was chosen to
+remove.
 
-**What would answer this node:** a trigger over the suspect count with its
-threshold, or a fourth quantity nobody has named. Two answers below it
-change the numbers rather than the shape: C2's exemption removes the parked
-records of entities born and died inside one epoch, and B4's figure makes
-an epoch's price edges as much as rows, so a threshold written in entities
-is not written in the walk's currency.
+**What the mutator already accounts for is committed block volume and the
+clock.** `memory_stats` reads `blocks_out` in O(1) from counters kept on
+pool get and put, and no allocation path increments anything per object
+(`ll-model` `src/memory/stats.rs`). Growth in blocks out of the pool since
+the last epoch does not separate live data from uncollected cycles, so a
+trigger over it fires on either; what it bounds is how much memory a cycle
+population can reach before a walk looks at it, which is the epoch's job.
+
+**What would answer this node:** a threshold over committed volume, or a
+fifth quantity nobody has named. The threshold is not this crate's to give.
+Every workload in `ll-model` is hand-built, so a rate measured over one is
+the probe's own loop bound read back, and the gate `../rc-walk.md` puts on
+a starvation measurement stands. Two answers below it change the numbers
+rather than the shape: C2's exemption removes the parked records of
+entities born and died inside one epoch, and B4's figure makes an epoch's
+price edges as much as rows, so a threshold written in entities is not
+written in the walk's currency.
 
 ### C2. The young-free exemption  [the proof pass found two more readers; open]
 
@@ -1139,9 +1159,10 @@ model — every block belongs to some thread's heap, which
 and an actor's memory is not only its arenas: a provably transferable
 object is born directly in the general-heap category and held by the actor
 while hosted by whichever pool thread mounts it. Second, the walk stamps
-far more than it enrols: `walk_rows` writes the stamp and *then* tests the
-memory category (`ll-model` `src/collector.rs`), so every occupied slot of
-every category is stamped and only the `GcHeap` ones get a row.
+outside the category it enrols: `walk_rows` writes the stamp and *then*
+tests the memory category (`ll-model` `src/collector.rs`), so a slot of any
+category is stamped on the first epoch that meets it reading zero or the
+current number, while only the `GcHeap` ones ever get a row.
 
 What actually keeps one writer is that the protocol is one-at-a-time by
 construction: the epoch number, the handshake flag, the ack counter, the

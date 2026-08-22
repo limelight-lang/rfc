@@ -67,6 +67,8 @@ flowchart TD
     B2[B2 the acyclic class flag<br/>compiler] --> C1
     B4[B4 arrays as the commonest spine<br/>today]
     B5[B5 the epoch-abort watermark<br/>design + measure] --> C1
+    B6[B6 skip by block, not by entity<br/>design + measure]
+    B1 --> B6
 
     C1[C1 background cadence<br/>measure] --> C3
     C2[C2 the young-free exemption<br/>design + measure] --> C1
@@ -206,6 +208,31 @@ and both `for_each_entity_slot` and the concurrent epoch's snapshot read it
 ring; `BLOCK_KIND_ENTITY_LARGE_RUN` (kind 10) holds one entity and is the
 registered kind. The comment saying huge allocations stay outside the walk is
 about the first.
+
+### B6. Skip by block, not by entity  [design + measure]
+
+B1 skips a leaf after reading its header; this node asks whether the walk
+can decline to touch the block at all. Today it cannot: entity blocks are
+divided by block kind and then by size class only (`ll-model`
+`src/memory/heap.rs`), so a string and an object of the same size share one.
+
+Two shapes, and their prices differ by more than their benefits.
+
+- **Segregate entity blocks by entity kind.** The walk then skips whole
+  blocks untouched, which is worth more than B1's 40 ns per entity — most of
+  that 40 is the header miss the walk would no longer take. The price is a
+  partly-filled tail block per pair of size class and kind, paid in footprint
+  and fragmentation.
+- **Count the ring-capable entities in each block.** Zero means skip the
+  block. One word per block, maintained where a slot is handed out and
+  returned — paths that touch the block header already. Mixed blocks are read
+  as they are today, and a block that came out uniform by itself, which
+  consecutive allocation of same-size strings makes common, is skipped for
+  almost nothing.
+
+The second costs nothing in layout and is where to start. **What would
+answer it:** the share of blocks that come out uniform under a real
+allocation pattern, which is the corpus question of A6 again, one level up.
 
 ### B5. The epoch-abort watermark  [design + measure]
 

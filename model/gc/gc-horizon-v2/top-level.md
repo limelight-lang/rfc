@@ -10,6 +10,51 @@ Nothing below is implemented, and the parts of the first design this one
 does not touch — the ownership lattice, the horizon list, the placement
 rule — hold unchanged.
 
+## Principles the design is judged by
+
+Stated by Edmond, 2026-08-21, and placed first because the rest is judged
+against them.
+
+**Many short arms of collector work beat few long ones.** The literature
+this design was placed against agrees from three directions: LXR's premise
+is that "regular, brief stop-the-world collections deliver sufficient
+responsiveness at greater efficiency than concurrent evacuation", and it
+modulates the length of each arm with survival-rate prediction and work
+budgets; Iso collects at a request boundary because the live set is near
+zero there, which is the same trade taken to its limit; and ORCA collects
+one actor between two behaviours ([prior-art.md](prior-art.md)). The
+counter-example is recorded in the same place — the OCaml team found their
+stop-the-world minor collector beating the concurrent thread-local one in
+almost every circumstance, which is again short and simple over long and
+clever.
+
+**A collector that can be entered from the mutator as well as from the
+collector thread is more flexible than one with a single entry.** The
+mutator knows things the collector does not: which entity was just
+released, which local just went out of scope, that memory is needed now.
+`unset` is the first such entry, and the design has to work when
+reclamation runs in the middle of ordinary program code.
+
+**So the algorithm has two modes, and they are different algorithms.**
+
+- **Fast, in the mutator.** Bounded work over a **named candidate set** —
+  the entities the mutator has reason to suspect, not the heap. It decides
+  and frees what it can and gives up on the rest rather than widening. The
+  `unset` attempt below is its first instance.
+- **Full, in the collector.** The whole walk: rows, edges, `RC - IN`, the
+  exact test, cycles.
+
+**The epoch serves both.** It is what tells either mode what it must not
+judge — an entity stamped new is skipped by both — and it is what ends a
+mark without anyone retracting it.
+
+Two things this owes, neither settled. The candidate set is a mechanism
+this repository has removed once: the header's candidate-buffer index went
+away with the eager-death amendment, freeing the top half of the flags word
+([../rc-walk.md](../rc-walk.md#the-one-header-byte)), so a candidate set
+returns as a plain list rather than as header state. And the fast mode runs
+outside the drain-exclusivity window, which is question L.
+
 ## The problem, and the three answers to it
 
 The collector has to know which entities the program's locals hold. An

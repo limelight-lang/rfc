@@ -229,12 +229,27 @@ broken links.
         changes another document are folded into it rather than left in the
         graph alone
       tier: T2 · role: Critic
-- [ ] S5.5 Two Critic rounds over the second design, then Sage on what does not close
+- [ ] S5.5 Absorb the proof side into `gc-horizon-v2/` and retire `gc-horizon.md`
+      done: the ownership lattice with its owned base cases, the anchor-chain
+        invariant, the horizon list, the placement rule and the class/site
+        hybrid live in `model/gc/gc-horizon-v2/`; every inbound citation is
+        re-pointed — 32 files reference `gc-horizon.md` today, the sixteen
+        case files heaviest among them — and what remains of the old document
+        is either a dated record of the first variant with its four Critic
+        rounds and the roads not taken, or nothing, per Edmond's call at the
+        time; linkcheck green
+      tier: T2 · role: Critic
+      note: Edmond asked for the old algorithm to go (2026-08-21). It is a
+        move rather than a deletion because `v2` took the proof side as given
+        and defines none of its terms. Scheduled after S5.4 deliberately: half
+        the graph's nodes still cite the old document, and moving text under
+        wording that is still changing is the work done twice.
+- [ ] S5.6 Two Critic rounds over the second design, then Sage on what does not close
       done: both rounds are recorded here, every finding is fixed or refused
         with a reason, and any surviving dispute carries a Sage verdict marked
         Final
       tier: T2 · role: Critic → Sage
-- [ ] S5.6 Fold the outcome back into the case book
+- [ ] S5.7 Fold the outcome back into the case book
       done: each of the sixteen cases either states that the second design
         leaves it unchanged or carries the case's new shape under it, and
         `gc-horizon-states.md` carries the header states this design adds

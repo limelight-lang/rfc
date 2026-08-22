@@ -19,6 +19,7 @@ graph TD
     I["I. Compiler-owned entities<br/>in the walk"]
     J["J. Is the arena an unwalked<br/>root source?"]
     M["M. The heap-edge channel<br/>OPEN, blocks D E F"]
+    N2["N. What the review priced<br/>and Edmond's coarse certificate"]
     K["K. The weak-reference<br/>moment"]
     L["L. The collector called<br/>from inside the mutator"]
     Z["Z. The economics gate"]
@@ -35,6 +36,8 @@ graph TD
     A --> J
     J --> Z
     B --> M
+    M --> N2
+    N2 --> Z
     M --> D
     M --> E
     M --> F
@@ -364,6 +367,79 @@ is itself deferred, and a boundary count covers counted-source-to-deferred-
 target stores ([../gc-horizon.md](../gc-horizon.md)). The measurement that
 would overturn it is the live deferred set at quiescent points: the pass is
 race-free only if it completes inside one such interval.
+
+## N. What the second review priced, and what it left standing
+
+Fable, 2026-08-21, on the suspects-post / mutator-finalises shape. Every
+measured constant below is quoted from `model/dev/BENCHMARKS.md` in the
+code repository and was re-read against it; everything else is marked.
+
+**The numbers.** A counted publish costs about 2.4 ns over a plain store,
+the plain store being 0.33 ns. The epoch probe, which performs exactly the
+pointer chase a confirming trace performs, measures 72-108 ns per entity in
+its chain shape at 100 000 entities — so a pass over 100 000 live deferred
+entities is **7-11 ms**, read straight off an existing measurement. That is
+not the short arm the principles ask for.
+
+**The crossovers.** Against today's counted lowering the pass pays for
+itself above roughly 1 to 40 elided deferred-to-deferred stores per live
+deferred entity per pass. Which end holds depends on one unmeasured
+quantity: the share of counted stores that miss cache. A counted store
+touches two foreign object headers at random addresses, and if those miss,
+the real price of counting is around 80 ns rather than 2.4 — an order above
+its instruction cost, and the threshold collapses to about one store per
+entity. Against a card or SATB barrier the cache argument does not help,
+because a barrier touches no foreign header either, and the threshold rises
+to 200-270 stores per entity — plus the barrier pays no pause.
+
+**Four repairs the shape needs and the text does not state.** A boundary
+capture on any store of a deferred target into a slot whose holder is not
+itself deferred, without which the trace must run through counted space and
+the cost claim dies. A mechanism that **enumerates** roots: a capture count
+is a number in a header at an unknown address, and a trace from roots needs
+them listed — so either a registry returns, which is the Form C proposal
+this design exists to avoid, or the pass scans deferred headers, which is
+proportional to slots rather than to live entities. Newborns treated as
+roots the pass traces **through**, which is what closes M's straight-line
+hole. And a rule that a pass may only run at a point dominated by the
+horizon placement, since between horizons a live deferred local legitimately
+carries no capture.
+
+**Confirmation proportional to the suspects is impossible.** Two heaps
+differing only in one field of one live deferred entity produce identical
+records under a regime where deferred stores write nothing, so a sound
+checker must read that field; quantified over all live deferred entities
+and their fields, that is Ω(N·F) reads. Trial deletion cannot substitute:
+it subtracts internal edges from a total count, and a deferred entity has
+no total.
+
+**The economic finding, and Edmond's answer to it.** Because the mutator
+must trace from roots regardless, a wrong verdict costs nothing beyond the
+pass it triggered, so the collector in this shape is a **trigger rather
+than a judge** — and as a trigger it is beaten by a counter of bytes
+allocated in deferred blocks. Edmond's counter: the background walk runs on
+another core, so it is paid in CPU and not in mutator latency, and the
+philosophy has already chosen that side. Both statements are true of
+different currencies; what settles it is whether the list makes the
+**confirmation** cheaper, which it does not while the confirmation is a
+full trace.
+
+**The idea that came out of that** (Edmond, same day, not yet reviewed):
+the collector's answer is wrong in exactly one case — a reference moved
+into an already-scanned object while it walked. If the mutator can certify
+cheaply that it moved nothing during the walk, the collector's answer
+stands and no pass runs. The certificate can be coarse: the compiler knows
+statically which regions of code contain a store into a deferred slot, so
+one flag per such region, not one write per store. No such region executed
+during the walk means the verdict holds. The full pass then becomes the
+rare fallback for the case where one did.
+
+**The squeeze to answer before any of this is worth building.** Entities
+that are request-confined and written often already live in an arena, which
+charges neither counts nor a pass. What is left for the deferred regime is
+the population that escapes an arena, lives long, and is written often —
+exactly where the live set is unbounded and mid-request passes return.
+Whether that population exists is a corpus question.
 
 ## K. The weak-reference moment
 

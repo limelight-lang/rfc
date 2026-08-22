@@ -241,6 +241,17 @@ broken links.
       note: this gates the road taken in `gc-horizon-v2/top-level.md`, "Who
         judges a deferred entity". Buildable today: no compiler is needed,
         only a synthetic object graph and the existing probe's skeleton.
+- [ ] S5.4b Measure what a counted store really costs when it misses
+      done: a cold-mode canary for the `retain`/`release` pair, on the
+        existing probe pattern, reports the pair's cost when the two foreign
+        object headers it touches are out of cache, beside the hot figure of
+        1.84-1.87 ns already recorded; the result is in the code repository's
+        `dev/BENCHMARKS.md` with the machine named
+      tier: T2 · role: —
+      note: this single quantity moves the deferred regime's crossover
+        against today's lowering by roughly a factor of forty
+        (`gc-horizon-v2/questions.md`, N). The repository has no cold-mode
+        pair measurement today.
 - [ ] S5.5 Absorb the proof side into `gc-horizon-v2/` and retire `gc-horizon.md`
       done: the ownership lattice with its owned base cases, the anchor-chain
         invariant, the horizon list, the placement rule and the class/site

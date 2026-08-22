@@ -71,7 +71,7 @@ flowchart TD
     B1[B1 skip kinds that cannot ring<br/>rate measured, share corpus] --> C1
     A6 --> B1
     B2[B2 the acyclic class flag<br/>compiler] --> C1
-    B4[B4 arrays as the commonest spine<br/>today]
+    B4[B4 arrays as the commonest spine<br/>measured, populated row open]
     B5[B5 the epoch-abort watermark<br/>design + measure] --> C1
     B6[B6 skip by block, not by entity<br/>design + measure]
     B1 --> B6
@@ -257,15 +257,38 @@ The second collector-side bounding mechanism in the backlog beside C2's
 young-free exemption, and `../rc-walk.md` says it needs its own proof pass.
 C2 alone does not bound a long epoch.
 
-### B4. Arrays as the spine of the commonest ring  [today]
+### B4. Arrays as the spine of the commonest ring  [measured; the populated row stays open]
 
 `../rc-walk.md` calls the array the spine of the commonest PHP cycle, and
 arrays are copy-on-write, so they keep their count under every regime.
-**What would answer it:** whether the walk can treat an array's storage
-differently from an object's fields — the storage is a separate raw buffer
-(`../../layouts.md`), which the walk reaches through a second dereference.
+The node asked whether the walk can read an array's storage differently
+from an object's fields.
 
-## C. When the walk runs
+**It already does.** The array arm reads the storage head under a version
+and gives the array up when the two readings disagree, and only then picks
+a stride from the tag (`ll-model` `src/walk.rs`, `src/array/head.rs`),
+where the object arm chases the class word instead. The three tags are the
+ordered hash, the vector and a typed vector that no producer stamps today,
+which the walker refuses rather than striding. A vector's key is its
+position, so only the value is a cell; a hash entry's string key is a
+counted child beside the value, so a hash row carries two.
+
+**What the second dereference costs: about 15 ns**, 2026-08-22, `ll-model`
+`dev/BENCHMARKS.md`. An empty array's row is 68 ns against a leaf row's 54
+in the same runs, median of six, the excess spanning 9.2 to 20.2 — a
+factor of 2.2, so the direction is settled and the magnitude is not. An
+array that can hold no cells costs the walk about a third more than a
+string, and the extra is the coherent read the mutator's freedom to move
+storage forces rather than any element work. Probe:
+`collector::tests::what_an_array_row_costs_the_walk`.
+
+**What it changes:** B1's acyclic skip saves more per array than per
+string, and B6's skip by block saves this read as well as the header miss.
+
+**What stays open:** a populated array's row, where the stride adds one
+cell per element for a vector and two per entry for a hash table; and
+whether the give-up path is hot under a mutator that is actually writing,
+which the probe's quiescent population cannot show.
 
 ### C1. The background cadence  [measure]
 

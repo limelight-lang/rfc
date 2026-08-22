@@ -18,6 +18,8 @@ graph TD
     H["H. Renewal placement<br/>and its measured cost"]
     I["I. Compiler-owned entities<br/>in the walk"]
     J["J. Is the arena an unwalked<br/>root source?"]
+    K["K. The weak-reference<br/>moment"]
+    L["L. The collector called<br/>from inside the mutator"]
     Z["Z. The economics gate"]
 
     A --> B
@@ -31,6 +33,10 @@ graph TD
     G --> H
     A --> J
     J --> Z
+    B --> K
+    K --> Z
+    B --> L
+    L --> Z
     E --> Z
     H --> Z
     I --> Z
@@ -75,6 +81,23 @@ is empty before it ends.
 **Blocks:** every node below, by deciding how much heap they govern.
 
 ## B. Regime selection — class, category, or both
+
+**Mostly decided 2026-08-21.** The regime is a class property decided by
+the compiler, and the store that skips the count is licensed by the
+*declared type of the destination slot*, not by a runtime test on the
+target — otherwise the elision costs a load and a branch on every store,
+which is the write barrier this design exists to avoid. Two things force a
+class to stay counted, and only two: a COW-eligible value, whose count is
+read while it is alive, and an entity the walk does not collect at all
+([top-level.md](top-level.md), "What forces a class to stay counted"). On
+top of the class bit sits a per-allocation-site decision — whether the
+compiler owns this instance and frees it itself — which is where
+pretenuring's per-site advice fits ([prior-art.md](prior-art.md)).
+
+What stays open is the profitability threshold in the selector, which needs
+measurement and belongs to Z.
+
+The original entry, kept because the correction rests on it:
 
 **Provisionally decided, open in the second half.** The regime is a class
 property, because the compiler must emit the right code without a runtime
@@ -207,6 +230,56 @@ enter arena memory and enumerate its edges like any other, is undecided.
 against the cost of maintaining and re-reading the root list, and whether
 arena memory can be scanned at all — the walk finds object boundaries in
 entity blocks by slot arithmetic, and an arena hands out memory by cursor.
+
+## K. The weak-reference moment
+
+**Open.** A deferred entity's `WeakReference::get()` keeps returning it
+after its last strong reference is gone, until the collector notices. PHP
+nulls the cell at once for an acyclic object and delays only for a cycle
+member, so this moves a rule rather than extending an existing exception.
+The `unset` attempt ([top-level.md](top-level.md)) returns the prompt
+behaviour to entities that never entered the heap, which is where the
+observing code usually is; what remains open is everything else.
+
+Three things are at stake and they are of different kinds. The observable
+break is a corpus question — how many uses of `WeakReference` and `WeakMap`
+test liveness rather than attach metadata, the second being indifferent to
+the moment. The retention is a memory question: a `WeakMap` holds its
+values strongly, so a delayed key delays a whole value graph with it. The
+resurrection window is a correctness question and does not depend on either
+count: `get()` is the only operation in the language that reaches an
+unreachable entity, so the cell must be cleared before the free with no
+user code in between, which today the drain-exclusivity window guarantees
+([../drain-window.md](../drain-window.md)).
+
+**What would answer it:** the corpus count for the first, and for the third
+a statement that the deferred free path clears cells inside the same window
+the drain uses.
+
+## L. The collector called from inside the mutator
+
+**Open, raised by Edmond 2026-08-21 and still under consideration.** The
+`unset` attempt makes reclamation run in the middle of ordinary program
+code rather than at a checkpoint, and the algorithm has to work there.
+What that costs is not yet worked out; what it touches is:
+
+- **Reentrancy.** The attempt can run a destructor, which is user code,
+  which allocates and can `unset` again, re-entering the attempt.
+- **The exclusivity window.** A drain frees a component in a window where
+  the collector provably touches nothing
+  ([../drain-window.md](../drain-window.md)). An `unset`-time free happens
+  outside that window, while the collector may be mid-walk over the same
+  block.
+- **Slot classification.** Phase 1 reads a zero count as a free slot, and a
+  slot freed under a walk that has already recorded its row is the shape
+  the walk's own rules were written to exclude.
+- **Ordering and resurrection.** A destructor run inside ordinary code sees
+  the program mid-statement, which is a stronger claim about what is
+  consistent at that point than a checkpoint makes.
+
+**What would answer it:** the same three links the drain-window proof uses,
+re-derived for a free that starts from the mutator's own code rather than
+from a posted verdict.
 
 ## Z. The economics gate
 

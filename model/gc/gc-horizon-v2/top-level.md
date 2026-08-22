@@ -167,6 +167,70 @@ What that costs is a change of reading schedule. The release-at-reset list
 is read once, at reset; a root list is read at every epoch while the arena
 lives, and it grows monotonically through the request.
 
+## What forces a class to stay counted
+
+Two things, and both are structural rather than about the moment of death.
+
+1. **A COW-eligible value** — array, string, reference box. Its uniqueness
+   test reads the count while the entity is alive
+   ([../../values.md](../../values.md#copy-on-write-protocol)), so the
+   count is doing work that has nothing to do with reclamation.
+2. **An entity the walk does not collect at all** — arena, immortal,
+   unique ownership, compiler ownership. There is nothing to defer,
+   because nothing about its liveness was ever computed from a count.
+
+A destructor is not on the list. The mutator runs a destructor either way:
+today a condemned cycle's members are freed by the collector and their
+destructors are called by the mutator at a checkpoint through the drain,
+and a deferred entity takes the same path. What deferral changes is the
+delay between "no one holds it" and "the destructor runs", which is a
+tuning question. Weak references are the same shape: the collector clears
+the cells of what it frees, exactly as an arena reset already walks the
+arena's weak list for objects that die with their pages
+([../../weak-references.md](../../weak-references.md)). Both were on an
+earlier revision's list and Edmond struck them off on 2026-08-21.
+
+What the deferral does cost in both cases is the moment, and that cost is
+visible: `WeakReference::get()` keeps returning an entity whose last strong
+reference is gone until the collector notices, where PHP nulls it at once
+for an acyclic object and only delays for a cycle member. The `unset` rule
+below returns the prompt behaviour to the population that observes it, and
+what remains is recorded as question K.
+
+## `unset` is an explicit attempt to reclaim
+
+For a deferred entity `unset` does not lower to nothing. It lowers to an
+explicit call that **tries** to reclaim the entity there and then, and
+gives up silently when it cannot prove the entity is dead.
+
+The attempt succeeds when two facts hold together:
+
+- the entity never entered the heap — no store put it in a field or an
+  array element, so no uncounted internal edge can reach it; and
+- the capture count reaches zero at this `unset`, so no frame, arena slot,
+  static or handle holds it either.
+
+The first fact is what makes the second conclusive: for a deferred entity
+internal heap edges are not counted, so a zero capture count on an entity
+that did escape says nothing. On success the entity dies with PHP's own
+timing — the destructor runs, the weak cells clear, the memory returns —
+and none of that cost anything on the store path, because the entity was
+never counted.
+
+Who establishes the first fact is open. The compiler can establish it
+statically, by finding no store site whose value is this local, which costs
+nothing at runtime and fails closed on anything it cannot see. Or the store
+path can set a header bit the first time an entity is stored into a heap
+slot, which is exact but puts one unconditional write back on the store
+path that deferral exists to keep empty.
+
+The risk is stated plainly: an unsound non-escape proof frees a live entity
+with no runtime guard, because there is no count to contradict it. The
+detector is the shadow-count lowering
+([../gc-horizon.md](../gc-horizon.md#verification-artifacts-a-precondition-of-implementation)),
+and the whole-program condition the first design already states for
+unique ownership applies here unchanged.
+
 ## The three treatments the collector owes an entity
 
 1. **Walk it, and it may be condemned** — an ordinary GC-heap entity,
@@ -352,3 +416,11 @@ argument that settled it:
   derivation).
 - An arena store whose target is deferred takes no `retain` and no
   release-at-reset entry: the target's address goes on a root list instead.
+- A destructor does not force a class to stay counted, because the mutator
+  runs it at a checkpoint either way; nor do weak references, because the
+  collector clears the cells of what it frees (Edmond, striking both off
+  the eligibility list).
+- Unique ownership is not an exclusion but a different regime: such an
+  entity is not collected by the walk at all.
+- `unset` on a deferred entity lowers to an explicit reclamation attempt
+  rather than to nothing (Edmond).

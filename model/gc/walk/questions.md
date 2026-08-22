@@ -252,6 +252,16 @@ the store path is where the work belongs. **What would answer it:** a scan
 of real PHP programs, which the repository has needed for three separate
 questions and has never had.
 
+**The scan splits in two, and one half is buildable today.** The
+store-side share — how many publications survive the compiler proofs —
+needs the compiler and waits. The *heap-side* share does not: how many live
+entities are of a kind that cannot ring, and how many counted edges a heap
+holds per entity, are properties of a running program's object graph, and a
+reachability walk over a booted application reports both. What the answer
+would be approximate about is the mapping from Zend's object model to this
+design's entity kinds, which has to be stated with the figures rather than
+assumed.
+
 **A third quantity for the same scan, added 2026-08-22: the ratio of
 counted edges to entities.** B4 measured a cell at 43-47 ns against a leaf
 row's 40-54, so the walk's cost is carried by edges as much as by rows, and

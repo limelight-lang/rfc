@@ -81,9 +81,9 @@ flowchart TD
     C3[C3 the pressure ladder's constants<br/>measure]
     C4[C4 do the rungs earn their keep<br/>measure] --> C3
 
-    D1[D1 the hand-back channel<br/>design] --> D5
+    D1[D1 the hand-off and hand-back channels<br/>specified 2026-08-22] --> D5
     D3[D3 the batch constants<br/>measure]
-    D5[D5 collector-side destructor calls<br/>design]
+    D5[D5 collector-side destructor calls<br/>answered 2026-08-22]
     D6[D6 WeakMap ephemerons<br/>design]
 
     E1[E1 actors and per-thread epochs<br/>design] --> E3
@@ -99,7 +99,7 @@ flowchart TD
     G6[G6 the summary language<br/>design] --> G5
     G5[G5 the trusted-effect boundary<br/>design]
 
-    H1[H1 the checker models the old protocol<br/>today]
+    H1[H1 the checker models the old protocol<br/>scoped, re-derivation unstarted]
 
     F1[F1 coalescing RC<br/>read] --> A5
     F2[F2 arborescent GC<br/>read]
@@ -415,13 +415,64 @@ so.
 
 ## D. The verdict, and who frees
 
-### D1. The hand-back channel  [design]
+### D1. The hand-off and hand-back channels  [specified against the queue that exists]
 
-Ruling 5 needs it. The verdict protocol runs in one direction today:
-collector to mutator. A component the mutator has confirmed and hands back
-needs the other direction, and `../pure-destructors.md` names it as the
-missing piece of the hand-off drain. **What would answer it:** the protocol,
-with the reentrancy gates the pickup already has.
+Ruling 5 needs them. The verdict protocol runs one way today, collector to
+mutator, and the hand-off drain of
+[`../pure-destructors.md`](../pure-destructors.md#the-hand-off-drain) needs
+two more crossings: the mutator handing a confirmed component to the
+collector, and the collector posting the external children its sever
+displaced back to the owner.
+
+**What exists, read from `ll-model` `src/epoch.rs`.** One mutex-guarded
+queue of confirmation messages, each a vector of raw member pointers that
+the collector treats as opaque ids. Three statics beside it: a handshake
+flag the collector raises and the next checkpoint lowers, a monotonic ack
+count whose `AcqRel` bump is the handshake's release fence, and
+`OUTSTANDING_VERDICTS`, which the post increments **before** the message
+becomes visible and whose zero is the collector's licence to end the
+epoch. Pickup is gated by two thread-locals: `MID_DRAIN`, which closes the
+recursion when a drained destructor's release checkpoints inside the
+drain, and `TEARDOWN_DEPTH`, which refuses a pickup while any entity on
+this thread is between its committing zero store and the end of its
+dispose. The queue is a mutex rather than a lock-free structure because
+verdicts are a cold per-epoch trickle.
+
+**The hand-off, mutator to collector.** The mirror image, with one rule
+that is not symmetric: **the mutator does not decrement
+`OUTSTANDING_VERDICTS` when it hands off.** The count is the epoch's
+licence to end, the work is not finished, and it has only changed hands —
+so the collector decrements it when its tail is done. This is the
+mechanical form of what the drain already states, that the verdict stays
+outstanding until the tail completes and the component holds the epoch open
+longer. The collector polls this queue between its own steps; it needs no
+handshake, having no reentrancy to close.
+
+**The hand-back, collector to mutator.** A second message kind on the
+existing queue rather than a second queue, because the pickup gating is
+exactly what a batch of releases needs: those releases run destructors, and
+`MID_DRAIN` and `TEARDOWN_DEPTH` are what keep a destructor's own release
+from picking up another message mid-teardown. **The hand-back message must
+not touch `OUTSTANDING_VERDICTS`**: its payload is live entities whose
+deaths are ordinary deaths, and counting it would make the epoch wait for
+ordinary release work.
+
+Two orderings the channels owe:
+
+- The collector posts the hand-back **after** the sever is complete for the
+  whole component. Posted earlier, the owner could release a child whose
+  in-edge from the component still exists, and the count would go one below
+  the truth.
+- An undrained hand-back at thread exit is drained there like any other
+  pending message. The thread-exit teardown already walks the static blocks
+  and disposes the thread's weak table
+  ([`../../weak-references.md`](../../weak-references.md#the-weak-table-address--subscriber-row));
+  a batch left on the queue instead leaks every child in it.
+
+**What stays open:** the tail's completion bound, which
+[`../pure-destructors.md`](../pure-destructors.md#the-hand-off-drain) calls
+part of the design rather than an option on it, and whose number is node
+D3's.
 
 ### D2. Cutting a garland  [closed]
 
@@ -466,28 +517,42 @@ recorded decision is a known limitation, behaviour matching PHP 8.0-8.2, with
 the gap logged in the backlog. This node asks whether the design of record
 keeps that deferral or closes it.
 
-### D5. Collector-side destructor calls  [design]
+### D5. Collector-side destructor calls  [answered: the permission stays unused]
 
-Ruling 8 lets the collector call a destructor proven pure. Purity is
-transitive, so nothing inside an eligible component writes anything
-observable. The order of child releases inside it is observable: it is
-specified language surface, which is why P2 keeps its call
-([`../pure-destructors.md`](../pure-destructors.md#the-purity-ladder)). **What remains
-open:** where the call sits relative to the sever and the weak nulling, and
-what the collector owes the owner for the external children the component
-displaces. The two boundaries the answer
-has to keep are already stated as races 4 and 5 of
-[`../pure-destructors.md`](../pure-destructors.md#the-five-owner-bound-races):
-the weak table is a per-thread plain map no other thread may reach, and
-external-child releases decrement the counts of live entities and must
-round-trip to the owner in every design.
+Ruling 8 lets the collector call a destructor proven pure. **The design of
+record does not use the permission, and should not.**
 
-## G. The proof side, inherited
+**Where the calls sit is already fixed.** The hand-off drain runs every
+destructor call in the mutator's prologue, after the weak nulling and
+before the component is handed over, and the collector's share is the sever
+and the physical release — never a user destructor
+([`../pure-destructors.md`](../pure-destructors.md#the-hand-off-drain)).
+Death timing is unchanged for the members: the weak nulling is where their
+death becomes observable, exactly as today.
 
-`gc-horizon.md` supplies the compiler proofs this design keeps, so its open
-questions are open questions of the design of record. They were not in the
-first draft of this graph. Numbering here is local; the number in
-`gc-horizon.md` is given for each.
+**Moving a P2 call to the collector buys nothing and costs two things.**
+The mechanical work the collector could take is the sever, and it already
+takes it. What a P2 destructor does beyond that is null its own counted
+slots, which releases children — and an external child's release is
+owner-bound, counts being plain single-writer fields
+([`../pure-destructors.md`](../pure-destructors.md#the-five-owner-bound-races),
+race 5), so the call would have to round-trip what the sever round-trips
+anyway. The second cost is order: P2 differs from P0 in the order of child
+releases alone, and that order is specified language surface, which is why
+ruling 9 keeps the rung and its call at all
+([`../pure-destructors.md`](../pure-destructors.md#the-purity-ladder)).
+
+**So the permission stays available and unused**, recorded here so the
+question is not re-derived: what makes the tail sound off-thread is that
+the exact test proved no external counted reference exists, the weak cells
+are nulled, and purity rules out a destructor minting a new channel — and
+that argument licenses the sever, which is all the collector needs.
+
+**What remains open** is not the call but the fallback: the same pipeline
+entirely on the mutator with its tail sliced across checkpoints, which
+[`../pure-destructors.md`](../pure-destructors.md#the-hand-off-drain) keeps
+while the residual duties are unresolved. D1 resolves the channels; whether
+the fallback is retired with them is the ruling that closes this node.
 
 ### G1. The weak cell is an uncounted edge  [closed]
 
@@ -746,17 +811,47 @@ regime is its descendant.
 
 ## H. Verification debt
 
-### H1. Both model-checker specifications model a protocol that is gone  [today]
+### H1. Both model-checker specifications model a protocol that is gone  [scoped by a run; the re-derivation is unstarted]
 
-`../../../dev/tools/rc-walk/README.md` and `../drain-window.md` record it:
-the TLA+ specifications were written against the pre-amendment protocol,
-while eager death is the premise of everything since. The design of record
-therefore has no verified model of the protocol it actually states, and any
-new scenario written against the checker inherits the drift. **What would
-answer it:** re-deriving the specifications, which is a precondition of any
-model-checker work rather than a task beside it.
+`../../../dev/tools/rc-walk/README.md` and `../drain-window.md` record the
+drift: the TLA+ specifications were written against the pre-amendment
+protocol, while eager death is the premise of everything since.
 
-## E. Threads
+**The battery is alive, and it agrees with itself.** Run whole on
+2026-08-22, OpenJDK 21 with the vendored TLC: 22 scenario configs against
+`RcWalk.tla` and 4 against `DrainWindow.tla`, **all 26 matching the
+expectation recorded for them** in
+[`../rc-walk-proof.md`](../rc-walk-proof.md) — every sound config
+exhausts clean, every kill config ends in its violated invariant, and the
+two liveness kills (`SC_dtor_reentrant`, `SC_nosever`) end in a violated
+temporal property. Scenario runs take seconds. So the instrument works
+and the specs have not rotted; what is wrong with them is what they
+describe.
+
+**What green there does not say.** The specs carry a shared condemned
+byte, the F5 death deferral and message-based acquittals with drain
+duties ([`../rc-walk-model.md`](../rc-walk-model.md), the 2026-07-27
+banner). The protocol since the amendment has none of the three:
+condemnation is collector-private, every death is eager, the drain drops
+on any zero-count member by the corpse rule, and an acquittal posts
+nothing. A green battery is therefore evidence for the superseded rule
+set — except where a scenario exercises machinery the amendment kept,
+which the banner itself says is most of it: the walk, the filter, the
+exact test, the sever and the deferred queue.
+
+**What the re-derivation has to change**, and it is a list rather than a
+rewrite: the condemned byte leaves the state vector; the death action
+loses its deferral arm and commits at zero; the acquittal action stops
+posting and becomes collector-private; the drain's entry condition
+becomes the corpse rule. Then the rulings of 2026-08-22 add what has no
+model at all — the collector as the freeing path, the hand-off and
+hand-back crossings of node D1, and the batch bound of D3.
+
+**What it blocks:** any model-checker scenario written today inherits the
+drift, so the re-derivation is a precondition of that instrument rather
+than a task beside it — which is what
+[`../gc-horizon-cases/README.md`](../gc-horizon-cases/README.md) already
+tells the case book about its third candidate oracle.
 
 ### E1. Actors and the epoch protocol  [design]
 

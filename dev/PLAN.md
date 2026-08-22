@@ -279,6 +279,28 @@ broken links.
         it costs epoch duration. D6 charged a kind branch a cell read's
         price. B6's numbers reproduced; its mechanism did not. Accepted
         whole; every one is open again with what the round established.
+      Critic 2026-08-22 round 6 (the day's own work on C1, C2, B5, E1):
+        six findings, all accepted. C2's exempt window is two epochs and
+        not one — the first walk to meet an entity writes the current
+        number, which the predicate also reads as exempt — so the probe
+        that churned inside one epoch exercised half the predicate and its
+        table was a floor. B5's stamp-residue objection does not follow
+        from the corrected mechanism. C1 named `blocks_out` where the crate
+        itself calls it the wrong instrument and keeps a better one. C2's
+        mid-teardown leg rested on an occupancy test the teardown guard
+        defeats. E1's stamped set was over-broad, and the prediction
+        control covered one arm and one cell.
+      Critic 2026-08-22 round 7 (over round 6's fixes): seven findings, all
+        accepted. The abort has three firing points and the rewrite priced
+        one of them; the exemption's free variable is the interval between
+        walks rather than the epoch, which the probe had pinned at duty
+        cycle one; the 76 % ceiling divides a live-entity stock by a parked
+        rate and omits payloads freed by growth; `stamped_new` is a
+        surviving-births meter and not an allocation rate; `used` is cheap
+        because nothing outside the owner reads it, and it covers one of
+        the four walked populations; E1's set still omitted the pooled
+        large-entity blocks; and the benchmark's control sentence was false
+        under every reading. Two rounds, then the device is dropped.
       handoff: state at the end of 2026-08-22. **Closed and holding:** A1,
         A5 (the width is not the lever; the prefetch is measured and
         unsettled), A7 (the discriminant is a bit of the retired condemned
@@ -286,12 +308,16 @@ broken links.
         costs the same in array storage as in an object body, so the walk's
         mass is edges), D2, D4, G1, G4 (COW outranks the uniqueness proof,
         Edmond), and the heap half of A6 (about 31 % of entities are
-        strings, 1.4-1.6 counted edges per entity, Laravel 13).
+        strings, 1.4-1.6 counted edges per entity, 0.31 headerless
+        companion records per entity, Laravel 13).
         **Open, and every one carries what a review round established
         rather than a guess:** A2-A4, A6's store side, A8, B1's share, B2,
-        B5, B6 (shape 1 refuted by measurement, shape 2 priced at 8 tail
-        blocks), C1-C4, D1, D3, D5, D6, E1-E3, G2, G3's generator half,
-        G5-G9, H1. **The rule this stage taught:** every closure written by
+        B5 (the abort's price now written per firing point), B6 (shape 1
+        refuted by measurement, shape 2 priced at 8 tail blocks), C1 (two
+        candidates eliminated, three named, threshold pending a real
+        workload), C2 (the curve is measured against the walk interval;
+        soundness open on two readers and on publishing the epoch number),
+        C3, C4, D1, D3, D5, D6, E1-E3, G2, G3's generator half, G5-G9, H1. **The rule this stage taught:** every closure written by
         argument broke under review and every closure written by
         measurement held. Close by measurement where an instrument exists;
         where none does, write what would answer the node and stop.

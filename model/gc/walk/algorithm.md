@@ -65,20 +65,42 @@ members' current fields. When every member's count equals its in-degree,
 every reference to every member comes from inside the component, and the
 component is garbage.
 
-**Why the verdict then holds.** Two facts, and they are the whole safety
+**Why the verdict then holds.** The confirmation reads two things at
+different instants — each member's count, and each member's fields — and the
+verdict is sound only if the result is what a single instant would have
+given. Three steps establish that, and together they are the whole safety
 argument.
 
-- *Nothing external holds a member.* That is what the equality says, and at a
-  quiescent point the counts it reads are a true snapshot: the only operation
-  that could raise one is an acquisition, and no thread is inside one.
-- *Nothing external can come to hold a member.* A mutator obtains a reference
-  only by reading it from something it already reaches. No path from outside
-  the component reaches a member, so no read can produce one. Unreachability
-  is stable, and the mutator has no way to make it otherwise.
+*The counts are not understated.* One operation raises a count: acquiring a
+reference. At a quiescent point no thread is inside an acquisition, so no
+raise is in flight and none has been lost between the collector's read and
+the moment it reads the next member.
 
-The dangerous case of the first version — the mutator taking a new reference
-to a member between the walk's read and the free — is closed by the quiescent
-point rather than by handing the component to the mutator.
+*The fields cannot move under the recomputation.* Writing a field of a member
+requires holding that member. A held member's count exceeds its in-component
+in-degree, so the equality fails on it. The two outcomes are therefore the
+only ones: either the check fails, or no mutator can reach a member and the
+component is motionless for the whole recomputation. The recomputation needs
+no protection of its own, and it is Edmond's own argument of 2026-08-22 —
+a component nothing outside holds is one the mutator cannot touch — applied
+to the confirmation rather than to the walk.
+
+*Nothing can come to hold a member afterwards.* A mutator obtains a reference
+only by reading it out of something it already reaches. The equality says no
+path from outside reaches a member, so no read can produce one, and no other
+operation creates a reference out of nothing. Unreachability is stable.
+
+The dangerous case of the first version — the mutator acquiring a new
+reference to a member between the walk's read and the free — is closed by the
+first step, and closed on the collector's side rather than by handing the
+component to the mutator.
+
+**What the argument rests on, stated so it can be attacked.** That an
+acquisition is the only operation that raises a count; that every acquisition
+lies inside a marked section; that reaching a member is necessary to write
+one of its fields; and that a quiescent point is observable without stopping
+a thread. Each is a claim about the lowering, not about the collector, and
+each fails if the compiler emits one acquisition outside a section.
 
 ### 4. Reclaim
 

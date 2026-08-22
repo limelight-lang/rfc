@@ -90,7 +90,7 @@ flowchart TD
     E3[E3 the domains proposal<br/>design]
     E2[E2 AArch64 header access<br/>hardware]
 
-    G2[G2 promotion in two categories<br/>today]
+    G2[G2 the counted-out categories<br/>open, wider than question 8] --> G7
     G3[G3 placement, raise sites and pad sets<br/>design]
     G8[G8 anchored parameters<br/>design] --> G6
     G9[G9 one borrow analysis or two<br/>design] --> G6
@@ -393,15 +393,75 @@ in-edge the equality cannot see, so a component naming one is judged by the
 mutator, which nulls the cells inside the visit that frees, with no user code
 between — ruling 8 keeps such a component off the collector's arm.
 
-### G2. Promotion buys nothing in two memory categories  [today]
+### G2. Promotion buys nothing in the counted-out categories  [open, and wider than the question]
 
-`../gc-horizon.md` question 8. Retain and release return early on immortal
-entities and are absent for request-arena ones, so a promotion retain is a
-no-op there, while the lattice reads the static class and never the category.
-Two parts: whether the category becomes an axis of the lattice, and what
-protects a borrow of an arena-resident referent across an actor's message
-boundary, where the arena resets. The reset's own destructor fixpoint runs
-user code in rounds and is a severing point the horizon list does not name.
+`../gc-horizon.md` question 8. An answer was written on 2026-08-22 saying
+the hazard reduces to G7 and the rest is cost; a review round broke it on
+its central premise. What the round established is below, and it makes the
+node larger rather than smaller.
+
+**The early return is on any non-zero category, so there are three cases,
+not two.** `ll_retain` returns before the counter word when the category
+bits are set and the entity is not COW
+([`../../lowering.md`](../../lowering.md#retain--release)), which covers
+request-arena, immortal **and long-lived**. A long-lived entity dies —
+"minimal RC or explicit free", the strategy per object type still
+undecided
+([`../../memory/arenas.md`](../../memory/arenas.md#long-lived-arena)) — so
+there the promotion retain buys nothing and no arena discipline protects
+the borrow either. The shape needs no fiber and no message boundary: a
+borrow of a long-lived referent, a horizon, the subsystem's explicit free
+inside it, and the borrow reads freed memory. The chain edge into such a
+referent is uncounted for the same reason, which is node G1's shape in a
+category nobody checked.
+
+**An arena is not always reset at a boundary: a `#[Region]` arena resets
+mid-message.** A region's arenas reset when the region object dies, by
+refcount or by its owner's drop
+([`../../memory/regions.md`](../../memory/regions.md#definition)), and its
+collector runs on its own threshold rather than at a message boundary. A
+region inherits the arena discipline wholesale and shares the same two
+category bits, so no lattice axis over the category can tell a region
+referent from a request-arena one.
+
+**The reset's fixpoint frees as it goes.** Object memory is logically
+freed as each destructor runs, and only the arena's pages are held until a
+pure round closes the loop
+([`../../memory/arena-reset.md`](../../memory/arena-reset.md#step-1--validate-trace-destruct-a-fixpoint-loop)).
+A destructor's own frame is live while later destructors run, since a
+child release inside it runs the next teardown, so a borrow taken in one
+destructor spans another's stores.
+
+**What the reset happens at is itself unsettled.** `actors.md` states
+"actor death = arena reset"
+([`../../../runtime/actors.md`](../../../runtime/actors.md#actor-memory));
+what a long-lived actor does at a message boundary is *collection*
+([`../../memory/arenas.md`](../../memory/arenas.md#request-arena)), and
+[`../domains.md`](../domains.md) says an arena's collection is its reset
+while its own table has an arena entity judged by nobody. Question 8, this
+node's earlier answer, and `../gc-horizon-cases/arena.md` all read the
+boundary as a reset without a source that says so.
+
+**What survives:** the immortal category has no hazard. Those entities are
+never freed, no thread-exit path tears them down, and a class descriptor
+and its metadata train are immortal with the code
+([`../../memory/arenas.md`](../../memory/arenas.md#immortal-objects)). The
+elision there is free.
+
+**The cost half is partly reachable, contrary to the earlier answer.** The
+category is statically known at a use site for interned strings, class
+descriptors, `null`, `true`, `false`, small integers and enum cases, all
+of them immortal by construction. What is missing is not an analysis that
+produces a category — allocation already picks one — but its propagation
+across a field load.
+
+**What would answer this node:** the long-lived category's reclamation
+strategy, which `arenas.md` marks undecided; a rule that separates a
+region referent from a request-arena one, or a proof that a borrow cannot
+outlive a region reset; the fixpoint's relation to the checkpoint
+protocol, which `../gc-horizon-cases/arena.md` open item 3 already calls
+underivable; and what a long-lived actor does to its arena at a message
+boundary.
 
 ### G3. Placement, raise sites, and what a landing pad releases  [partly ruled]
 

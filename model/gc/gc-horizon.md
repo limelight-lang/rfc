@@ -1148,7 +1148,17 @@ under [gc-horizon-cases/](gc-horizon-cases/) carry the failing shape.
    the weak-cell edge outright, and whether the always-provable rules
    need "the region contains no weak-cell load" among their
    preconditions.
-8. **Promotion buys nothing in two of the four memory categories.**
+8. **Promotion buys nothing in the counted-out memory categories.**
+   Widened 2026-08-22: the early return in `ll_retain` is on any
+   non-zero category bar COW ([lowering.md](../lowering.md#retain--release)),
+   so it covers long-lived entities too, and those do die by explicit
+   free or minimal RC. A `#[Region]` arena also resets mid-message,
+   when the region object's own count reaches zero
+   ([regions.md](../memory/regions.md#definition)), so an arena
+   referent does not reliably outlive the frame that borrows it. Both
+   shapes need no fiber and no message boundary
+   ([walk/questions.md](walk/questions.md#g2-promotion-buys-nothing-in-the-counted-out-categories--open-and-wider-than-the-question)).
+   The question as first written:
    Retain and release return early on immortal entities and are absent
    for request-arena ones
    ([arenas.md](../memory/arenas.md#object-categories-by-memory-strategy)),

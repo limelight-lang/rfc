@@ -448,15 +448,24 @@ and its metadata train are immortal with the code
 ([`../../memory/arenas.md`](../../memory/arenas.md#immortal-objects)). The
 elision there is free.
 
-**The cost half is partly reachable, contrary to the earlier answer.** The
-category is statically known at a use site for interned strings, class
-descriptors, `null`, `true`, `false`, small integers and enum cases, all
-of them immortal by construction. What is missing is not an analysis that
-produces a category — allocation already picks one — but its propagation
-across a field load.
+**The cost half is not a lattice question.** An immortal entity needs no
+retain and no release at all, so where the compiler knows the value is
+immortal the right lowering emits nothing — no call, no flag test, no
+promotion. That holds for interned strings, class descriptors, `null`,
+`true`, `false`, small integers and enum cases, and it holds in today's
+lowering as much as under this design: a `retain` on a string literal is
+dead code either way.
+[`../../memory/arc-optimizations.md`](../../memory/arc-optimizations.md)
+carries the runtime half only — the flag makes the operations no-ops —
+and the compile-time half, dropping the call where the value's
+immortality is a static fact, is written nowhere. What remains beyond it
+is a field load, where the category lives in the header and not in the
+type, so removing the call there needs the category propagated to the use
+site.
 
-**What would answer this node:** the long-lived category's reclamation
-strategy, which `arenas.md` marks undecided; a rule that separates a
+**What would answer this node:** the compile-time elision above, which is
+owed by the lowering rather than by the lattice; the long-lived category's
+reclamation strategy, which `arenas.md` marks undecided; a rule that separates a
 region referent from a request-arena one, or a proof that a borrow cannot
 outlive a region reset; the fixpoint's relation to the checkpoint
 protocol, which `../gc-horizon-cases/arena.md` open item 3 already calls

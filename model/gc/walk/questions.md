@@ -254,15 +254,35 @@ the store path is where the work belongs. **What would answer it:** a scan
 of real PHP programs, which the repository has needed for three separate
 questions and has never had.
 
-**The scan splits in two, and one half is buildable today.** The
-store-side share — how many publications survive the compiler proofs —
-needs the compiler and waits. The *heap-side* share does not: how many live
-entities are of a kind that cannot ring, and how many counted edges a heap
-holds per entity, are properties of a running program's object graph, and a
-reachability walk over a booted application reports both. What the answer
-would be approximate about is the mapping from Zend's object model to this
-design's entity kinds, which has to be stated with the figures rather than
-assumed.
+**The scan splits in two, and the heap-side half is measured**, 2026-08-22.
+The store-side share — how many publications survive the compiler proofs —
+needs the compiler and waits. The heap-side share does not, and
+`../../../dev/tools/heap-composition.php` takes it: a reachability walk over
+a booted application, run here against the Laravel 13 skeleton on PHP 8.6,
+once after boot and once after one handled HTTP request.
+
+| | booted | after a request |
+|---|---|---|
+| objects, exact | 507 | 387 |
+| distinct strings, proxy | 797 | 721 |
+| array slots | 1 302 | 1 253 |
+| counted slots | 3 765 | 3 753 |
+| string share of counted slots | 40.5 % | 43.9 % |
+| counted slots per object | 7.43 | 9.70 |
+| object-to-object edges per object | 1.85 | 2.20 |
+
+Taking entities as objects plus distinct strings plus array slots, that is
+**about 31 % of entities being strings in both runs, and 1.4 to 1.6 counted
+edges per entity.**
+
+**What the figures are approximate about**, stated rather than assumed:
+objects and the edges between them are exact, `spl_object_id` giving
+identity; strings and arrays have none in PHP, so distinct string contents
+stand in for string entities and under-count, while an array is counted per
+slot and over-counts a shared one. Over-counting arrays inflates the
+denominator, so **31 % is a floor for the string share**. A closure is an
+object here and 309 of the 507 booted objects are closures, which Limelight
+keeps as its own kind.
 
 **A third quantity for the same scan, added 2026-08-22: the ratio of
 counted edges to entities.** B4 measured a cell at 43-47 ns against a leaf
@@ -286,9 +306,13 @@ half what an object row costs, since a leaf pays the header read, the id-map
 entry and the count store and skips only the edge trace. The walk is about
 70 % of an epoch.
 
-**What is left is the share.** How many entities of these kinds a real PHP
-heap holds is a corpus question and nothing here measures it. The same scan
-answers node A6, so the two travel together. B4's measurement of 2026-08-22
+**The share has a first measurement**, 2026-08-22: about 31 % of entities
+in a booted Laravel container are strings, and the same after a handled
+request (node A6). Against B4's cost model — a row 40-54 ns, an edge 43-47,
+and 1.4 to 1.6 edges per entity — the skip removes the rows of those
+entities and no edges, which is roughly **13 % of the walk**. That is one
+framework on one machine and an estimate built from two measurements rather
+than one, so it is a first bracket and not the number. B4's measurement of 2026-08-22
 bounds what the skip can be worth: it removes rows and no edges, and an edge
 costs about what a row does, so its ceiling is the leaf share times the row
 alone. B6's measurement of the same day removes its rival's cheap
@@ -417,6 +441,10 @@ of A6 as a quantity that decides between them.
 **The floors are floors.** Every filled cell in the probe names one shared
 entity, so the `IN` increments hit one cache line where a real heap
 scatters them; both cell figures are lower bounds.
+
+**And the ratio it needed now has a first value**: 1.4 to 1.6 counted edges
+per entity in a booted Laravel container, node A6. At that ratio edges carry
+about three fifths of the walk and rows two.
 
 ### C1. The background cadence  [the quantity is settled; the thresholds are not]
 

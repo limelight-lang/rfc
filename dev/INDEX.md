@@ -20,7 +20,10 @@ No product code lives here — this is the specification, see
 - **Diagrams / schemas** → [design/](design/)
 - **Repository utilities** → [tools/](tools/README.md) — `linkcheck.php`
   verifies every cross-reference and anchor resolves; run it after moving a
-  document or rewording a heading
+  document or rewording a heading. `heap-composition.php` walks a booted
+  application's object graph and reports what a Limelight heap of it would
+  hold — the heap-side half of the corpus question, node A6 of
+  [../model/gc/walk/questions.md](../model/gc/walk/questions.md)
 - **rc-walk model checker** → [tools/rc-walk/](tools/rc-walk/README.md) —
   TLA+/TLC scenario battery for the collector; results in
   [../model/gc/rc-walk-proof.md](../model/gc/rc-walk-proof.md)
@@ -36,4 +39,5 @@ checker exists.
 
 ## Not yet present (deferred on purpose)
 
-- `dev/BENCHMARKS.md` — no code to measure yet.
+- `dev/BENCHMARKS.md` — no code to measure yet. The corpus figures
+  `heap-composition.php` produces live in the node that asked for them.

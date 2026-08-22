@@ -37,3 +37,28 @@ network and break for reasons outside this repository.
 and their anchor handling does not match GitHub's slug rules exactly, which
 is precisely the half that rots quietly here. This is ~150 lines with no
 dependency beyond the PHP already required to work on this project.
+
+## `heap-composition.php`
+
+Walks a booted application's object graph and reports what a Limelight heap
+of it would hold: entities by kind, counted slots by what they hold, and the
+counted edges per entity. It answers the heap-side half of the corpus
+question — node A6 of
+[../../model/gc/walk/questions.md](../../model/gc/walk/questions.md), with
+node B1 wanting the share of entities that cannot sit on a cycle and node B4
+the edge-to-entity ratio.
+
+```
+HEAP_CHDIR=/path/to/app php heap-composition.php bootstrap.php label
+```
+
+The bootstrap file returns one value or a list of values to walk from — an
+application container is the usual root — and `HEAP_CHDIR` lets it live
+outside the application it boots, so nothing is written into the scanned
+project. `HEAP_MAX_DEPTH` bounds the walk, 64 by default.
+
+**Read the file's own header before quoting a figure.** Objects and the
+edges between them are exact; strings and arrays carry no identity in PHP,
+so the string count is a proxy that under-counts and the array count is per
+slot and over-counts. Which way each error runs is what decides whether a
+figure is a floor or a ceiling.

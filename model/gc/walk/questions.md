@@ -71,7 +71,7 @@ flowchart TD
     B1[B1 skip kinds that cannot ring<br/>rate measured, share corpus] --> C1
     A6 --> B1
     B2[B2 the acyclic class flag<br/>compiler] --> C1
-    B4[B4 arrays as the commonest spine<br/>measured, populated row open]
+    B4[B4 arrays as the commonest spine<br/>measured 2026-08-22] --> A6
     B5[B5 the epoch-abort watermark<br/>design + measure] --> C1
     B6[B6 skip by block, not by entity<br/>design + measure]
     B1 --> B6
@@ -257,38 +257,40 @@ The second collector-side bounding mechanism in the backlog beside C2's
 young-free exemption, and `../rc-walk.md` says it needs its own proof pass.
 C2 alone does not bound a long epoch.
 
-### B4. Arrays as the spine of the commonest ring  [measured; the populated row stays open]
+### B4. Arrays as the spine of the commonest ring  [measured and closed]
 
 `../rc-walk.md` calls the array the spine of the commonest PHP cycle, and
-arrays are copy-on-write, so they keep their count under every regime.
-The node asked whether the walk can read an array's storage differently
-from an object's fields.
+arrays are copy-on-write, so they keep their count under every regime. The
+node asked whether the walk can read an array's storage differently from
+an object's fields.
 
-**It already does.** The array arm reads the storage head under a version
-and gives the array up when the two readings disagree, and only then picks
-a stride from the tag (`ll-model` `src/walk.rs`, `src/array/head.rs`),
-where the object arm chases the class word instead. The three tags are the
-ordered hash, the vector and a typed vector that no producer stamps today,
-which the walker refuses rather than striding. A vector's key is its
-position, so only the value is a cell; a hash entry's string key is a
-counted child beside the value, so a hash row carries two.
+**It already does, and the layout is not where the cost is.** The array
+arm reads the storage head under a version and gives the array up when the
+two readings disagree, then picks a stride from the tag (`ll-model`
+`src/walk.rs`, `src/array/head.rs`), where the object arm chases the class
+word. A vector's key is its position, so only the value is a cell; a hash
+entry's string key is a counted child beside the value, so a hash row
+carries two. The third tag, a typed vector, no producer stamps and the
+walker refuses rather than striding.
 
-**What the second dereference costs: about 15 ns**, 2026-08-22, `ll-model`
-`dev/BENCHMARKS.md`. An empty array's row is 68 ns against a leaf row's 54
-in the same runs, median of six, the excess spanning 9.2 to 20.2 — a
-factor of 2.2, so the direction is settled and the magnitude is not. An
-array that can hold no cells costs the walk about a third more than a
-string, and the extra is the coherent read the mutator's freedom to move
-storage forces rather than any element work. Probe:
-`collector::tests::what_an_array_row_costs_the_walk`.
+**Measured 2026-08-22**, `ll-model` `dev/BENCHMARKS.md`, five arms in one
+binary: 23 ns the storage head once per array, **43 ns a cell in array
+storage against 47 ns a cell in an object body**, medians over six runs
+with overlapping spreads. Per cell the two containers are
+indistinguishable, so an array's whole structural excess is the head read.
+Probe: `collector::tests::what_an_array_row_costs_the_walk`.
 
-**What it changes:** B1's acyclic skip saves more per array than per
-string, and B6's skip by block saves this read as well as the header miss.
+**What the measurement changed, and it is bigger than the node.** A cell
+costs 43-47 ns and a leaf row 40-54, so an edge costs about what an entity
+does: **the walk's mass is edges, not rows.** B1's acyclic skip removes
+rows and no edges, which is the smaller half of the work; B6's skip by
+block removes both for a uniform block, and the head read with them. The
+ratio of edges to entities in a real heap therefore joins the corpus scan
+of A6 as a quantity that decides between them.
 
-**What stays open:** a populated array's row, where the stride adds one
-cell per element for a vector and two per entry for a hash table; and
-whether the give-up path is hot under a mutator that is actually writing,
-which the probe's quiescent population cannot show.
+**The floors are floors.** Every filled cell in the probe names one shared
+entity, so the `IN` increments hit one cache line where a real heap
+scatters them; both cell figures are lower bounds.
 
 ### C1. The background cadence  [measure]
 

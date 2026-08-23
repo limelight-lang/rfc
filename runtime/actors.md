@@ -50,36 +50,47 @@ Consequences:
 
 ## Where Per-Actor State Lives
 
-A function called from an actor executes as the actor and knows nothing
-about it, so a `static` inside it makes the actor's state outlive the
-message. A process-global one races across threads and is overwritten
-across actors sharing a thread; a thread-local one survives the actor on
-that thread and is lost when the scheduler moves it.
+A function called from an actor executes as the actor and knows nothing about
+it, so a `static` inside it makes the actor's state outlive the message. A
+process-global one races across threads and is overwritten across actors
+sharing a thread; a thread-local one survives the actor on that thread and is
+lost when the scheduler moves it.
 
-**The answer is the calling convention.** A function that works with an
-actor takes the actor context as an argument: a **context-aware** function.
-Nothing is installed, swapped or restored when the scheduler mounts an
-actor, because no per-thread copy of actor state exists — there is no base
-to re-point and no cache to invalidate ([DECISIONS](../dev/DECISIONS.md),
-2026-08-23).
+**The answer is the calling convention.** A function that works with an actor
+takes the actor context as its ordinary first argument: a **context-aware**
+function ([DECISIONS](../dev/DECISIONS.md), 2026-08-23). An extension becomes
+context-aware by recompilation rather than by rewriting, the macro through
+which a module reads its globals being supplied by this runtime's headers and
+resolving through the context the function already received.
 
-**An extension becomes context-aware by recompilation, not by rewriting.**
-The macro through which a module reads its globals is supplied by this
-runtime's headers and resolves through the context the function already
-received, so the extension's source is unchanged.
+**The scheduler installs one word at mount and clears it at unmount**: the
+mounted-context pointer. Slot 0 is the compiled fast path over that same
+value, and null is the legal no-context state, resolving through it.
 
-**A function that is not context-aware does not touch actor state**, and
-reaching one is a boundary crossing, governed by the rule below.
+**That word answers which actor executes here, not which actor owns a piece of
+work**, and on a pool thread the two differ. So an interior path — the arena
+reset's destructor fixpoint, the verdict drain, the synchronous collection, the
+static-block teardown — takes the owner it works on as a parameter and presents
+that owner's context to any user code it runs. The mount is a fallback only
+where the executing actor is the owner by construction, which mutator-path
+death is, the queue being the only door.
 
-Two things this does not reach, both open. Entry from code this runtime did
-not call — a callback from a C library, a thread that library created —
-arrives with no context, and what establishes one is undecided. And a
-`static` inside libc or a third-party shared object is reached by nothing
-here; it needs a declaration from the module or an actor pinned to a thread.
-The runtime's own death paths take the same route as everything else, but
-what they pass and where it comes from sits with the collector's owner
-question
+**A crossing into foreign code carries nothing.** Neither an epoch mark nor a
+re-entry deposit is specified here; both are obligations on the owner question
+below, and the 2026-07-25 rejection of marking entry to and exit from foreign
+code stands.
+
+**Thread exit installs a context of its own** around the static-block
+teardown, the one step that runs `__destruct` bodies, which allocate.
+
+Three things stay open. Which per-thread structures are actor state at all —
+the weak table, the park list, the reset window, the drain gates, the journal
+ring — waits on one ruling about what an owner is
 ([../model/gc/walk/questions.md](../model/gc/walk/questions.md#e1-actors-and-the-epoch-protocol--open-both-halves-rest-on-the-same-scaffolding)).
+Entry from code this runtime did not call arrives with no context, and what
+establishes one is undecided. And a `static` inside a foreign shared object is
+reached by nothing here: it needs a declaration from the module or an actor
+pinned to a thread.
 
 ## The Queue Is the Only Door
 

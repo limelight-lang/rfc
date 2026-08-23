@@ -10,6 +10,83 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-23 — one word at the mount; an interior path takes the owner as a parameter
+
+**Decided:** the scheduler installs exactly one word of per-thread runtime
+state when it mounts an actor and clears it at unmount — the mounted-context
+pointer. Slot 0 is the compiled fast path over the same value, and null stays
+the legal no-context state, resolving through it. That word answers **which
+actor executes on this thread**, and nothing else. It does not answer which
+actor owns a piece of work, so an interior path — the arena reset's destructor
+fixpoint, the verdict drain, the synchronous collection, the static-block
+teardown — takes the owner it works on as a parameter and presents that
+owner's context to any user code it runs. The mount is a fallback only where
+the executing actor is the owner by construction, which mutator-path death is,
+the queue being the only door.
+
+**Supersedes**, in the first entry of this date, the sentence "Nothing is
+installed, swapped or restored when the scheduler mounts an actor": one word
+is installed and nothing else. It also strikes three claims the review chain
+found in the working design — that the context is the single home of actor
+state, that interior paths resolve through the mount, and that the C-standard
+allocator surface does. That surface reads no context at all: it dispatches on
+the block header and on the thread's heap, with a cross-thread path (`ll-model`
+`src/memory/stdapi.rs`), and it stays that way. The second entry's rejection of
+a thread-local owner read on the death paths is **reaffirmed**: with the owner
+as a parameter those paths carry no thread-local read, which is what that
+rejection's ground required.
+
+**Why:** the mounted actor and the owning actor differ on a pool thread. With
+actor B mounted, the synchronous collection can run actor A's destructor — it
+enumerates process-wide (`ll-model` `src/walk.rs`, `src/memory/heap.rs`) — and
+a store inside that destructor logs A's entity on the **mounted** arena's
+escapee list (`src/memory/barrier.rs`). The reset that follows retains a block
+the owning arena later returns to the pool, which leaves a live promoted entity
+in recycled memory and a wild read for every walk after it.
+
+**The convention stays one.** Entity teardown, release and the checkpoint gain
+the context parameter, which the first entry's cost paragraph already priced.
+An entry without the parameter asserts that it reads thread-owned resources
+only and never resolves the mount; those entries are enumerated in one
+inventory, so a new one is an edit to that inventory rather than a silent
+addition.
+
+**Thread exit needs a context of its own.** `ll_thread_exit` installs one
+around the static-block teardown — the single step that runs `__destruct`
+bodies, which allocate (`ll-model` `src/static_block.rs`) — and disposes it
+before the steps that dispose what its reset touches. Without it the
+no-context path panics, and a panic there cannot unwind out of a destructor:
+under `panic = "abort"` it ends the process (`ll-model` `Cargo.toml`).
+
+**The context's arena field changes only where the one-mounted-request-arena
+premise holds** ([../model/memory/arenas.md](../model/memory/arenas.md)). A
+region-shaped field is rejected: the barrier compares a two-bit category and
+cannot tell two request arenas apart, and the reset's dirtiness test reads the
+resetting arena's cursor while such destructors would move another's. Regions
+stay deferred behind the cross-arena design `arenas.md` already names, with one
+constraint recorded for it — a region-entering frame has at least four exits:
+normal, unwind, a channel-R error return
+([../runtime/exceptions.md](../runtime/exceptions.md)), and suspension, for
+which this repository has no frame model.
+
+**Rejected:** moving the six per-thread structures — weak table, the
+non-default strategy's candidate buffer, the deferred-free park list, the reset
+window with its died set, the drain gates, the static-block registry — into the
+context. It would decide node E1 by construction and dismantle the explicit
+thread-exit disposal order the crate rests on. Also rejected: recording that the
+drain "runs while its owner is mounted", since the verdict queue carries no
+owner field, so the drain's soundness condition until node D1 is the
+single-mutator invariant.
+
+**Open, with owners:** which of the six structures are actor state, and the
+epoch duty and re-entry slot a foreign crossing would need — node E1
+([../model/gc/walk/questions.md](../model/gc/walk/questions.md#e1-actors-and-the-epoch-protocol--open-both-halves-rest-on-the-same-scaffolding));
+the message owner field and pickup routing — node D1; the entry shim for a
+callback on a thread this runtime did not create, and a C-callable writer for
+the mount word, which does not exist today (`ll-model`
+`src/memory/context.rs`); the region design and the suspension frame model, as
+above.
+
 ## 2026-08-23 — the actor context travels as an argument: context-aware functions
 
 **Decided (Edmond):** a function that works with an actor takes the actor

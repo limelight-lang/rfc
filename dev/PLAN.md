@@ -431,11 +431,11 @@ broken links.
         parked count and reachability from a guarded member each make one
         class of the component a root. The instance is
         `dev/tools/rc-walk/DrainPause.tla`, four configs:
-        `DP_sound` and `DP_refused_boundaries` exhaust clean at 39 states,
-        of which 19 have the collection already reaping a second garbage
-        cycle, so the clean runs are not vacuous; `DP_guard_dropped`
-        violates `NoOwnedFreed` and `DP_double_drop` violates
-        `NoOwedDrop`. Left open: whether `MID_DRAIN` may be cleared across
+        `DP_sound` exhausts clean at 45 states and
+        `DP_refused_boundaries` at 48, of which 22 and 25 have the
+        collection already reaping a second garbage cycle, so the clean
+        runs are not vacuous; `DP_guard_dropped` violates `NoOwnedFreed`
+        and `DP_double_drop` violates `NoOwedDrop`. Left open: whether `MID_DRAIN` may be cleared across
         the pause. Both arms now carry a price — held, the thread picks up
         no message for the length of the pause; cleared, a nested drain
         acquits on the paused drain's parked counts.
@@ -487,6 +487,18 @@ broken links.
         the handshake ack, only the pickup and the flush; and D3 took the
         epoch's completion bound from a section `pure-destructors.md` now
         keeps as a record.
+      Consolidation 2026-08-23, third pass over the corrected text: eleven
+        findings, all executed. Two carried stale numbers — this record
+        still said 39 states and the spec's abstraction list said three
+        where it holds four. Three were text left standing from before the
+        second Sage verdict: D3 still said the mutator must finish, still
+        called both ceiling candidates unchosen, and still attributed the
+        cell granularity to B4, which measured the walk's read of a cell
+        and not a sever. And one is new evidence: the five `SC_*` rows that
+        no longer reproduce are the table's error, not the spec's —
+        `RcWalk.tla` and the five configurations are byte-identical to
+        their content at `4d0ad5d`, the commit that wrote the table, and a
+        distinct-state count does not depend on the run.
       handoff: state at the end of 2026-08-22. **Closed and holding:** A1,
         A5 (the width is not the lever; the prefetch is measured and
         unsettled), A7 (the discriminant is a bit of the retired condemned

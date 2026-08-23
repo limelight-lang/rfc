@@ -1046,9 +1046,9 @@ different trade.
 
 **One direction, not two, and this node's name is wrong.** Edmond restated
 the algorithm on 2026-08-23: the collector judges, and suspects go to the
-mutator. Ruling 5 asks for no return channel and never did — it puts freeing
-on the collector and verification on the mutator and says nothing about
-channels. The hand-off and hand-back pair is
+mutator. Ruling 5 asked for no return channel even in its
+pre-restatement form, which put freeing on the collector and verification on
+the mutator and said nothing about channels. The hand-off and hand-back pair is
 [`../pure-destructors.md`](../pure-destructors.md)'s own design, where the
 hand-back is called the missing piece; a draft of this node attributed it to
 ruling 5.
@@ -1200,7 +1200,7 @@ on. The second ground bars a *check* inside the sever, not a *pause*, and no
 check runs there in any case, the remainder needing no re-verification.
 
 **So D3's first candidate is chosen: the ceiling is checked inside the sever,
-at the cell granularity where B4 measured the cost uniform.** The second — 
+at the cell granularity the second verdict makes available.** The second — 
 refusing to admit an unbounded unit at all, which is what ruling 8 does for
 destructors — stays available as policy and is Edmond's to adopt, no longer
 forced by structure.
@@ -1262,12 +1262,12 @@ sever cost.
 
 **What the first verdict established and this one leaves standing: the
 permitted boundaries between messages and after the prologue sit outside the
-unit the ceiling bounds.** The unbounded per-entity cost is the sever, so at
-the only moment the question can arise the mutator must finish. Leaving the
-remainder is sound and worth having, and it is not an answer to ruling 3. What
-would bound the unit is one of the two candidates below, and the measurement
-that decides between them — the distribution of per-entity sever cost — is now
-the blocking item rather than a nicety.
+unit the ceiling bounds.** The unbounded per-entity cost is the sever, so
+those two boundaries are not an answer to ruling 3 — they are worth having
+for their own reason. What answers it is the intra-unit boundary the second
+verdict supplies, and what stays blocking is the measurement that says
+whether the ceiling ever fires inside a sever at all: the distribution of
+per-entity sever cost.
 
 **What the pause costs, and it is more than the pause.** The message is not
 fully drained, so the ack must come late or not at all: acking at pop is
@@ -1309,11 +1309,12 @@ warrant.** `../../../dev/tools/rc-walk/DrainPause.tla` carries the component
 `m1 ↔ m2`, a child a program root also holds, a child a second garbage cycle
 also holds, and four configurations. `DP_sound` exhausts clean at 45 states
 and `DP_refused_boundaries`, which also opens the two seams the verdict
-refuses, at 48 — the three extra being a displaced vector drained halfway,
-which no permitted boundary reaches. The clean runs are not vacuous: the
-collection condemns and frees the second cycle at the boundaries they reach,
-so what exhausts clean is a run in which the collector works and leaves the
-paused component alone. Two configurations violate, and each removes one of
+refuses, at 48 — the three extra being what a collection started
+inside the release reaches: it reaps the child whose parked count has already
+been dropped, which no permitted boundary allows. The clean runs are not vacuous: 22 of the 45 states
+and 25 of the 48 have the collection already done, having condemned and freed
+the second cycle, so what exhausts clean is a run in which the collector
+works and leaves the paused component alone. Two configurations violate, and each removes one of
 the four clauses. `DP_guard_dropped` holds no guard across the pause and
 loses the members themselves (`NoOwnedFreed`). `DP_double_drop` drops an
 external child's count as the cell is emptied and keeps the displaced entry
@@ -1384,13 +1385,14 @@ stopped at. It waits on D1's channel specification.
 **The ceiling is checked between entities, and one entity can overrun it by
 any amount.** That is true of both arms and not only of the destructor arm a
 first draft named. A destructor is user code with no bound; a raw sever of
-one array releases every cell it holds, at B4's 43-47 ns each, and B3 exists
-because one entity can need its own OS-direct run. A component holding one
+one array releases every cell it holds, at a per-cell price nobody has
+measured — B4's 43-47 ns is the walk's read and is the only figure there is —
+and B3 exists because one entity can need its own OS-direct run. A component holding one
 array of a million cells is one entity either way. So the ruling's choice of
 time over a count of entities is right for the reason it gives, and what it
-does not supply is a bound on the unit itself. **Two candidates, neither
-written:** a check inside the sever, at the cell granularity where the cost
-is uniform, which the batch loop does not reach today; and a refusal to admit
+does not supply is a bound on the unit itself. **Two candidates, the first chosen
+and unwritten in code:** a check inside the sever, at the cell granularity
+the second verdict permits, which the batch loop does not reach today; and a refusal to admit
 an unbounded unit to the collector's arm at all, which is what ruling 8
 already does for destructors and nothing does for large entities. The
 constants to measure are the ceiling's, and beside them the distribution of
@@ -2291,7 +2293,7 @@ on 2026-08-23 over the protocol in force, for node D3.
 
 **The battery is alive, and it agrees with itself.** Run whole on
 2026-08-22, OpenJDK 21 with the vendored TLC: 22 scenario configs against
-`RcWalk.tla` and 4 against `DrainWindow.tla`, **all 26 matching the
+`RcWalk.tla` and 4 against `DrainWindow.tla`, **all 26 matching the pass-or-kill
 expectation recorded for them** — the 22 in
 [`../rc-walk-proof.md`](../rc-walk-proof.md) and the four in
 [`../drain-window.md`](../drain-window.md), which is where the
@@ -2331,14 +2333,20 @@ a task beside them. A scenario written from scratch over the protocol in
 force does not, which is what `DrainPause.tla` establishes by example — at
 the price of sharing nothing with the battery.
 
-**One number in that record no longer reproduces**, re-run 2026-08-23 on
+**Five numbers in that record no longer reproduce**, re-run 2026-08-23 on
 OpenJDK 21.0.11 with the same vendored TLC: five sound configs exhaust at a
 different distinct-state count than `../rc-walk-proof.md`'s battery table
 records — `SC_allocblack_sound` 897 against 692, `SC_selfloop_sound` 5 946
 against 5 852, `SC_borrow_sound` 818 against 817, `SC_f5_new` 1 354 against
 1 352, `SC_dc3_new` 2 539 against 1 603. Every pass-or-kill expectation still
-matches, so the drift this node names is untouched; what moved is either the
-spec or the table, and which one is unestablished. The consumer it used to name — the case book's third candidate
+matches, so the drift this node names is untouched. **What moved is the
+table.** `RcWalk.tla` and the five configurations are byte-identical to their
+content at `4d0ad5d`, the commit that wrote the battery table, and a
+distinct-state count is a property of the reachable graph rather than of the
+run — the same at one worker and at eight. So those five rows were never
+re-run against the spec as committed. Whether the table is corrected in place
+or left as the dated record it calls itself, this node carrying the true
+counts, is unplaced. The consumer it used to name — the case book's third candidate
 oracle — became a record on 2026-08-23, so what the instrument serves now is
 this document's own questions.
 

@@ -610,9 +610,37 @@ broken links.
         taken; the residue a block skip removes over an entity skip — the
         header read, the id-map entry and the count store, times 2 040 slots
         at size class 32 — is the whole of what it adds.
-        **What it leaves open**, and it is one question, not a list: ruling 5
-        puts freeing on the collector while nothing returns to it, so what
-        tells the collector a suspect was confirmed is unstated.
+        **The walkthrough continued and took three more rulings.** The
+        proof side went out whole — pairs on local references are removed
+        where the compiler proves it safe, a horizon is where that proof
+        stops, and both are the compiler's business, so section G's
+        seventeen nodes left the index and `gc-horizon.md` is bannered. The
+        case book followed it: all sixteen cases are written in the same
+        vocabulary, so `gc-horizon-cases/` is a record and step S5.7 was
+        dropped unexecuted. And **the mutator frees** — ruling 5 said the
+        collector was the main freeing path and is rewritten over that,
+        which closed the gap this line used to name and invalidated the
+        hand-off drain of `pure-destructors.md`.
+        **Two Sage verdicts closed what Edmond left as a variant.** Asked
+        what the mutator does when the batch ceiling runs out with a group
+        half freed, he offered leaving the remainder. The first verdict
+        permitted that at two boundaries — between messages, and after the
+        prologue before the sever — and refused any interior boundary; it
+        also corrected the account, the drain being seven steps in code
+        where `rc-walk.md` lists four, with the weak nulling before the
+        destructors. Edmond then challenged the sever half, and the second
+        verdict, on Fable, narrowed the first: **a split inside one entity
+        is permitted at cell granularity**, which chooses D3's first
+        candidate and gives ruling 3's ceiling its mechanism. Resurrection
+        is closed on every managed channel and open on FFI alone (node
+        G14). One stretch stays better where no pause budget binds: a
+        million-cell array is 43-47 ms whole, about twenty thousand cells
+        to a slice at a millisecond budget.
+        **What it leaves open:** the epoch's completion bound, which a
+        split lengthens; a kill variant for a synchronous collection
+        meeting a paused drain's outstanding guards, now with two shapes to
+        model; node G14; the cursor's home, waiting on D1; and the code,
+        where no sever helper carries a cursor.
 - [~] S5.7 Fold the outcome back into the case book
       **Dropped 2026-08-23**, with the case book itself. Edmond ruled the
         compiler's proof logic outside these documents, and every one of the

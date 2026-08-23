@@ -36,9 +36,12 @@ Edmond, in the session that refused the capture-count regime.
    replacing "a grown verdict queue activates the mutator, which drains it
    rather than waiting for its ordinary cadence" — which asked for a
    mechanism the design has no room for (`../../../dev/DECISIONS.md`).
-5. **The collector is the main freeing path.** Verification stays on the
-   mutator: its thread is the one place a verdict is checked against the
-   true graph with no race ([`../rc-walk.md`](../rc-walk.md), Phase 4).
+5. **The mutator frees.** Restated by Edmond 2026-08-23, replacing "the
+   collector is the main freeing path". The collector walks and judges;
+   suspects go to the mutator; the mutator verifies against the true graph
+   with no race ([`../rc-walk.md`](../rc-walk.md), Phase 4) and frees what it
+   confirms. Nothing returns to the collector, and nothing needs to
+   (`../../../dev/DECISIONS.md`).
 6. **Large OS-direct entities are walked.** Ruled on the premise that they
    were not, which was wrong: the registry landed on 2026-08-10 and both
    enumerators read it (`ll-model` `src/memory/large_entity.rs`). The ruling
@@ -1039,7 +1042,7 @@ different trade.
 
 ## D. The verdict, and who frees
 
-### D1. The hand-off and hand-back channels  [open; the constraints are now known]
+### D1. The channel to the mutator  [open; one direction, and the specification is owed]
 
 **One direction, not two, and this node's name is wrong.** Edmond restated
 the algorithm on 2026-08-23: the collector judges, and suspects go to the
@@ -1050,11 +1053,10 @@ channels. The hand-off and hand-back pair is
 hand-back is called the missing piece; a draft of this node attributed it to
 ruling 5.
 
-**What the restatement leaves open, and it is not small.** Ruling 5 puts
-freeing on the collector while nothing returns to it, so what tells the
-collector that a suspect was confirmed is unstated. Either the mutator frees
-what it confirms — which reads against ruling 5 — or a signal exists that
-this node has to name.
+**Closed the same day.** The mutator frees what it confirms; Edmond restated
+ruling 5 over that, so nothing returns to the collector and nothing needs to.
+What survives in this node is the one channel's own specification, and the
+requirement list a review round left on the attempt of 2026-08-22.
 
 A specification was attempted on 2026-08-22 against
 the queue in `ll-model` `src/epoch.rs` and a review round broke it in five
@@ -1151,7 +1153,10 @@ premise, and the deferral with it.
 ### D3. The batch constants  [measure; and a between-entity check bounds no within-entity overrun]
 
 Ruling 3. The time ceiling of a freeing batch, and how far memory pressure
-relaxes it.
+relaxes it. **Whose batch changed on 2026-08-23** and the ruling has not been
+re-read against it: freeing moved to the mutator, so the ceiling now bounds a
+pause the mutator takes on its own thread rather than one the collector takes
+beside it.
 
 **The ceiling is checked between entities, and one entity can overrun it by
 any amount.** That is true of both arms and not only of the destructor arm a
@@ -1187,10 +1192,11 @@ lever was never the test but N itself, and N is no longer to be reduced.
 
 ### D5. Collector-side destructor calls  [open, and nearly unrealisable: the final judge is the mutator]
 
-**Edmond, 2026-08-23: the permission is nearly unrealisable.** The final
-judge is the mutator, so a call on the collector's side has almost no room
-left; the node stays on the books with that written on it rather than being
-closed. What follows is the record of the case as it stood.
+**Edmond, 2026-08-23: the permission is nearly unrealisable, and the second
+ruling of the same day narrows it further.** The final judge is the mutator
+and the mutator frees, so the collector has no freeing arm for a destructor
+call to sit beside; the node stays on the books with that written on it
+rather than being closed. What follows is the record of the case as it stood.
 
 Ruling 8 lets the collector call a destructor proven pure, and the design
 of record does not use the permission: every destructor call sits in the

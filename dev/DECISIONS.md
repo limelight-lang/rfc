@@ -1332,3 +1332,24 @@ Edmond, closing the walkthrough. Asked whether the sixteen cases of
   a borrow's chain, an owned base case or a horizon kind, because the book
   was built to instantiate the horizon algorithm. That is the same
   inheritance that put section G in the collector's graph.
+
+### 2026-08-23 — the mutator frees; ruling 5 is restated
+
+Asked who releases the memory of a group the collector judged garbage and the
+mutator then confirmed: **the mutator**.
+
+- **Ruling 5 as recorded said the opposite** — "the collector is the main
+  freeing path" — and is rewritten over this. The collector walks and judges;
+  suspects go to the mutator; the mutator verifies and frees. Nothing returns
+  to the collector, and nothing needs to.
+- **The gap recorded earlier the same day is closed by it.** With freeing on
+  the mutator there is no confirmation to send back, so the missing signal
+  that node D1 named was missing because it does not exist.
+- **What it invalidates:** the hand-off drain of
+  `model/gc/pure-destructors.md` moves the sever and the physical release to
+  the collector, which this ruling no longer permits; that section carries an
+  amendment banner and what replaces it is unwritten. Ruling 8's permission
+  narrows again — with no collector-side freeing arm, a collector-side
+  destructor call has nothing to sit beside.
+- **What is unexamined:** ruling 3's batch ceiling is written over a freeing
+  batch whose owner has just changed, and node D3 does not say so yet.

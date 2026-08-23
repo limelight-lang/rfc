@@ -224,6 +224,13 @@ prologue after the weak nulling. An NR member routes its component to
 the unchanged whole drain: NR destructors do I/O, and the hand-off buys
 nothing worth extending its soundness argument over them.
 
+> **Amended 2026-08-23: the mutator frees.** Edmond restated ruling 5 —
+> the collector walks and judges, suspects go to the mutator, and the
+> mutator frees what it confirms (`../../dev/DECISIONS.md`). The hand-off
+> below moves the sever and the physical release to the collector, which
+> that ruling no longer permits. The section stays as the record of the
+> design; what replaces it is unwritten.
+
 Death timing is unchanged for the members: the weak nulling in the
 prologue is where their death becomes observable, exactly as today; only
 the sever and the physical release move. The external children do die

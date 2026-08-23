@@ -1,5 +1,14 @@
 # GC horizon — the case book
 
+> **Compiler business since 2026-08-23, kept as a record.** Edmond ruled the
+> compiler's proof logic outside this repository's collector documents
+> (`../../../dev/DECISIONS.md`), and every case here is written in the
+> vocabulary of borrows and horizons — which local reference carries a count,
+> where a proof stops covering one. Nothing here is work any longer: step
+> S5.7 of `dev/PLAN.md` is dropped with it, and no collector document defers
+> to these cases. The mapping of Edmond's thirty-five adversarial shapes is
+> why the folder stays rather than going.
+
 ## Scope
 
 Sixteen cases that instantiate [gc-horizon.md](../gc-horizon.md) on one

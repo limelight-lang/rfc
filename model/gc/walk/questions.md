@@ -2089,10 +2089,10 @@ model at all — the collector as the freeing path, the hand-off and
 hand-back crossings of node D1, and the batch bound of D3.
 
 **What it blocks:** any model-checker scenario written today inherits the
-drift, so the re-derivation is a precondition of that instrument rather
-than a task beside it — which is what
-[`../gc-horizon-cases/README.md`](../gc-horizon-cases/README.md) already
-tells the case book about its third candidate oracle.
+drift, so the re-derivation is a precondition of that instrument rather than a
+task beside it. The consumer it used to name — the case book's third candidate
+oracle — became a record on 2026-08-23, so what the instrument serves now is
+this document's own questions.
 
 
 ## Inherited record

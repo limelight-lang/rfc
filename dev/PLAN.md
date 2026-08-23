@@ -2,10 +2,17 @@
 
 Updated: 2026-08-22 · Active: S5
 
-Destination: the GC horizon algorithm is readable in this repository as a case
-book — every entity kind and every event that can end a proof has its own case,
-with the states it moves, a diagram, and the oracle a test would assert — so the
-implementation work that follows reads cases instead of re-deriving the design.
+Destination, as amended 2026-08-23: the collector design of record is
+readable here as a question graph — thirty questions about the collector and
+the runtime, each with what would answer it, bounded by Edmond's rulings.
+
+**The old destination is retired and the words are kept so the change is
+visible:** "the GC horizon algorithm is readable in this repository as a case
+book — every entity kind and every event that can end a proof has its own
+case". Edmond ruled the compiler's proof logic outside these documents on
+2026-08-23, and the case book is written entirely in its vocabulary, so it
+became a record and step S5.7 was dropped with it. Steps S2.5, S3.1 and S3.2
+built that book and stay closed; their work is the record.
 
 Structure agreed with Edmond 2026-08-20 after a Sage ruling on the layout and one
 Critic round over the plan (22 findings, 4 critical; every finding is folded into
@@ -606,22 +613,15 @@ broken links.
         **What it leaves open**, and it is one question, not a list: ruling 5
         puts freeing on the collector while nothing returns to it, so what
         tells the collector a suspect was confirmed is unstated.
-- [ ] S5.7 Fold the outcome back into the case book
-      **Re-read before starting, 2026-08-23.** The step was written when the
-        proof side was this repository's business. It no longer is: most of
-        the sixteen cases are horizon shapes, and the rulings this step was
-        to fold are partly about a document now marked compiler-side. What
-        the step becomes is itself undecided.
-      done: each of the sixteen cases either states that the rulings of
-        2026-08-22 leave it unchanged or carries the case's new shape under
-        them — ruling 11 touches the weak-reference case directly, ruling 7
-        the FFI case, and question 9's ruling `unwind.md`'s open item 1 — and
-        the cases that cite `gc-horizon-v2/` as current are re-pointed;
-        `model/gc/gc-horizon-cases/weakref.md` still calls the weak-cell
-        base case missing, which ruling 11 supplied, and
-        `model/gc/gc-horizon-states.md` is folded on the same terms,
-        being the case book's state document without being a case
-      tier: T2 · role: Critic
+- [~] S5.7 Fold the outcome back into the case book
+      **Dropped 2026-08-23**, with the case book itself. Edmond ruled the
+        compiler's proof logic outside these documents, and every one of the
+        sixteen cases is written in the vocabulary of borrows and horizons,
+        so `model/gc/gc-horizon-cases/` became a record and this step lost
+        its subject. Nothing of it was executed. What the step would have
+        folded — the rulings of 2026-08-22 against the cases — is now folded
+        only where a live document carries it, which is `walk/questions.md`.
+
 
 ## S4 — Code from the cases
 

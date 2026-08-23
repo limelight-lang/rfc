@@ -1312,3 +1312,23 @@ back — «убираем, но это вопрос для компилятор�
   the collector and the runtime. The case book `model/gc/gc-horizon-cases/`
   is the next thing to read against this ruling — most of its sixteen cases
   are horizon shapes — and step S5.7 of `dev/PLAN.md` is written over it.
+
+### 2026-08-23 — the case book becomes a record, and the stage loses its destination
+
+Edmond, closing the walkthrough. Asked whether the sixteen cases of
+`model/gc/gc-horizon-cases/` follow the proof side out: **yes**.
+
+- **Nothing moves.** The folder stays where it is with a banner: compiler
+  business, kept as a record. It holds the mapping of Edmond's thirty-five
+  adversarial shapes, which is why it is kept rather than deleted, and no
+  collector document defers to it.
+- **Step S5.7 is dropped** with its subject, unexecuted. Steps S2.5, S3.1 and
+  S3.2 built the book and stay closed — that work is the record.
+- **The stage's destination is retired.** `dev/PLAN.md` aimed at "the GC
+  horizon algorithm readable in this repository as a case book"; it now aims
+  at the collector design of record as a question graph. The old words are
+  kept beside the new ones so the change is visible rather than silent.
+- **Why the book was written in that vocabulary at all:** every case opens on
+  a borrow's chain, an owned base case or a horizon kind, because the book
+  was built to instantiate the horizon algorithm. That is the same
+  inheritance that put section G in the collector's graph.

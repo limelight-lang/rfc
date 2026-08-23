@@ -199,7 +199,7 @@ table accounts for its bounded population with no unresolved row.
         S5.4 resolves the walk's graph rather than this one; the debt is
         named here and its step is Edmond's to place.
 
-## S3 — Review  [in progress]
+## S3 — Review  [done]
 
 Goal: the book survives two Critic rounds; what does not close goes to Sage.
 Done when: both rounds are recorded in the role lines below, every finding is
@@ -244,8 +244,45 @@ marked Final.
         rule is stated in one ruled form in five places; `weakref.md`,
         `unique-entity.md` and `arena.md` carry the 2026-08-22 rulings.
         Linkcheck green at 1664 links.
-- [ ] S3.2 Critic round 2 over round 1's fixes; unresolved findings to Sage
+- [x] S3.2 Critic round 2 over round 1's fixes; unresolved findings to Sage
       tier: T2 · role: Critic → Sage
+      Critic 2026-08-23 round 2: twelve findings over round 1's fixes,
+        four of them breaking a fix. The checkpoint member round 1 added
+        to a displacing store applies to every release that may reach
+        zero, which makes the release row's purity lift false and puts
+        `release.md` against `checkpoint.md`; `unwind.md`'s raise table
+        excluded releases on a policy `exceptions.md` calls unsettled;
+        `arena.md`'s two new routes both fail — nothing maintains a
+        minimal RC on a long-lived entity and borrow-is-use holds a region
+        object's count up; question 22 describes a test that cannot fail
+        over strict SSA. The other eight were counting and citation
+        defects and were fixed directly: the product is 448 and not 224,
+        "two categories" survived in three more places, `string.md` cited
+        the wrong section of `strings.md`, `weakref.md` §4 answered
+        question 16 in passing, `unique-entity.md`'s snippet demoted its
+        own subject.
+      Sage 2026-08-23: four verdicts, all **Final**. (1) Every release that
+        may reach zero carries a checkpoint member — dispose exists for
+        any dying object and the pickup at its exit drains a verdict whose
+        destructors belong to an unrelated component — so purity lifts the
+        release row's own hazard and nothing else. (2) `unwind.md` may not
+        exclude releases: the returned-error policy is unsettled and one
+        of its named candidates raises in the dropping frame, so the row
+        enters as a conditional raise site, fail-closed, and the policy
+        stays `exceptions.md`'s to rule. (3) The arena failure is
+        realizable in one frame only by the region route, under three
+        conditions, with a snippet; the long-lived half is a hole until a
+        reclamation strategy is chosen. (4) Question 22 is closed by
+        replacement, the liveness reading winning: over strict SSA the
+        test cannot fail for a non-phi borrow, and a loop-carried borrow
+        is a loop-header phi the edge rule and PH15 already decide.
+      handoff: all four verdicts executed. `gc-horizon.md` carries the
+        checkpoint member in the release row and in the sound-configuration
+        paragraph, question 8's single-frame shape, and question 22 struck
+        with its ruling; `unwind.md` has the conditional raise-site row and
+        an open item for the policy; `arena.md` open item 1 carries the
+        region snippet and its three conditions; node G2 of
+        `walk/questions.md` follows. Linkcheck green.
 
 ## S5 — The second design, refused; the counted walk is the design of record  [in progress]
 

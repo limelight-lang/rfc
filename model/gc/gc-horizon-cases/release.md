@@ -5,7 +5,11 @@
 A release is a horizon when the released class's transitive-purity
 closure is not pure, because eager death runs `__destruct` at the release
 site with no drain involved
-([gc-horizon.md](../gc-horizon.md#the-horizon-list)). The destructor
+([gc-horizon.md](../gc-horizon.md#the-horizon-list)). Purity removes that
+hazard and not the site: a release that may reach zero also carries the
+pickup at the exit of its dispose, which drains a verdict, so a pure
+class moves the site from this case's row to
+[checkpoint.md](checkpoint.md)'s rather than out of the horizon set. The destructor
 hazard is therefore a property of releases rather than of checkpoints,
 which is the relocation Critic round 2 forced: a checkpoint is the site
 where a *drained* verdict can run user code, and an ordinary release is
@@ -34,9 +38,10 @@ observable class
 
 ## 3. The horizon set
 
-One point in the snippet: `$log = null`, a release of a class whose
-purity closure is not pure. Three properties of that row decide how the
-whole case behaves.
+One point in the snippet, and two rows meet on it: `$log = null` is a
+release of a class whose purity closure is not pure, and it is a release
+that may reach zero, which carries the checkpoint row as well. Three
+properties of the release row decide how the whole case behaves.
 
 **The predicate is purity's, and it is deliberately coarse.** It is the
 one boolean per class that transitive purity computes over the field-type
@@ -124,8 +129,10 @@ is the shared dependency, and it is owed by a different document.
 
 - **lattice state**: `$meta` `Anchored(chain)` → `Owned` at the retain;
   `$log` never enters `Anchored`.
-- **horizon set**: one entry, the release row; empty once the `Logger` is
-  removed or its class becomes pure.
+- **horizon set**: one entry, the release row. Removing the `Logger`
+  empties it; making its class pure does not — the entry becomes the
+  checkpoint row at the same site, the death still reaching the pickup at
+  the exit of its dispose ([checkpoint.md](checkpoint.md), section 1).
 - **promotion point**: the instruction after the load, dominating the
   displacement and the exit.
 - **transitive purity closure**: read per class, and the axis that
@@ -146,6 +153,8 @@ flowchart TD
     D --> P{"transitive purity closure pure?"}
     P -->|"no, NR, or unresolved"| H["HORIZON: promote before this site"]
     P -->|yes| C["own-slot stores only"]
+    D --> PU["the dispose's exit is a pickup:<br/>a verdict-draining checkpoint,<br/>whatever the dying class's purity"]
+    PU --> H
     C --> K["children released in the cascade;<br/>each keeps its predecessor's counted in-edge"]
     K --> L["lemma: the dying set is off every live chain"]
 ```

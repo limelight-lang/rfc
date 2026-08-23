@@ -3,10 +3,14 @@
 ## 1. The case
 
 A string reference is owned by base case, and the fact this case exists
-for is that the base case's stated reason holds for two of the three
-sub-modes and is absent from the third. Inline, out of line and interned
-are the three; there is no frozen mode
-([strings.md](../../strings.md#writes-obey-the-cow-rule-there-is-no-freeze-operation)).
+for is that the base case's stated reason holds in some of its forms and
+is absent from others. Three are modes of an in-language string — inline,
+out of line, interned — and there is no frozen mode
+([strings.md](../../strings.md#writes-obey-the-cow-rule-there-is-no-freeze-operation));
+a fourth shape is not created in the language at all, the borrowed view
+over a foreign buffer. The reason holds for the inline form and the
+out-of-line-by-size form, and is absent from the growth form, the
+interned form and the view.
 
 ```php
 final class Row { public string $name; }
@@ -79,8 +83,8 @@ escapes; a write to the view separates it into an ordinary managed
 entity, "the COW rule generalizes: the view is shared with the outside
 world, so any write copies"
 ([zero-abstraction.md](../../memory/zero-abstraction.md#strings-and-arrays-at-the-ffi-boundary),
-and [strings.md](../../strings.md#interned-strings) names the boundary as
-the exception to strings always carrying RC). The separation trigger is
+and [strings.md](../../strings.md#two-layouts-behind-stringinterface)
+names that boundary as the exception to strings always carrying RC). The separation trigger is
 therefore not `refcount > 1`, so the base case's stated reason is absent
 here as it is in the growth form — and the payload's lifetime is the
 owner-binding tier of
@@ -182,9 +186,12 @@ in the ll-model crate over hand-built strings in the three sub-modes,
 reading the header words and the returned pointer on each arm of
 `cow_separation_needed`.
 
-Buildable today: no for the elision claim; yes for the three sub-mode
-premises, as a runtime test in the ll-model crate against the existing
-string and refcount code.
+Buildable today: no for the elision claim; yes for the three in-language
+sub-mode premises, as a runtime test in the ll-model crate against the
+existing string and refcount code. The borrowed view has no premise to
+test: no crate builds one, and section 2 reaches it through
+[zero-abstraction.md](../../memory/zero-abstraction.md#strings-and-arrays-at-the-ffi-boundary)
+rather than through a shape the runtime holds.
 
 ## 8. Prior art in this repository
 
@@ -230,15 +237,18 @@ string and refcount code.
    ([strings.md](../../strings.md#interned-strings)), so the category
    axis is not a rare corner for this kind — question 8 of
    [gc-horizon.md](../gc-horizon.md#open-questions).
-4. **The borrowed view's bytes can be freed under a live count.** A view
-   over foreign memory is a string entity whose payload belongs to the
-   owner-binding tier
-   ([zero-abstraction.md](../../memory/zero-abstraction.md#strings-and-arrays-at-the-ffi-boundary)),
-   so the buffer can go while the entity's count is positive. That is a
-   severing event in no horizon kind, and it is the mirror of
-   [ffi.md](ffi.md)'s open item 2, which covers only the other direction —
-   a `#[Borrow]` view *into* managed bytes. Which of the two documents
-   owns the rule is not settled here.
+4. **What forces the wrapper strategy for a view is unstated.** A view
+   has two strategies and both protect the payload: bound to an owner
+   while the compiler can prove the buffer outlives it, or carried by a
+   wrapper when it escapes
+   ([zero-abstraction.md](../../memory/zero-abstraction.md#strings-and-arrays-at-the-ffi-boundary)).
+   What is missing is what selects the second when the *view* escapes as
+   an ordinary managed string — a store into a heap slot, a return, a
+   capture — since at that point the value is a string entity like any
+   other and nothing in the string's own rules mentions an owner. Until
+   that is written, a borrow whose target is a view rests on a proof this
+   design cannot read. The mirror direction, a `#[Borrow]` view into
+   managed bytes, is [ffi.md](ffi.md)'s open item 2.
 5. **A long-lived dynamic string has two answers.** Section 2 quotes
    strings.md: on a `COW = 0` string allocated dynamic for growth "a write
    goes in place, always, and no sharing test is performed". Section 6's

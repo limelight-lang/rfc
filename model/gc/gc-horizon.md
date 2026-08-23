@@ -74,7 +74,10 @@ non-pure-closure class, no owned death and no unsummarized call —
 read-only lifetimes over destructor-free data, roughly one statement
 in idiomatic untyped code. Every widening is bought by a named
 instrument: summaries widen calls, the may-alias lifter below widens
-stores, purity classification widens releases, and the "free region
+stores, purity classification lifts only the release row's own hazard
+— a possibly-final release still contains the pickup at its dispose's
+exit, so the site clears only with the checkpoint row's condemned-set
+certification, which has no compile-time form yet — and the "free region
 grows call-deep" sentence in the literature section holds only
 through callees that are transitively store-free with pure-closure
 internal releases. The corpus scan measures the bought region, not
@@ -144,10 +147,12 @@ by construction:
   invariant as stated fails, so the case compiles owned;
 - every local the analysis fails on, and every borrow whose birth
   does not dominate every horizon and every exit of its live range —
-  the direct, checkable form of the failure default; a borrow born
-  inside a loop with a horizon reachable over the back-edge fails it
-  and is owned. Analysis failure selects owned, never guesses
-  anchored.
+  the direct, checkable form of the failure default. Over strict SSA
+  that test cannot fail for a non-phi borrow, a definition dominating
+  its whole live range, so its bite is the phi rule: a loop-carried
+  borrow is a loop-header phi and falls to owned unless the same chain
+  dominates every incoming edge (PH15). Analysis failure selects owned,
+  never guesses anchored.
 
 **Anchored** — an uncounted borrow, `$b = $a->property` as a plain
 load. The chain invariant: the anchor is a counted root — an owned
@@ -258,7 +263,15 @@ A GC horizon is any of:
   borrow-is-use), scope-exit batches fail the same way, checkpoint
   drains are acquitted by the chain invariant, and the one formerly
   unguarded door — explicit displacement of a pure-class anchor —
-  is closed by the store-to-anchor rule above;
+  is closed by the store-to-anchor rule above. **A release that may
+  reach zero also contains a verdict-draining checkpoint**, the pickup
+  at the exit of its dispose
+  ([rc-walk.md](rc-walk.md#the-design-constraint-that-produced-this-shape)),
+  so the purity lift clears the site's own destructor hazard and nothing
+  else: the site stays a horizon through the checkpoint row until that
+  row's certification exists. The verdict drained there runs the
+  destructors of a condemned component unrelated to the dying object,
+  which is why the dying class's purity does not reach it;
 - a checkpoint that fails the condition below;
 - an own-code store that severs a borrowed path, under the may-alias
   rule above.
@@ -304,7 +317,7 @@ lowering of the same borrow. Placement rules:
   of the borrow's live range, and that lies inside no cycle the birth
   lies outside of**. The cycle condition is what keeps the retain out of
   a loop body for a borrow born before the loop, and it subsumes the
-  loop clause below for that case; a borrow born *inside* a cycle — a
+  loop clause below for that case; a loop-carried borrow — a
   loop-header phi — is not touched by it, and its own balance is the
   edge rule beside it. The birth always qualifies, so the
   rule is total, and promotion at the birth is today's lowering for
@@ -337,8 +350,11 @@ lowering of the same borrow. Placement rules:
   order is preserved — a promoted borrow holds its count over a
   subrange of exactly the lifetime today's owned borrow holds it.
 - A loop containing a horizon promotes before the loop when the
-  borrow is born before it; born inside, the back-edge fails the
-  dominance test and the borrow is owned.
+  borrow is born before it. Born inside, the borrow is per-iteration:
+  its birth dominates every horizon of its own live range, so it is
+  promoted once per iteration, and a summary that lifts the horizon
+  removes the pair altogether. A borrow carried over the back edge is a
+  loop-header phi and takes the edge rule above.
 - On unwind, what a landing pad releases depends on whether the frame
   survives it, and that turns on where phase 1 selected the handler
   ([exceptions.md](../../runtime/exceptions.md#channel-u-how-the-tables-work)).
@@ -363,7 +379,9 @@ lowering of the same borrow. Placement rules:
   PH22's third option, a tag, is a runtime flag written on the normal
   path, which the granularity ruling of 2026-08-18 excludes. The kinds
   of raise site this repository supports are listed in
-  [gc-horizon-cases/unwind.md](gc-horizon-cases/unwind.md), which also
+  [gc-horizon-cases/unwind.md](gc-horizon-cases/unwind.md), where a
+  release's raise-site status waits on the returned-error policy, and
+  which also
   records that the set is not enumerable while runtime entries are
   unclassified.
 - **A borrow of a unique-ownership entity cannot be promoted**: the
@@ -1174,12 +1192,22 @@ under [gc-horizon-cases/](gc-horizon-cases/) carry the failing shape.
 8. **Promotion buys nothing in the counted-out memory categories.**
    Widened 2026-08-22: the early return in `ll_retain` is on any
    non-zero category bar COW ([lowering.md](../lowering.md#retain--release)),
-   so it covers long-lived entities too, and those do die by explicit
-   free or minimal RC. A `#[Region]` arena also resets mid-message,
-   when the region object's own count reaches zero
-   ([regions.md](../memory/regions.md#definition)), so an arena
-   referent does not reliably outlive the frame that borrows it. Both
-   shapes need no fiber and no message boundary
+   so it covers the long-lived category too. **One shape fails inside a
+   single frame**, ruled 2026-08-23, and it is the region one: a
+   `#[Region]` arena resets when the region object's own count reaches
+   zero ([regions.md](../memory/regions.md#definition)), so an
+   unsummarized call that drops the last counted reference to that
+   object resets its arenas mid-frame, under a borrow whose whole chain
+   is region-resident and whose frame slot the reset cannot see. The
+   chain must run through neither the region object nor any counted
+   holder, or borrow-is-use and the hold-count would protect it; the
+   snippet and its conditions are in
+   [gc-horizon-cases/arena.md](gc-horizon-cases/arena.md). The
+   long-lived half is a hole rather than a shape: the reclamation
+   strategy is undecided per object type
+   ([arenas.md](../memory/arenas.md#object-categories-by-memory-strategy)),
+   no explicit-free operation exists in this repository, and whatever is
+   chosen will not observe the early-returning retain
    ([walk/questions.md](walk/questions.md#g2-promotion-buys-nothing-in-the-counted-out-categories--open-and-wider-than-the-question)).
    The question as first written:
    Retain and release return early on immortal entities and are absent
@@ -1463,24 +1491,24 @@ and the shapes are
 Question 22 was opened by Critic round 1 over the case book, 2026-08-23
 (step S3.1 of `dev/PLAN.md`).
 
-22. **The loop-born borrow has two readings and the document carries
-    both.** The owned base case excludes a borrow "born inside a loop with
-    a horizon reachable over the back-edge"
-    ([the lattice](#the-ownership-lattice)), which is a liveness
-    condition; the placement rule states it without the qualifier — "born
-    inside, the back-edge fails the dominance test and the borrow is
-    owned" ([promotion](#at-the-horizon-promotion)). They disagree on the
-    commonest loop shape, a borrow born and last-used inside one
-    iteration: under the qualified reading its birth dominates its own
-    horizon and it is promoted once per iteration, which a summary can
-    then remove entirely; under the unqualified reading it is owned from
-    birth and pays a pair per iteration forever. The difference is the
-    saving in the position where it is worth most. What would answer it:
-    one statement of whether the rule reads liveness across the back edge
-    or the syntactic position of the birth. Found by
+22. ~~**The loop-born borrow has two readings and the document carries
+    both.**~~ Closed 2026-08-23, by argument rather than by measurement,
+    the subject being a property of strict SSA rather than a quantity:
+    the liveness reading wins, and the loop clause is replaced in both
+    places rather than ruled between. The owned base case's test — the
+    birth dominates every horizon and every exit of the live range —
+    cannot fail for a non-phi borrow, since a definition dominates its
+    whole live range; a borrow that is live across a back edge is
+    therefore a loop-header phi, which the edge rule and PH15 already
+    decide. So a borrow born and last used inside one iteration is
+    promoted once per iteration, and a summary that lifts its horizon
+    removes the pair. The question as it stood: the base case excluded a
+    borrow "born inside a loop with a horizon reachable over the
+    back-edge", the placement bullet said "born inside, the back-edge
+    fails the dominance test and the borrow is owned", and the two
+    disagreed on the commonest loop shape. Found by
     [gc-horizon-cases/call.md](gc-horizon-cases/call.md), whose `scan()`
-    is the shape, and repeated in
-    [gc-horizon-cases/suspension.md](gc-horizon-cases/suspension.md).
+    is the shape.
 
 ## The record
 

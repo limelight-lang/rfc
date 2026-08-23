@@ -150,7 +150,7 @@ $rate = load $o->rate        ; no retain
 retain $rate                 ; promotion, once, dominating the loop
 loop:
   $tax = load $o->tax
-  retain $tax                ; owned from birth, one retain per iteration
+  retain $tax                ; the promotion, once per iteration
   call audit($o)
   ...
   release $tax               ; drop point, inside the body
@@ -161,20 +161,18 @@ release $rate                ; drop point, after the loop
 
 `$rate` is born before the loop, so the cycle condition keeps its
 promotion out of the body and the loop's horizon is paid once. `$tax` is
-the shape the algorithm states twice and differently. Its live range ends
-inside the iteration — nothing carries it over the back-edge — so the
-owned base case, which excludes a borrow "born inside a loop with a
-horizon reachable over the back-edge"
-([gc-horizon.md](../gc-horizon.md#the-ownership-lattice)), does not fire,
-and the placement rule returns the instruction after the load: one
-promotion per iteration, which is today's lowering for that borrow, and
-which a summary for `audit()` removes altogether. The placement bullet
-states the same case without the liveness qualifier — "born inside, the
-back-edge fails the dominance test and the borrow is owned" — and that
-reading assigns ⊥, owned from birth, a pair per iteration no summary can
-lift. The listing above is written on the first reading. Open question 22
-of [gc-horizon.md](../gc-horizon.md#open-questions) is the disagreement,
-and it is worth what a summary is worth in a loop body.
+born inside it, and its live range ends inside the iteration: nothing
+carries it over the back-edge, so its birth dominates every horizon of
+its own live range and the placement rule returns the instruction after
+the load. One promotion per iteration, which is today's lowering for that
+borrow, and which a summary for `audit()` removes altogether. This case
+is where the algorithm used to say two things — the base case excluded a
+borrow "born inside a loop with a horizon reachable over the back-edge"
+while the placement bullet said the back-edge fails the dominance test
+outright — and open question 22 closed it on 2026-08-23 in favour of the
+first: over strict SSA the test cannot fail for a non-phi borrow, and a
+borrow that is live across a back edge is a loop-header phi, which the
+edge rule and PH15 decide.
 
 ## 5. States touched
 

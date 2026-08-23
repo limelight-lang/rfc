@@ -126,8 +126,8 @@ from this one and is not what the lattice applies here.
 
 ## The index
 
-**Read the exclusions as one thing.** Six of the nine entity cases share
-a single verdict: the referent is owned by a base case and the lowering
+**Read the exclusions as one thing.** Seven of the nine entity cases
+share a single verdict: the referent is owned by a base case and the lowering
 is today's exactly. The base cases are stated once, here, and each of
 those files exists for the fact that *qualifies* the exclusion, not for
 the exclusion itself. A reference is owned by construction when it is
@@ -162,7 +162,7 @@ of 2026-08-22, counted always and elided never
 | [checkpoint.md](checkpoint.md) | the drain's two threats, one discharged by construction and one gated on purity |
 | [unwind.md](unwind.md) | placement under unwinding: the raise sites of a live range are not its call sites |
 | [suspension.md](suspension.md) | **hole report**: a yield is a horizon by default, and the generator/fiber frame model is unspecified |
-| [arena.md](arena.md) | the non-frame counted roots, and the two memory categories where a promotion retain buys nothing |
+| [arena.md](arena.md) | the non-frame counted roots, and the three memory categories where a promotion retain buys nothing |
 
 ### Which cases can be tested today
 
@@ -171,15 +171,17 @@ they become buildable at different times.** Every verdict needs the
 compiler, through the shadow-count lowering or the differential
 lowering. A premise — what the runtime does to the entity the verdict is
 about — is testable against the existing crate today, and ten of the
-sixteen cases name one in their section 7. Five have a runtime oracle
-and nothing else: [checkpoint.md](checkpoint.md), [arena.md](arena.md),
-[weakref.md](weakref.md), [release.md](release.md) and
-[destructor-bearing.md](destructor-bearing.md), whose assertions are the
-destructor sequence, the death set, the weak-nulling order and the exact
-test's verdict over a hand-built heap shape. Five more carry a runtime
+sixteen cases name one in their section 7. In five the runtime half is
+the case's main assertion: [checkpoint.md](checkpoint.md),
+[arena.md](arena.md), [weakref.md](weakref.md), [release.md](release.md)
+and [destructor-bearing.md](destructor-bearing.md) read the destructor
+sequence, the death set, the weak-nulling order and the exact test's
+verdict over a hand-built heap shape. Each of the five also carries one
+assertion that waits on the compiler, so the split is per assertion and
+never per file. Five more carry a runtime
 premise beside a verdict that waits: [object.md](object.md) on a ghost's
 walk behaviour, [array.md](array.md) on transitions and separation,
-[string.md](string.md) on the three sub-modes,
+[string.md](string.md) on the three in-language sub-modes,
 [reference-box.md](reference-box.md) on the duplication collapse, and
 [ffi.md](ffi.md) on a stale view under a correct count.
 [store.md](store.md) is an eleventh of a different kind: its third

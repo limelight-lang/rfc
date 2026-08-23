@@ -66,9 +66,9 @@ The loop makes it the ordinary placement case: a borrow born before the
 loop promotes before the loop, by the cycle condition of the placement
 rule ([gc-horizon.md](../gc-horizon.md#at-the-horizon-promotion)).
 `$meta` is born before the loop, so the conservative lowering is one
-retain ahead of it. What a borrow born *inside* the loop gets is the
-disagreement open question 22 records, and [call.md](call.md) carries
-the shape.
+retain ahead of it. A borrow born *inside* the loop is
+promoted once per iteration, by the closure of open question 22 on
+2026-08-23; [call.md](call.md) carries the shape.
 
 Beyond that the set is **not determinable from the RFC as it stands**.
 Whether a resumption carries its own horizons — whether the frame is

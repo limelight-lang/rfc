@@ -48,7 +48,7 @@ question of the design.
 | Axis | Values | Where it lives | Effect on the verdict |
 |---|---|---|---|
 | entity kind | object, string, array, ReferenceBox, FFIBox, WeakRef, lazy object; an eighth code reserved | header flags 12–14 ([classes.md](../classes.md#flags-layout)); which code names which kind is the runtime ABI's business, never transcribed | string, array and ReferenceBox are COW-eligible and so owned; FFIBox is owned through its destructor; object and lazy object are the anchorable kinds |
-| memory category | GC heap, request arena, long-lived, immortal | header flags 0–1 ([arenas.md](../memory/arenas.md#object-categories-by-memory-strategy)) | retain and release return early on immortal entities and are absent for arena ones, so the promotion retain buys nothing there — [gc-horizon.md](gc-horizon.md#open-questions), question 8 |
+| memory category | GC heap, request arena, long-lived, immortal | header flags 0–1 ([arenas.md](../memory/arenas.md#object-categories-by-memory-strategy)) | retain and release return early on any non-zero category bar COW — arena, long-lived and immortal ([lowering.md](../lowering.md#retain--release)) — so the promotion retain buys nothing there — [gc-horizon.md](gc-horizon.md#open-questions), question 8 |
 | COW eligibility | yes, no | header flag 10, and per-entity rather than per-class ([values.md](../values.md#cow-is-a-per-object-flag)) | yes → owned, because the uniqueness test reads the count |
 | transitive purity closure | pure (P0, P1, P2) or not (NR, impure, unresolved) | class-level verdict ([pure-destructors.md](pure-destructors.md#purity-is-transitive)) | not pure → the borrow is owned from birth, keeping `__destruct` on the scope-end pin |
 | unique ownership on the path | crossed, not crossed | the entity's count word holds the sentinel ([rc-walk.md](rc-walk.md#unique-ownership-one-owning-slot-and-no-count)) | crossed → owned: the chain invariant's premise (every path edge counted) fails |
@@ -98,7 +98,7 @@ feature.
 | dynamic dispatch whose possible targets or joined effects cannot be bounded | some callee or effect is unknown | a closed target set with sufficient trusted effects for every target |
 | reflection | unbounded effects | nothing |
 | a by-reference escape | the local becomes writable elsewhere | nothing |
-| a release of a class whose purity closure is not pure | eager death runs `__destruct` at the release site | transitive purity of the closure, NR counting as impure |
+| a release of a class whose purity closure is not pure | eager death runs `__destruct` at the release site | transitive purity of the closure lifts this row only, NR counting as impure; the site of a release that may reach zero is also the checkpoint row's, the pickup at its dispose's exit, and clears only with that row's lift — today, nothing ([gc-horizon.md](gc-horizon.md#the-horizon-list)) |
 | a store to a chain local, or through a may-alias of a path base | the chain is severed | must-not-alias through closed-class typed-property disjointness |
 | a checkpoint that can drain a verdict | a drained destructor may store into the path | purity of the condemned set's downward closure |
 | a suspension: yield, fiber | the resumption point is unknown | open question 2 of the design |
@@ -155,7 +155,7 @@ there, and the lattice reads the static class and never the category.
 ```mermaid
 stateDiagram-v2
     [*] --> Anchored : plain load, chain ends in a counted root
-    Anchored --> Anchored : reads, summarized calls, pure-closure releases
+    Anchored --> Anchored : reads, summarized calls, releases proven non-final
     Anchored --> Owned : promotion retain at the point dominating every horizon
     Owned --> [*] : release per the drop-point policy
     Anchored --> [*] : last use, nothing emitted
@@ -214,12 +214,12 @@ product is
 
 ```
 7 entity kinds × 4 memory categories × 2 COW × 2 purity
-  × 2 uniqueness × 2 weak-cell  =  224 referent configurations
+  × 2 uniqueness × 2 weak-cell  =  448 referent configurations
 ```
 
 against which a live range carries its own two axes: the horizon set,
 any of the 2⁸ = 256 subsets of the kinds above, and whether a dominating
-promotion point exists. Per borrow site that is 224 × 256 × 2 ≈ 1.1 ×
+promotion point exists. Per borrow site that is 448 × 256 × 2 ≈ 2.3 ×
 10⁵ combinations — the naive bound, useful only as the honest starting
 point before the algorithm's own identities are applied.
 
@@ -239,12 +239,12 @@ read as an equation rather than as a rule:
    out through identity 2 rather than needing one of its own.
 
 What is left is two kinds — object and lazy object — with the four
-memory categories still open, which is exactly **8 of the 224 referent
+memory categories still open, which is exactly **8 of the 448 referent
 configurations** — four of them belonging to the lazy kind, whose
 verdict is undetermined while a plain property read of an untouched
 ghost has no specified materialization path
-([gc-horizon-cases/object.md](gc-horizon-cases/object.md), open item 1), and 4 of them if question 8 resolves against the arena
-and immortal categories. On top of that, one of the 256 horizon-set
+([gc-horizon-cases/object.md](gc-horizon-cases/object.md), open item 1), and 2 of them if question 8 resolves against the three
+categories where the retain returns early. On top of that, one of the 256 horizon-set
 values leaves a borrow paying nothing at all: the empty set.
 
 Two intersections of the collapses are not clean, and naming them is

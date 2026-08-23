@@ -13,17 +13,34 @@ are what the exclusion costs.
 class Owner {
     private Node $e;                   // the one owning slot, no count
 
-    function run(): void {
+    function peek(): int {
         $n = $this->e;                 // a borrow crossing a unique entity
+        return $n->x;                  // no horizon in the live range
+    }
+}
+```
+
+That is the case at its smallest, and section 2's verdict is about it.
+The two methods below are the same class with the proof already gone,
+and they are printed because the reason it goes is half of what this
+file records:
+
+```php
+    function run(): void {
+        $n = $this->e;
         audit();                       // a horizon
-        $n->tick();
+        $n->tick();                    // a receiver: a convention retain
     }
 
     function getE(): Node {
         return $this->e;               // the convention retain: transfer
     }
-}
 ```
+
+By the prover's rule in section 2 either method is enough: an entity
+ever returned or passed is by proof never unique, so in a unit
+containing them the count word holds an ordinary count and no sentinel
+is there to be written.
 
 ## 2. The lattice verdict
 

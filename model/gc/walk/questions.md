@@ -1009,9 +1009,11 @@ request-arena, immortal **and long-lived**. A long-lived entity dies —
 undecided
 ([`../../memory/arenas.md`](../../memory/arenas.md#long-lived-arena)) — so
 there the promotion retain buys nothing and no arena discipline protects
-the borrow either. The shape needs no fiber and no message boundary: a
-borrow of a long-lived referent, a horizon, the subsystem's explicit free
-inside it, and the borrow reads freed memory. The chain edge into such a
+the borrow either. That half is a hole rather than a shape,
+ruled 2026-08-23: no explicit-free operation exists in this repository
+for a call in the borrow's live range to reach, and whatever strategy is
+chosen will not observe the early-returning retain, so the failure cannot
+be written as a snippet until the strategy is. The chain edge into such a
 referent is uncounted for the same reason, which is node G1's shape in a
 category nobody checked.
 
@@ -1022,7 +1024,16 @@ refcount or by its owner's drop
 collector runs on its own threshold rather than at a message boundary. A
 region inherits the arena discipline wholesale and shares the same two
 category bits, so no lattice axis over the category can tell a region
-referent from a request-arena one.
+referent from a request-arena one. **This is the one shape that fails
+inside a single frame**, ruled 2026-08-23, and it fires under three
+conditions: the borrow's chain runs through neither the region object —
+borrow-is-use would hold its count up — nor any counted holder, whose
+hold-count and retention would save the referent; the chain's root is
+itself region-resident, so the counted root the lattice records has no
+count behind it; and the last counted reference to the region object is
+droppable from inside a call in the live range. The snippet is in
+[`../gc-horizon-cases/arena.md`](../gc-horizon-cases/arena.md), open item
+1.
 
 **The reset's fixpoint frees as it goes.** Object memory is logically
 freed as each destructor runs, and only the arena's pages are held until a

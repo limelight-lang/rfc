@@ -216,19 +216,46 @@ arena and promotion paths; no for A4, which needs the compiler.
    ([lowering.md](../../lowering.md#retain--release)), so it covers the
    long-lived category as well as the immortal and request-arena ones,
    and the lattice reads the static class and never the category —
-   question 8 ([gc-horizon.md](../gc-horizon.md#open-questions)). The
-   failing shape is section 1's snippet: the borrow is promoted at the
-   call, the retain returns early, and the reset frees the referent under
-   a local the lattice records as owned. **It needs no fiber and no
-   message boundary**, which the widened question records and this item
-   claimed otherwise until 2026-08-23. Two shapes reach it inside one
-   frame. A long-lived referent dies by explicit free or minimal RC
+   question 8 ([gc-horizon.md](../gc-horizon.md#open-questions)).
+   Section 1's snippet shows the promotion and its early return; it does
+   not show the failure, an actor's arena resetting at a message boundary
+   and not inside `handle()`. **One shape fails inside a single frame**,
+   ruled 2026-08-23 after two review rounds broke the two routes this
+   item claimed before it. It is the region route, and it carries three
+   conditions:
+
+   ```php
+   final class App { public static ?RouteIndex $index = null; }
+
+   #[Region(gc: 'none')]
+   final class RouteIndex { public Node $head; }   // Node, Kind: region-resident
+
+   function label(Node $n): string {   // $n: the convention retain returned early
+       $kind = $n->kind;               // anchored; the whole chain is region-resident
+       audit();                        // unsummarized: it clears App::$index, the
+                                       //   region object's last count reaches zero,
+                                       //   and the region's arenas reset
+       return $kind->name;             // the borrow names freed memory
+   }
+   ```
+
+   The chain runs through neither the
+   region object nor any counted holder — through the first,
+   borrow-is-use would hold the region object's count above zero for the
+   whole live range; through the second, the escape hold-count and
+   retention would save the referent. The chain's root is itself
+   region-resident, so the counted root the lattice records is a label
+   with no count behind it, which is question 16 read on this case. And
+   the last counted reference to the region object is droppable from
+   inside a call in the live range, which is what makes the reset
+   synchronous and mid-frame ([regions.md](../../memory/regions.md#definition),
+   "Death = arena reset"). **The long-lived half is a hole rather than a
+   shape**: the reclamation strategy is undecided per object type
    ([arenas.md](../../memory/arenas.md#object-categories-by-memory-strategy)),
-   with no reset, no hold-count and no escapee list involved. And a
-   `#[Region]` arena resets when the region object's own count reaches
-   zero ([regions.md](../../memory/regions.md#definition)), which an
-   unsummarized call in the borrow's live range can cause. The parked
-   fiber ([actors.md](../../../runtime/actors.md#the-queue-is-the-only-door),
+   this repository defines no explicit-free operation a call could reach,
+   and whatever is chosen will not observe the early-returning retain.
+   The parked fiber
+   ([actors.md](../../../runtime/actors.md#the-queue-is-the-only-door),
    [suspension.md](suspension.md)'s hole) is a third route and not the
    precondition. Read from the count side this is also PH4's rule
    failing: the retain is emitted, no live count stands behind the local

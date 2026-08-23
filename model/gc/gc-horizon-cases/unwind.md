@@ -41,10 +41,16 @@ owned twice over, being COW-eligible
 
 One horizon: **a call without a trusted summary**, at `audit($n)`
 ([gc-horizon-states.md](../gc-horizon-states.md#the-eight-horizon-kinds)).
-The element write is not a horizon — it stores into `$rows`, whose type
-is disjoint from the `$n->kind` path under the closed-class rule
-([gc-horizon.md](../gc-horizon.md#inside-the-horizon-what-the-borrow-must-prove))
-— and unwinding contributes no kind of its own.
+Whether the element write is a horizon as well turns on an instrument
+this design has not admitted: the disjointness it would need is between
+two locals' declared types, `array` against `Node`, while the named
+lifter is type-incompatibility between closed-class typed *properties*
+and nothing else is assumed
+([gc-horizon.md](../gc-horizon.md#inside-the-horizon-what-the-borrow-must-prove),
+[store.md](store.md)). Read under the sound rule the write is a second
+horizon, and the placement is the same either way — which is why this
+case is written over the raise sites rather than over the horizon count.
+Unwinding contributes no kind of its own.
 
 The raise sites of the live range, as this repository supports them:
 
@@ -56,14 +62,10 @@ The raise sites of the live range, as this repository supports them:
 | a store that escapes a request-arena COW entity | the barrier deep-copies into the heap, and generated code raises memory-exhausted ([arenas.md](../../memory/arenas.md#cross-arena-references)) |
 | `new` | the allocation itself |
 | the compiler's poll | log-reserve replenishment failing there reclaims, collects, retries and raises ([exceptions.md](../../../runtime/exceptions.md#allocation-failure-is-an-ordinary-exception)) |
+| a release of a class whose closure carries no no-throw proof | conditional: the destructor boundary hands the error back as a value, and one named candidate for what happens next raises it in the frame that dropped the last reference ([exceptions.md](../../../runtime/exceptions.md#destructors-never-propagate)). P0 runs no code, and P1, P2 and NR carry a hard no-throw obligation ([pure-destructors.md](../pure-destructors.md#the-purity-ladder)), so the population is the impure and unresolved closures — which are release horizons already |
 
-Two sites that look like raise sites and are not. A release is a
-horizon, and eager death runs `__destruct` at it, but a destructor
-cannot let an exception escape: it is caught at the destructor's own
-boundary and handed back as a value, because runtime code must run after
-it
-([exceptions.md](../../../runtime/exceptions.md#destructors-never-propagate)).
-And a call into the Rust runtime is nothrow by construction, so it
+One site looks like a raise site and is not: a call into the Rust
+runtime is nothrow by construction, so it
 compiles to an ordinary `call` rather than an `invoke`
 ([exceptions.md](../../../runtime/exceptions.md#the-channels-are-not-exclusive-it-is-an-abi-property-of-the-function)).
 An allocation still raises, because the Rust core returns a status and
@@ -82,11 +84,13 @@ $t = load $kind->name
 release $kind                ; drop point: last use, Kind being pure
 ```
 
-Both pads carry the same set, and today's lowering produces the same one:
-it retains `$kind` at the load, one instruction earlier. The cost of the
-quantifier is in what executes rather than in what a pad releases — the
-retain runs before an allocating store that may raise, on every path,
-including those that never reach `audit()`.
+Both pads carry the same set, and today's lowering produces the same one
+from the same position: it retains `$kind` at the load, where the
+promotion now stands. The cost of the quantifier is in what executes
+rather than in what a pad releases — the retain runs before an allocating
+store that may raise, on every path, including those that never reach
+`audit()`, and a borrow whose only horizon sat behind a cold branch pays
+at the first raise site instead.
 
 **Where the pads do differ: a value born on one edge.** Pad state is per
 exceptional edge and per SSA generation, not per site
@@ -203,7 +207,8 @@ reserve at all, and the failure half of the reserve protocol is unbuilt
 - [array.md](array.md) owns the COW exclusion and the storage
   transitions that make an element write a raise site.
 - [release.md](release.md) owns eager death, whose destructors are the
-  reason a release is a horizon and not a raise site.
+  reason a release is a horizon and a conditional raise site, pending the
+  returned-error policy.
 - [checkpoint.md](checkpoint.md) owns the poll, which appears here as a
   raise site and there as a drain site.
 - [adversarial.md](adversarial.md), PH9, PH19 and PH22 — the promotion
@@ -224,11 +229,26 @@ reserve at all, and the failure half of the reserve protocol is unbuilt
    ruling's price is stated and unpriced.
 2. **The raise set is not enumerable while runtime entries are
    unclassified.** Read literally, every `ll_*` entry the lowering emits
-   is a call without a trusted summary, which empties the free region;
-   the intended line — runtime entries being nothrow, effect-known and
-   summarized by construction — is written nowhere, and it is the same
-   line that decides which entries are raise sites. Question 11.
-3. **Allocation failure runs a collection before it raises.** The
+   is a call without a trusted summary, which empties the free region.
+   Half of the line that would fix it is written: every entry point into
+   the Rust runtime is `nothrow` by construction
+   ([exceptions.md](../../../runtime/exceptions.md#isthrow-making-must-not-throw-enforceable)),
+   which takes those entries out of the raise set. The other half — that
+   they are effect-known and summarized by construction, so they are not
+   call horizons either — is written nowhere. Question 11.
+3. **The raise set moves with the returned-error policy.** A
+   destructor's boundary returns the error as a value, and what is done
+   with it — raised in the frame that dropped the last reference, chained
+   onto an exception already in flight, or reported where there is no
+   frame at all — "still needs work"
+   ([exceptions.md](../../../runtime/exceptions.md#destructors-never-propagate)).
+   Until it is ruled the table above reads the release row as raising,
+   which is the failure default this design uses everywhere else. The
+   ruling is `exceptions.md`'s to make, and it decides one more thing
+   this case would then owe: what a raise from the middle of a batched
+   `ll_release_vector` leaves the pad to release, the run having already
+   released part of its vector.
+4. **Allocation failure runs a collection before it raises.** The
    failure path first runs a coarser reclamation pass and a GC cycle,
    using the reserve as working room
    ([exceptions.md](../../../runtime/exceptions.md#allocation-failure-is-an-ordinary-exception)).
@@ -238,13 +258,13 @@ reserve at all, and the failure half of the reserve protocol is unbuilt
    missing specification is the relation between that pass and the
    checkpoint protocol
    ([rc-walk.md](../rc-walk.md#the-design-constraint-that-produced-this-shape)).
-4. **Landing pads for a suspended frame are unspecified.** A suspended
+5. **Landing pads for a suspended frame are unspecified.** A suspended
    generator's frames are alive with a lifetime independent of the
    catching frame, and the segmented walk is the main open item of the
    exceptions design
    ([exceptions.md](../../../runtime/exceptions.md#inlining-and-generators));
    the borrow half of that hole is [suspension.md](suspension.md).
-5. **One trace mode can publish a borrowed argument, and its capture is
+6. **One trace mode can publish a borrowed argument, and its capture is
    unspecified.** The default mode publishes nothing that holds an entity
    alive: scalars by value, truncated string copies, and for an object
    the class name only, class metadata being immortal

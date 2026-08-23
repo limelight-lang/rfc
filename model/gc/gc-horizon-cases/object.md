@@ -54,9 +54,9 @@ uncounted `target` edge
 ([weak-references.md](../../weak-references.md#the-weak-cell-is-the-canonical-weakreference-itself)).
 
 The rung the source cannot answer is the memory category. Retain and
-release return early on immortal entities and are absent for
-request-arena ones
-([arenas.md](../../memory/arenas.md#object-categories-by-memory-strategy)),
+release return early on any non-zero category bar COW — arena,
+long-lived and immortal
+([lowering.md](../../lowering.md#retain--release)),
 while the lattice reads the static class and never the category, so
 `Tax` carries one verdict for instances that would answer that rung
 differently — open question 8.

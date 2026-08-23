@@ -99,7 +99,7 @@ algorithm did not carry, and they opened eight questions, 14 to 21, of
 | PH1 — destructor-free is not death-unobservable | [weakref.md](weakref.md) | the target is destructor-free, so the drop-point policy drops it at last use ([static-lifetimes.md](../../memory/static-lifetimes.md#drop-point-policy)); a weak subscriber makes that death observable, which the policy's premise does not admit — question 14 |
 | PH2 — WeakMap observes it without `get()` | [weakref.md](weakref.md) | PH1's independent witness, through a weak-key table instead of a cell; the table's own mechanism is node D6 of [walk/questions.md](../walk/questions.md#d6-weakmap-ephemerons--open-the-cost-was-overstated-and-a-cheaper-shape-exists) |
 | PH3 — the differential oracle declares the break legal | no case | an obligation on the differential lowering, whose oracle is the destructor sequence and the death set per batch ([gc-horizon.md](../gc-horizon.md#verification-artifacts-a-precondition-of-implementation)); weak-cell transitions are in neither — question 14 |
-| PH4 — an elided pair was another chain's root | [object.md](object.md), [unique-entity.md](unique-entity.md), [arena.md](arena.md) | the chain ends in an owned local, and PH4 asks what "owned" names when no live count was emitted; the always-provable route is bounded away from PH4's own snippet, the COW base-case retain against a standing sentinel is a second such local, and a promotion retain in a counted-out category is a third — question 16, and question 8 for the third |
+| PH4 — an elided pair was another chain's root | [object.md](object.md), [unique-entity.md](unique-entity.md), [arena.md](arena.md) | the chain ends in an owned local, and PH4 asks what "owned" names when no live count was emitted; the always-provable route is bounded away from PH4's own snippet, the unique-crossing base case emits a retain against a standing sentinel, which is a second such local, and a promotion retain in a counted-out category is a third — question 16, and question 8 for the third |
 | PH5 — arena reset removes a root category | [arena.md](arena.md) | the reset is the case's own second uncovered event, recorded there under question 8 |
 | PH6 — suspension carries an arena borrow across a reset | [suspension.md](suspension.md), [arena.md](arena.md) | the hole report's item 3, and the second half of question 2 |
 | PH7 — a summary misses a transitive alias | [call.md](call.md), [store.md](store.md) | a summary claims "severs no path", and the may-alias rule is what it claims against |
@@ -277,7 +277,7 @@ Named as classes, with one reason each, rather than enumerated:
 
 ## Named as uncovered
 
-One shape belongs to neither half of this table, and naming it is the
+Two shapes belong to neither half of this table, and naming them is the
 whole of what this section does.
 
 **Maps** ([maps.md](../../maps.md)). A map is an ordinary object of the
@@ -307,4 +307,6 @@ horizon kind carried entirely inside a case written for something else.
 
 That a case is *correct*. Coverage says a shape has a home; whether the
 home states the truth about it is what the Critic rounds of
-`dev/PLAN.md` S3 exist for, and they have not run.
+`dev/PLAN.md` S3 exist for. Round 1 ran on 2026-08-23 in three lenses
+and produced twenty-five findings, every one of them fixed; round 2
+followed it the same day.

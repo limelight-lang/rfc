@@ -97,7 +97,12 @@ reached through the weak cell rather than through a dropped frame
 reference, and DC5 names neither the cell nor this route to it.
 
 **Whether the always-provable rules admit `get()`'s body, and what was
-done about it.** They do, on IR shape alone. A rule qualifies when the enclosed region contains no
+done about it.** The question does not have to be answered, and that is
+what the ruling buys: whether a convention retain is in the
+always-provable set at all is open question 16 of
+[gc-horizon.md](../gc-horizon.md#open-questions), and ruling 11 removes
+the candidate whichever way 16 goes. What the region test alone admits,
+IR shape being all it reads: A rule qualifies when the enclosed region contains no
 call, no store, no release and no checkpoint, with the owned base cases
 as preconditions rather than competitors: the target is non-COW-eligible,
 transitively destructor-free and non-unique

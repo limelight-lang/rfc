@@ -82,7 +82,7 @@ feature.
 | lattice state | SSA value | `Owned`, `Anchored(chain)` | the emitter |
 | anchor chain | borrow | path edges ending in a counted root: frame slot, arena slot, static, immortal, FFI handle | the chain invariant; the checkpoint reclamation discharge |
 | horizon set | live range | any subset of the eight horizon kinds below | promotion placement; the failure default |
-| promotion point | promoted borrow | the closest point dominated by the birth that dominates every horizon and every exit — or ⊥, which sends the borrow to owned-from-birth | the emitter; the landing-pad sets |
+| promotion point | promoted borrow | the latest point dominated by the birth that dominates every horizon, every exit and every raise site of the live range, and that lies inside no cycle the birth lies outside of — or ⊥, which sends the borrow to owned-from-birth ([gc-horizon.md](gc-horizon.md#at-the-horizon-promotion), as ruled 2026-08-22) | the emitter; the landing-pad sets |
 | landing-pad set | exceptional edge and SSA generation | a pad whose frame dies releases the owned locals live at the raise site; a pad whose frame runs on, those of them dead where control resumes. Per edge, not per site, ruled 2026-08-22 ([gc-horizon.md](gc-horizon.md#at-the-horizon-promotion)) | unwind lowering |
 | class regime | class | counted, horizon, or unnarrowable (which is counted) | the emitter's default under the hybrid |
 | call effect model | call target or closed target set | source and trust, severable anchor paths, purity of internal releases, destructor reachability, **freshness identity** | the call-horizon lift; invalidation when its source changes |
@@ -125,11 +125,13 @@ flowchart TD
     D -->|no or unresolved| O
     D -->|yes| U{"anchor path crosses a<br/>unique-ownership entity?"}
     U -->|yes| O
-    U -->|no| W{"anchor path crosses a weak cell,<br/>or an arena or immortal referent?"}
-    W -->|"yes — question 7 ruled, question 8 open"| O
-    W -->|no| B{"birth dominates every horizon<br/>and every exit of the live range?"}
+    U -->|no| W{"anchor path crosses a weak cell?"}
+    W -->|"yes — ruling 11, 2026-08-22"| O
+    W -->|no| B{"birth dominates every horizon, exit<br/>and raise site, outside no cycle it is outside of?"}
     B -->|no| O
     B -->|yes| A["ANCHORED — free until a horizon"]
+    A -.->|"the rung question 8 proposes,<br/>which the design has not adopted"| Q{"arena, long-lived or<br/>immortal referent?"}
+    Q -.->|yes| O
 ```
 
 The base cases exist for six different reasons, and none of them is
@@ -138,12 +140,15 @@ surfaces behind the callee's epilogue checkpoint and an anchored
 parameter dies to re-entrancy. COW values, because the uniqueness test
 reads the count. Destructor-bearing targets, because elision would move
 `__destruct` off the drop-point pin. Unique entities, because a retain
-would write the occupancy sentinel. The last two rungs are the 2026-08-20
-open questions, drawn dashed in the sense that the design had not yet
-adopted them: a weak cell's target edge is uncounted, and a promotion
-retain into the arena or immortal categories is a no-op. The first was
-ruled on 2026-08-22 — a weak-cell read produces an owned value, counted
-always — and the rung stays, its verdict now stated rather than open.
+would write the occupancy sentinel. The weak-cell rung was the last of
+the six to be settled: a cell's target edge is uncounted, and Edmond
+ruled on 2026-08-22 that the value a read of the cell produces is owned,
+counted always. The seventh rung in the drawing is not a rung — it is
+what question 8 proposes, drawn dashed and outside the cascade because
+the design has not adopted it: a promotion retain returns early in the
+arena, long-lived and immortal categories
+([lowering.md](../lowering.md#retain--release)), so it buys nothing
+there, and the lattice reads the static class and never the category.
 
 ## A borrow's life
 
@@ -156,9 +161,12 @@ stateDiagram-v2
     Anchored --> [*] : last use, nothing emitted
 ```
 
-The promotion point is the closest point dominated by the birth that
-dominates every horizon and every exit of the live range, so a loop's
-horizon is paid once, from before the loop. A promoted borrow holds its
+The promotion point is the latest point dominated by the birth that
+dominates every horizon, every exit and every raise site of the live
+range, and that lies inside no cycle the birth lies outside of. The
+cycle condition is what makes a loop's horizon paid once, from before
+the loop: without it the latest such point sits in the loop body and the
+retain runs per iteration. A promoted borrow holds its
 count over a subrange of exactly the lifetime today's code counts it
 over — which is both the cost bound (never more than today) and the
 death-order argument.
@@ -232,7 +240,10 @@ read as an equation rather than as a rule:
 
 What is left is two kinds — object and lazy object — with the four
 memory categories still open, which is exactly **8 of the 224 referent
-configurations**, and 4 of them if question 8 resolves against the arena
+configurations** — four of them belonging to the lazy kind, whose
+verdict is undetermined while a plain property read of an untouched
+ghost has no specified materialization path
+([gc-horizon-cases/object.md](gc-horizon-cases/object.md), open item 1), and 4 of them if question 8 resolves against the arena
 and immortal categories. On top of that, one of the 256 horizon-set
 values leaves a borrow paying nothing at all: the empty set.
 

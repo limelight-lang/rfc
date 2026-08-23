@@ -154,10 +154,11 @@ ret %v
 
 `$r` is identical in both, which is what the owned verdict means. `$t`
 differs only in where its retain stands: the promotion point is the
-closest point dominated by the birth that dominates every horizon and
-every exit, and both horizons follow the load, so the point is between
-the load and the escape
-([gc-horizon.md](../gc-horizon.md#at-the-horizon-promotion)).
+latest point dominated by the birth that dominates every horizon, every
+exit and every raise site, and lies inside no cycle the birth lies
+outside of ([gc-horizon.md](../gc-horizon.md#at-the-horizon-promotion)).
+Both horizons follow the load and the box allocation is a raise site, so
+the point is between the load and the escape.
 
 ## 5. States touched
 

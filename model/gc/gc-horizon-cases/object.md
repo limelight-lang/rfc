@@ -71,9 +71,21 @@ and the store's base is `$c`, which is the path base itself rather than
 a may-alias of it. So the store qualifies without the alias oracle being
 consulted at all.
 
-The call in section 4's second reading is absent from this snippet, and
-no release, checkpoint, escape, suspension, reflection or dynamic
-dispatch appears in it, so the other seven horizon kinds
+**A second member, from the same store.** An ordinary store retains the
+new value, publishes it and drops the displaced one, so line 2 releases
+whatever `$c->next` held. `Cart` is pure, so the release row does not
+fire; the death that release may cause is not dismissed so easily. There
+is no finality conjunct — "may reach zero" is not dischargeable
+([gc-horizon.md](../gc-horizon.md#the-horizon-list)) — and if it does
+reach zero, dispose runs, and message pickup at the exit of the outermost
+dispose drains a verdict ([checkpoint.md](checkpoint.md)). `$t` is live
+across it, the read of `$t->rate` coming after the store. So the set is
+`{a store, a checkpoint that can drain a verdict}`, and the second member
+is what any displacing store adds to any live range that spans it.
+
+No escape, suspension, reflection or dynamic dispatch appears in the
+snippet, and the call of section 4's second reading is absent from it, so
+the remaining kinds
 ([gc-horizon-states.md](../gc-horizon-states.md#the-eight-horizon-kinds))
 contribute nothing.
 
@@ -155,16 +167,20 @@ ret %r
 ```
 
 The two differ in where the retain stands and in nothing else. The
-promotion point is the closest point dominated by the birth that
-dominates every horizon and every exit of the live range
-([gc-horizon.md](../gc-horizon.md#at-the-horizon-promotion)), which here
+promotion point is the latest point dominated by the birth that
+dominates every horizon, every exit and every raise site of the live
+range, and that lies inside no cycle the birth lies outside of
+([gc-horizon.md](../gc-horizon.md#at-the-horizon-promotion)); here that
 is between the load and the store, so `$t` holds its count over a
 subrange of exactly the lifetime today's code counts it over.
 
-Admit the field-level disjointness of section 3 and the horizon set is
-empty, no promotion point is needed, and both instructions disappear —
-the shape the case book's worked example prints for `$tax`
-([README.md](README.md)).
+Admit the field-level disjointness of section 3 and the store row lifts,
+while the checkpoint row the same store carries does not: the displaced
+value may still reach zero, and its dispose still reaches a pickup. The
+promotion stays. Both instructions disappear only where the live range
+spans no displacing store at all, which is what the worked example prints
+for `$tax` ([README.md](README.md)), its one store-shaped event being a
+summarized call.
 
 ## 5. States touched
 
@@ -185,19 +201,20 @@ the shape the case book's worked example prints for `$tax`
 ## 6. The picture
 
 ```mermaid
-sequenceDiagram
-    participant F as frame
-    participant G as ghost entity
-    participant S as shim descriptor
-    participant R as real descriptor
-    F->>G: method call or instanceof
-    G->>S: class pointer at +8
-    S->>S: run the initializer
-    S->>G: rewrite +8, flip kind lazy to object
-    G->>R: retry through the real vtable
-    F->>G: plain typed property load
-    Note over F,G: constant offset, no class pointer read;<br/>the shim is not consulted, open item 1
+flowchart LR
+    F["frame slot $c<br/>counted root"] -->|"counted edge: tax"| T["Tax entity<br/>the borrow's target"]
+    F -->|"counted edge: next"| D["the displaced Cart"]
+    B["$t: anchored local,<br/>no count emitted"] -. "plain load" .-> T
+    S["line 2: store to $c-&gt;next"] --> H1["store horizon:<br/>the rule reads path bases"]
+    S --> H2["checkpoint horizon:<br/>the displaced value may reach zero,<br/>and its dispose reaches a pickup"]
+    H1 --> P["promotion: one retain,<br/>between the load and the store"]
+    H2 --> P
 ```
+
+The lazy kind's materialization is a second mechanism and is drawn
+nowhere, because what interposes on a plain property read of an
+untouched ghost is the thing open item 1 says the RFC does not
+specify.
 
 ## 7. The oracle
 

@@ -88,9 +88,12 @@ function total(Cart $c): float {   // $c: owned by convention (parameter)
 ```
 
 **Without a summary for `audit()`** the call is a horizon. `$tax` is
-born at the load, and the closest point dominated by that load which
-dominates both the horizon and the exit is immediately before the call,
-so the compiler emits one retain there and the matching release at
+born at the load, and the promotion point is the latest point dominated
+by that load which dominates every horizon, every exit and every raise
+site of the live range and lies inside no cycle the load lies outside of
+([gc-horizon.md](../gc-horizon.md#at-the-horizon-promotion), as ruled on
+2026-08-22). Here that is immediately before the call, so the compiler
+emits one retain there and the matching release at
 today's drop point. `$tax` pays one pair — the same pair today's code
 pays, over a shorter subrange:
 
@@ -130,17 +133,19 @@ those files exists for the fact that *qualifies* the exclusion, not for
 the exclusion itself. A reference is owned by construction when it is
 the result of `new`, the result of a call, a receiver or by-value
 parameter, a COW-eligible value, a target whose class is not
-transitively destructor-free, or a path crossing a unique-ownership
-entity ([gc-horizon.md](../gc-horizon.md#the-ownership-lattice)).
+transitively destructor-free, a path crossing a unique-ownership entity,
+or the value a weak-cell read produces — the last by Edmond's ruling 11
+of 2026-08-22, counted always and elided never
+([gc-horizon.md](../gc-horizon.md#the-ownership-lattice)).
 
 ### The entity cases
 
 | Case | The fact it exists for |
 |---|---|
-| [object.md](object.md) | the anchorable kind: where a borrow is actually free, and where the first promotion lands |
+| [object.md](object.md) | the anchorable kind: where a borrow is actually free, and where the first promotion lands. It carries the lazy kind too, the second anchorable one, whose verdict its open item 1 leaves undetermined |
 | [array.md](array.md) | exclusion by COW — qualified by storage transitions, which move the referent under a live anchor without breaking `stable_path` |
 | [string.md](string.md) | exclusion by COW — qualified by the sub-modes: an out-of-line string is not COW-eligible by kind alone |
-| [weakref.md](weakref.md) | the uncounted `target` edge: a path through a weak cell is not a counted chain, and no base case says so yet |
+| [weakref.md](weakref.md) | the uncounted `target` edge: a path through a weak cell is not a counted chain, and the value read through one is owned by the base case ruling 11 added |
 | [reference-box.md](reference-box.md) | exclusion by COW — qualified by the by-reference escape, which is a horizon in its own right |
 | [closure.md](closure.md) | **hole report**: capture is a store, and the closure's own entity kind and layout are unspecified in this repository |
 | [ffi.md](ffi.md) | exclusion by the destructor rule — qualified by `#[Borrow]` views, whose invalidation is visible to no horizon kind |
@@ -161,23 +166,37 @@ entity ([gc-horizon.md](../gc-horizon.md#the-ownership-lattice)).
 
 ### Which cases can be tested today
 
-Five cases assert runtime behaviour that the existing crate can be made
-to exercise without a compiler: [checkpoint.md](checkpoint.md),
-[arena.md](arena.md), [weakref.md](weakref.md), [release.md](release.md)
-and [destructor-bearing.md](destructor-bearing.md). Their oracles read
-the destructor sequence, the death set, the weak-nulling order and the
-exact test's verdict over a hand-built heap shape — all of which the
-runtime already produces.
+**A lattice verdict and the premise under it are two assertions, and
+they become buildable at different times.** Every verdict needs the
+compiler, through the shadow-count lowering or the differential
+lowering. A premise — what the runtime does to the entity the verdict is
+about — is testable against the existing crate today, and ten of the
+sixteen cases name one in their section 7. Five have a runtime oracle
+and nothing else: [checkpoint.md](checkpoint.md), [arena.md](arena.md),
+[weakref.md](weakref.md), [release.md](release.md) and
+[destructor-bearing.md](destructor-bearing.md), whose assertions are the
+destructor sequence, the death set, the weak-nulling order and the exact
+test's verdict over a hand-built heap shape. Five more carry a runtime
+premise beside a verdict that waits: [object.md](object.md) on a ghost's
+walk behaviour, [array.md](array.md) on transitions and separation,
+[string.md](string.md) on the three sub-modes,
+[reference-box.md](reference-box.md) on the duplication collapse, and
+[ffi.md](ffi.md) on a stale view under a correct count.
+[store.md](store.md) is an eleventh of a different kind: its third
+oracle is the corpus scan, compiler-free and able only to kill. Each
+file's own "Buildable today" line is the authority; this paragraph
+counts them.
 
-The other eleven assert compile-time lattice verdicts, and the two
-instruments that would check one — the shadow-count lowering and the
-differential lowering — need the compiler. The third candidate, a
-model-checker scenario, carries a recorded protocol drift: the TLC specs
-model the pre-amendment protocol, while eager death is the premise of
-the release horizon, so a scenario written against them today would test
-a collector this design does not target. Re-deriving the specs is a
-precondition of using that instrument, not an alternative to the other
-two.
+The third candidate instrument, a model-checker scenario, carries a
+recorded protocol drift: the TLC specs model the pre-amendment protocol
+while eager death is the premise of the release horizon
+([rc-walk-model.md](../rc-walk-model.md)). That document bounds the
+drift itself — the battery is evidence for the superseded rule set
+"except where a scenario exercises machinery the amendment kept (walk,
+filter, exact test, sever, deferred queue), which is most of it" — so
+the re-derivation is owed for a scenario that turns on condemnation,
+death deferral or acquittal messages, and not for one that exercises the
+kept machinery.
 
 ## Edmond's adversarial cases
 

@@ -72,7 +72,22 @@ nothing there, and a promotion retain would be a no-op — open question 8
 of [gc-horizon.md](../gc-horizon.md#open-questions), reached here
 through the one entity kind whose immortal population is largest.
 
-A fourth sub-mode was specified and withdrawn. Freeze — a mode-bit flip
+**The borrowed view, at the FFI boundary.** A foreign buffer may be
+viewed as a `string` without copying, bound to an owner while the
+compiler can prove the buffer outlives it or carried by a wrapper when it
+escapes; a write to the view separates it into an ordinary managed
+entity, "the COW rule generalizes: the view is shared with the outside
+world, so any write copies"
+([zero-abstraction.md](../../memory/zero-abstraction.md#strings-and-arrays-at-the-ffi-boundary),
+and [strings.md](../../strings.md#interned-strings) names the boundary as
+the exception to strings always carrying RC). The separation trigger is
+therefore not `refcount > 1`, so the base case's stated reason is absent
+here as it is in the growth form — and the payload's lifetime is the
+owner-binding tier of
+[static-lifetimes.md](../../memory/static-lifetimes.md#the-tier-ladder)
+rather than the entity's count. Open item 4.
+
+A further sub-mode was specified and withdrawn. Freeze — a mode-bit flip
 closing a dynamic string for writing in place — was rejected, because
 the two layouts hold their bytes in different places and moving between
 them is a copy
@@ -215,3 +230,21 @@ string and refcount code.
    ([strings.md](../../strings.md#interned-strings)), so the category
    axis is not a rare corner for this kind — question 8 of
    [gc-horizon.md](../gc-horizon.md#open-questions).
+4. **The borrowed view's bytes can be freed under a live count.** A view
+   over foreign memory is a string entity whose payload belongs to the
+   owner-binding tier
+   ([zero-abstraction.md](../../memory/zero-abstraction.md#strings-and-arrays-at-the-ffi-boundary)),
+   so the buffer can go while the entity's count is positive. That is a
+   severing event in no horizon kind, and it is the mirror of
+   [ffi.md](ffi.md)'s open item 2, which covers only the other direction —
+   a `#[Borrow]` view *into* managed bytes. Which of the two documents
+   owns the rule is not settled here.
+5. **A long-lived dynamic string has two answers.** Section 2 quotes
+   strings.md: on a `COW = 0` string allocated dynamic for growth "a write
+   goes in place, always, and no sharing test is performed". Section 6's
+   diagram reads the category first, following
+   [values.md](../../values.md#copy-on-write-protocol), where a
+   long-lived or immortal entity separates whatever its flag says. For a
+   long-lived dynamic-for-growth string the two disagree, and the missing
+   sentence says whether the growth form's "always" is stated only for
+   the GC-heap and arena categories.

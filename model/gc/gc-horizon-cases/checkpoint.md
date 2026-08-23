@@ -98,8 +98,9 @@ exists, the pickup is a horizon.
 
 ```
 $meta = load $p->meta        ; no retain
+retain $meta                 ; the promotion: it dominates the pickup and
+                             ;   the raise site `new` is in the quantifier
 $buf  = new Buffer           ; owned, birth count or the creation reference
-retain $meta                 ; the promotion, dominating the pickup
 release $buf                 ; zero: dispose, then the pickup at its exit
 $t    = load $meta->title
 release $meta                ; drop point: last use, Meta being pure
@@ -119,7 +120,10 @@ point is computed, and both instructions disappear.
   ([gc-horizon-states.md](../gc-horizon-states.md#the-axes-the-lattice-creates)).
 - **horizon set**: ∅ → {a checkpoint that can drain a verdict}.
 - **promotion point**: ⊥ → the point after the load of `$meta` and
-  before the release of `$buf`.
+  before the `new`, which is a raise site and therefore in the placement
+  quantifier ([gc-horizon.md](../gc-horizon.md#at-the-horizon-promotion));
+  the raise sites of this repository are listed in
+  [unwind.md](unwind.md).
 
 Two collector axes are read as premises and moved by nothing here: the
 drain-exclusivity window, held from post to ack, and the collector phase

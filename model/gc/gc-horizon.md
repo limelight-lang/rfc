@@ -229,6 +229,13 @@ A GC horizon is any of:
   compiler cannot bound;
 - reflection;
 - a by-reference escape;
+- **a suspension — a `yield`, a fiber switch, a parked external call.**
+  Nothing that exists lifts it: the summary system does not learn
+  resumption points, and a fiber suspended across an arena reset carries
+  frame borrows the reset cannot see (open question 2). The kind was
+  stated in [A simpler first economics](#a-simpler-first-economics) and in
+  [gc-horizon-states.md](gc-horizon-states.md), which the case book counts
+  from, and was missing from this list until 2026-08-23;
 - **a release of a class whose transitive-purity closure is not
   pure** — any store displacement, `unset`, `null` assignment or
   scope exit, with NR counting as impure, because NR admits external
@@ -1002,8 +1009,10 @@ recording, and the summary-language question, whose rulings inside
 ## A simpler first economics
 
 The first economic reading does not need a complete compiler cost
-model.  A borrow lifetime has only a small, explicit set of events
-that can end its proof:
+model. The normative set is [the horizon list](#the-horizon-list); the
+grouping below is that set read for counting, with a callback counted
+with reflection because both reach code the caller's analysis cannot
+bound:
 
 - `unset`, displacement of its anchor, or a store that may sever its
   anchor path;
@@ -1450,6 +1459,28 @@ and the shapes are
     PH35 names the axes it must carry: header sharing, NUMA, working set
     and the final against non-final path. PH31, PH32 and PH35; all three
     are obligations on the instruments and land in no case.
+
+Question 22 was opened by Critic round 1 over the case book, 2026-08-23
+(step S3.1 of `dev/PLAN.md`).
+
+22. **The loop-born borrow has two readings and the document carries
+    both.** The owned base case excludes a borrow "born inside a loop with
+    a horizon reachable over the back-edge"
+    ([the lattice](#the-ownership-lattice)), which is a liveness
+    condition; the placement rule states it without the qualifier — "born
+    inside, the back-edge fails the dominance test and the borrow is
+    owned" ([promotion](#at-the-horizon-promotion)). They disagree on the
+    commonest loop shape, a borrow born and last-used inside one
+    iteration: under the qualified reading its birth dominates its own
+    horizon and it is promoted once per iteration, which a summary can
+    then remove entirely; under the unqualified reading it is owned from
+    birth and pays a pair per iteration forever. The difference is the
+    saving in the position where it is worth most. What would answer it:
+    one statement of whether the rule reads liveness across the back edge
+    or the syntactic position of the birth. Found by
+    [gc-horizon-cases/call.md](gc-horizon-cases/call.md), whose `scan()`
+    is the shape, and repeated in
+    [gc-horizon-cases/suspension.md](gc-horizon-cases/suspension.md).
 
 ## The record
 

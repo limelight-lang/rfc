@@ -206,9 +206,44 @@ Done when: both rounds are recorded in the role lines below, every finding is
 fixed or refused with a reason, and any surviving dispute carries a Sage verdict
 marked Final.
 
-- [ ] S3.1 Critic round 1, three lenses: soundness against the algorithm, coverage
+- [x] S3.1 Critic round 1, three lenses: soundness against the algorithm, coverage
       against the repository, readability against the stated purpose
       tier: T2 · role: Critic
+      Critic 2026-08-23 round 1, three lenses, twenty-five findings, all
+        accepted. **Soundness:** `unwind.md`'s subject was the reading the
+        2026-08-22 ruling refused, so its lowering, pad sets and diagram
+        asserted it; `checkpoint.md` placed the retain after a `new`, which
+        is a raise site; `object.md` and `store.md` omitted the checkpoint
+        kind a displacing store carries, which falsifies "both instructions
+        disappear"; the states document's placement rule dropped the cycle
+        condition, and as stated it retains once per iteration;
+        `unique-entity.md` prescribed a base-case retain into a standing
+        sentinel and attributed the shape to COW, which ruling 10 removed;
+        `call.md`'s ⊥ for the loop-born borrow reads the placement bullet
+        while the base case reads liveness; `weakref.md` taught its subject
+        as an unruled hole against ruling 11; the cascade routed arena and
+        immortal referents to OWNED on a solid edge while the arithmetic
+        below it needs them anchorable. **Coverage:** the normative horizon
+        list carried seven kinds while the book counts eight — suspension had
+        no row; `arena.md` said the failure needs a fiber, which the widened
+        question 8 denies, and said two categories where the test returns
+        early on three; the model-checker exclusion ignored
+        `rc-walk-model.md`'s own exception clause; the buildable list named
+        five cases where ten carry a runtime premise; `string.md` missed the
+        FFI borrowed view; `maps.md` was neither covered nor excluded; the
+        lazy kind had no index row while holding four of the eight surviving
+        configurations. **Readability:** four files restated the placement
+        rule in its superseded form; the README's base-case list was short
+        the weak-cell case; `object.md`'s diagram drew a materialization
+        path its own open item says is unspecified; `store.md` pointed at
+        the wrong section of itself.
+      handoff: every finding is fixed. The horizon list gained the
+        suspension row and the questions gained 22 (the loop-born borrow's
+        two readings); `unwind.md` is rewritten over the ruled quantifier
+        with the per-edge pad shape as its second listing; the placement
+        rule is stated in one ruled form in five places; `weakref.md`,
+        `unique-entity.md` and `arena.md` carry the 2026-08-22 rulings.
+        Linkcheck green at 1664 links.
 - [ ] S3.2 Critic round 2 over round 1's fixes; unresolved findings to Sage
       tier: T2 · role: Critic → Sage
 

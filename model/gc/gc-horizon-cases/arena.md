@@ -47,7 +47,8 @@ horizon, and the payment lands on an entity that has no count.
 same problem one level up: the base case exists because the callee frame
 holds a counted reference for the receiver, and for an arena receiver
 the convention retain returns early like any other retain
-(`model/src/refcount.rs`, the category test in `ll_retain`).
+([lowering.md](../../lowering.md#retain--release), the category test in
+`ll_retain`).
 
 **The four roots, and which of them counts what.** A store into a static
 block, an arena container or an immortal container retains the stored
@@ -108,7 +109,10 @@ release $prefs                         ; ll_release: same test, returns false
 ```
 
 Both entry points test the memory-category bits first and return before
-touching the counter word (`model/src/refcount.rs`). So the promotion
+touching the counter word: the test is
+`(flags & LL_MEMCAT_MASK) && !(flags & LL_COW)`, so every non-zero
+category returns early ([lowering.md](../../lowering.md#retain--release)).
+So the promotion
 lowering and today's owned lowering emit the same two calls with the
 same two early returns: this borrow costs one call pair in both worlds
 and is protected in neither. The COW arm does not collide with it — the
@@ -207,26 +211,35 @@ arena and promotion paths; no for A4, which needs the compiler.
 
 ## 9. Open items
 
-1. **Promotion buys nothing in two of the four categories.** Retain and
-   release return early on immortal entities and are absent for
-   request-arena ones, and the lattice reads the static class and never
-   the category — question 8
-   ([gc-horizon.md](../gc-horizon.md#open-questions)). The failing shape
-   is section 1's snippet: the borrow is promoted at the call, the retain
-   returns early, and the arena reset frees the referent under a local
-   the lattice records as owned. What the shape needs to be realizable
-   inside an actor is a frame that spans a message boundary, and the only
-   one this repository names is a parked fiber
-   ([actors.md](../../../runtime/actors.md#the-queue-is-the-only-door)),
-   which is [suspension.md](suspension.md)'s hole. Read from the count
-   side this is also PH4's rule failing: the retain is emitted and no
-   live count exists behind the local it marks owned, so a further borrow
-   may end its chain there — question 16.
+1. **Promotion buys nothing in three of the four categories.** The early
+   return is on any non-zero category bar COW
+   ([lowering.md](../../lowering.md#retain--release)), so it covers the
+   long-lived category as well as the immortal and request-arena ones,
+   and the lattice reads the static class and never the category —
+   question 8 ([gc-horizon.md](../gc-horizon.md#open-questions)). The
+   failing shape is section 1's snippet: the borrow is promoted at the
+   call, the retain returns early, and the reset frees the referent under
+   a local the lattice records as owned. **It needs no fiber and no
+   message boundary**, which the widened question records and this item
+   claimed otherwise until 2026-08-23. Two shapes reach it inside one
+   frame. A long-lived referent dies by explicit free or minimal RC
+   ([arenas.md](../../memory/arenas.md#object-categories-by-memory-strategy)),
+   with no reset, no hold-count and no escapee list involved. And a
+   `#[Region]` arena resets when the region object's own count reaches
+   zero ([regions.md](../../memory/regions.md#definition)), which an
+   unsummarized call in the borrow's live range can cause. The parked
+   fiber ([actors.md](../../../runtime/actors.md#the-queue-is-the-only-door),
+   [suspension.md](suspension.md)'s hole) is a third route and not the
+   precondition. Read from the count side this is also PH4's rule
+   failing: the retain is emitted, no live count stands behind the local
+   it marks owned, and a further borrow may end its chain there —
+   question 16.
 2. **The convention retains have the same defect, and question 8 names
    only the promotion retain.** The receiver and by-value parameter base
    cases exist because the callee frame holds a counted reference
    ([gc-horizon.md](../gc-horizon.md#the-ownership-lattice)); on an arena
-   or immortal argument it holds none (`model/src/refcount.rs`). The
+   or immortal argument it holds none
+   ([lowering.md](../../lowering.md#retain--release)). The
    question's sub-question — whether the category belongs in the lattice
    as an axis — should read the base-case list as well as the promotion.
 3. **The arena reset's destructor fixpoint is a user-code point in no

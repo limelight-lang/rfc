@@ -106,9 +106,10 @@ which moves the site into open question 9's raise-site problem instead.
 
 ## 4. The lowering
 
-`$rate`'s birth is the load, and the closest point dominated by it that
-dominates all three horizons and the exit is the instruction after the
-load ([gc-horizon.md](../gc-horizon.md#at-the-horizon-promotion)). One
+`$rate`'s birth is the load, and the latest point dominated by it that
+dominates all three horizons, the exit and every raise site of the live
+range — the three calls are raise sites too — is the instruction after
+the load ([gc-horizon.md](../gc-horizon.md#at-the-horizon-promotion)). One
 retain lands there, and the release stays at today's drop point:
 
 ```
@@ -158,15 +159,22 @@ exit:
 release $rate                ; drop point, after the loop
 ```
 
-`$rate` is born before the loop, so a point dominating every horizon in
-its live range exists and the loop's horizon is paid once. `$tax` is born
-inside, and its live range re-enters the body over the back-edge, so no
-point dominated by its birth dominates every horizon in that range: the
-promotion point is ⊥, and ⊥ sends the borrow to owned-from-birth by the
-failure default
-([gc-horizon-states.md](../gc-horizon-states.md#the-axes-the-lattice-creates)).
-Owned-from-birth is today's lowering exactly, so the loop-born borrow
-loses the saving and gains no cost.
+`$rate` is born before the loop, so the cycle condition keeps its
+promotion out of the body and the loop's horizon is paid once. `$tax` is
+the shape the algorithm states twice and differently. Its live range ends
+inside the iteration — nothing carries it over the back-edge — so the
+owned base case, which excludes a borrow "born inside a loop with a
+horizon reachable over the back-edge"
+([gc-horizon.md](../gc-horizon.md#the-ownership-lattice)), does not fire,
+and the placement rule returns the instruction after the load: one
+promotion per iteration, which is today's lowering for that borrow, and
+which a summary for `audit()` removes altogether. The placement bullet
+states the same case without the liveness qualifier — "born inside, the
+back-edge fails the dominance test and the borrow is owned" — and that
+reading assigns ⊥, owned from birth, a pair per iteration no summary can
+lift. The listing above is written on the first reading. Open question 22
+of [gc-horizon.md](../gc-horizon.md#open-questions) is the disagreement,
+and it is worth what a summary is worth in a loop body.
 
 ## 5. States touched
 

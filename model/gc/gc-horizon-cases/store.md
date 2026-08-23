@@ -53,6 +53,16 @@ property is stored in a hashtable the layout does not describe
 ([classes.md](../../classes.md#property-access)), so neither carries the
 disjointness the lift needs.
 
+**Every displacing store carries a second potential kind.** The store
+drops the value it displaces, and with no finality conjunct that release
+may reach zero, run dispose, and reach the pickup at the exit of the
+outermost dispose, which drains a verdict
+([checkpoint.md](checkpoint.md)). Both stores in the snippet displace and
+`$line` is live across both, so the set carries a checkpoint member
+beside the two store members. It moves the promotion point nowhere here,
+the same point dominating all four, and it is why a store-free body is
+the only shape in which the set is empty.
+
 **A store to a chain local ends `live(anchor)` whatever it displaces.**
 `$c = null` and `unset($c)` are not stores through a path base, so the
 may-alias rule does not reach them, and the release they perform is
@@ -217,7 +227,7 @@ vendor trees, and it can only kill.
 ## 9. Open items
 
 1. **The horizon list has no row for a category-crossing store.** Section
-   7 states what the four arms do; the list classifies stores by slot and
+   3 states what the four arms do, and section 6 draws them; the list classifies stores by slot and
    may-alias, and the lattice reads the static class and never the
    category. Open question 8 of
    [gc-horizon.md](../gc-horizon.md#open-questions).

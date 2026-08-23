@@ -7,9 +7,11 @@ sites that can **raise**. Those are not a subset of the call sites: a
 COW-separating store allocates, allocation failure is an ordinary
 exception, so a plain property or element store can raise
 ([exceptions.md](../../../runtime/exceptions.md#allocation-failure-is-an-ordinary-exception)).
-The placement rule quantifies over horizons and exits, which leaves the
-landing-pad sentence resting on a set the rule never mentions
-([gc-horizon.md](../gc-horizon.md#at-the-horizon-promotion)).
+The raise sites are in the placement quantifier, ruled 2026-08-22
+([gc-horizon.md](../gc-horizon.md#at-the-horizon-promotion)), and this
+case is what that costs: the promotion is placed before the first raise
+site of the live range, so it executes on paths that reach no horizon at
+all, and every pad of the range carries the promoted value.
 
 ```php
 function label(Node $n, array $rows): string {
@@ -20,9 +22,11 @@ function label(Node $n, array $rows): string {
 }
 ```
 
-Two raise sites, one horizon. The promotion point is computed from the
-horizon and the exit alone, so it lands between the two raise sites, and
-the two landing pads owe different releases.
+Two raise sites, one horizon. The promotion point is computed over all
+three sets, so it lands before the element write, and both landing pads
+owe the same releases — which is the ruling's whole effect on this
+snippet. Where pad sets do differ is where the value itself differs by
+edge, and section 4's second listing is that shape.
 
 ## 2. The lattice verdict
 
@@ -69,18 +73,36 @@ the Limelight-side entry point raises from an ordinary frame
 ## 4. The lowering
 
 ```
-$kind = load $n->kind        ; no retain, no landing-pad obligation
-invoke element_write($rows)  ; pad A: release $rows, $n
-retain $kind                 ; the promotion, dominating the call
+$kind = load $n->kind        ; no retain
+retain $kind                 ; the promotion: it dominates the horizon,
+                             ;   the exit and both raise sites
+invoke element_write($rows)  ; pad A: release $rows, $n, $kind
 invoke audit($n)             ; pad B: release $rows, $n, $kind
 $t = load $kind->name
 release $kind                ; drop point: last use, Kind being pure
 ```
 
-Pad A and pad B differ by exactly the promoted borrow, and that
-difference is the mechanism this case exists for. Today's lowering
-retains `$kind` at the load, so both pads carry it and both sets are the
-same.
+Both pads carry the same set, and today's lowering produces the same one:
+it retains `$kind` at the load, one instruction earlier. The cost of the
+quantifier is in what executes rather than in what a pad releases — the
+retain runs before an allocating store that may raise, on every path,
+including those that never reach `audit()`.
+
+**Where the pads do differ: a value born on one edge.** Pad state is per
+exceptional edge and per SSA generation, not per site
+([gc-horizon.md](../gc-horizon.md#at-the-horizon-promotion)).
+
+```php
+if ($wide) {
+    $unit = $n->unit;   // born, and promoted, on one edge only
+}
+audit($n);              // one raise site, two incoming edges, one pad
+```
+
+A union cleanup releases `$unit` on the edge that never created it,
+possibly twice; an intersection cleanup leaks it on the edge that did.
+The pad carries the state per edge, by split pads or an ownership phi;
+a runtime tag is excluded by the granularity ruling of 2026-08-18.
 
 Two lowering consequences follow from the elision rather than from the
 promotion. A function with no `try` still gets landing pads when it
@@ -129,21 +151,23 @@ open question 11 asks for
 - **horizon set**: ∅ → {a call without a trusted summary}.
 - **promotion point**: ⊥ → the point between the element write and the
   call.
-- **landing-pad set**: per site, `{$rows, $n}` at pad A and
-  `{$rows, $n, $kind}` at pad B.
+- **landing-pad set**: `{$rows, $n, $kind}` at both pads, the promotion
+  dominating both raise sites; per edge and per SSA generation where a
+  value is born on one incoming edge only.
 
 ## 6. The picture
 
 ```mermaid
 flowchart TD
-    L["load $n->kind — anchored"] --> R1["raise site 1: element write"]
-    R1 --> P["promotion retain"]
-    P --> R2["raise site 2: unsummarized call — the horizon"]
+    L["load $n-&gt;kind — anchored"] --> P["promotion retain:<br/>before every raise site of the range"]
+    P --> R1["raise site 1: element write"]
+    R1 --> R2["raise site 2: unsummarized call — the horizon"]
     R2 --> U["last use, release at the drop point"]
-    R1 -. unwind .-> PA["pad A: release $rows, $n"]
+    R1 -. unwind .-> PA["pad A: release $rows, $n, $kind"]
     R2 -. unwind .-> PB["pad B: release $rows, $n, $kind"]
     PA --> X["rethrow to the caller"]
     PB --> X
+    E["a value born on one incoming edge"] -. "per-edge state" .-> PB
 ```
 
 ## 7. The oracle
@@ -188,18 +212,16 @@ reserve at all, and the failure half of the reserve protocol is unbuilt
 
 ## 9. Open items
 
-1. **The placement rule does not quantify over raise sites.** It names
-   horizons and exits, and the landing-pad sentence claims a set that is
-   static per site
-   ([gc-horizon.md](../gc-horizon.md#at-the-horizon-promotion)). For the
-   two sites above the claim holds, because both are dominated by the
-   birth and separated by the promotion. Whether a raise site can be
-   reachable both with the promotion executed and without it under the
-   dominance conditions the rule imposes is not determinable from the
-   RFC as it stands. Either the rule reads "dominates every horizon,
-   every exit and every raise site", or the sentence is weaker than it
-   claims — question 9
-   ([gc-horizon.md](../gc-horizon.md#open-questions)).
+1. **The quantifier's cost is unmeasured.** The rule reads "dominates
+   every horizon, every exit and every raise site", ruled 2026-08-22, so
+   a promotion is placed before the first raise site of the live range
+   rather than before its first horizon. How often those two points
+   differ, and how much of the difference executes, is a number no
+   channel of the corpus scan carries
+   ([gc-horizon-states.md](../gc-horizon-states.md#scan-channels)): the
+   channels count severing stores and unresolved receivers, and an
+   allocating store that raises is neither. Until it is measured the
+   ruling's price is stated and unpriced.
 2. **The raise set is not enumerable while runtime entries are
    unclassified.** Read literally, every `ll_*` entry the lowering emits
    is a call without a trusted summary, which empties the free region;

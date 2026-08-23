@@ -6,9 +6,11 @@ A borrow whose target's class is not transitively destructor-free is
 owned from birth, because eliding its count lets a severing store between
 the borrow's last use and the scope's end reach zero early, which moves
 `__destruct` off the scope-end pin the drop-point policy sets
-([gc-horizon.md](../gc-horizon.md#the-ownership-lattice)). The pin is
-Zend-observable timing, so the move is a semantic change and not a
-performance one.
+([gc-horizon.md](../gc-horizon.md#the-ownership-lattice)). The pin is timing the
+program can observe — a destructor body runs at a point the source can
+tell apart, which is what the drop-point policy splits on
+([static-lifetimes.md](../../memory/static-lifetimes.md#drop-point-policy))
+— so the move is a semantic change rather than a performance one.
 
 ```php
 class Conn {

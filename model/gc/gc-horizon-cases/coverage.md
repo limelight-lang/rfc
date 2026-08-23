@@ -275,6 +275,34 @@ Named as classes, with one reason each, rather than enumerated:
   collector, deliberately unbuilt. Its store barrier would change what a
   store costs, not what a proof covers.
 
+## Named as uncovered
+
+One shape belongs to neither half of this table, and naming it is the
+whole of what this section does.
+
+**Maps** ([maps.md](../../maps.md)). A map is an ordinary object of the
+object entity kind, so [object.md](object.md)'s verdict covers a borrow
+*of* a map. A borrow of an *entry* is another matter: a map's counted
+children are its keys and values, and they "live in the table's chunk,
+outside the object", where the walker's per-entity descriptions cannot
+describe them and only the optional hook family — stage S18 of the
+crate, which does not exist — reaches them. The chain invariant's
+premise is that every path edge is a counted heap edge, discharged by
+the exact test finding an external counted in-edge; for a map entry that
+in-edge is in a chunk the walk cannot enter, so `RC − IN` inflates
+toward roothood. That is the conservative direction, and it is the same
+incoherent-skip argument [array.md](array.md) makes for a storage
+buffer, unstated for maps. No case owns the shape and no excluded class
+covers it; the case that would own it waits on the same hook the
+collector waits on.
+
+**The by-reference escape has no event case.** The plan's destination
+promises one case per event that can end a proof, and the escape's home
+is a section of [reference-box.md](reference-box.md), an entity case
+whose subject is the COW exclusion. The kind has no lift and no
+measurement channel either (that file's open item 3), so it is the one
+horizon kind carried entirely inside a case written for something else.
+
 ## What this table does not check
 
 That a case is *correct*. Coverage says a shape has a home; whether the

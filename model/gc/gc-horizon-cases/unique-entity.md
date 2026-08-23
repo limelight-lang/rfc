@@ -160,9 +160,14 @@ the sentinel as a count is undecided
 
 ## 9. Open items
 
-1. **COW ∧ unique has no defined lowering** —
-   [gc-horizon.md](../gc-horizon.md#open-questions) question 10, and this
-   case is where the shape is concrete. Take a unique-owned array field:
+1. ~~**COW ∧ unique has no defined lowering**~~ — question 10, ruled by
+   Edmond on 2026-08-22: COW wins, and the intersection is empty rather
+   than contradictory, the occupancy sentinel and the COW flag never
+   sitting in one header
+   ([walk/questions.md](../walk/questions.md#g4-cow-and-unique-ownership-intersect--ruled-the-trigger-set-stays-open)).
+   What the collision exposed and the ruling does not settle is the
+   trigger set, which item 5 carries. The shape as it stood, kept because
+   the argument below is what the ruling answers:
 
    ```php
    class Grid {
@@ -201,15 +206,20 @@ the sentinel as a count is undecided
    path-severing condition. The ruling is
    [gc-horizon.md](../gc-horizon.md#open-questions) question 5, and its
    working default is one analysis with two invalidation sets.
-5. **The COW base-case retain is emitted against a standing sentinel.**
-   PH4 requires that "owned" name an actually emitted live count rather
-   than a label, because another borrow's chain may end in an owned local
-   ([gc-horizon.md](../gc-horizon.md#the-ownership-lattice)). The
-   convention retains are not that case: the prover counts every one of
-   them as a second counted reference, so an entity that is ever returned
-   or passed is by proof never unique and the count word holds an
-   ordinary count. Item 1's third branch is that case. A COW base-case
-   retain fires no trigger of the demotion fixpoint, and it is written
-   into a count word that still holds the sentinel — an owned local with
-   no live count behind it, at a site nothing in the fixpoint reaches.
+5. **The unique-crossing base case emits a retain against the standing
+   sentinel.** PH4 requires that "owned" name an actually emitted live
+   count rather than a label, because another borrow's chain may end in
+   an owned local ([gc-horizon.md](../gc-horizon.md#the-ownership-lattice)).
+   The convention retains are not that case: the prover counts every one
+   of them as a second counted reference, so an entity that is ever
+   returned or passed is by proof never unique and its count word holds
+   an ordinary count. This case's own base case is. Take the snippet with
+   the call removed — `$n = $this->e; return $n->x;` — the path crosses a
+   unique entity, so the borrow is owned from birth and a retain is
+   emitted; the borrow reaches no horizon, so no demotion trigger fires
+   and the sentinel stands; and the retain lands in the word section 1
+   says no operation touches. Reading the trigger set as a closure over
+   the lowering does not repair it, because the base case's predicate is
+   the verdict the set computes
+   ([walk/questions.md](../walk/questions.md#g4-cow-and-unique-ownership-intersect--ruled-the-trigger-set-stays-open)).
    Question 16 of [gc-horizon.md](../gc-horizon.md#open-questions).

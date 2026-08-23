@@ -3,7 +3,7 @@
 ## 1. The case
 
 A `WeakReference` holder counts the cell and never the referent. The
-canonical `WeakRef` instance *is* the shared cell — entity kind 5, sixteen
+canonical `WeakRef` instance *is* the shared cell — its own entity kind, sixteen
 bytes, an `RcHeader` every `$w` copy counts and a `target` field that
 carries no count at all
 ([weak-references.md](../../weak-references.md#the-weak-cell-is-the-canonical-weakreference-itself)).
@@ -21,9 +21,12 @@ function tick(WeakReference $w): void {   // $w: owned by convention (parameter)
 }
 ```
 
-The algorithm names weak references nowhere: `grep -i weak` over
-[gc-horizon.md](../gc-horizon.md) returns open question 7 and no rule. This
-case exists for the edge that question describes.
+The algorithm carries one rule about them, and it arrived after this case
+was written: the value a weak-cell read produces is an owned base case,
+counted always and elided never, by Edmond's ruling 11 of 2026-08-22
+([gc-horizon.md](../gc-horizon.md#the-ownership-lattice)). This case
+exists for the edge under that rule — the `target` field itself, which no
+count covers.
 
 ## 2. The lattice verdict
 
@@ -37,12 +40,15 @@ Two references carry a verdict, and one kind carries none.
   and `get()` performs exactly that retain on its non-null path
   ([weak-references.md](../../weak-references.md#operations)). Today's
   surface is safe by that convention and by no rule about weak cells.
-- A local born from a load of `target` — **no verdict**. The owned base
-  cases name COW eligibility, destructor-bearing targets, unique-crossing
-  paths and the convention sites, and none of them names an uncounted
-  heap edge; the entity-kind axis states a verdict for six of the seven
-  kinds and leaves `WeakRef` without one
-  ([gc-horizon-states.md](../gc-horizon-states.md#the-axes-the-lattice-reads)).
+- A local born from a load of `target` — **owned**, by the base case
+  ruling 11 added: a value read through a weak cell is counted always and
+  reached by no elision rule
+  ([gc-horizon.md](../gc-horizon.md#the-ownership-lattice),
+  [gc-horizon-states.md](../gc-horizon-states.md#the-axes-the-lattice-reads)).
+  Until that ruling the base-case list named COW eligibility,
+  destructor-bearing targets, unique-crossing paths and the convention
+  sites and no uncounted heap edge; section 4 is what the omission
+  admitted.
 
 The chain invariant requires every edge from the anchor to the target to
 be a counted heap edge
@@ -90,8 +96,8 @@ the borrow left no trace anywhere. That is DC5's shape
 reached through the weak cell rather than through a dropped frame
 reference, and DC5 names neither the cell nor this route to it.
 
-**Whether the always-provable rules admit `get()`'s body.** They do, on
-IR shape alone. A rule qualifies when the enclosed region contains no
+**Whether the always-provable rules admit `get()`'s body, and what was
+done about it.** They do, on IR shape alone. A rule qualifies when the enclosed region contains no
 call, no store, no release and no checkpoint, with the owned base cases
 as preconditions rather than competitors: the target is non-COW-eligible,
 transitively destructor-free and non-unique
@@ -99,11 +105,13 @@ transitively destructor-free and non-unique
 The region between the `target` load and the return holds a null test and
 a retain, and a referent can satisfy all three preconditions, so nothing
 in the admitted set bars the elision — after which the returned reference
-is uncounted and every caller of `get()` inherits the shape above. The
-precondition that excludes it names the edge and not the region: no local
-born from a weak cell's `target` may be anchored, and no always-provable
-rule may elide a pair whose acquisition site is such a load. Question 7
-carries both halves.
+is uncounted and every caller of `get()` inherits the shape above. Two
+repairs were on the table and Edmond took the first: the owned base case
+names the value a weak-cell read produces, so the elision has no
+candidate left to remove. The second — a precondition reading "the region
+contains no weak-cell load" — was refused for forbidding more than the
+hazard
+([walk/questions.md](../walk/questions.md#g1-the-weak-cell-is-an-uncounted-edge--closed)).
 
 ## 5. States touched
 
@@ -178,16 +186,16 @@ the compiler the shadow lowering needs.
 
 ## 9. Open items
 
-1. **The missing base case** — [gc-horizon.md](../gc-horizon.md#open-questions)
-   question 7. Two halves: whether the owned base-case list names the
-   weak-cell edge outright, and whether the always-provable rules gain
-   "the region contains no weak-cell load" among their preconditions.
-   Section 4 answers what happens without the second half.
+1. ~~**The missing base case**~~ — question 7 of
+   [gc-horizon.md](../gc-horizon.md#open-questions), closed by ruling 11
+   on 2026-08-22: the base-case list names the value a weak-cell read
+   produces, and the region precondition was refused. Section 4 records
+   what the omission admitted while it stood.
 2. **The `WeakRef` kind's own verdict is unstated.** A borrow of a cell itself,
    rather than through it, has no base case: the kind row assigns
    verdicts to the other six kinds
    ([gc-horizon-states.md](../gc-horizon-states.md#the-axes-the-lattice-reads)),
-   and whether the kind-5 teardown arm, which clears the cell's
+   and whether the `WeakRef` teardown arm, which clears the cell's
    weak-table registration ([classes.md](../../classes.md#entity-kind-and-non-object-teardown)),
    makes the kind not transitively destructor-free is not determinable
    from the RFC as it stands.

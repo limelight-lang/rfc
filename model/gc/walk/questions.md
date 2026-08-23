@@ -1056,7 +1056,10 @@ ruling 5.
 **Closed the same day.** The mutator frees what it confirms; Edmond restated
 ruling 5 over that, so nothing returns to the collector and nothing needs to.
 What survives in this node is the one channel's own specification, and the
-requirement list a review round left on the attempt of 2026-08-22.
+requirement list a review round left on the attempt of 2026-08-22. **One
+requirement was added the same day**: the specification carries the drain
+cursor D3 needs, an index into the member vector and a tag for which of the
+two permitted boundaries the pause stopped at.
 
 A specification was attempted on 2026-08-22 against
 the queue in `ll-model` `src/epoch.rs` and a review round broke it in five
@@ -1153,10 +1156,64 @@ premise, and the deferral with it.
 ### D3. The batch constants  [measure; and a between-entity check bounds no within-entity overrun]
 
 Ruling 3. The time ceiling of a freeing batch, and how far memory pressure
-relaxes it. **Whose batch changed on 2026-08-23** and the ruling has not been
-re-read against it: freeing moved to the mutator, so the ceiling now bounds a
-pause the mutator takes on its own thread rather than one the collector takes
-beside it.
+relaxes it. Freeing moved to the mutator on 2026-08-23, so the ceiling bounds
+a pause the mutator takes on its own thread rather than one the collector
+takes beside it.
+
+**Edmond leans to leaving the remainder**, asked what the mutator does when
+the ceiling runs out with a group half freed; his words were «как вариант».
+**Sage settled where it may be left, 2026-08-23, `Final`:** at two boundaries
+and no others — between messages, and after the prologue completes but before
+the sever begins. **The sever-to-free stretch has no interior boundary at
+all**, and that is structural rather than a matter of taste: `unguard` runs
+only after `sever_component` returns, and every member of a confirmed
+component has at least one in-component in-edge, so a stop inside the sever is
+always a stop with hollow members and nothing freed (`ll-model`
+`src/walk.rs`). Beside it stands a second ground: the drain trusts nothing it
+was told, and every other boundary is covered by a test the mutator can re-run
+— the exact test, then the guard-discounted equality — while inside the sever
+that equality is meaningless, the sever being what destroys the in-degrees it
+reads.
+
+**The consequence is blunt: the permitted boundaries sit outside the unit the
+ceiling exists to bound.** The unbounded per-entity cost is the sever, so at
+the only moment the question can arise the mutator must finish. Leaving the
+remainder is sound and worth having, and it is not an answer to ruling 3. What
+would bound the unit is one of the two candidates below, and the measurement
+that decides between them — the distribution of per-entity sever cost — is now
+the blocking item rather than a nicety.
+
+**What the pause costs, and it is more than the pause.** The message is not
+fully drained, so the ack must come late or not at all: acking at pop is
+`DW_early_sub.cfg`, a checked kill of the drain-exclusivity invariant. Late
+means the epoch cannot close, and `deferred_free::flush_due` returns false
+while the epoch is active, so **every thread's parked memory stays parked for
+the length of the pause**, not only this component's. The bounded mutator
+pause is bought with an unbounded epoch — which is the side of the ledger the
+philosophy of 2026-08-18 says to move work to, but it is owed a completion
+bound that `../pure-destructors.md` already calls part of the design rather
+than an option on it.
+
+**The guards stay outstanding across the pause, and the leak is wider than the
+members.** The concurrent walk cannot run — the epoch is held open — but the
+synchronous collection runs on this very thread by design, reads a guarded
+member as a root, and at the permitted boundary the members' fields are still
+populated, so it pins the whole transitive closure: members and external
+children alike. One thing nothing covers: `MID_DRAIN` must be cleared across
+the pause or the thread never attends another checkpoint, and a synchronous
+collection starting while a paused drain's guards are outstanding is not
+modelled. Sage's own argument that the two guard sets stay disjoint is an
+argument, so it does not close it; a kill variant beside the three `DW_*`
+configurations would.
+
+**Resumption needs a cursor and no re-verification.** The remainder is still
+garbage at the permitted boundary: the counted channel is closed by the exact
+test, the weak channel by the nulling that runs *before* the destructors, and
+resurrection by the guard-discounted re-verify — the same argument that lets
+the hand-off run a tail on a foreign thread while the mutator runs program
+code. The cursor is unspecified and needs two fields rather than one, an index
+into the member vector and a phase tag for which of the two boundaries it
+stopped at. It waits on D1's channel specification.
 
 **The ceiling is checked between entities, and one entity can overrun it by
 any amount.** That is true of both arms and not only of the destructor arm a

@@ -1353,3 +1353,42 @@ mutator then confirmed: **the mutator**.
   destructor call has nothing to sit beside.
 - **What is unexamined:** ruling 3's batch ceiling is written over a freeing
   batch whose owner has just changed, and node D3 does not say so yet.
+
+### 2026-08-23 — Sage: where a partial drain may be left  `Final`
+
+Edmond offered leaving the unfinished remainder «как вариант» and sent the
+question to Sage. The verdict, and it corrects the account the question was
+asked over.
+
+- **The drain is seven steps, not four**, and `rc-walk.md`'s four-step list is
+  a record rather than an account of the code. `ll-model` `src/walk.rs`
+  (`drain_confirmed`): exact test, guard, **weak nulling**, destructors,
+  guard-discounted re-verify, `sever_component`, `unguard`, then the external
+  children drop. The weak nulling sits before the destructors, not after, and
+  its omission from the list is what hid the boundary analysis.
+- **The remainder may be left at two boundaries and no others:** between
+  messages, and after the prologue completes but before the sever begins.
+- **The sever-to-free stretch has no interior boundary.** `unguard` runs only
+  after `sever_component` returns, and every member of a confirmed component
+  carries at least one in-component in-edge, so a stop inside the sever is
+  always a stop with hollow members and nothing freed. Independently: the
+  drain trusts nothing it was told, and the equality the mutator would re-run
+  is the one the sever destroys.
+- **So leaving the remainder does not bound the pause.** The unbounded cost
+  is the sever, and at the only moment the ceiling can fire there the mutator
+  must finish. The bound on the unit stays owed, and the measurement that
+  chooses between D3's two candidates — the distribution of per-entity sever
+  cost — becomes the blocking item.
+- **The ack must be late**, acking at pop being a checked kill of the
+  drain-exclusivity invariant. The epoch then cannot close and every thread's
+  parked memory stays parked for the pause: a bounded mutator pause bought
+  with an unbounded epoch.
+- **The remainder is still garbage on return** and needs no re-verification,
+  by the argument that already lets a tail run on a foreign thread. What it
+  needs is a cursor, two fields, unspecified, waiting on D1.
+
+**Not closed:** the bound on the unit; the epoch's completion bound; FFI, the
+one channel by which a paused-over member could still be reached (node G14);
+and the unmodelled case of a synchronous collection starting while a paused
+drain's guards are outstanding, which wants a kill variant rather than an
+argument.

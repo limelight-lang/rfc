@@ -42,8 +42,9 @@ Consequences:
   migration handoff (scheduler dequeue/enqueue) carries the required
   acquire/release fence for free.
 - **The allocation context follows the actor, not the thread.** The
-  "current arena" pointer is a field of the actor context, installed
-  into TLS when the scheduler mounts the actor on a thread.
+  "current arena" pointer is a field of the actor context, and it reaches
+  the code that needs it as an argument rather than through a thread-local
+  ([DECISIONS](../dev/DECISIONS.md), 2026-08-23).
 - **So does every other piece of state that must follow the actor**, and it
   travels the same way: as an argument — below.
 

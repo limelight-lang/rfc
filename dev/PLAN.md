@@ -18,6 +18,14 @@ the steps below).
   items rather than answering them.
 - Closure and fiber/generator layouts are unspecified anywhere in this repository,
   so two cases can only be hole reports (S2.3).
+- Section G, the proof side inherited from `gc-horizon.md`: seventeen nodes
+  about the summary language, trusted effects, horizon enumeration and the
+  borrow analyses. Every one is compiler-side under the scope ruling of
+  2026-08-23, and Edmond asked the question himself — if we keep the counted
+  barrier, are horizons needed at all. They are the price of *uncounted
+  locals*, not of the barrier; counting every local removes the section
+  whole, at a measured pair per local acquisition (2.9 ns warm, 33 ns at a
+  million). Unruled, and the largest open shape in the stage.
 - Whether the economics and measurement-order sections belong in the RFC at all,
   or stay in the code repository as a working note — S1.1 keeps them with a
   revision pointer; the split is revisited if the corpus veto is exercised.
@@ -564,6 +572,39 @@ broken links.
       No dispute survives to Sage. Both wrong findings were settled by
         reading the instrument's source rather than by argument, which is the
         rule S5.4 taught.
+- [x] S5.8 Edmond's walkthrough of the question graph, 2026-08-23
+      done: every verdict he gave is recorded where it changes a document in
+        force, and the graph carries his scope ruling rather than an
+        instrument's leftovers
+      tier: T2 · role: —
+      handoff: **the scope ruling is the largest of them.** This repository
+        does not examine the compiler's proof logic; it is assumed to exist
+        and to work. Five nodes left the index — the birth count,
+        anchor-chain elision, clearing the COW flag, the purity closure and
+        the acyclic class flag — kept in place under a fourth-level heading
+        so the work behind them stays findable and no tool counts them open.
+        `compiler-proofs.md` carries the same banner and is a record.
+        A3 was recast as the one runtime replacement: **a uniquely owned
+        entity is not collected, and what it holds is still walked.**
+        **Three corrections to the protocol as this repository had written
+        it.** The collector judges and suspects go to the mutator — one
+        direction, and ruling 5 never asked for a return channel, which node
+        D1's opening had attributed to it. Nobody is woken: a grown verdict
+        queue makes the collector stop judging, and ruling 4 is rewritten
+        over that. Ruling 8's collector-side destructor call is nearly
+        unrealisable, the final judge being the mutator; D5 keeps the note
+        rather than closing.
+        **One node added, B7**, soft segregation by skippability: the
+        allocator prefers a group and falls back anywhere, which would let
+        the collector be told which blocks it need not walk. The group key is
+        skippability rather than kind, so a class the compiler marks acyclic
+        joins the strings. Three measurements would answer it and none is
+        taken; the residue a block skip removes over an entity skip — the
+        header read, the id-map entry and the count store, times 2 040 slots
+        at size class 32 — is the whole of what it adds.
+        **What it leaves open**, and it is one question, not a list: ruling 5
+        puts freeing on the collector while nothing returns to it, so what
+        tells the collector a suspect was confirmed is unstated.
 - [ ] S5.7 Fold the outcome back into the case book
       done: each of the sixteen cases either states that the rulings of
         2026-08-22 leave it unchanged or carries the case's new shape under

@@ -30,8 +30,12 @@ Edmond, in the session that refused the capture-count regime.
    between entities: a destructor is user code, so per-entity cost has no
    bound and a count of entities bounds no pause. Both constants are
    unmeasured (node D3).
-4. **A grown verdict queue activates the mutator.** The mutator drains it
-   rather than waiting for its ordinary cadence.
+4. **A grown verdict queue makes the collector stop judging.** Nobody is
+   woken and nothing is pushed toward a thread; the queue's growth is
+   back-pressure on the collector's own arm. Restated by Edmond 2026-08-23,
+   replacing "a grown verdict queue activates the mutator, which drains it
+   rather than waiting for its ordinary cadence" — which asked for a
+   mechanism the design has no room for (`../../../dev/DECISIONS.md`).
 5. **The collector is the main freeing path.** Verification stays on the
    mutator: its thread is the one place a verdict is checked against the
    true graph with no race ([`../rc-walk.md`](../rc-walk.md), Phase 4).
@@ -91,35 +95,30 @@ it.
 ```mermaid
 flowchart TD
     A1[A1 the pair against its working set<br/>measured 2026-08-22] --> A6
-    A6[A6 the corpus scan<br/>corpus; three of seven taken] --> A2 & A3 & A4 & A5 & A9
-    A2[A2 the birth count<br/>compiler]
-    A3[A3 unique ownership<br/>compiler]
-    A4[A4 anchor-chain elision<br/>compiler]
+    A6[A6 the corpus scan<br/>corpus; three of seven taken] --> A5 & B1 & C2 & D6
     A5[A5 a cheaper count word<br/>width answered, window unpriced]
     A7[A7 the unique-ownership discriminant<br/>answered 2026-08-22] --> A3
-    A8[A8 clearing the COW flag by proof<br/>compiler] --> A3
-    A9[A9 the purity closure<br/>compiler] --> D5
+    A3[A3 what the walk does with a unique entity<br/>answered 2026-08-23]
 
-    A6 --> A8 & B1 & C2 & D6
     B1[B1 skip kinds that cannot ring<br/>rate measured, share corpus] --> B6
-    B2[B2 the acyclic class flag<br/>compiler]
     B3[B3 large OS-direct entities are walked<br/>closed 2026-08-10]
     B4[B4 arrays as the commonest spine<br/>measured 2026-08-22] --> A6
     B5[B5 the epoch-abort watermark<br/>open; returns no memory when it fires]
     B6[B6 skip by block, not by entity<br/>measured; segregate, not count]
+    B7[B7 soft segregation by skippability<br/>design, proposed 2026-08-23] --> B6
 
     C1[C1 background cadence<br/>open; two candidates eliminated] --> B5 & C2 & C3
     C2[C2 the young-free exemption<br/>curve measured; unsound as written]
     C3[C3 the pressure ladder's constants<br/>measure]
     C4[C4 do the rungs earn their keep<br/>open; priced wrongly once] --> C3
 
-    D1[D1 the hand-off and hand-back channels<br/>open, five constraints] --> D5
+    D1[D1 the channel to the mutator<br/>open; one direction, not two] --> D5
     D2[D2 cutting a garland<br/>closed]
     D3[D3 the batch constants<br/>measure; the ceiling misses its arm]
     D4[D4 the indivisible verification<br/>closed by ruling 10]
-    D5[D5 collector-side destructor calls<br/>open, blocked on D1 and A9]
+    D5[D5 collector-side destructor calls<br/>open; nearly unrealisable]
     D6[D6 WeakMap ephemerons<br/>open; the shape is written, the corpus is not]
-    D7[D7 how a mutator is activated<br/>design] --> D1
+    D7[D7 how a mutator is activated<br/>answered 2026-08-23: nobody is]
 
     E1[E1 what an owner is<br/>structures resolved, stamp open] --> D1 & E3 & E4
     E2[E2 AArch64 header access<br/>hardware]
@@ -129,18 +128,18 @@ flowchart TD
     G1[G1 the weak cell is an uncounted edge<br/>closed by ruling 11]
     G2[G2 the counted-out categories<br/>open, wider than question 8] --> G7
     G3[G3 placement, raise sites and pad sets<br/>ruled; generator half open]
-    G4[G4 COW against unique ownership<br/>ruled; trigger set open] --> A8
+    G4[G4 COW against unique ownership<br/>ruled; trigger set open]
     G5[G5 the trusted-effect boundary<br/>design] --> G13
     G6[G6 the summary language<br/>design] --> G5 & G7 & G8 & G9
     G7[G7 borrow scopes across suspensions<br/>design]
     G8[G8 anchored parameters<br/>design]
     G9[G9 one borrow analysis or two<br/>design]
     G10[G10 weak observation outside the oracle<br/>design] --> G16
-    G11[G11 destructor-free reads __destruct only<br/>design] --> A9
+    G11[G11 destructor-free reads __destruct only<br/>design]
     G12[G12 owned must name an emitted count<br/>design] --> G2
     G13[G13 horizons enumerated over non-final IR<br/>design] --> G16
     G14[G14 non-frame roots have no revocation rule<br/>design] --> G2
-    G15[G15 a closed-world closure in an open world<br/>design] --> A9 & B2
+    G15[G15 a closed-world closure in an open world<br/>design]
     G16[G16 the instruments find a first divergence<br/>design]
     G17[G17 the economics instruments mis-price<br/>design]
 
@@ -150,6 +149,23 @@ flowchart TD
     F2[F2 arborescent GC<br/>read]
     F3[F3 partial tracing, read<br/>record only]
 ```
+
+**Reading the arrows.** `X --> Y` means X must be answered before Y can be,
+so the roots are the nodes nothing points at. Forty-seven nodes and
+twenty-nine edges after the scope ruling of 2026-08-23 struck five compiler
+questions and took twelve edges with them; what the strike removed most of was section A's
+fan-out, the corpus scan having fed four proofs that are no longer this
+document's business.
+
+**Nodes with no edge, and why.** B3, D2, D4 and G1 are closed and block
+nothing still open. C1 and C2 depend on each other and the graph draws
+`C1 --> C2` alone: C2's free variable is the interval between walks, which C1
+sets, while C1's threshold is written in a currency C2's exemption changes,
+so the pair converges by iteration rather than by ordering. The rest — D3,
+E2, G3, G4, G11, G15, G17, F2, F3 and H1 — either wait on a measurement or a
+machine, or stand alone. G11 and G15 lost their targets to the strike and now
+block nothing inside this document, which is one more sign that section G
+belongs outside it.
 
 **Reading the arrows.** `X --> Y` means X must be answered before Y can be,
 so the roots are the nodes nothing points at.
@@ -180,7 +196,7 @@ where to start.
 has to be named before its cost, which puts B5 behind C1 and not beside it.
 C2 pointed at C1, which is the half of the mutual dependency described above.
 G7 and G8 pointed at G6 where the summary language is what they read. B1 and
-B2 pointed at C1 with nothing in either body claiming to block the cadence,
+The acyclic class flag pointed at C1 with nothing in either body claiming to block the cadence,
 and those two edges are removed rather than redrawn.
 
 **A6's table is not this edge set.** The table under A6 lists which node
@@ -223,41 +239,29 @@ derived figure:
 
 | lever | what it removes | cold price, derived |
 |---|---|---|
-| A2, the birth count | the construction retain; the matching release still runs at death | one touch, ~16 ns |
-| A3, unique ownership | the retain and the release, at opposite ends of the entity's life, so both touches miss | two touches, ~33 ns |
-| A4, anchor-chain elision | a retain and the release that cancels it, usually adjacent, so the second touch is warm | one touch, ~16 ns, and ~3 ns where the first is warm too |
+| the birth count | the construction retain; the matching release still runs at death | one touch, ~16 ns |
+| unique ownership | the retain and the release, at opposite ends of the entity's life, so both touches miss | two touches, ~33 ns |
+| anchor-chain elision | a retain and the release that cancels it, usually adjacent, so the second touch is warm | one touch, ~16 ns, and ~3 ns where the first is warm too |
 
 **Every number in that column is derived from this node's two arms and none
 has been measured.** What it assumes is which touches miss, and that
-assumption is where it can be wrong: A3's two touches are separated by the
-entity's whole life and A4's are usually adjacent, but neither separation has
+assumption is where it can be wrong: unique ownership's two touches are
+separated by the entity's whole life and anchor-chain elision's are usually
+adjacent, but neither separation has
 been measured against a real working set. The probe that would settle the
 one-touch row retains without displacing, and it has not been written.
 
-### A2. What the birth count removes  [compiler]
+### A3. What the walk does with a uniquely owned entity  [answered 2026-08-23]
 
-`../rc-walk.md`, "The birth count". The factory writes the in-degree the
-construction sequence will produce, and the sequence's publications emit no
-retain. **What would answer it:** the share of publications that are
-construction publications, which needs a compiler to elide and a corpus to
-count. **What it blocks:** nothing; it is the largest compiler-owed lever.
+**Ruled by Edmond, 2026-08-23** (`../../../dev/DECISIONS.md`). Where the
+compiler proves that exactly one heap slot owns an entity, **the walk does not
+collect that entity, and it still reads what the entity holds** — its children
+are edges like any other entity's. The header mark is A7's bit of the retired
+condemned byte.
 
-### A3. Unique ownership  [compiler]
-
-`../rc-walk.md`, "Unique ownership". An entity the compiler proves is owned
-by exactly one heap slot carries no count. **The open rule is the move**
-(`../rc-walk.md`): copy the entity, prove it never moves, or emit a barrier.
-The third is refused here by `../gc-horizon.md` open question 4, ruled by
-Edmond 2026-08-18: no rule introduces a write barrier. A draft refused it by
-citing node M of the refused regime instead, which does not support the
-refusal — a barrier is among the three answers M asks for, not the hazard M
-names.
-
-### A4. Anchor-chain elision  [compiler]
-
-Form A of `../gc-horizon.md`: a borrow anchored by a counted holder emits no
-pair. **What would answer it:** the share of borrows whose anchor the
-compiler can prove.
+The proof itself, and the move rule `../rc-walk.md` leaves open — copy the
+entity or prove it never moves — are compiler business under the same day's
+scope ruling and are not this document's subject.
 
 ### A5. A cheaper count word  [the width is answered; the prefetch and the coalescing window are both unpriced]
 
@@ -331,11 +335,11 @@ it.
 
 | quantity | consumed by | status |
 |---|---|---|
-| share of stores surviving the compiler proofs | A2, A3, A4, A8 | needs a compiler |
+| share of stores surviving the compiler proofs | outside this document since 2026-08-23 | — |
 | share of entities that are leaf kinds | B1, B6 | taken 2026-08-22 |
 | counted edges per entity | B1, B4, B6 | taken 2026-08-22 |
 | companion records per entity | C2 | taken 2026-08-22 |
-| share of classes the purity closure passes | A9, D5 | needs a compiler |
+| share of classes the purity closure passes | outside this document since 2026-08-23 | — |
 | share of programs holding a WeakMap value that names its key | D6 | never attempted |
 | stores between two checkpoints that can run the test | A5 | never attempted |
 
@@ -471,7 +475,31 @@ cannot be strategy-neutral. Either unique ownership is declared
 131 070 positions today, and the fallback for an out-of-range index is a
 linear scan rather than an error.
 
-### A8. Clearing the COW flag by proof  [compiler]
+### Struck 2026-08-23 as compiler business
+
+Edmond ruled that this repository does not examine the compiler's proof
+logic: it is assumed to exist and to work (`../../../dev/DECISIONS.md`).
+Questions of the form "what can the compiler prove" therefore left the graph.
+Their text is kept here as a record, at a heading level the node index does
+not read, so that the work behind them is findable and no tool counts them
+among the open questions. What replaced them, where anything did, is the
+runtime's use of a proof already given — A3 is the one such replacement.
+
+#### A2. What the birth count removes  [struck]
+
+`../rc-walk.md`, "The birth count". The factory writes the in-degree the
+construction sequence will produce, and the sequence's publications emit no
+retain. **What would answer it:** the share of publications that are
+construction publications, which needs a compiler to elide and a corpus to
+count. **What it blocks:** nothing; it is the largest compiler-owed lever.
+
+#### A4. Anchor-chain elision  [struck]
+
+Form A of `../gc-horizon.md`: a borrow anchored by a counted holder emits no
+pair. **What would answer it:** the share of borrows whose anchor the
+compiler can prove.
+
+#### A8. Clearing the COW flag by proof  [struck]
 
 The road Edmond's ruling of 2026-08-22 opens
 (`../../../dev/DECISIONS.md`). COW is one bit of `RcHeader.flags` and
@@ -485,7 +513,7 @@ readers do when it is clear. **What it does not reach:** strings, where
 the flag is the layout, set meaning bytes inline, and is fixed at
 creation.
 
-### A9. The purity closure  [compiler]
+#### A9. The purity closure  [struck]
 
 The fifth proof of [compiler-proofs.md](compiler-proofs.md) and the only one
 with no node until 2026-08-23. Ruling 8 lets the collector call a destructor
@@ -513,6 +541,13 @@ the day-one arm is P0 minus whatever G11's predicate excludes, and nobody has
 written that predicate.
 
 **What it blocks:** D5, and the reach of ruling 8.
+
+#### B2. The acyclic class flag  [struck]
+
+The per-class form of B1: a class whose field types cannot close a ring.
+**What would answer it:** the closed-world closure over the field-type
+graph, with the same failure modes the purity closure has — subclassing,
+`mixed`, arrays of unknown element class.
 
 ## B. What the walk reads
 
@@ -545,13 +580,6 @@ alone. B6's measurement of the same day removes its rival's cheap
 shape rather than the skip itself: no block comes out uniform under any
 interleaving, so a per-entity skip is what is available until entity blocks
 are segregated by kind.
-
-### B2. The acyclic class flag  [compiler]
-
-The per-class form of B1: a class whose field types cannot close a ring.
-**What would answer it:** the closed-world closure over the field-type
-graph, with the same failure modes the purity closure has — subclassing,
-`mixed`, arrays of unknown element class.
 
 ### B3. Large OS-direct entities are in the walk  [closed]
 
@@ -725,6 +753,56 @@ add pairs of their own, and one framework is not a class population.
 **What would answer what is left:** the same figure over more than one
 program, and whether the allocator's fill can be steered by kind without a
 second free list per class.
+
+### B7. Soft segregation: prefer the skippable group, fall back anywhere  [design; proposed 2026-08-23]
+
+Proposed by Edmond for the design queue. **The mechanism as stated:** the
+allocator is handed the block group to prefer; it tries to allocate there
+first, and where it cannot, it allocates wherever it can. The group is named
+by skippability rather than by kind — see below.
+
+**Why it belongs beside B6.** B6 priced hard segregation at 8 extra tail
+blocks, about half a mebibyte, and refuted the cheaper shape beside it: a
+per-block count of ring-capable entities is worthless under today's mixing,
+because one object per sixteen strings contaminates every block and every
+interleaving tried leaves zero skippable blocks. Preference is the same idea
+without the reservation — it buys uniformity without a block per pair of
+size class and kind.
+
+**The group key is skippability, not kind.** Edmond widened it the same day:
+this is not only about strings. An object of a class the compiler marks as
+unable to close a cycle is as skippable as a string, so its instances join
+the same groups. The flag itself stays compiler business under the scope
+ruling of 2026-08-23 — the runtime consumes the answer rather than deriving
+it. What the widening changes is the ceiling: B1's leaf skip is worth
+10-12 % of the walk because strings are about 31 % of entities, and that
+bound is a bound on leaf **kinds**, not on skippable entities.
+
+**What would answer it**, and Edmond names the risk himself, that it may only
+cost:
+
+- what share of blocks come out uniform under preference alone, measured on a
+  real allocation trace rather than a hand-built one — every workload in
+  `ll-model` is hand-built, which is the same gate C1 sits behind;
+- what the fallback costs on the allocation path, where the failed attempt is
+  a test and then a second search;
+- whether B6's per-block counter earns its word once contamination is rare,
+  since that counter is the only reason to want uniformity at all.
+
+**What it buys, in Edmond's words:** the ability to tell the collector which
+blocks it need not walk. That is the payoff the three measurements above are
+against, and it names the quantity nobody has taken. B1's entity skip already
+returns about 40 ns, but a skipped leaf still pays the header read, the
+id-map entry and the count store — B1's own list of what it does not save.
+A skipped **block** removes that residue as well, multiplied by the block's
+slot count: 2 040 at size class 32, 1 020 at class 64
+(`ll-model` `src/memory/heap.rs`, `src/memory/block_pool.rs` — a 64 KiB block
+less a 256-byte header line). The residue per entity is unmeasured, and it is
+the whole of what this node adds over B1.
+
+**What it does not supply: a guarantee.** With a fallback no block is uniform
+by construction, so the walk keeps testing rather than trusting, and the
+question is only whether the test starts paying.
 
 ## C. When the collector runs
 
@@ -983,7 +1061,22 @@ different trade.
 
 ### D1. The hand-off and hand-back channels  [open; the constraints are now known]
 
-Ruling 5 needs them. A specification was attempted on 2026-08-22 against
+**One direction, not two, and this node's name is wrong.** Edmond restated
+the algorithm on 2026-08-23: the collector judges, and suspects go to the
+mutator. Ruling 5 asks for no return channel and never did — it puts freeing
+on the collector and verification on the mutator and says nothing about
+channels. The hand-off and hand-back pair is
+[`../pure-destructors.md`](../pure-destructors.md)'s own design, where the
+hand-back is called the missing piece; a draft of this node attributed it to
+ruling 5.
+
+**What the restatement leaves open, and it is not small.** Ruling 5 puts
+freeing on the collector while nothing returns to it, so what tells the
+collector that a suspect was confirmed is unstated. Either the mutator frees
+what it confirms — which reads against ruling 5 — or a signal exists that
+this node has to name.
+
+A specification was attempted on 2026-08-22 against
 the queue in `ll-model` `src/epoch.rs` and a review round broke it in five
 places. What the round produced is the requirement list any design has to
 satisfy, and it is worth more than the attempt was.
@@ -1112,7 +1205,12 @@ same. The test is Ω(N) reads in one uninterrupted stretch.
 **Closed by ruling 10**, which accepts the pause rather than bounding it. The
 lever was never the test but N itself, and N is no longer to be reduced.
 
-### D5. Collector-side destructor calls  [open; the case for moving them is stronger than it looked]
+### D5. Collector-side destructor calls  [open, and nearly unrealisable: the final judge is the mutator]
+
+**Edmond, 2026-08-23: the permission is nearly unrealisable.** The final
+judge is the mutator, so a call on the collector's side has almost no room
+left; the node stays on the books with that written on it rather than being
+closed. What follows is the record of the case as it stood.
 
 Ruling 8 lets the collector call a destructor proven pure, and the design
 of record does not use the permission: every destructor call sits in the
@@ -1231,13 +1329,18 @@ which the fixpoint has no site; and, before spending anything on it, how many
 real programs hold a value that names its own key, which is the corpus
 question of A6 in one more form.
 
-### D7. How a mutator is activated  [design]
+### D7. How a mutator is activated  [answered 2026-08-23: nobody is]
 
 Opened 2026-08-23 by the review's attack on ruling 4. The ruling says a grown
 verdict queue activates the mutator, which drains it rather than waiting for
 its ordinary cadence, and no node owned the mechanism.
 
-**The design already supplies one, for every thread that arrives at a
+**Answered by Edmond, 2026-08-23: nobody is woken.** A grown verdict queue
+makes the collector stop judging, which is back-pressure on its own arm and
+needs no reach toward any thread. Ruling 4 is restated over that, and the
+rest of this node is the record of how the question was asked wrongly.
+
+**What the design already supplied, for every thread that arrives at a
 checkpoint.** A checkpoint attends when the handshake flag is up, when
 `OUTSTANDING_VERDICTS` is non-zero, or when a flush is due (D1, "What
 exists"). The middle trigger is ruling 4: a non-empty queue makes the next
@@ -1743,7 +1846,7 @@ The elision licence
 [`../../values.md`](../../values.md#refcount-is-always-maintained-on-cow-entities)
 grants — a pair may be elided "only where it has proved that no second
 holder arises" — is therefore not discharged by the uniqueness proof. The
-road it does open is node A8: prove COW itself unnecessary and clear the
+road it does open is compiler-side and left this document on 2026-08-23: prove COW itself unnecessary and clear the
 flag, after which the entity is no longer COW-eligible and unique
 ownership applies to it normally.
 
@@ -1763,7 +1866,7 @@ Two defects survive the ruling because neither is about COW.
   oscillate. Evaluated once against the lowering computed under the
   assumption of uniqueness, and never revisited, it terminates — and that
   one-pass rule then demotes every entity ever loaded into a local, whose
-  cost is node A3's share and A6 has not measured it.
+  cost is the share of entities loaded into a local, which nobody has measured.
 - **A release against the occupancy marker.** `new` is owned by the lattice,
   which absorbs the creation reference and releases at the drop point
   ([`../gc-horizon.md`](../gc-horizon.md#the-ownership-lattice)), while
@@ -1837,7 +1940,7 @@ teardown arm clears a weak-table registration under the same predicate.
 **What would answer it:** the predicate computed over observable
 finalization rather than over `__destruct` alone, with the engine-side
 handlers that count named. **What it blocks:** rung P0's licence, which is
-the collector-side arm that has a population today (A9).
+the collector-side arm that has a population today.
 
 ### G12. "Owned" must name an emitted count rather than a classification  [design]
 
@@ -1898,8 +2001,9 @@ site whose class bit and summary version both still validate. **What would
 answer it:** whether the most-derived class set is closed and versioned
 across separately compiled units, and what loading a widening class does —
 invalidate and recompile the dependants, or force counted lowering at the
-original polymorphic site. **What it blocks:** A9, B2 and every proof
-`compiler-proofs.md` builds on the field-type graph.
+original polymorphic site. **What it blocks:** every proof built on the
+field-type graph — all of them compiler-side, and outside this document since
+2026-08-23.
 
 ### G16. The verification instruments detect a first divergence, not the invariant  [design]
 

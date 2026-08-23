@@ -1248,3 +1248,45 @@ checker; two design changes and one canonisation came out of it.
   limits recorded in rc-walk-proof.md.
 - **Cost:** acquitted components keep their bytes until the owner's
   next checkpoint; one more message kind on the queue.
+
+### 2026-08-23 — compiler logic leaves this repository's scope; a uniquely owned entity is not collected
+
+Edmond, in the session that reviewed the question graph of `model/gc/walk/`.
+
+- **The compiler's proof logic is not this repository's subject.** It is
+  assumed to exist and to work. Questions of the form "what can the compiler
+  prove" therefore leave the graph: the birth count, anchor-chain elision,
+  clearing the COW flag by proof, the transitive purity closure and the
+  acyclic class flag were struck by name or by the rule. What stays in their
+  place is what the runtime does with a proof already given.
+- **A uniquely owned entity is not collected, and what it holds is walked.**
+  Where the compiler proves that exactly one heap slot owns an entity, the
+  walk does not collect that entity; it still reads its children as edges,
+  like any other entity's. The header mark is the retired condemned byte's
+  bit (`model/gc/walk/questions.md`, the header-discriminant node).
+- **Why:** not stated, and not inferred here. The rule is recorded as given.
+- **What this does not close:** the move rule of `model/gc/rc-walk.md` —
+  copy the entity or prove it never moves — is compiler business under the
+  first bullet and is owed a home outside these documents.
+
+### 2026-08-23 — the verdict protocol, restated by Edmond over the question graph
+
+Three corrections to what this repository had written about the protocol,
+given while reviewing `model/gc/walk/questions.md`.
+
+- **One direction, not two.** The collector judges; suspects go to the
+  mutator. Ruling 5 asks for no return channel and never did: it puts
+  freeing on the collector and verification on the mutator and says nothing
+  about channels. The hand-off/hand-back pair is `model/gc/pure-destructors.md`'s
+  own design, and node D1's line attributing it to ruling 5 was wrong.
+- **Nobody is woken. A grown verdict queue makes the collector stop
+  judging.** This replaces ruling 4 as it was recorded — "a grown verdict
+  queue activates the mutator, which drains it rather than waiting for its
+  ordinary cadence". The mechanism is back-pressure on the collector, and no
+  push toward a thread is needed or wanted.
+- **Ruling 8's collector-side destructor call is nearly unrealisable.** The
+  final judge is the mutator, so a call on the collector's side has almost no
+  room left. The permission stays on the books; node D5 carries the note.
+- **What this does not close:** ruling 5 puts freeing on the collector, and
+  with nothing returning to it, what tells the collector that a suspect was
+  confirmed is unstated. Recorded as a gap rather than answered here.

@@ -1,5 +1,13 @@
 # What the compiler must prove, and by which analysis
 
+> **Out of scope since 2026-08-23, kept as a record.** Edmond ruled that this
+> repository does not examine the compiler's proof logic: it is assumed to
+> exist and to work (`../../../dev/DECISIONS.md`). Nothing here is an
+> obligation the collector design must satisfy, and
+> [questions.md](questions.md) no longer carries nodes for these proofs — the
+> five it did carry are kept there under "Struck 2026-08-23 as compiler
+> business". What stays live is the runtime's use of a proof already given.
+
 The counted walk moves its work to the compiler: every retain the compiler
 removes is a pair the mutator never pays. What one removal is worth differs
 by proof and has to be derived, because the measurement and the elision are

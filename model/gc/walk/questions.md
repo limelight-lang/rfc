@@ -1372,6 +1372,21 @@ drain gates, the reset window, the journal ring and the park list follow it
 rather than each being decided separately. **What it blocks:** node D1,
 whose channels cannot be routed to an owner that is not defined.
 
+**Three obligations were added to this node on 2026-08-23**, by the review
+chain over the context-aware calling convention
+([`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md)). First, the
+assignment of the six per-thread structures splits in two before it can be
+made: some are thread-owned resources correct under a thread invariant — the
+block header's owner, the C-standard allocator surface, the buffer arena —
+and are not waiting on this node at all, while the rest are actor state and
+are. Second, a crossing into foreign code needs an entry mark saying a thread
+is out of the ack population, and the measurement that would justify it
+against the standing 2026-07-25 rejection. Third, that crossing needs a
+re-entry mechanism for a callback, and this chain established two constraints
+on it: it must survive a `longjmp` that skips the compiler's bracket, so a
+discipline resting on drop glue will not do, and it must answer a callback
+arriving on a thread that never entered.
+
 ### E2. AArch64 header access  [hardware]
 
 `../rc-walk.md` open question 2. x86-64 is settled — plain moves, no lock

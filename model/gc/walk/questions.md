@@ -88,7 +88,9 @@ flowchart TD
     D5[D5 collector-side destructor calls<br/>open, blocked on D1]
     D6[D6 WeakMap ephemerons<br/>open; edge-conditional shape unpriced]
 
-    E1[E1 what an owner is<br/>open, both halves] --> E3
+    E1[E1 what an owner is<br/>structures resolved, stamp open] --> E3
+    E1 --> E4[E4 what may be moved into an actor<br/>design]
+    E4 --> D1
     E3[E3 the domains proposal<br/>sorted; waits on E1]
     E2[E2 AArch64 header access<br/>hardware]
 
@@ -1422,6 +1424,59 @@ re-entry mechanism for a callback, and this chain established two constraints
 on it: it must survive a `longjmp` that skips the compiler's bracket, so a
 discipline resting on drop glue will not do, and it must answer a callback
 arriving on a thread that never entered.
+
+### E4. What may be moved into an actor, and what a shared pointer owes  [design]
+
+Edmond ruled the two forms on 2026-08-23
+([`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md)): a shared object
+reaches an actor as a **copied pointer** into memory the actor does not own and
+reads by dereferencing, and a moved object joins a **list of moved objects**
+handled as an object moved into another thread is. Both are stated; neither is
+specified. This node holds what follows from them.
+
+**The move's restrictions, derived from rules already in force rather than
+ruled.** Each is the same argument — after the handoff the sender keeps no
+binding and the object is inside another actor, whose graph nothing may enter
+except through the queue.
+
+- **No weak subscriber.** Ruled directly on 2026-08-23: the subscription row
+  stays in the sender's table while the entity leaves, so a target of a weak
+  reference falls back to a deep copy.
+- **No `&` binding in the sender.** A reference box is a writable alias
+  ([`../../values.md`](../../values.md#referencebox-)); a binding that survived
+  the move would be a foreign writer inside the recipient.
+- **No live second holder.** The send makes the sender's bindings dead
+  ([`../../../runtime/actors.md`](../../../runtime/actors.md#message-payload-discipline)),
+  so a second counted holder in the sender would name memory it no longer owns.
+  For a COW value that reads as: count 1, or the form is a copy rather than a
+  move.
+- **No `#[Borrow]` view over it.** A raw pointer held by the C side into a
+  moved object is a door the queue does not control
+  ([`../../memory/ffi.md`](../../memory/ffi.md#the-owner-model)).
+- **A closed reachable set.** Every object reachable from the moved one is
+  itself moved, immortal, or shared by pointer; an edge left pointing into the
+  sender's arena is the cross-arena reference `arenas.md` forbids by
+  construction.
+- **Not arena-resident.** A proven-transferable object is born in the general
+  heap ([`../../../runtime/actors.md`](../../../runtime/actors.md#allocation-site-selection));
+  arena memory dies at the sender's reset and cannot be handed on.
+
+**What would answer the node.** For the move: which of the six above are
+compile-time refusals and which are pack-time tests, and what the moved-objects
+list holds, who appends to it and who clears it — the arena's escapee list with
+its hold-counts and its promotion at reset is the analogue
+([`../../memory/arena-reset.md`](../../memory/arena-reset.md#step-1--validate-trace-destruct-a-fixpoint-loop)),
+and no such list exists in the crate today. For the shared pointer, two things:
+what keeps the referent alive while an actor dereferences it — its creating
+owner, or a lease for the duration — and how the actor's own collection is kept
+from reading the pointer as one of its edges, which it must be, or the exact
+test balances against memory the actor does not own. That second half is node
+G1's shape at actor scope: an uncounted edge, which ruling 11 answered for a
+weak cell by making the read produce an owned value.
+
+**What it blocks:** the payload discipline is what decides whether an actor's
+graph is closed, and every per-actor argument in this file rests on its being
+closed.
 
 ### E2. AArch64 header access  [hardware]
 

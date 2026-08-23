@@ -100,12 +100,11 @@ pinned to a thread. Until it does, the guarantee that nothing enters an actor
 except through the queue holds for language code and is unenforced against
 foreign code.
 
-**Two debts against that guarantee.** The share row above passes "immortal and
-frozen-COW" values by reference, and the value model of record carries no
-frozen-COW class ([../model/values.md](../model/values.md)) — so the one stated
-exception to "nothing enters except through the queue" names something that
-does not exist, and what may cross by reference is undefined until the row is
-rewritten. The FFI door is the second, immediately above.
+**One debt against that guarantee.** The share row's mechanism was decided on
+2026-08-23 — a copied pointer to memory the actor does not own — and what stays
+undecided is what keeps that memory alive while the actor reads it, and how the
+actor's own collection is kept from following the pointer as one of its own
+edges. The FFI door is the second hole, immediately above.
 
 ## The Queue Is the Only Door
 
@@ -160,7 +159,8 @@ Applied at *pack time*, the one place references cross:
 |---|---|---|
 | **move** | compiler proved at the allocation site that the object will be transferred (ownership/move analysis, [static-lifetimes.md](../model/memory/static-lifetimes.md)) | the object was born in the general heap (see below): the send is a pointer handoff through the queue, zero copy, sender's bindings dead |
 | **copy** | everything arena-born the analysis could not prove | deep copy into recipient's arena (Erlang model — which copies *always*, so this is the worst case, not the norm) |
-| **share** | immortal and frozen-COW values | pass by reference; such values carry no mutable state and no non-atomic counts (interned strings, enum cases; cf. Erlang's shared refcounted binaries) |
+| **share** | a genuinely shared object, immortal values among them | the message carries a **copied pointer**, not the object: the object stays in the other memory, the actor reads it by dereferencing, and the actor **does not own it** — no count is written and nothing is freed by it. Decided 2026-08-23 ([../dev/DECISIONS.md](../dev/DECISIONS.md)), which also records what is owed: the lifetime guarantee behind the pointer, and how the actor's own collection is kept from reading it as one of its edges |
+| **moved** | an object moved into this actor | it joins a **list of moved objects** and is handled as an object moved into another thread is handled; the arena's escapee list with its hold-counts and its promotion at reset is the analogue this generalizes ([../model/memory/arena-reset.md](../model/memory/arena-reset.md)). Decided 2026-08-23; what the list holds, who appends and who clears is owed |
 | **actor handle** | reference *to an actor* | a shareable opaque handle; the mailbox pointer itself is the only thing shared |
 
 **A weak reference does not cross.** An object that holds a

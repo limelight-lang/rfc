@@ -10,6 +10,40 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-23 — what a shared object is inside an actor, and what a moved one is
+
+**Decided (Edmond).** An actor is a virtual thread and the memory manager
+already works per thread, which is what makes both forms below work at actor
+scope.
+
+**Shared.** When a shared object reaches an actor, the message carries a
+**copied pointer**, not the object. The object stays in the other, genuinely
+shared memory; the actor reads it by dereferencing and **does not own it** — it
+writes no count and can free nothing. In this design's own vocabulary the actor
+holds an uncounted reference, the shape `model/gc/gc-horizon-cases/weakref.md`
+describes for a cell's `target`.
+
+**Moved.** A move into an actor is possible too. A moved object joins a
+**list of moved objects** and is handled exactly as an object moved into
+another thread is handled today.
+
+**Why:** the payload table of [../runtime/actors.md](../runtime/actors.md)
+described the share form as "immortal and frozen-COW values pass by reference",
+and the value model of record carries no frozen-COW class, so the one stated
+exception to "nothing enters an actor except through the queue" named something
+that does not exist.
+
+**Owed, and not decided here.** What guarantees a shared object's lifetime while
+an actor dereferences it — the owner it was created under, or a lease for the
+duration — asked and unanswered. How an actor's own collection avoids reading
+the copied pointer as one of its own edges: it must be invisible to that walk
+the way a weak cell's `target` is, or the exact test balances against memory the
+actor does not own. And what the moved-objects list holds, who appends to it and
+who clears it: the arena's escapee list with its hold-counts and its promotion
+at reset is the analogue this generalizes
+([../model/memory/arena-reset.md](../model/memory/arena-reset.md)), and no such
+list exists in the crate or in these documents today.
+
 ## 2026-08-23 — a weak reference does not cross the actor queue
 
 **Decided (Edmond):** two limits on what a message may carry. An object that

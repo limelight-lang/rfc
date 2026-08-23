@@ -85,12 +85,27 @@ teardown, the one step that runs `__destruct` bodies, which allocate.
 
 Three things stay open. Which per-thread structures are actor state at all —
 the weak table, the park list, the reset window, the drain gates, the journal
-ring — waits on one ruling about what an owner is
-([../model/gc/walk/questions.md](../model/gc/walk/questions.md#e1-actors-and-the-epoch-protocol--open-both-halves-rest-on-the-same-scaffolding)).
+ring — is bounded by two facts of this document rather than by a ruling, as of
+2026-08-23: an actor's own memory is collected by the actor, at its own message
+boundary, on the thread executing it, so inside an actor there is never a second
+thread to disagree with; and the frees the park list defers are bound to the
+heap that issued the block, which is a thread's
+(`ll-model` `src/memory/deferred_free.rs`). What is left of the question is the
+general heap outside any actor
+([../model/gc/walk/questions.md](../model/gc/walk/questions.md#e1-actors-and-the-epoch-protocol--structures-resolved-2026-08-23-the-stamp-half-stays-open)).
 Entry from code this runtime did not call arrives with no context, and what
 establishes one is undecided. And a `static` inside a foreign shared object is
 reached by nothing here: it needs a declaration from the module or an actor
-pinned to a thread.
+pinned to a thread. Until it does, the guarantee that nothing enters an actor
+except through the queue holds for language code and is unenforced against
+foreign code.
+
+**Two debts against that guarantee.** The share row above passes "immortal and
+frozen-COW" values by reference, and the value model of record carries no
+frozen-COW class ([../model/values.md](../model/values.md)) — so the one stated
+exception to "nothing enters except through the queue" names something that
+does not exist, and what may cross by reference is undefined until the row is
+rewritten. The FFI door is the second, immediately above.
 
 ## The Queue Is the Only Door
 

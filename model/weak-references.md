@@ -239,7 +239,7 @@ decidable from the class where the class is closed. Decided 2026-08-23
 
 What this does not settle is where the table lives when an actor moves
 between threads: the queue is not the door that shape uses. That is node
-E1 of [gc/walk/questions.md](gc/walk/questions.md#e1-actors-and-the-epoch-protocol--open-both-halves-rest-on-the-same-scaffolding).
+E1 of [gc/walk/questions.md](gc/walk/questions.md#e1-actors-and-the-epoch-protocol--structures-resolved-2026-08-23-the-stamp-half-stays-open).
 
 ## `WeakMap` cleanup is eager, not lazy
 

@@ -1306,7 +1306,7 @@ than a task beside it — which is what
 [`../gc-horizon-cases/README.md`](../gc-horizon-cases/README.md) already
 tells the case book about its third candidate oracle.
 
-### E1. Actors and the epoch protocol  [open; both halves rest on the same scaffolding]
+### E1. Actors and the epoch protocol  [structures resolved 2026-08-23; the stamp half stays open]
 
 Refcounts are non-atomic and the crate is single-mutator
 (`../rc-walk.md`). The node asked whether each actor runs its own epoch,
@@ -1382,6 +1382,31 @@ or an actor context the scheduler mounts — after which the weak table, the
 drain gates, the reset window, the journal ring and the park list follow it
 rather than each being decided separately. **What it blocks:** node D1,
 whose channels cannot be routed to an owner that is not defined.
+
+**Most of the structural half closes on 2026-08-23, and not by a ruling about
+owners.** Two facts of `../../../runtime/actors.md` bound it. An actor's own
+memory is collected by the actor itself, at its message boundary, on the thread
+executing it — no poll safepoints inside actor code, the scope being one actor's
+arenas, and the concurrent part shrinking to "the general heap outside any
+actor". And nothing enters an actor except through the queue, so its object
+graph is closed by construction. Inside an actor there is therefore never a
+second thread to disagree with, and the drain gates, the reset window and the
+journal ring, all of which live inside one execution, need no owner assigned.
+The deferred-free park list is a thread resource on its own evidence: the list
+is thread-local and the frees it defers are bound to the heap that issued the
+block (`ll-model` `src/memory/deferred_free.rs`), and an actor's own memory is
+returned by arena reset rather than parked. The static-block registry is
+disposed at thread exit and was never actor state.
+
+**What is left of the ownership half** is the weak table and the general heap.
+For the weak table Edmond ruled on 2026-08-23 that a weak reference does not
+cross the actor queue — an object holding one is not sendable and an object that
+is the target of one may not be moved
+([`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md)) — so a cell and its
+target stay in one actor, and the rows are the actor's. What the table's
+per-thread residence then owes is the mechanism: rows keyed by actor, rows
+following the actor, or an actor pinned while it has subscribers. For the
+general heap the stamp half of this node stands unchanged.
 
 **Three obligations were added to this node on 2026-08-23**, by the review
 chain over the context-aware calling convention

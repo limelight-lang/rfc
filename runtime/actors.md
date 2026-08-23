@@ -62,18 +62,25 @@ context the way it already takes the allocation context, in a register, so
 no path it emits reads a thread-local to find its owner.
 
 **Code it does not emit keeps its source, and the mount serves it.** PHP's
-threaded build resolves every extension's module globals through one
-per-thread resource vector, so the scheduler re-points that indirection at
-the mounted actor's vector: one store at the mount, no change to the
-extension, no change to what a read costs.
+threaded build resolves every extension's module globals through the
+`storage` vector of a per-thread TSRM entry, so the scheduler re-points that
+one field at the mounted actor's vector: one store at the mount, no change to
+the extension, no change to what a read costs.
 
 **The pointer is swapped, never the contents.** Copied values leave two
 copies and a rule about which is authoritative; one pointer leaves one
 copy, in the actor.
 
-**The swap is legal at a message boundary alone**, and only while no cached
-copy of that pointer is live in a frame — PHP's modules cache it, so this
-is a condition rather than a formality.
+**No cached copy needs invalidating.** Each shared object holds a `__thread`
+copy of the cache pointer, and that pointer names the entry rather than the
+vector; the entry is per-thread and does not move, so the swap is invisible
+to it. The swap is legal at a message boundary, which is where the scheduler
+mounts.
+
+**One path it does not reach:** the engine's own globals resolve by an offset
+from the entry block rather than through the vector, so re-pointing the
+vector does not move them. Limelight supplies those names from a shim header,
+and through what indirection the shim defines them is undecided.
 
 Two things neither route reaches, both open. The runtime's own death paths
 — release, entity teardown and the epoch checkpoint — carry no context and

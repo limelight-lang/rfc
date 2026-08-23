@@ -17,9 +17,10 @@ and which one applies depends on who compiled the code. Code this compiler
 emits takes the actor context the way it already takes the allocation
 context — in a register, so no path it emits reads a thread-local to find
 its owner. Code it does not emit, a C extension reading its module globals,
-keeps its source and is served by the scheduler at mount: the per-thread
-resource vector the accessor resolves through is re-pointed at the mounted
-actor's vector.
+keeps its source and is served by the scheduler at mount: the pointer
+re-pointed is `storage`, the first field of the per-thread TSRM entry, which
+the module accessor reads as `(*(void ***) cache)[id]` (php-src `TSRM/TSRM.c`,
+`struct _tsrm_tls_entry`; `TSRM/TSRM.h`, `TSRMG_BULK_STATIC`).
 
 **Why:** a function called from an actor executes as the actor and knows
 nothing about it, so a `static` inside it makes the actor's state outlive
@@ -37,9 +38,20 @@ declare support for several interpreters is refused (PEP 684).
 copies and a rule about which is authoritative; one pointer leaves one
 copy, in the actor.
 
-**The swap is legal at a message boundary alone**, and only while no cached
-copy of that pointer is live in a frame. PHP's modules cache it, so this is
-a condition rather than a formality.
+**The module's own cache needs no invalidation.** Each shared object holds a
+`__thread` copy of the cache pointer, and that pointer names the entry, not
+the storage vector; the entry is per-thread and does not move, so a swap of
+`storage` under it is invisible to every cached copy. What is not valid
+across a change of thread is anything else derived from the old one.
+
+**The swap is legal at a message boundary alone**, which is where the
+scheduler mounts.
+
+**One access path the swap does not reach.** The engine's own globals are
+resolved by an offset from the entry block rather than through `storage`
+(`TSRMG_FAST_BULK_STATIC`), so re-pointing `storage` does not move them.
+Limelight has no Zend core and supplies those names from a shim header;
+through what indirection the shim defines them is undecided.
 
 **Rejected:** one universal runtime reading the owner from a thread-local
 on every path. It puts a dependent load on the death paths, which are the

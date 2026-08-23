@@ -1,9 +1,11 @@
 # The walk, second version
 
 The garbage collection design of record from 2026-08-22. It keeps the
-counted heap edge of [`../rc-walk.md`](../rc-walk.md) and the compiler
-proofs of [`../gc-horizon.md`](../gc-horizon.md), and it retires the
+counted heap edge of [`../rc-walk.md`](../rc-walk.md) and it retires the
 capture-count regime of [`../gc-horizon-v2/`](../gc-horizon-v2/README.md).
+It carried the compiler proofs of [`../gc-horizon.md`](../gc-horizon.md)
+until 2026-08-23, when Edmond ruled the compiler's proof logic outside these
+documents; that text is a record now, not an inheritance.
 
 ## What decided it
 

@@ -1290,3 +1290,25 @@ given while reviewing `model/gc/walk/questions.md`.
 - **What this does not close:** ruling 5 puts freeing on the collector, and
   with nothing returning to it, what tells the collector that a suspect was
   confirmed is unstated. Recorded as a gap rather than answered here.
+
+### 2026-08-23 — the proof side is the compiler's, and leaves these documents
+
+Edmond, closing the same walkthrough. The exchange that settled it: pairs on
+local references **are** removed where the compiler can prove it safe, and a
+horizon is the place where the proof stops covering a borrow and the pair goes
+back — «убираем, но это вопрос для компилятора».
+
+- **Section G of `model/gc/walk/questions.md` leaves the node index**, all
+  seventeen nodes, kept in the file at a heading level the index does not
+  read. `model/gc/gc-horizon.md` carries a banner saying the same of itself,
+  which its own scope line already said: it owns the compiler-side rule for
+  which local references carry a count, and the collector is not a party to
+  it. `walk/README.md` no longer claims the proofs as an inheritance.
+- **Why it was there at all:** `walk/` was made the design of record on
+  2026-08-22 and given "the compiler proofs of gc-horizon.md" with it. That
+  inheritance is what dragged the whole proof side into the collector's
+  question graph, and it is now undone.
+- **What this leaves:** thirty nodes and nineteen edges, all of them about
+  the collector and the runtime. The case book `model/gc/gc-horizon-cases/`
+  is the next thing to read against this ruling — most of its sixteen cases
+  are horizon shapes — and step S5.7 of `dev/PLAN.md` is written over it.

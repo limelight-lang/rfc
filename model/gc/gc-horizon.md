@@ -1,5 +1,14 @@
 # GC Horizon: borrow protection paid where the proof ends
 
+> **Compiler business since 2026-08-23, and outside this repository's
+> collector documents.** Edmond ruled that the proof logic is assumed to work
+> and is not examined here (`dev/DECISIONS.md`). Pairs on local references are
+> removed where the compiler can prove it safe, and a horizon is where that
+> proof stops and the pair goes back — both belong to the compiler. This text
+> stays as the record of the design; [walk/questions.md](walk/questions.md)
+> keeps its questions under a heading its node index does not read, and no
+> collector document defers to it.
+
 ## Scope
 
 The compiler-side rule that decides which local references carry a

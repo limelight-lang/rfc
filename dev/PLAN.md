@@ -18,14 +18,15 @@ the steps below).
   items rather than answering them.
 - Closure and fiber/generator layouts are unspecified anywhere in this repository,
   so two cases can only be hole reports (S2.3).
-- Section G, the proof side inherited from `gc-horizon.md`: seventeen nodes
-  about the summary language, trusted effects, horizon enumeration and the
-  borrow analyses. Every one is compiler-side under the scope ruling of
-  2026-08-23, and Edmond asked the question himself — if we keep the counted
-  barrier, are horizons needed at all. They are the price of *uncounted
-  locals*, not of the barrier; counting every local removes the section
-  whole, at a measured pair per local acquisition (2.9 ns warm, 33 ns at a
-  million). Unruled, and the largest open shape in the stage.
+- ~~Section G, the proof side~~ — ruled out 2026-08-23: pairs on local
+  references are removed where the compiler proves it safe, a horizon is
+  where that proof stops, and both are the compiler's business. All
+  seventeen nodes left the index; `gc-horizon.md` is bannered and
+  `walk/README.md` no longer claims the proofs as an inheritance.
+- What the same ruling does to the case book is the open one. Most of the
+  sixteen cases of `model/gc/gc-horizon-cases/` are horizon shapes, and S5.7
+  is written over them. Read the ruling against the book before starting
+  that step, and say out loud what is left of it.
 - Whether the economics and measurement-order sections belong in the RFC at all,
   or stay in the code repository as a working note — S1.1 keeps them with a
   revision pointer; the split is revisited if the corpus veto is exercised.
@@ -606,6 +607,11 @@ broken links.
         puts freeing on the collector while nothing returns to it, so what
         tells the collector a suspect was confirmed is unstated.
 - [ ] S5.7 Fold the outcome back into the case book
+      **Re-read before starting, 2026-08-23.** The step was written when the
+        proof side was this repository's business. It no longer is: most of
+        the sixteen cases are horizon shapes, and the rulings this step was
+        to fold are partly about a document now marked compiler-side. What
+        the step becomes is itself undecided.
       done: each of the sixteen cases either states that the rulings of
         2026-08-22 leave it unchanged or carries the case's new shape under
         them — ruling 11 touches the weak-reference case directly, ruling 7

@@ -125,24 +125,6 @@ flowchart TD
     E3[E3 the domains proposal<br/>sorted; waits on E1]
     E4[E4 what may be moved into an actor<br/>design] --> D1
 
-    G1[G1 the weak cell is an uncounted edge<br/>closed by ruling 11]
-    G2[G2 the counted-out categories<br/>open, wider than question 8] --> G7
-    G3[G3 placement, raise sites and pad sets<br/>ruled; generator half open]
-    G4[G4 COW against unique ownership<br/>ruled; trigger set open]
-    G5[G5 the trusted-effect boundary<br/>design] --> G13
-    G6[G6 the summary language<br/>design] --> G5 & G7 & G8 & G9
-    G7[G7 borrow scopes across suspensions<br/>design]
-    G8[G8 anchored parameters<br/>design]
-    G9[G9 one borrow analysis or two<br/>design]
-    G10[G10 weak observation outside the oracle<br/>design] --> G16
-    G11[G11 destructor-free reads __destruct only<br/>design]
-    G12[G12 owned must name an emitted count<br/>design] --> G2
-    G13[G13 horizons enumerated over non-final IR<br/>design] --> G16
-    G14[G14 non-frame roots have no revocation rule<br/>design] --> G2
-    G15[G15 a closed-world closure in an open world<br/>design]
-    G16[G16 the instruments find a first divergence<br/>design]
-    G17[G17 the economics instruments mis-price<br/>design]
-
     H1[H1 the checker models the old protocol<br/>scoped, re-derivation unstarted]
 
     F1[F1 coalescing RC<br/>read] --> A5
@@ -151,21 +133,19 @@ flowchart TD
 ```
 
 **Reading the arrows.** `X --> Y` means X must be answered before Y can be,
-so the roots are the nodes nothing points at. Forty-seven nodes and
-twenty-nine edges after the scope ruling of 2026-08-23 struck five compiler
-questions and took twelve edges with them; what the strike removed most of was section A's
+so the roots are the nodes nothing points at. Thirty nodes and nineteen
+edges after the scope ruling of 2026-08-23 struck five compiler questions of
+section A and the whole of section G; what the strike removed most of was section A's
 fan-out, the corpus scan having fed four proofs that are no longer this
 document's business.
 
-**Nodes with no edge, and why.** B3, D2, D4 and G1 are closed and block
-nothing still open. C1 and C2 depend on each other and the graph draws
+**Nodes with no edge, and why.** B3, D2 and D4 are closed and block nothing
+still open. C1 and C2 depend on each other and the graph draws
 `C1 --> C2` alone: C2's free variable is the interval between walks, which C1
 sets, while C1's threshold is written in a currency C2's exemption changes,
 so the pair converges by iteration rather than by ordering. The rest — D3,
-E2, G3, G4, G11, G15, G17, F2, F3 and H1 — either wait on a measurement or a
-machine, or stand alone. G11 and G15 lost their targets to the strike and now
-block nothing inside this document, which is one more sign that section G
-belongs outside it.
+E2, F2, F3 and H1 — either wait on a measurement or a machine, or stand
+alone.
 
 **Reading the arrows.** `X --> Y` means X must be answered before Y can be,
 so the roots are the nodes nothing points at.
@@ -1615,14 +1595,25 @@ the capture-count regime** — "DRC counts heap edges and traces the roots; PT
 counts the roots and traces the heap" — and it carries the same blocker this
 design refused it for, destruction timing. Recorded so that the refusal is
 findable against the literature. Nothing in it is proposed for this design.
-## G. The proof side, inherited from gc-horizon.md
+## G. The proof side, struck 2026-08-23 as compiler business
 
-A node per open question of [`../gc-horizon.md`](../gc-horizon.md), plus the
-closed ones at the end so the section indexes that document whole. `walk/`
-rules where the two disagree; on this side there is nothing to disagree
-about, the proof text being unmoved.
+Edmond ruled it out of this repository on 2026-08-23, in the same pass as
+the five nodes of section A and for the same reason. The exchange that
+settled it: pairs on local references **are** removed where the compiler can
+prove it safe, a horizon is the place where the proof stops covering a borrow
+and the pair goes back, and both are the compiler's business — «убираем, но
+это вопрос для компилятора».
 
-### G1. The weak cell is an uncounted edge  [closed]
+Seventeen nodes left the index here. Their text is kept below at a heading
+level the index does not read, so the work stays findable and no tool counts
+them among this document's open questions.
+[`../gc-horizon.md`](../gc-horizon.md) says the same of itself in its own
+scope line — it owns "the compiler-side rule that decides which local
+references carry a reference count", and "the collector is not a party to
+it".
+
+
+#### G1. The weak cell is an uncounted edge  [closed]
 
 `../gc-horizon.md` question 7, opened by the case-book review of 2026-08-20.
 A weak cell references its target with no count, so a chain anchored on a
@@ -1643,7 +1634,7 @@ in-edge the equality cannot see, so a component naming one is judged by the
 mutator, which nulls the cells inside the visit that frees, with no user code
 between — ruling 8 keeps such a component off the collector's arm.
 
-### G2. Promotion buys nothing in the counted-out categories  [open, and wider than the question]
+#### G2. Promotion buys nothing in the counted-out categories  [open, and wider than the question]
 
 `../gc-horizon.md` question 8. An answer was written on 2026-08-22 saying
 the hazard reduces to G7 and the rest is cost; a review round broke it on
@@ -1733,7 +1724,7 @@ protocol, which `../gc-horizon-cases/arena.md` open item 3 already calls
 underivable; and what a long-lived actor does to its arena at a message
 boundary.
 
-### G3. Placement, raise sites, and what a landing pad releases  [ruled for pads and placement; the generator half is open]
+#### G3. Placement, raise sites, and what a landing pad releases  [ruled for pads and placement; the generator half is open]
 
 `../gc-horizon.md` question 9. Three review rounds ran over this node on
 2026-08-22 and each broke the closure the one before it produced. What
@@ -1826,7 +1817,7 @@ frame only; the promotion-point wording is quoted without the amendment in
 `../gc-horizon-states.md` and in six case files. Both are step S5.7 of
 `../../../dev/PLAN.md`.
 
-### G4. COW and unique ownership intersect  [ruled for COW; the trigger set stays open, and is restated over A7's discriminant]
+#### G4. COW and unique ownership intersect  [ruled for COW; the trigger set stays open, and is restated over A7's discriminant]
 
 `../gc-horizon.md` question 10. **Ruled by Edmond, 2026-08-22: COW wins**
 (`../../../dev/DECISIONS.md`). The unique-ownership proof establishes
@@ -1879,7 +1870,7 @@ Two defects survive the ruling because neither is about COW.
 **What would answer this node:** a written trigger rule that is one-pass
 and that names release sites as well as retain sites.
 
-### G5. The trusted-effect boundary  [design]
+#### G5. The trusted-effect boundary  [design]
 
 `../gc-horizon.md` question 11. A stored callee summary is not the only
 source of effect knowledge — body analysis, builtin models, ABI contracts,
@@ -1887,13 +1878,13 @@ the joined models of a closed multi-target call establish the same facts.
 The design needs one source-independent rule for sufficiency, trust,
 composition, freshness and invalidation.
 
-### G6. The summary language  [design]
+#### G6. The summary language  [design]
 
 `../gc-horizon.md` question 1. What a summary states, who writes the ones for
 the standard library, the conservative default at every unknown, and the
 versioning rule.
 
-### G7. Borrow scopes across suspensions  [design]
+#### G7. Borrow scopes across suspensions  [design]
 
 `../gc-horizon.md` question 2, and the case book's two hole reports
 (`../gc-horizon-cases/closure.md`, `../gc-horizon-cases/suspension.md`). A
@@ -1902,13 +1893,13 @@ fiber suspended across an arena reset carries frame borrows the reset cannot
 see. `gc-horizon.md` marks it as shaping the IR early, which puts it before
 most of section A.
 
-### G8. Anchored parameters  [design]
+#### G8. Anchored parameters  [design]
 
 `../gc-horizon.md` question 6. Whether caller-guarantee summaries can lift
 the receiver and by-value parameters out of the owned default, and what the
 re-entrancy obligation costs there.
 
-### G9. One borrow analysis, or two  [design]
+#### G9. One borrow analysis, or two  [design]
 
 `../gc-horizon.md` question 5. One IR-level borrow analysis parameterized by
 the invalidation set, serving unique ownership and the horizon together. The
@@ -1919,7 +1910,7 @@ sets, with Edmond's veto open.
 selective collector-computed counts. That is Form C, and the capture-count
 regime is its descendant.
 
-### G10. Weak observation is outside the drop-point policy and outside the oracle  [design]
+#### G10. Weak observation is outside the drop-point policy and outside the oracle  [design]
 
 `../gc-horizon.md` question 14. The drop-point policy moves a
 destructor-free class's free to its last use because the timing is
@@ -1932,7 +1923,7 @@ targets are excluded from both moves, and the policy states what
 unobservable means once a subscriber exists. **What it blocks:** the
 differential lowering as an instrument, which is S4's precondition.
 
-### G11. The destructor-free predicate reads `__destruct` and nothing else  [design]
+#### G11. The destructor-free predicate reads `__destruct` and nothing else  [design]
 
 `../gc-horizon.md` question 15. A suspended generator satisfies P0 and still
 runs `finally` blocks when its segment is unwound, and the weak cell's kind-5
@@ -1942,7 +1933,7 @@ finalization rather than over `__destruct` alone, with the engine-side
 handlers that count named. **What it blocks:** rung P0's licence, which is
 the collector-side arm that has a population today.
 
-### G12. "Owned" must name an emitted count rather than a classification  [design]
+#### G12. "Owned" must name an emitted count rather than a classification  [design]
 
 `../gc-horizon.md` question 16. Inlining deletes a callee's by-value
 parameter pair while the borrow metadata still ends at that now-uncounted
@@ -1955,7 +1946,7 @@ and chains are rebuilt and certificates checked after optimisation rather
 than before. **What it blocks:** G2, which is the same defect read from the
 category side.
 
-### G13. The horizon set is enumerated over IR that is not final  [design]
+#### G13. The horizon set is enumerated over IR that is not final  [design]
 
 `../gc-horizon.md` question 17. A property hook, a magic accessor, a
 `__toString` cast, an iteration hook, autoload, an error handler and a stream
@@ -1968,7 +1959,7 @@ passes name what invalidates them. **The rule cannot be adopted alone:** over
 final lowered IR every `ll_*` entry is a call with no trusted summary, which
 empties the free region, so it stands or falls with G5.
 
-### G14. The non-frame root categories have no identity or revocation rules  [design]
+#### G14. The non-frame root categories have no identity or revocation rules  [design]
 
 `../gc-horizon.md` question 18. A chain may end in an arena slot, a static,
 an immortal or an FFI handle, and tearing down a static table, unloading a
@@ -1991,7 +1982,7 @@ owed and unstarted.
 what creates and revokes it, whether revocation is a non-liftable horizon,
 and a non-reusable generation carried in the certificate.
 
-### G15. The closed-world closure is computed in an open world  [design]
+#### G15. The closed-world closure is computed in an open world  [design]
 
 `../gc-horizon.md` question 19. Transitive purity, destructor-freedom and the
 acyclic flag are computed over a closed class set, while autoloading, `eval`,
@@ -2005,7 +1996,7 @@ original polymorphic site. **What it blocks:** every proof built on the
 field-type graph — all of them compiler-side, and outside this document since
 2026-08-23.
 
-### G16. The verification instruments detect a first divergence, not the invariant  [design]
+#### G16. The verification instruments detect a first divergence, not the invariant  [design]
 
 `../gc-horizon.md` question 20. The shadow-count lowering fires when a shadow
 word reaches zero under a live borrow, so a false proof whose target has a
@@ -2018,7 +2009,7 @@ points; and the checker reconstructs the CFG, live ranges and dangerous
 operations from final lowered IR rather than reading them from the producer.
 **What it blocks:** both verification instruments, and with them S4.
 
-### G17. The economics instruments do not price what the design claims  [design]
+#### G17. The economics instruments do not price what the design claims  [design]
 
 `../gc-horizon.md` question 21. One defect per instrument: the census channel
 counts horizon crossings where the cost is promotions per acquisition; pads,
@@ -2032,7 +2023,7 @@ range as a derivation rather than a measurement.
 The borrow pair's own sweep — header sharing, NUMA, working set, final
 against non-final path — is owed by the economics section and unstarted.
 
-### Closed on the proof side
+#### Closed on the proof side
 
 Five of `../gc-horizon.md`'s questions are closed and are kept here so the
 section indexes that document whole rather than a selection of it.

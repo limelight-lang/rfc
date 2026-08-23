@@ -477,11 +477,48 @@ broken links.
         citations reach `prior-art.md` as a record. Linkcheck green at
         1448 links.
 
-- [ ] S5.6 Two Critic rounds over the design of record, then Sage on what does not close
+- [~] S5.6 Two Critic rounds over the design of record, then Sage on what does not close
       done: both rounds are recorded here, every finding is fixed or refused
         with a reason, and any surviving dispute carries a Sage verdict marked
         Final
       tier: T2 · role: Critic → Sage
+      Critic 2026-08-23 round 1, over `model/gc/walk/`: sixteen findings,
+        none fixed yet. **Numbers.** `compiler-proofs.md` and `prior-art.md`
+        both price the design at 88 ns, the figure node A1 retracted the day
+        it was taken (2.9 ns warm, 33 ns at a million); worse, A1 measured an
+        overwriting store's pair — two foreign headers — while this design
+        elides one entity's retain and release, so the single-entity figure
+        is a derived ~17 ns and nobody has written it down; A1's own "2.4 ns
+        the hot figure suggested" is the 2.4× factor of node N transcribed
+        into a nanosecond slot. A6's table counts array slots both as
+        entities and as the counted edges out of them, so the string share
+        is 38 % rather than 31 % under B1's and B4's own definition of a
+        row. `prior-art.md` states arborescent GC's two words per object as
+        fact where `gc-research.md` marks the number unverified.
+        **Rulings against their own machinery.** Ruling 4 activates a mutator
+        on a grown queue, ruling 2 forbids the push that would do it, and no
+        node owns how a mutator is activated at all. Ruling 3's time ceiling
+        bounds the arm that runs no user code and leaves unbounded the arm
+        that does. Ruling 7's "the collector traces the wrapper as an
+        ordinary entity" is refuted by question 18: nothing roots a wrapper
+        the foreign side holds. **Nodes.** A5 refuses coalescing on "every
+        loop has a back-edge poll", which round 2 of S5.4 already killed and
+        which `rc-walk.md` and `strategies.md` deny; D6's proposed shape
+        drops edges from `IN` alone, which makes every WeakMap value a root
+        forever — a worse leak than the one it closes; A6 is four
+        measurements under one number and one of them, the purity closure,
+        has no node; A7, G4, B5 and C2 carry status lines their own bodies
+        refute. **The graph.** B5 ⇄ C1 is a two-cycle, G7→G6 and G8→G6 point
+        backwards, B1→C1 and B2→C1 are unsupported, B3, D2, D4 and G1 have
+        no node, A7→A3 and A6→D6 are missing, G4 and F2 and H1 are isolated.
+        Section G claims to carry the proof side and omits questions 14 to 21
+        and the closure of 22. `compiler-proofs.md` §1 names four defeaters
+        where the horizon list has eight kinds — the may-alias store, the
+        suspension, the impure release and the draining checkpoint are all
+        absent, so §1 reports a free region the in-force document forbids —
+        and §3 describes a class-level proof where A3 is value-level and
+        calls it weaker when it is stronger. C1 to C4 sit under section B's
+        heading, G1 to G9 under section D's, E and F under H's.
 - [ ] S5.7 Fold the outcome back into the case book
       done: each of the sixteen cases either states that the rulings of
         2026-08-22 leave it unchanged or carries the case's new shape under

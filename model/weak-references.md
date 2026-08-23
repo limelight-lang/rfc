@@ -224,6 +224,23 @@ Two smaller pins the sites imply:
   **reserved** for the threading pass — the per-thread/no-locks claim
   must be re-examined there, not silently extended.
 
+## Across an actor boundary
+
+Neither a cell nor a subscribed entity travels in a message. An object
+holding a `WeakReference` is not sendable at all, and an object that is
+the target of one may not be moved — the send falls back to a deep copy,
+and the copy is a new entity nobody is subscribed to, while this actor's
+cell keeps naming the original and is nulled when the original dies. The
+test at pack time is per entity, flag 7 being set on a subscribed one
+([classes.md](classes.md#flags-layout)); the holds-a-cell half is
+decidable from the class where the class is closed. Decided 2026-08-23
+([../dev/DECISIONS.md](../dev/DECISIONS.md),
+[../runtime/actors.md](../runtime/actors.md#message-payload-discipline)).
+
+What this does not settle is where the table lives when an actor moves
+between threads: the queue is not the door that shape uses. That is node
+E1 of [gc/walk/questions.md](gc/walk/questions.md#e1-actors-and-the-epoch-protocol--open-both-halves-rest-on-the-same-scaffolding).
+
 ## `WeakMap` cleanup is eager, not lazy
 
 **Decision**: when a key dies, its map entries are removed at

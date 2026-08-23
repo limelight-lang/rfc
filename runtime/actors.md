@@ -148,6 +148,19 @@ Applied at *pack time*, the one place references cross:
 | **share** | immortal and frozen-COW values | pass by reference; such values carry no mutable state and no non-atomic counts (interned strings, enum cases; cf. Erlang's shared refcounted binaries) |
 | **actor handle** | reference *to an actor* | a shareable opaque handle; the mailbox pointer itself is the only thing shared |
 
+**A weak reference does not cross.** An object that holds a
+`WeakReference` is not sendable in any form: the cell is an entity of its
+own, shared by every copy of the handle
+([../model/weak-references.md](../model/weak-references.md#the-weak-cell-is-the-canonical-weakreference-itself)),
+so a deep copy would leave the copied cell's `target` pointing into the
+sender's arena and sharing is reserved for values with no mutable state.
+An object that is the **target** of a weak reference may not be moved:
+the move is a pointer handoff, and the entity would leave while its
+subscription row stays in the sender's table. Pack time reads flag 7,
+`HAS_WEAK_REFERENCES` ([../model/classes.md](../model/classes.md#flags-layout)),
+and falls back to the deep copy, whose result is a new entity with no
+subscriber. Decided 2026-08-23 ([../dev/DECISIONS.md](../dev/DECISIONS.md)).
+
 **Rejected: block reparenting** (moving arena-born subgraphs by
 re-owning their 64 KB blocks, zero-copy). An arena block is bump-filled
 with whatever the actor allocated in sequence: alongside the

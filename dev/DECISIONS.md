@@ -10,6 +10,41 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-23 — a weak reference does not cross the actor queue
+
+**Decided (Edmond):** two limits on what a message may carry. An object that
+holds a `WeakReference` is not sendable at all — the cell is an entity of its
+own, shared by every copy of the handle
+([../model/weak-references.md](../model/weak-references.md)), and neither
+packing form works on it: a deep copy would leave the copied cell's `target`
+pointing into the sender's arena, which the queue exists to prevent, and
+sharing is reserved for values with no mutable state. And an object that is
+itself the **target** of a weak reference may not be moved: the move is a
+pointer handoff, so the entity would leave the sending actor while its
+subscription row stays in the sender's table. Move is refused for it and the
+send falls back to a deep copy, whose result is a new entity nobody is
+subscribed to — the sender's cell keeps naming the original and nulls when the
+original dies.
+
+**Why:** the payload discipline is chosen per allocation site
+([../runtime/actors.md](../runtime/actors.md)), and weak subscription is not a
+property of an allocation site — `WeakReference::create` can run at any later
+moment. The enforceable test is per entity at pack time: flag 7,
+`HAS_WEAK_REFERENCES` ([../model/classes.md](../model/classes.md)), is already
+set on a subscribed entity, so packing reads it and refuses the move. The
+holds-a-cell half is statically decidable wherever the class is closed.
+
+**Cost:** a proven-transferable object that gains a subscriber before the send
+pays a deep copy instead of a pointer handoff, and the compiler cannot predict
+which objects those are, so the cost is unbounded in the static analysis and
+bounded per send by the subgraph's size.
+
+**What it does not close:** node E1. Both limits are about the queue, and the
+weak table's failing shape is about **migration** — an actor creates a weak
+reference while mounted on one thread, migrates between messages, and its
+entity dies on another thread whose table holds no row for it. No message
+crosses in that shape, so neither limit reaches it.
+
 ## 2026-08-23 — one word at the mount; an interior path takes the owner as a parameter
 
 **Decided:** the scheduler installs exactly one word of per-thread runtime

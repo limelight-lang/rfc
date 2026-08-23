@@ -10,6 +10,48 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-23 — per-actor state: the compiler carries the context, the mount swaps one pointer
+
+**Decided (Edmond):** state that must follow an actor is reached two ways,
+and which one applies depends on who compiled the code. Code this compiler
+emits takes the actor context the way it already takes the allocation
+context — in a register, so no path it emits reads a thread-local to find
+its owner. Code it does not emit, a C extension reading its module globals,
+keeps its source and is served by the scheduler at mount: the per-thread
+resource vector the accessor resolves through is re-pointed at the mounted
+actor's vector.
+
+**Why:** a function called from an actor executes as the actor and knows
+nothing about it, so a `static` inside it makes the actor's state outlive
+the message. A process-global one races across threads and is overwritten
+across actors on one thread; a thread-local one survives the actor and is
+lost when the scheduler moves it. PHP's threaded build already reduced
+every extension's globals to one indirection through a per-thread vector,
+so re-pointing that indirection makes the ecosystem actor-local without a
+line of it changing. CPython met the same problem in the same kind of
+ecosystem and answered it by contract rather than by mechanism: module
+state in a struct instead of statics (PEP 489), and a module that does not
+declare support for several interpreters is refused (PEP 684).
+
+**The pointer is swapped, never the contents.** Copied values leave two
+copies and a rule about which is authoritative; one pointer leaves one
+copy, in the actor.
+
+**The swap is legal at a message boundary alone**, and only while no cached
+copy of that pointer is live in a frame. PHP's modules cache it, so this is
+a condition rather than a formality.
+
+**Rejected:** one universal runtime reading the owner from a thread-local
+on every path. It puts a dependent load on the death paths, which are the
+paths carrying no context, and buys nothing on the paths that already carry
+one.
+
+**Open, and not decided here:** how the runtime's own death paths — release,
+entity teardown, the epoch checkpoint — reach the owner. They carry no
+context today and do not read the extension vector, so neither half of this
+decision reaches them
+([model/gc/walk/questions.md](../model/gc/walk/questions.md#e1-actors-and-the-epoch-protocol--open-both-halves-rest-on-the-same-scaffolding)).
+
 ## 2026-08-22 — copy-on-write outranks the unique-ownership proof
 
 **Decided (Edmond):** where a COW-eligible entity is also proved uniquely

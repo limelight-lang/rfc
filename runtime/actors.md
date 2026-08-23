@@ -44,6 +44,44 @@ Consequences:
 - **The allocation context follows the actor, not the thread.** The
   "current arena" pointer is a field of the actor context, installed
   into TLS when the scheduler mounts the actor on a thread.
+- **So does every other piece of state that must follow the actor**, by
+  one of two routes decided by who compiled the code that reads it.
+
+## Where Per-Actor State Lives
+
+A function called from an actor executes as the actor and knows nothing
+about it, so a `static` inside it makes the actor's state outlive the
+message. A process-global one races across threads and is overwritten
+across actors sharing a thread; a thread-local one survives the actor on
+that thread and is lost when the scheduler moves it. The route to
+per-actor state is decided by who compiled the code
+([DECISIONS](../dev/DECISIONS.md), 2026-08-23).
+
+**Code this compiler emits carries the context.** It takes the actor
+context the way it already takes the allocation context, in a register, so
+no path it emits reads a thread-local to find its owner.
+
+**Code it does not emit keeps its source, and the mount serves it.** PHP's
+threaded build resolves every extension's module globals through one
+per-thread resource vector, so the scheduler re-points that indirection at
+the mounted actor's vector: one store at the mount, no change to the
+extension, no change to what a read costs.
+
+**The pointer is swapped, never the contents.** Copied values leave two
+copies and a rule about which is authoritative; one pointer leaves one
+copy, in the actor.
+
+**The swap is legal at a message boundary alone**, and only while no cached
+copy of that pointer is live in a frame — PHP's modules cache it, so this
+is a condition rather than a formality.
+
+Two things neither route reaches, both open. The runtime's own death paths
+— release, entity teardown and the epoch checkpoint — carry no context and
+do not read the extension vector, so how they find the owner is undecided
+([../model/gc/walk/questions.md](../model/gc/walk/questions.md#e1-actors-and-the-epoch-protocol--open-both-halves-rest-on-the-same-scaffolding)).
+And an extension that declares its own thread-local variables rather than
+module globals is served by neither: what such an author may use, and what
+the compiler can do for code it did not compile, is unanswered.
 
 ## The Queue Is the Only Door
 

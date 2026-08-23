@@ -1,11 +1,24 @@
 # What the compiler must prove, and by which analysis
 
 The counted walk moves its work to the compiler: every retain the compiler
-removes is a pair the mutator never pays, worth up to 88 ns where the two
-foreign headers miss (`ll-model` `dev/BENCHMARKS.md`, 2026-08-22). This
-document names the analyses that removal needs — one section per proof, each
-with what it must decide, the published algorithm that decides it, what the
-front end must supply, and which PHP construct defeats it.
+removes is a pair the mutator never pays. What one removal is worth differs
+by proof and has to be derived, because the measurement and the elision are
+not over the same object. Node A1 of [questions.md](questions.md) measured an
+overwriting store's pair — a retain of the new target and a release of the
+old, so two foreign headers — at 2.9 ns with both warm and 33 ns at a
+population of a million (`ll-model` `dev/BENCHMARKS.md`, 2026-08-22), which
+splits into about 2.9 ns of instructions and about 15 ns per cold header. The
+proofs below then remove one touch or two: the birth count removes a
+construction retain and leaves the matching release, anchor-chain elision
+removes an adjacent pair whose second touch is warm, and unique ownership
+removes a retain and a release separated by the entity's whole life. **So the
+range is about 3 ns to about 33 ns per elision, derived and unmeasured**, and
+A1 carries the table. The 88 ns of the first probe of that day is retracted
+in the same file and enters no calculation here.
+
+This document names the analyses that removal needs — one section per proof,
+each with what it must decide, the published algorithm that decides it, what
+the front end must supply, and which PHP construct defeats it.
 
 It does not restate the rules being proved. Ownership and moves are
 [`../../memory/static-lifetimes.md`](../../memory/static-lifetimes.md); the
@@ -56,10 +69,25 @@ a garbage-free proof.
 **What the front end must supply.** SSA over PHP, and an effect summary per
 call: whether a callee can release the anchor.
 
-**What defeats it.** A dynamic call, whose callee is unknown and must be
-assumed to release anything. Reflection. `&$x`, which makes a second name for
-a slot the analysis is not tracking. Variable variables. Each turns into a
-horizon: the borrow pays a pair there rather than being refused.
+**What defeats it.** Every kind on the horizon list
+([`../gc-horizon.md`](../gc-horizon.md#the-horizon-list)), because the anchor
+beyond a horizon does not cover the borrow before it. There are eight, and
+this analysis meets all eight: a call whose effects it cannot obtain fresh
+and trusted, dynamic dispatch whose target set it cannot bound, reflection, a
+by-reference escape, a suspension — a `yield`, a fiber switch, a parked
+external call — a release of a class whose transitive-purity closure is not
+pure, a checkpoint that can drain a verdict, and an own-code store that may
+alias a borrowed path. `&$x` is the fourth kind, and variable variables reach
+the analysis as the eighth: `$$name = null` is a store to a slot the aliasing
+analysis cannot name, not a call whose targets it cannot bound. None of the
+eight refuses the borrow: each turns into a horizon, and the borrow pays a
+pair there.
+
+The last three bound the shape of the pass rather than its verdict. A region
+holding no dynamic call and no reflection is not therefore free of horizons,
+since an ordinary store, an ordinary release of an impure class and an
+ordinary checkpoint each end a borrow's cover, so the pass cannot certify a
+region by scanning it for calls.
 
 **What transfers directly.** Swift annotates `swift_retain` as having no
 memory side effects, which lets LLVM reorder and cancel it, and cannot
@@ -102,8 +130,23 @@ reaches it except through the owner
 field-type graph: the set of declared slots whose type admits this class must
 have exactly one member reachable from the entity's construction site. The
 strict published form is an affine type system — Rust's ownership — which
-PHP does not have; the practical form here is class-level rather than
-value-level, which is weaker and decidable on the graph.
+PHP does not have. The practical form here tests the class where node A3 of
+[questions.md](questions.md) states the property of a value, and the class
+test is **necessary and not sufficient**: it is decidable on the field-type
+graph, which the value-level property is not, and passing it does not
+establish that property.
+
+The gap is that a declared slot is a declaration site while the property is
+about run-time slots, and the two differ by the instance count of the holder
+class. `class Node { public Payload $p; }` has exactly one declaring slot for
+`Payload` and ten thousand instances, so `$a->p = $b->p; unset($b);` puts one
+entity in two run-time slots, the elided count frees it at the first death,
+and `$a->p` is a dangling reference. So the graph narrows the candidates and
+the escape-and-single-writer half must discharge the rest, by proving no
+store copies the entity between two slots of one declared type. That
+obligation is stated here and discharged nowhere. A round of review on
+2026-08-23 read the class form as the *stronger* obligation and was wrong: as
+a decision procedure it admits more entities, not fewer.
 
 **What the front end must supply.** The closed class set, and the declared
 type of every slot.
@@ -114,9 +157,11 @@ analysis did not count. Arrays, which hold anything. `mixed`.
 **The open rule, and it is not a detail.** `../rc-walk.md` leaves three
 options for a move of the owning slot: copy the entity, include "never moved"
 in the proof, or emit a barrier. This design narrows the rule to the first
-two: a barriered move readmits the fatal ordering of node M
-([`../gc-horizon-v2/questions.md`](../gc-horizon-v2/questions.md)) — the
-reference leaves a slot the walk has not read and arrives in one it has.
+two, on `../gc-horizon.md` open question 4 as Edmond ruled it 2026-08-18: no
+rule introduces a write barrier. The unbarriered move is what carries the
+hazard — the reference leaves a slot the walk has not read and arrives in one
+it has — and a barrier is one of the answers node M of the refused regime
+asks for rather than the defect M names.
 
 ## 4. The acyclic class flag — can an instance of this class sit on a ring
 
@@ -164,8 +209,12 @@ that it prunes the passing population more than any other rule.
 
 **Available without the compiler.** Rung P0 — no `__destruct` anywhere in the
 hierarchy — is computed by the class linker today, with no compiler
-obligation at all. Most PHP classes have no destructor, so the collector-side
-freeing path of ruling 5 has a population from day one.
+obligation at all. Most PHP classes have no destructor, so the population is
+large. **It is not yet safe to free:** node G11 of
+[questions.md](questions.md) shows P0 reading `__destruct` and no other
+finalization, and both a suspended generator and a weak cell satisfy P0 while
+still finalizing. Ruling 5's collector-side path has its population from day
+one only once that predicate is rewritten over observable finalization.
 
 ## What this leaves
 

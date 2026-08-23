@@ -477,7 +477,7 @@ broken links.
         citations reach `prior-art.md` as a record. Linkcheck green at
         1448 links.
 
-- [~] S5.6 Two Critic rounds over the design of record, then Sage on what does not close
+- [x] S5.6 Two Critic rounds over the design of record, then Sage on what does not close
       done: both rounds are recorded here, every finding is fixed or refused
         with a reason, and any surviving dispute carries a Sage verdict marked
         Final
@@ -519,6 +519,51 @@ broken links.
         and §3 describes a class-level proof where A3 is value-level and
         calls it weaker when it is stronger. C1 to C4 sit under section B's
         heading, G1 to G9 under section D's, E and F under H's.
+      Round 1 fixed 2026-08-23, all sixteen. Nodes A9, D7 and G10 to G17 are
+        new; the mermaid graph, the corpus figures and the section headings
+        were rewritten; the attacks on rulings 3, 4 and 7 were recorded as
+        nodes rather than executed, a ruling being Edmond's to amend.
+      Critic 2026-08-23 round 2, over the fixes: fifteen findings, fourteen
+        accepted whole and one corrected against the reviewer. **The heaviest
+        three were repairs that broke worse than what they replaced.** D6's
+        new shape judged a WeakMap key by `RC − IN > 0`, which
+        `../rc-walk.md` defines as the *root* predicate, not reachability —
+        a key held by an ordinary live array read as unreachable and its
+        value was freed under a live `$map[$k]`; and neither home the node
+        offers can run the corrected fixpoint, the drain's weak pass seeing
+        only condemned components and Phase 4 recomputing in-degree from
+        current fields. The attack on ruling 3 was wrong: a raw sever of one
+        array with a million cells is one entity, so a count of entities
+        bounds neither arm and the ruling's stated reason holds. Ruling 4 is
+        implemented already — `OUTSTANDING_VERDICTS` non-zero is a pickup
+        trigger — so D7 shrinks to the thread that reaches no checkpoint.
+        Beside them: one derived figure covered three levers whose prices
+        differ by an order (A2 one header touch, A3 two, A4 a warm pair), A9
+        and `compiler-proofs.md` §5 asserted opposite things about P0's
+        day-one population, and the declared-slot count of §3 proves a
+        property about declaration sites where A3 is about run-time slots.
+      Consolidation 2026-08-23, per `dev/WORKFLOW.md`: ten findings, and two
+        of them overturn round 1 itself. **Round 1's finding 3 was wrong and
+        had been executed.** `arraySlots` is a classifier holding the counted
+        slots whose value is an array, exactly as `objectSlots` holds the 938
+        slots pointing at 507 objects; cells inside arrays are `arrayElements`
+        and were never in the entity total, so there was no double count and
+        the recomputation was withdrawn whole — 31 %, 1.4-1.6, 0.31-0.32 and
+        76 % restored, with the episode kept in the node because the same
+        misreading is available to the next reader. What it did expose stands:
+        the entity total uses `arraysWalked`, a counter the table does not
+        print, so the total cannot be re-derived from the rows. **Round 1's
+        finding 15 was also wrong**: the class-level form is necessary and not
+        sufficient rather than the stronger obligation, and a counterexample
+        is written beside it. The rest: question 12 stood open in
+        `gc-horizon.md` while G9 called it closed, and it is struck there now;
+        node M of the refused regime was cited as refusing a barriered move
+        where the in-force source is question 4's ruling; the C1-C2 arrow was
+        described and not drawn; F2 pointed at two closed nodes; and a
+        ~28 MiB denominator with no source is withdrawn.
+      No dispute survives to Sage. Both wrong findings were settled by
+        reading the instrument's source rather than by argument, which is the
+        rule S5.4 taught.
 - [ ] S5.7 Fold the outcome back into the case book
       done: each of the sixteen cases either states that the rulings of
         2026-08-22 leave it unchanged or carries the case's new shape under

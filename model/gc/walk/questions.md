@@ -55,53 +55,94 @@ Edmond, in the session that refused the capture-count regime.
 11. **A value read through a weak cell is always counted.** It is an
     owned base case, and no elision rule reaches it (node G1).
 
+**Three of these rulings are attacked by the review of 2026-08-23, and the
+attacks are recorded rather than executed.** A ruling is Edmond's to amend;
+what a review can do is name the defect and put it where the work will meet
+it.
+
+- **Ruling 4 is implemented for every thread that runs, and a first draft
+  missed it.** A checkpoint attends when the handshake flag is up, when
+  `OUTSTANDING_VERDICTS` is non-zero, or when a flush is due (D1), so a
+  non-empty queue already makes the next checkpoint pick up rather than wait
+  for the flush interval — which is exactly what the ruling asks for. What no
+  mechanism reaches is the thread that arrives at no checkpoint at all, and
+  that is a narrower question than the ruling. Node D7.
+- **Ruling 3 holds; what a first draft said against it does not.** The draft
+  claimed the ceiling bounds only the arm that runs no user code, on the
+  ground that the raw sever's per-entity cost is bounded. It is not: severing
+  one array means releasing every cell it holds, B4 prices a cell at 43-47 ns,
+  and B3 exists because one entity can be large enough to need its own
+  OS-direct run — so a component holding one array of a million cells is one
+  entity, and a ceiling in entities admits it whole. The ruling's stated
+  reason therefore supports the ruling for both arms. What survives is
+  narrower and true of both: a check between entities cannot bound an overrun
+  inside one. Node D3 carries it with the constants.
+- **Ruling 7's tracing arm has no root.** "The collector traces the wrapper
+  as an ordinary entity" holds while something counts the wrapper, and a
+  wrapper reachable only from the C side carries no counted in-edge at all: a
+  field of a heap object qualifies as a root through the chain rule and never
+  on its own. The foreign structure is not the loose end, the box's teardown
+  running the wrapped type's `dispose`
+  ([`../../memory/ffi.md`](../../memory/ffi.md)); the loose end is what roots
+  the box. That is `../gc-horizon.md` open question 18, node G14.
+
 ## The graph
 
 ```mermaid
 flowchart TD
     A1[A1 the pair against its working set<br/>measured 2026-08-22] --> A6
-    A6[A6 what share of stores survives the proofs<br/>corpus] --> A2 & A3 & A4
+    A6[A6 the corpus scan<br/>corpus; three of seven taken] --> A2 & A3 & A4 & A5 & A9
     A2[A2 the birth count<br/>compiler]
     A3[A3 unique ownership<br/>compiler]
     A4[A4 anchor-chain elision<br/>compiler]
-    A5[A5 a cheaper count word<br/>answered, prefetch unsettled]
-    A7[A7 the unique-ownership discriminant<br/>answered 2026-08-22]
+    A5[A5 a cheaper count word<br/>width answered, window unpriced]
+    A7[A7 the unique-ownership discriminant<br/>answered 2026-08-22] --> A3
     A8[A8 clearing the COW flag by proof<br/>compiler] --> A3
+    A9[A9 the purity closure<br/>compiler] --> D5
 
-    B1[B1 skip kinds that cannot ring<br/>rate measured, share corpus] --> C1
-    A6 --> B1
-    B2[B2 the acyclic class flag<br/>compiler] --> C1
+    A6 --> A8 & B1 & C2 & D6
+    B1[B1 skip kinds that cannot ring<br/>rate measured, share corpus] --> B6
+    B2[B2 the acyclic class flag<br/>compiler]
+    B3[B3 large OS-direct entities are walked<br/>closed 2026-08-10]
     B4[B4 arrays as the commonest spine<br/>measured 2026-08-22] --> A6
-    B5[B5 the epoch-abort watermark<br/>open; returns no memory when it fires] --> C1
-    C1 --> B5
+    B5[B5 the epoch-abort watermark<br/>open; returns no memory when it fires]
     B6[B6 skip by block, not by entity<br/>measured; segregate, not count]
-    B1 --> B6
 
-    C1[C1 background cadence<br/>open; two candidates eliminated] --> C3
-    C2[C2 the young-free exemption<br/>curve measured; open on soundness] --> C1
+    C1[C1 background cadence<br/>open; two candidates eliminated] --> B5 & C2 & C3
+    C2[C2 the young-free exemption<br/>curve measured; unsound as written]
     C3[C3 the pressure ladder's constants<br/>measure]
     C4[C4 do the rungs earn their keep<br/>open; priced wrongly once] --> C3
 
     D1[D1 the hand-off and hand-back channels<br/>open, five constraints] --> D5
-    E1 --> D1
-    D3[D3 the batch constants<br/>measure]
-    D5[D5 collector-side destructor calls<br/>open, blocked on D1]
-    D6[D6 WeakMap ephemerons<br/>open; edge-conditional shape unpriced]
+    D2[D2 cutting a garland<br/>closed]
+    D3[D3 the batch constants<br/>measure; the ceiling misses its arm]
+    D4[D4 the indivisible verification<br/>closed by ruling 10]
+    D5[D5 collector-side destructor calls<br/>open, blocked on D1 and A9]
+    D6[D6 WeakMap ephemerons<br/>open; the shape is written, the corpus is not]
+    D7[D7 how a mutator is activated<br/>design] --> D1
 
-    E1[E1 what an owner is<br/>structures resolved, stamp open] --> E3
-    E1 --> E4[E4 what may be moved into an actor<br/>design]
-    E4 --> D1
-    E3[E3 the domains proposal<br/>sorted; waits on E1]
+    E1[E1 what an owner is<br/>structures resolved, stamp open] --> D1 & E3 & E4
     E2[E2 AArch64 header access<br/>hardware]
+    E3[E3 the domains proposal<br/>sorted; waits on E1]
+    E4[E4 what may be moved into an actor<br/>design] --> D1
 
+    G1[G1 the weak cell is an uncounted edge<br/>closed by ruling 11]
     G2[G2 the counted-out categories<br/>open, wider than question 8] --> G7
     G3[G3 placement, raise sites and pad sets<br/>ruled; generator half open]
-    G8[G8 anchored parameters<br/>design] --> G6
-    G9[G9 one borrow analysis or two<br/>design] --> G6
-    G4[G4 the trigger set against the sentinel<br/>design]
-    G7[G7 borrow scopes across suspensions<br/>design] --> G6
-    G6[G6 the summary language<br/>design] --> G5
-    G5[G5 the trusted-effect boundary<br/>design]
+    G4[G4 COW against unique ownership<br/>ruled; trigger set open] --> A8
+    G5[G5 the trusted-effect boundary<br/>design] --> G13
+    G6[G6 the summary language<br/>design] --> G5 & G7 & G8 & G9
+    G7[G7 borrow scopes across suspensions<br/>design]
+    G8[G8 anchored parameters<br/>design]
+    G9[G9 one borrow analysis or two<br/>design]
+    G10[G10 weak observation outside the oracle<br/>design] --> G16
+    G11[G11 destructor-free reads __destruct only<br/>design] --> A9
+    G12[G12 owned must name an emitted count<br/>design] --> G2
+    G13[G13 horizons enumerated over non-final IR<br/>design] --> G16
+    G14[G14 non-frame roots have no revocation rule<br/>design] --> G2
+    G15[G15 a closed-world closure in an open world<br/>design] --> A9 & B2
+    G16[G16 the instruments find a first divergence<br/>design]
+    G17[G17 the economics instruments mis-price<br/>design]
 
     H1[H1 the checker models the old protocol<br/>scoped, re-derivation unstarted]
 
@@ -109,6 +150,44 @@ flowchart TD
     F2[F2 arborescent GC<br/>read]
     F3[F3 partial tracing, read<br/>record only]
 ```
+
+**Reading the arrows.** `X --> Y` means X must be answered before Y can be,
+so the roots are the nodes nothing points at.
+
+**Fifty-one nodes, eleven of them carrying no edge, for four reasons.** B3,
+D2, D4 and G1 are closed and block nothing still open, so they are in the
+graph to be found by a reader rather than to be traversed. D3 and E2 wait on a
+measurement and on a machine and answer to no other node. G3 and G17 are open
+and genuinely unattached: G3's generator half and G17's instrument defects
+each stand alone. F2 and F3 are records of prior art: F2 is read against D2
+and D4, which are closed, so it blocks nothing until ruling 10 is revisited,
+and F3 feeds nothing by design. H1 is the eleventh and is separate again — it
+blocks the model-checker specifications, an instrument this graph holds no
+node for, whose consumer is the case book's third candidate oracle.
+
+**C1 and C2 depend on each other and the graph draws `C1 --> C2` alone.**
+C2's free variable is the interval between walks, which C1 sets; C1's
+threshold is written in a currency C2's exemption changes, since the
+exemption removes the parked records of entities dying before the second walk
+meets them. The pair converges by iteration rather than by ordering — pick a
+cadence, measure the exemption against it, re-price the threshold — and the
+single arrow records which half moves first, not that the dependency is
+one-way. It is drawn one-way because a two-cycle tells a reader nothing about
+where to start.
+
+**Six edges a draft drew backwards or without support, corrected
+2026-08-23.** B5 and C1 pointed at each other; the watermark's firing point
+has to be named before its cost, which puts B5 behind C1 and not beside it.
+C2 pointed at C1, which is the half of the mutual dependency described above.
+G7 and G8 pointed at G6 where the summary language is what they read. B1 and
+B2 pointed at C1 with nothing in either body claiming to block the cadence,
+and those two edges are removed rather than redrawn.
+
+**A6's table is not this edge set.** The table under A6 lists which node
+*consumes* each measured quantity, which is a wider relation than blocking: a
+quantity already taken blocks nothing, and B4 both feeds A6's cost model and
+consumes the ratio A6 computes from it. Where the two disagree, the graph
+says what must be answered first and the table says who reads the answer.
 
 ## A. What the count costs, and what removes it
 
@@ -125,11 +204,35 @@ its probe published every store into one slot, so the displaced header was
 warm where the retained one was cold, and it charged the counted arm for
 scattered owner traffic the plain arm did not pay.
 
-**What it changed:** an elided publication is worth up to 33 ns rather than
-the 2.4 ns the hot figure suggested — about eleven times — which raises every
-compiler proof below against every collector-side lever. Node N's estimate of
-roughly 80 ns for the same quantity is high by a factor of 2.4, so the
-crossover it draws must be re-derived on the measured figure.
+**What it changed:** the pair's price is set by cache state and not by
+instruction count — 2.9 ns warm against 33 ns cold, about eleven times — so
+every compiler proof below is worth what it removes from the cold end and the
+collector-side levers compete against that. Node N's estimate of roughly
+80 ns for the same quantity is high by a factor of 2.4, so the crossover it
+draws must be re-derived on the measured figure. The 2.4 belongs to that
+factor alone; a draft of this node transcribed it into the nanosecond slot
+above, where the hot figure is 2.9.
+
+**What the figure is not: the price of one elision.** The probe's arm
+overwrites, so its pair touches two foreign headers, the retained target and
+the displaced one. The cold figure splits into about 2.9 ns of instructions,
+which the warm arm also pays, and about 30 ns of miss over two headers, so
+**one cold header costs about 15 ns**. Section A's levers each remove a
+different number of touches, and a draft of this node priced all three at one
+derived figure:
+
+| lever | what it removes | cold price, derived |
+|---|---|---|
+| A2, the birth count | the construction retain; the matching release still runs at death | one touch, ~16 ns |
+| A3, unique ownership | the retain and the release, at opposite ends of the entity's life, so both touches miss | two touches, ~33 ns |
+| A4, anchor-chain elision | a retain and the release that cancels it, usually adjacent, so the second touch is warm | one touch, ~16 ns, and ~3 ns where the first is warm too |
+
+**Every number in that column is derived from this node's two arms and none
+has been measured.** What it assumes is which touches miss, and that
+assumption is where it can be wrong: A3's two touches are separated by the
+entity's whole life and A4's are usually adjacent, but neither separation has
+been measured against a real working set. The probe that would settle the
+one-touch row retains without displacing, and it has not been written.
 
 ### A2. What the birth count removes  [compiler]
 
@@ -143,9 +246,12 @@ count. **What it blocks:** nothing; it is the largest compiler-owed lever.
 
 `../rc-walk.md`, "Unique ownership". An entity the compiler proves is owned
 by exactly one heap slot carries no count. **The open rule is the move**
-(`../rc-walk.md`): it must resolve as copy, or as a proof that the entity
-never moves. A move that emits a barrier readmits node M's fatal ordering
-through a side door.
+(`../rc-walk.md`): copy the entity, prove it never moves, or emit a barrier.
+The third is refused here by `../gc-horizon.md` open question 4, ruled by
+Edmond 2026-08-18: no rule introduces a write barrier. A draft refused it by
+citing node M of the refused regime instead, which does not support the
+refusal — a barrier is among the three answers M asks for, not the hazard M
+names.
 
 ### A4. Anchor-chain elision  [compiler]
 
@@ -153,7 +259,181 @@ Form A of `../gc-horizon.md`: a borrow anchored by a counted holder emits no
 pair. **What would answer it:** the share of borrows whose anchor the
 compiler can prove.
 
-### A7. The unique-ownership header discriminant  [answered against the header; one consequence is new]
+### A5. A cheaper count word  [the width is answered; the prefetch and the coalescing window are both unpriced]
+
+The narrow mutator already writes back four bytes rather than eight
+(`../rc-walk.md`). The node asked whether any further shape pays after
+A1's figure. **The width is not the lever, and A1 says so**: the pair
+costs 2.9 ns with both foreign headers warm and 33 ns at a population of a
+million. The store is inside the 2.9; what the other 30 buys is the miss.
+A narrower or cheaper store cannot reach it.
+
+**Coalescing is bounded by the checkpoint cadence.** F1's shape — one log
+entry per object per epoch instead of one pair per write — pays only where
+the same header is touched more than once inside the window, and the
+window cannot be an epoch here: the exact test recomputes in-degree from
+current fields and compares it against the count, and only the owner reads
+the counts current
+([`../pure-destructors.md`](../pure-destructors.md#the-five-owner-bound-races)).
+A log must therefore drain before any checkpoint that can run the test.
+
+**How much that leaves is unmeasured, and a draft closed the node by
+assuming it away.** The claim it rested on — that a checkpoint sits on every
+loop back edge — is denied by the documents in force. A checkpoint rides a
+death or a poll, so a pure compute or pure-allocation loop reaches none
+(`../rc-walk.md`); the strategies that never stop threads compile the poll
+away ([`../strategies.md`](../strategies.md)); and actor code carries no poll
+safepoints at all
+([`../../../runtime/actors.md`](../../../runtime/actors.md#per-actor-collection-at-message-boundaries)).
+`../gc-horizon.md` open question 13 is closed over that same denial. So the
+coalescing window is the distance between checkpoints, that distance varies
+by strategy and by what the code does, and this node stays open on it.
+**What would answer it:** the distribution of stores between two checkpoints
+that can run the test. That is narrower than "stores per checkpoint-free
+stretch", which a first draft asked for: a checkpoint attends only when the
+handshake flag is up, when a verdict is outstanding, or when a flush is due
+(D1), so a loop that allocates and frees with no epoch in flight reaches many
+checkpoints and none of them can run the test. Asked the wrong way the
+measurement reports a window far smaller than the real one and would close
+this node against coalescing a second time.
+
+**A deferred log is already refused where the count matters most.**
+[`../../values.md`](../../values.md#refcount-is-always-maintained-on-cow-entities)
+rules deferred ARC out for COW entities at any tier, the sharing test
+being consumed at the instant of the write. Every COW-eligible reference
+is counted by base case, so the log would apply to the remainder only, and
+the remainder is what the compiler proofs of section A are trying to
+remove anyway.
+
+**The lever is the miss, and a prefetch was measured against it**,
+2026-08-22, `ll-model` `dev/BENCHMARKS.md`. Two arms, both counted,
+identical but for a read prefetch of the retained and the displaced header
+issued eight stores ahead. Where nothing misses it costs 0.9 ns per store,
+stable across runs. At a million entities seven repeats recovered +11.6,
++7.3, −0.3, −1.3, +20.3, +1.3 and +7.2 ns — median +7.2, five of seven
+positive, and the spread crosses zero while the bare arm's own median moves
+between 79 and 107 ns. **The direction is suggestive and the magnitude is
+unmeasured.** Probe:
+`memory::barrier::tests::what_a_prefetch_recovers_from_a_cold_pair`.
+
+**What would settle it:** a wide point that holds still — a pinned core and
+a longer round, or a machine that is not WSL2 — and then the prefetch
+distance varied, which is fixed at eight and not tuned.
+
+### A6. The corpus scan  [corpus; three quantities of seven are taken]
+
+The root of section A, and one node standing for seven distinct
+measurements rather than for one. They share an instrument and nothing else,
+so each is listed with the node that consumes it and what it costs today.
+This is not the dependency graph above: a quantity already taken blocks
+nothing, and B4 both feeds the cost model and reads the ratio computed from
+it.
+
+| quantity | consumed by | status |
+|---|---|---|
+| share of stores surviving the compiler proofs | A2, A3, A4, A8 | needs a compiler |
+| share of entities that are leaf kinds | B1, B6 | taken 2026-08-22 |
+| counted edges per entity | B1, B4, B6 | taken 2026-08-22 |
+| companion records per entity | C2 | taken 2026-08-22 |
+| share of classes the purity closure passes | A9, D5 | needs a compiler |
+| share of programs holding a WeakMap value that names its key | D6 | never attempted |
+| stores between two checkpoints that can run the test | A5 | never attempted |
+
+The first is what the node's old name meant, and it decides where the work
+belongs: if the proofs remove almost every pair, A1's figure buys nothing and
+the collector-side levers decide; if they remove a third, the store path is
+where the work belongs. The three taken quantities are below; the rest wait
+on a compiler or on a scan nobody has written.
+
+**The three heap-side quantities came off one run**, 2026-08-22, because
+none of them needs a compiler. `../../../dev/tools/heap-composition.php`
+takes them: a reachability walk over a booted application, run here against
+the Laravel 13 skeleton on PHP 8.6, once after boot and once after one
+handled HTTP request.
+
+| | booted | after a request |
+|---|---|---|
+| objects, exact | 507 | 387 |
+| distinct strings, proxy | 797 | 721 |
+| array slots | 1 302 | 1 253 |
+| counted slots | 3 765 | 3 753 |
+| string share of counted slots | 40.5 % | 43.9 % |
+| counted slots per object | 7.43 | 9.70 |
+| object-to-object edges per object | 1.85 | 2.20 |
+
+Taking entities as objects plus distinct strings plus arrays, that is
+**about 31 % of entities being strings in both runs, and 1.4 to 1.6 counted
+edges per entity.**
+
+**One correction was written on 2026-08-23 and is withdrawn the same day.**
+It read the `array slots` row as cells inside arrays, called it a double
+count against the array entities, and recomputed the whole node on non-empty
+arrays as the entity population: 38 % strings, 1.8 to 2.0 edges, 0.38 to 0.40
+companions, 72 % entity records. The row is not cells. `arraySlots` is a
+classifier over counted slots and holds the slots whose value **is** an array
+(`../../../dev/tools/heap-composition.php`), exactly as `objectSlots` holds
+the 938 slots pointing at the 507 objects; cells inside arrays are
+`arrayElements` and were never in the entity total. So the array is counted
+once as an entity and once as the edge that reaches it, which is what every
+kind gets, and the withdrawn figures were the correct ones. Kept here because
+the same misreading is available to the next reader of the table.
+
+**The entity total cannot be re-derived from the table above**, and that is
+the defect the episode did expose. The tool's denominator is
+`objects + strings + arraysWalked`, and `arraysWalked` — arrays reached, one
+count per reaching slot — is printed by the tool and is not a row here. The
+table prints `arraySlots` instead, a different counter with a nearby value.
+Re-running the scan with an `arrays walked` row is owed before either figure
+is quoted again.
+
+**What the figures are approximate about**, stated rather than assumed:
+objects and the edges between them are exact, `spl_object_id` giving
+identity; strings and arrays have none in PHP, so distinct string contents
+stand in for string entities and under-count, while an array is counted per
+reaching slot and over-counts a shared one. Over-counting arrays inflates the
+denominator, so **31 % is a floor for the string share**. A closure is an
+object here and 309 of the 507 booted objects are closures, which Limelight
+keeps as its own kind.
+
+**The corpus is not the corpus of record.** These runs are a Laravel 13
+skeleton, while `../gc-horizon.md` open question 3 records WordPress, Monica
+and Sylius as the working choice with Edmond's veto open. One framework, one
+machine, one request: every figure here is a first bracket from a container
+that no step has agreed to measure.
+
+**A third quantity for the same scan, added 2026-08-22: the ratio of
+counted edges to entities.** B4 measured a cell at 43-47 ns against a leaf
+row's 40-54, so the walk's cost is carried by edges as much as by rows, and
+which of B1 and B6 is worth building turns on that ratio as well as on the
+share of leaf kinds.
+
+**A fourth, added the same day for node C2: headerless companion records.**
+A dying entity parks its own slot; a non-empty array parks its table storage
+and an out-of-line string parks its payload as records with no header, which
+no epoch byte can exempt. The scan counts 800 non-empty arrays booted and
+746 after the request, against 0 out-of-line strings in either — a `GcHeap`
+string stays inline up to `MAX_SMALL`, 8 192 bytes, and the widest string
+here lands in the 7 168 class. That is **0.31 to 0.32 companion records per
+entity, so entity records are 76 % of what the deaths in a heap of this shape
+would park**, which bounds C2's exemption before any question of age. Two
+things the figure is not: it counts arrays per reaching slot in both halves
+of the ratio, so a shared array raises numerator and denominator together and
+the direction of the residual error is unresolved; and it counts a stock of
+live entities where the parked list is a rate, which leaves out every payload
+freed by *growth* rather than by death — those park and are never exempt.
+
+**Two things the re-run of 2026-08-22 established about the instrument
+itself.** The tool sized a string's fixed part at 16 bytes, the object's
+header and class word, where `LLString` is 24 — an 8-byte header, a 4-byte
+length, four bytes of padding and the hash (`ll-model` `src/string.rs`).
+Corrected, the booted scan's extra tail blocks fall from 6 to 5 and the
+request scan's stay at 8, so the figure recorded for B6 is unaffected; the
+control run with the old constant is what says so. And the booted scan now
+reports 3 764 counted slots where the table above says 3 765, twice in a
+row, so the container is not identical from day to day at one slot in four
+thousand.
+
+### A7. The unique-ownership header discriminant  [answered: a bit of the retired condemned byte, and it makes unique ownership rc-walk-only]
 
 `../rc-walk.md` left it between a sentinel value in the count word and a
 bit of the freed byte. Read against the header as it stands (`ll-model`
@@ -191,49 +471,6 @@ cannot be strategy-neutral. Either unique ownership is declared
 131 070 positions today, and the fallback for an out-of-range index is a
 linear scan rather than an error.
 
-### A5. A cheaper count word  [answered in direction; one lever unpriced]
-
-The narrow mutator already writes back four bytes rather than eight
-(`../rc-walk.md`). The node asked whether any further shape pays after
-A1's figure. **The width is not the lever, and A1 says so**: the pair
-costs 2.9 ns with both foreign headers warm and 33 ns at a population of a
-million. The store is inside the 2.9; what the other 30 buys is the miss.
-A narrower or cheaper store cannot reach it.
-
-**Coalescing is bounded by the checkpoint cadence.** F1's shape — one log
-entry per object per epoch instead of one pair per write — pays only where
-the same header is touched more than once inside the window, and the
-window cannot be an epoch here: the exact test recomputes in-degree from
-current fields and compares it against the count, and only the owner reads
-the counts current
-([`../pure-destructors.md`](../pure-destructors.md#the-five-owner-bound-races)).
-A log must therefore drain before any checkpoint that can run the test,
-and checkpoints sit on every loop back edge. What is left to coalesce is
-one straight-line stretch.
-
-**A deferred log is already refused where the count matters most.**
-[`../../values.md`](../../values.md#refcount-is-always-maintained-on-cow-entities)
-rules deferred ARC out for COW entities at any tier, the sharing test
-being consumed at the instant of the write. Every COW-eligible reference
-is counted by base case, so the log would apply to the remainder only, and
-the remainder is what the compiler proofs of section A are trying to
-remove anyway.
-
-**The lever is the miss, and a prefetch was measured against it**,
-2026-08-22, `ll-model` `dev/BENCHMARKS.md`. Two arms, both counted,
-identical but for a read prefetch of the retained and the displaced header
-issued eight stores ahead. Where nothing misses it costs 0.9 ns per store,
-stable across runs. At a million entities seven repeats recovered +11.6,
-+7.3, −0.3, −1.3, +20.3, +1.3 and +7.2 ns — median +7.2, five of seven
-positive, and the spread crosses zero while the bare arm's own median moves
-between 79 and 107 ns. **The direction is suggestive and the magnitude is
-unmeasured.** Probe:
-`memory::barrier::tests::what_a_prefetch_recovers_from_a_cold_pair`.
-
-**What would settle it:** a wide point that holds still — a pinned core and
-a longer round, or a machine that is not WSL2 — and then the prefetch
-distance varied, which is fixed at eight and not tuned.
-
 ### A8. Clearing the COW flag by proof  [compiler]
 
 The road Edmond's ruling of 2026-08-22 opens
@@ -248,75 +485,34 @@ readers do when it is clear. **What it does not reach:** strings, where
 the flag is the layout, set meaning bytes inline, and is fixed at
 creation.
 
-### A6. What share of stores survives every proof  [corpus]
+### A9. The purity closure  [compiler]
 
-The root of section A. If the proofs remove almost every pair, A1's figure
-buys nothing and the collector-side levers decide; if they remove a third,
-the store path is where the work belongs. **What would answer it:** a scan
-of real PHP programs, which the repository has needed for three separate
-questions and has never had.
+The fifth proof of [compiler-proofs.md](compiler-proofs.md) and the only one
+with no node until 2026-08-23. Ruling 8 lets the collector call a destructor
+only where purity is proven, so the share of classes the closure passes is
+what decides whether the collector's freeing arm has a population worth
+having, and D5's whole case rests on it.
 
-**The scan splits in two, and the heap-side half is measured**, 2026-08-22.
-The store-side share — how many publications survive the compiler proofs —
-needs the compiler and waits. The heap-side share does not, and
-`../../../dev/tools/heap-composition.php` takes it: a reachability walk over
-a booted application, run here against the Laravel 13 skeleton on PHP 8.6,
-once after boot and once after one handled HTTP request.
+**What would answer it:** the share of classes whose destructor body writes
+nothing observable, whose `__destruct` provably cannot throw, and whose
+field-type closure holds only such classes.
+[`../pure-destructors.md`](../pure-destructors.md) records the hypothesis
+that the no-throw obligation prunes harder than the other two, PHP 8
+arithmetic and typed properties both being able to throw, and nobody has
+checked that hypothesis against real code.
 
-| | booted | after a request |
-|---|---|---|
-| objects, exact | 507 | 387 |
-| distinct strings, proxy | 797 | 721 |
-| array slots | 1 302 | 1 253 |
-| counted slots | 3 765 | 3 753 |
-| string share of counted slots | 40.5 % | 43.9 % |
-| counted slots per object | 7.43 | 9.70 |
-| object-to-object edges per object | 1.85 | 2.20 |
+**What it does not block:** rung P0, no `__destruct` anywhere in the
+hierarchy, which the class linker computes today with no compiler at all.
+**That population is not yet safe to free, and G11 is why.** P0 reads
+`__destruct` and no other finalization, and two kinds satisfy it while still
+finalizing: a suspended generator, whose segment is unwound separately so its
+`finally` blocks run, and a weak cell, whose kind-5 teardown arm clears the
+weak-table registration. Sever either raw and the finalization is skipped —
+a `finally` that never runs, or a subscriber row left naming freed memory. So
+the day-one arm is P0 minus whatever G11's predicate excludes, and nobody has
+written that predicate.
 
-Taking entities as objects plus distinct strings plus array slots, that is
-**about 31 % of entities being strings in both runs, and 1.4 to 1.6 counted
-edges per entity.**
-
-**What the figures are approximate about**, stated rather than assumed:
-objects and the edges between them are exact, `spl_object_id` giving
-identity; strings and arrays have none in PHP, so distinct string contents
-stand in for string entities and under-count, while an array is counted per
-slot and over-counts a shared one. Over-counting arrays inflates the
-denominator, so **31 % is a floor for the string share**. A closure is an
-object here and 309 of the 507 booted objects are closures, which Limelight
-keeps as its own kind.
-
-**A third quantity for the same scan, added 2026-08-22: the ratio of
-counted edges to entities.** B4 measured a cell at 43-47 ns against a leaf
-row's 40-54, so the walk's cost is carried by edges as much as by rows, and
-which of B1 and B6 is worth building turns on that ratio as well as on the
-share of leaf kinds.
-
-**A fourth, added the same day for node C2: headerless companion records.**
-A dying entity parks its own slot; a non-empty array parks its table storage
-and an out-of-line string parks its payload as records with no header, which
-no epoch byte can exempt. The scan counts 800 non-empty arrays booted and
-746 after the request, against 0 out-of-line strings in either — a `GcHeap`
-string stays inline up to `MAX_SMALL`, 8 192 bytes, and the widest string
-here lands in the 7 168 class. That is **0.31 to 0.32 companion records per
-entity, so entity records are 76 % of what the deaths in a heap of this shape
-would park**, which bounds C2's exemption before any question of age. Two
-things the figure is not: it counts arrays per slot in both halves of the
-ratio, so a shared array raises numerator and denominator together and the
-direction of the residual error is unresolved; and it counts a stock of live
-entities where the parked list is a rate, which leaves out every payload
-freed by *growth* rather than by death — those park and are never exempt.
-
-**Two things the re-run of 2026-08-22 established about the instrument
-itself.** The tool sized a string's fixed part at 16 bytes, the object's
-header and class word, where `LLString` is 24 — an 8-byte header, a 4-byte
-length, four bytes of padding and the hash (`ll-model` `src/string.rs`).
-Corrected, the booted scan's extra tail blocks fall from 6 to 5 and the
-request scan's stay at 8, so the figure recorded for B6 is unaffected; the
-control run with the old constant is what says so. And the booted scan now
-reports 3 764 counted slots where the table above says 3 765, twice in a
-row, so the container is not identical from day to day at one slot in four
-thousand.
+**What it blocks:** D5, and the reach of ruling 8.
 
 ## B. What the walk reads
 
@@ -336,9 +532,11 @@ entry and the count store and skips only the edge trace. The walk is about
 
 **The share has a first measurement**, 2026-08-22: about 31 % of entities
 in a booted Laravel container are strings, and the same after a handled
-request (node A6). Against B4's cost model — a row 40-54 ns, an edge 43-47,
-and 1.4 to 1.6 edges per entity — the skip removes the rows of those
-entities and no edges, which is roughly **13 % of the walk**. That is one
+request (node A6). What the skip returns is the measured 40 ns above, not a
+row's 40-54: against a walk costing a row plus 1.4 to 1.6 edges at 43-47 ns
+each, `0.31 × 40` over `40 + 1.4×43` to `54 + 1.6×47` is **10 to 12 % of the
+walk**. Naming the row range as the numerator instead gives 12 to 16 %, and
+the 40 ns is what was measured. That is one
 framework on one machine and an estimate built from two measurements rather
 than one, so it is a first bracket and not the number. B4's measurement of 2026-08-22
 bounds what the skip can be worth: it removes rows and no edges, and an edge
@@ -370,61 +568,48 @@ ring; `BLOCK_KIND_ENTITY_LARGE_RUN` (kind 10) holds one entity and is the
 registered kind. The comment saying huge allocations stay outside the walk is
 about the first.
 
-### B6. Skip by block, not by entity  [measured; the two shapes swapped places]
+### B4. Arrays as the spine of the commonest ring  [measured and closed]
 
-B1 skips a leaf after reading its header; this node asks whether the walk
-can decline to touch the block at all. Today it cannot: entity blocks are
-divided by block kind and then by size class only (`ll-model`
-`src/memory/heap.rs`), so a string and an object of the same size share
-one.
+`../rc-walk.md` calls the array the spine of the commonest PHP cycle, and
+arrays are copy-on-write, so they keep their count under every regime. The
+node asked whether the walk can read an array's storage differently from
+an object's fields.
 
-Two shapes, and the node used to say the second was where to start.
-**Measurement reversed that**, 2026-08-22, `ll-model` `dev/BENCHMARKS.md`.
+**It already does, and the layout is not where the cost is.** The array
+arm reads the storage head under a version and gives the array up when the
+two readings disagree, then picks a stride from the tag (`ll-model`
+`src/walk.rs`, `src/array/head.rs`), where the object arm chases the class
+word. A vector's key is its position, so only the value is a cell; a hash
+entry's string key is a counted child beside the value, so a hash row
+carries two. The third tag, a typed vector, no producer stamps and the
+walker refuses rather than striding.
 
-- **Count the ring-capable entities in each block and skip at zero.** One
-  word per block on paths that touch the block header already. Measured
-  with a one-property object and a string sized into the same class 32, so
-  the two kinds really do share blocks: **one object per sixteen strings
-  contaminates every block**, and every interleaving ratio tried leaves
-  zero skippable blocks. A block at that class holds 2 000 slots and the
-  allocator bumps through it, so one ring-capable entity anywhere in a
-  block's fill is enough. A same-kind run has to exceed a whole block
-  before any block comes out uniform, and a run of 10 000 — five blocks'
-  worth — still leaves 40 %. A first reading blamed run boundaries landing
-  mid-block; the arithmetic refutes it, a sequential one-block-at-a-time
-  fill predicting 50 / 60 / 50 % where 0 / 40 / 40 was measured with every
-  block full. The allocator keeps a per-class chain of available blocks
-  rather than one open block, which makes the result stronger: exact block
-  multiples still come out mixed. The shape costs nothing in layout and
-  returns nothing without runs no interleaved program produces. Probe:
-  `collector::tests::how_uniform_a_block_comes_out`, which now asserts the
-  size-class collision the measurement rests on.
+**Measured 2026-08-22**, `ll-model` `dev/BENCHMARKS.md`, five arms in one
+binary: 23 ns the storage head once per array, **43 ns a cell in array
+storage against 47 ns a cell in an object body**, medians over six runs
+with overlapping spreads. Per cell the two containers are
+indistinguishable, so an array's whole structural excess is the head read.
+Probe: `collector::tests::what_an_array_row_costs_the_walk`.
 
-  Two limits on reading it as more than shape 1's refutation: the probe
-  classifies on `kind_may_close_a_cycle`, which is B1's rung and not the
-  walk's enrolment test, and the population is quiescent, where a running
-  epoch's stamp test would skip most young entities anyway.
-- **Segregate entity blocks by entity kind as well as by size class.** The
-  walk then skips whole blocks untouched, which is worth more than B1's
-  per-entity skip: B4 measured a leaf row at 40-54 ns and an edge at
-  43-47, and a skipped block saves both for every slot plus the
-  storage-head read for any array. The price is a partly-filled tail block
-  per pair of size class and kind, paid in footprint and fragmentation.
-  **This is the shape that delivers**, and it is the one to price.
+**What the measurement changed, and it is bigger than the node.** A cell
+costs 43-47 ns and a leaf row 40-54, so an edge costs about what an entity
+does: **the walk's mass is edges, not rows.** B1's acyclic skip removes
+rows and no edges, which is the smaller half of the work; B6's skip by
+block removes both for a uniform block, and the head read with them. The
+ratio of edges to entities in a real heap therefore joins the corpus scan
+of A6 as a quantity that decides between them.
 
-**Shape 2's price has a first measurement**, 2026-08-22, taken with
-`../../../dev/tools/heap-composition.php` over a booted Laravel 13 after one
-handled request. Objects there occupy 15 size classes and strings 10, for 25
-pairs of class and kind over 17 distinct classes — so segregation costs **8
-extra tail blocks, half a mebibyte** at the 64 KiB block. Against the ~28 MiB
-that boot holds, under two per cent. The figure covers two kinds; the other
-five add pairs of their own, and one framework is not a class population.
+**The floors are floors.** Every filled cell in the probe names one shared
+entity, so the `IN` increments hit one cache line where a real heap
+scatters them; both cell figures are lower bounds.
 
-**What would answer what is left:** the same figure over more than one
-program, and whether the allocator's fill can be steered by kind without a
-second free list per class.
+**And the ratio it needed now has a first value**: 1.4 to 1.6 counted edges
+per entity in a booted Laravel container, node A6. At that ratio edges carry
+53 to 65 % of the walk against the row's 35 to 47, so edges outweigh rows
+across the brackets and stand near parity at the corner where rows are
+dearest and edges cheapest.
 
-### B5. The epoch-abort watermark  [open; the identity half holds, two objections stand, one is withdrawn]
+### B5. The epoch-abort watermark  [open; the identity half holds, three objections stand, the epoch number is discharged]
 
 The second collector-side bounding mechanism beside C2's exemption:
 abandon the epoch when parked volume crosses a watermark. `../rc-walk.md`
@@ -485,44 +670,63 @@ a fixed ceiling — and what the collector does after an abort, since
 re-walking immediately would abort again under the same pressure. That
 sits with C1's cadence and C3's constants rather than apart from them.
 
-### B4. Arrays as the spine of the commonest ring  [measured and closed]
+### B6. Skip by block, not by entity  [measured; the two shapes swapped places]
 
-`../rc-walk.md` calls the array the spine of the commonest PHP cycle, and
-arrays are copy-on-write, so they keep their count under every regime. The
-node asked whether the walk can read an array's storage differently from
-an object's fields.
+B1 skips a leaf after reading its header; this node asks whether the walk
+can decline to touch the block at all. Today it cannot: entity blocks are
+divided by block kind and then by size class only (`ll-model`
+`src/memory/heap.rs`), so a string and an object of the same size share
+one.
 
-**It already does, and the layout is not where the cost is.** The array
-arm reads the storage head under a version and gives the array up when the
-two readings disagree, then picks a stride from the tag (`ll-model`
-`src/walk.rs`, `src/array/head.rs`), where the object arm chases the class
-word. A vector's key is its position, so only the value is a cell; a hash
-entry's string key is a counted child beside the value, so a hash row
-carries two. The third tag, a typed vector, no producer stamps and the
-walker refuses rather than striding.
+Two shapes, and the node used to say the second was where to start.
+**Measurement reversed that**, 2026-08-22, `ll-model` `dev/BENCHMARKS.md`.
 
-**Measured 2026-08-22**, `ll-model` `dev/BENCHMARKS.md`, five arms in one
-binary: 23 ns the storage head once per array, **43 ns a cell in array
-storage against 47 ns a cell in an object body**, medians over six runs
-with overlapping spreads. Per cell the two containers are
-indistinguishable, so an array's whole structural excess is the head read.
-Probe: `collector::tests::what_an_array_row_costs_the_walk`.
+- **Count the ring-capable entities in each block and skip at zero.** One
+  word per block on paths that touch the block header already. Measured
+  with a one-property object and a string sized into the same class 32, so
+  the two kinds really do share blocks: **one object per sixteen strings
+  contaminates every block**, and every interleaving ratio tried leaves
+  zero skippable blocks. A block at that class holds 2 000 slots and the
+  allocator bumps through it, so one ring-capable entity anywhere in a
+  block's fill is enough. A same-kind run has to exceed a whole block
+  before any block comes out uniform, and a run of 10 000 — five blocks'
+  worth — still leaves 40 %. A first reading blamed run boundaries landing
+  mid-block; the arithmetic refutes it, a sequential one-block-at-a-time
+  fill predicting 50 / 60 / 50 % where 0 / 40 / 40 was measured with every
+  block full. The allocator keeps a per-class chain of available blocks
+  rather than one open block, which makes the result stronger: exact block
+  multiples still come out mixed. The shape costs nothing in layout and
+  returns nothing without runs no interleaved program produces. Probe:
+  `collector::tests::how_uniform_a_block_comes_out`, which now asserts the
+  size-class collision the measurement rests on.
 
-**What the measurement changed, and it is bigger than the node.** A cell
-costs 43-47 ns and a leaf row 40-54, so an edge costs about what an entity
-does: **the walk's mass is edges, not rows.** B1's acyclic skip removes
-rows and no edges, which is the smaller half of the work; B6's skip by
-block removes both for a uniform block, and the head read with them. The
-ratio of edges to entities in a real heap therefore joins the corpus scan
-of A6 as a quantity that decides between them.
+  Two limits on reading it as more than shape 1's refutation: the probe
+  classifies on `kind_may_close_a_cycle`, which is B1's rung and not the
+  walk's enrolment test, and the population is quiescent, where a running
+  epoch's stamp test would skip most young entities anyway.
+- **Segregate entity blocks by entity kind as well as by size class.** The
+  walk then skips whole blocks untouched, which is worth more than B1's
+  per-entity skip: B4 measured a leaf row at 40-54 ns and an edge at
+  43-47, and a skipped block saves both for every slot plus the
+  storage-head read for any array. The price is a partly-filled tail block
+  per pair of size class and kind, paid in footprint and fragmentation.
+  **This is the shape that delivers**, and it is the one to price.
 
-**The floors are floors.** Every filled cell in the probe names one shared
-entity, so the `IN` increments hit one cache line where a real heap
-scatters them; both cell figures are lower bounds.
+**Shape 2's price has a first measurement**, 2026-08-22, taken with
+`../../../dev/tools/heap-composition.php` over a booted Laravel 13 after one
+handled request. Objects there occupy 15 size classes and strings 10, for 25
+pairs of class and kind over 17 distinct classes — so segregation costs **8
+extra tail blocks, half a mebibyte** at the 64 KiB block. A draft called that
+under two per cent of a ~28 MiB boot heap; the scan prints no heap total and
+no source was named for the 28 MiB, so the denominator is withdrawn and the
+half mebibyte stands on its own. The figure covers two kinds; the other five
+add pairs of their own, and one framework is not a class population.
 
-**And the ratio it needed now has a first value**: 1.4 to 1.6 counted edges
-per entity in a booted Laravel container, node A6. At that ratio edges carry
-about three fifths of the walk and rows two.
+**What would answer what is left:** the same figure over more than one
+program, and whether the allocator's fill can be steered by kind without a
+second free list per class.
+
+## C. When the collector runs
 
 ### C1. The background cadence  [open; two candidates eliminated, three named in their place]
 
@@ -606,7 +810,7 @@ entities dying before the second walk that meets them, and B4's figure
 makes an epoch's price edges as much as rows, so a threshold written in
 entities is not written in the walk's currency.
 
-### C2. The young-free exemption  [curve measured; two readers and a missing publication keep it open]
+### C2. The young-free exemption  [curve measured; unsound as written — a second walker, a retiring block, and an unpublished epoch number]
 
 `../rc-walk.md` carries it in the backlog: an entity whose epoch byte reads
 0 or the current number at free time is in no snapshot row and no
@@ -641,9 +845,10 @@ enrolled, and its slot parks; a young one takes the allocate-black branch,
 gains no row, and is exempt. So the exemption is sound here for the same
 reason as everywhere else, and the occupancy argument is not available.
 
-**The proof is incomplete, and a review round found where.** Two readers of
-a slot identity live outside the epoch's own vectors, and the exemption
-removes their protection too.
+**The proof is incomplete, and a review round found where.** Two hazards
+live outside the epoch's own vectors: one is a second reader of a slot
+identity, the other is a recycling path with no reader at all, and the
+exemption removes the protection each of them rests on.
 
 - **The synchronous collection is a second walker.** `collect_cycles_inner`
   enrols every `GcHeap` slot with no epoch-stamp test at all, keys a map by
@@ -733,6 +938,12 @@ the deaths in such a heap would park. The measured tables are a share of that
 76 %, and the growth records sit outside both — unmeasured, and the reason
 the parked list is not a picture of the live heap.
 
+### C3. The pressure ladder's constants  [measure]
+
+`R`, its doubling, the per-epoch forced-post cap, the stratification
+threshold. All are measurements nobody has taken, and `../rc-walk.md` says
+so.
+
 ### C4. Do the fixpoint and stratification rungs earn their keep  [open; the first pricing was in the wrong currency]
 
 `../rc-walk.md` open question 3: whether rung 2 (re-walk the candidate set
@@ -767,12 +978,6 @@ cycles alone. What is unmeasured is still the rate — rounds to convergence
 for rung 2, and how often a repeatedly-acquitted component has a stratum
 with no in-edge from the acquitted remainder — but the rate now decides a
 different trade.
-
-### C3. The pressure ladder's constants  [measure]
-
-`R`, its doubling, the per-epoch forced-post cap, the stratification
-threshold. All are measurements nobody has taken, and `../rc-walk.md` says
-so.
 
 ## D. The verdict, and who frees
 
@@ -870,10 +1075,25 @@ The garland is judged whole. Edmond deferred this to Sage earlier the same
 day, on the premise that the pause had to be bounded; the ruling removes the
 premise, and the deferral with it.
 
-### D3. The batch constants  [measure]
+### D3. The batch constants  [measure; and a between-entity check bounds no within-entity overrun]
 
 Ruling 3. The time ceiling of a freeing batch, and how far memory pressure
 relaxes it.
+
+**The ceiling is checked between entities, and one entity can overrun it by
+any amount.** That is true of both arms and not only of the destructor arm a
+first draft named. A destructor is user code with no bound; a raw sever of
+one array releases every cell it holds, at B4's 43-47 ns each, and B3 exists
+because one entity can need its own OS-direct run. A component holding one
+array of a million cells is one entity either way. So the ruling's choice of
+time over a count of entities is right for the reason it gives, and what it
+does not supply is a bound on the unit itself. **Two candidates, neither
+written:** a check inside the sever, at the cell granularity where the cost
+is uniform, which the batch loop does not reach today; and a refusal to admit
+an unbounded unit to the collector's arm at all, which is what ruling 8
+already does for destructors and nothing does for large entities. The
+constants to measure are the ceiling's, and beside them the distribution of
+per-entity sever cost that decides whether the second candidate is needed.
 
 ### D4. The indivisible verification  [closed]
 
@@ -891,49 +1111,6 @@ same. The test is Ω(N) reads in one uninterrupted stretch.
 
 **Closed by ruling 10**, which accepts the pause rather than bounding it. The
 lever was never the test but N itself, and N is no longer to be reduced.
-
-### D6. WeakMap ephemerons  [open; the cost was overstated and a cheaper shape exists]
-
-[`../../weak-references.md`](../../weak-references.md#weakmap-cleanup-is-eager-not-lazy)
-records the mechanism and defers it: a value that references its own key
-keeps that key's count positive forever, so the key never dies, no
-notification fires and the entry is never removed. Behaviour matches PHP
-8.0-8.2; Zend gained the special support in 8.3 after shipping the leak
-for three years. The node asked whether the design of record closes it.
-
-**It cannot, and the reason is the shape of the exact test.** There is no
-cycle to find. With `$map[$k] = $v` and `$v->key = $k`, the map holds `$v`
-by a counted edge and `$v` holds `$k` by another, so `$v` is reachable from
-a live root and `$k` is reachable from `$v`. Every count is right and every
-entity is live by the rules the walk applies. What PHP's `WeakMap` means
-instead is that the map-to-value edge exists only while the key is
-reachable **otherwise**, and a conditional edge is not something a balance
-of counted references can express: the judgement is `RC − IN` arithmetic
-over counted edges, while an ephemeron needs a fixpoint over reachability —
-mark the key live only if something outside the map reaches it, then mark
-its value, then repeat until nothing new is marked.
-
-**What closing it would cost was overstated once.** A draft charged the
-per-kind hook B4's 43-47 ns per cell; B4 measured the cost of *reading* a
-cell, and the stride is already kind-dispatched (`ll-model` `src/walk.rs`),
-so one more arm on an existing dispatch is a predicted branch rather than a
-cell read.
-
-**And the shape the source names is cheaper than the one that draft
-rejected.** `../../weak-references.md` asks that the map's key-to-value
-edges be treated as conditional on key liveness — a rule over edges already
-recorded, which is the same material rung 3 of the pressure ladder works
-over. Expressed in this design's terms: drop those edges from `IN`, re-add
-the ones whose key still shows `RC − IN > 0`, iterate. The design already
-owns a fixpoint rung and edge-condensation arithmetic, and Phase 4 already
-walks the weak table at every death, which is where Zend put its own fix in
-8.3.
-
-**So the deferral is a choice rather than a consequence**, and what would
-answer the node is a ruling on the edge-conditional form above — where it
-runs, in the walk's judgement or in the drain's weak pass — and, before it,
-how many real programs hold a value that names its own key, which is the
-corpus question of A6 in one more form.
 
 ### D5. Collector-side destructor calls  [open; the case for moving them is stronger than it looked]
 
@@ -973,6 +1150,374 @@ wins.
 runs user code needs the thread it runs on to be gated, and constraint 1
 there says it is not. **What would answer this node:** D1's channels first,
 then a ruling on whether P2 calls travel with them.
+
+### D6. WeakMap ephemerons  [open; the shape is written, and the corpus question behind it is not asked]
+
+[`../../weak-references.md`](../../weak-references.md#weakmap-cleanup-is-eager-not-lazy)
+records the mechanism and defers it: a value that references its own key
+keeps that key's count positive forever, so the key never dies, no
+notification fires and the entry is never removed. Behaviour matches PHP
+8.0-8.2; Zend gained the special support in 8.3 after shipping the leak
+for three years. The node asked whether the design of record closes it.
+
+**It cannot, and the reason is the shape of the exact test.** There is no
+cycle to find. With `$map[$k] = $v` and `$v->key = $k`, the map holds `$v`
+by a counted edge and `$v` holds `$k` by another, so `$v` is reachable from
+a live root and `$k` is reachable from `$v`. Every count is right and every
+entity is live by the rules the walk applies. What PHP's `WeakMap` means
+instead is that the map-to-value edge exists only while the key is
+reachable **otherwise**, and a conditional edge is not something a balance
+of counted references can express: the judgement is `RC − IN` arithmetic
+over counted edges, while an ephemeron needs a fixpoint over reachability —
+mark the key live only if something outside the map reaches it, then mark
+its value, then repeat until nothing new is marked.
+
+**What closing it would cost was overstated once.** A draft charged the
+per-kind hook B4's 43-47 ns per cell; B4 measured the cost of *reading* a
+cell, and the stride is already kind-dispatched (`ll-model` `src/walk.rs`),
+so one more arm on an existing dispatch is a predicted branch rather than a
+cell read.
+
+**And the shape the source names is cheaper than the one that draft
+rejected.** `../../weak-references.md` asks that the map's key-to-value
+edges be treated as conditional on key liveness — a rule over edges already
+recorded, which is the same material rung 3 of the pressure ladder works
+over.
+
+**Expressing it took two attempts, and the first one leaks worse than the
+bug.** The draft said: drop those edges from `IN`, re-add the ones whose key
+still shows `RC − IN > 0`, iterate. Dropping an edge from `IN` alone lowers
+the value's in-degree while its count still carries the map's reference, so
+every WeakMap value reads `RC − IN > 0`, which is the balance that means
+"held from outside the component". Every value is then a root for as long as
+the map lives, and nothing in the map is ever collected — where the bug being
+closed loses one key per self-naming value.
+
+**The second attempt named the wrong predicate**, and it frees rather than
+leaks. It said: subtract every map-to-value edge from the value's `RC` and
+from `IN` together, then judge a key live where it shows `RC − IN > 0`.
+That balance is the **root** predicate — `../rc-walk.md` fixes its meaning as
+"something outside the walked heap references this entity" — and liveness is
+decided a phase later, by the breadth-first mark from those roots. A key held
+by an ordinary live array shows `RC − IN = 0`, because both its in-edges are
+inside the walked heap, so the rule judges it unreachable, never restores its
+value edge and condemns a value the program can still read through
+`$map[$k]`. That is a use-after-free on the shape a `WeakMap` is written for,
+a side table keyed on objects a container already holds.
+
+**The predicate the node's own diagnosis names is "marked".** Suppression has
+to run inside the marking phase: subtract the map-to-value edges from `RC`
+and `IN`, compute roots and mark from them, restore the value edge of every
+key the mark reached, and re-mark until no further key is reached. That is
+the fixpoint over reachability the paragraph above asks for, and rung 3
+already re-walks a candidate set.
+
+**Neither home the node offered can carry it.** The drain's weak pass runs
+only after the exact test passes, on a component already condemned
+(`../rc-walk.md`, Phase 4 order), and the leaking configuration is a live map
+whose entries every count says are live, so that pass never meets it. The
+walk's judgement can meet it, and what it condemns must then survive Phase 4,
+which recomputes each member's in-degree from **current** fields and knows
+nothing of a suppression private to the walk: a suppressed value reads
+refcount 1 against in-component in-degree 0, mismatches, and is acquitted
+every round for ever. So an ephemeron verdict is unreachable in one home and
+unconfirmable in the other, and any workable shape has to say what the exact
+test does with a suppressed edge — which reopens the one test D4 calls
+indivisible.
+
+**So the deferral is a choice rather than a consequence**, and what would
+answer the node is a rule for the exact test over a suppressed edge, without
+which the fixpoint has no site; and, before spending anything on it, how many
+real programs hold a value that names its own key, which is the corpus
+question of A6 in one more form.
+
+### D7. How a mutator is activated  [design]
+
+Opened 2026-08-23 by the review's attack on ruling 4. The ruling says a grown
+verdict queue activates the mutator, which drains it rather than waiting for
+its ordinary cadence, and no node owned the mechanism.
+
+**The design already supplies one, for every thread that arrives at a
+checkpoint.** A checkpoint attends when the handshake flag is up, when
+`OUTSTANDING_VERDICTS` is non-zero, or when a flush is due (D1, "What
+exists"). The middle trigger is ruling 4: a non-empty queue makes the next
+checkpoint pick up instead of waiting for the flush interval. A first draft
+of this node collapsed "the mutator's checkpoint rate" and "the flush
+cadence" into one phrase and concluded that nothing existed, which would have
+sent an implementer building a signal that ruling 2 forbids and the trigger
+makes unnecessary.
+
+**What is left is the thread that reaches no checkpoint** — parked in a
+syscall, in an FFI call, in a pure compute or pure-allocation loop
+(`../rc-walk.md` names the same set as the epoch's accepted limit). No
+trigger reaches it, and the queue it holds grows until it returns. **The
+question is whether that is a state to tolerate or to end**, and the two
+answers cost differently: tolerating it accepts an unbounded queue and the
+parked volume that rides with it, which is `churn rate × epoch duration` and
+not the live heap; ending it needs a push, and a push is a thread stopped
+from outside.
+
+**What would answer it:** a bound on how long a checkpoint-free stretch can
+last in real code, which is what decides whether the first answer is
+acceptable — the same measurement A5 needs, from the other side.
+
+**What it blocks:** D1's hand-back direction, which is where a grown queue
+comes from.
+
+## E. Threads, actors and the machine
+
+### E1. Actors and the epoch protocol  [structures resolved 2026-08-23; the stamp half stays open]
+
+Refcounts are non-atomic and the crate is single-mutator
+(`../rc-walk.md`). The node asked whether each actor runs its own epoch,
+and what the collector's single shared write — the epoch stamp — becomes
+across several of them.
+
+**The stamp is single-writer today, and not for the reason a draft gave.**
+That draft argued that only the general heap has an epoch, so the byte has
+one writer. Two things refute it. There is no general heap in this memory
+model — every block belongs to some thread's heap, which
+`../../../runtime/actors.md`'s own open list records and node E3 repeats —
+and an actor's memory is not only its arenas: a provably transferable
+object is born directly in the general-heap category and held by the actor
+while hosted by whichever pool thread mounts it. Second, the walk stamps
+outside the category it enrols: `walk_rows` writes the stamp and *then*
+tests the memory category (`ll-model` `src/collector.rs`), so the first
+epoch that meets a slot reading zero or the current number stamps it
+whatever its category, while only the `GcHeap` ones ever get a row. The set
+that reaches the walk is `GcHeap` and `LongLived` together — the entity
+blocks both allocate from, the walker skipping the second by category per
+entity (`ll-model` `src/memory/routing.rs`) — plus the three populations the
+same snapshot adds: pooled large-entity blocks, retained former-arena blocks
+and OS-direct entity runs.
+
+What actually keeps one writer is that the protocol is one-at-a-time by
+construction: the epoch number, the handshake flag, the ack counter, the
+verdict queue and the outstanding count are process-global statics and
+opening an epoch asserts that epochs do not nest. Two collectors would
+reach the same header through the global block registry, each reading the
+other's number as an old stamp — [`../domains.md`](../domains.md) invented
+a per-block "epoch it was snapshotted in" field for that reason and noted
+that a bare 1-255 number does not say whose epoch it is. **So the stamp
+half is not answered; it is held by the same single-mutator scaffolding
+E1's other half is about.**
+
+**The ownership half is worse than "undecided": two in-force documents
+disagree about what an owner is.**
+[`../../../runtime/actors.md`](../../../runtime/actors.md#serial-execution-without-thread-affinity)
+says an actor is not bound to a thread — the scheduler runs it on whatever
+pool thread is free and it may migrate between messages, the invariant
+being only that at most one thread executes it at a time.
+[`../../weak-references.md`](../../weak-references.md#the-weak-table-address--subscriber-row)
+builds the weak table **per thread**, calls entities thread-confined, runs
+every notification on the owning thread, and disposes the table at thread
+exit. It never mentions actors.
+
+The two cannot both hold. An actor creates a weak reference while mounted
+on one thread, so the row lands in that thread's table; the actor migrates;
+the entity dies on the new thread, which looks in its own table, finds no
+row, and never nulls the cell. The old thread then exits and disposes a
+table still holding rows for live entities.
+
+**Half of this is already recorded, for a different resource.**
+[`../domains.md`](../domains.md) noted on 2026-07-28 that a transferable
+entity promoted out of an actor's arena lands in the entity heap of
+whichever pool thread was mounting the actor, "so its host is a thread while
+its holder is an actor", and called the payload table and the allocation-site
+selection owed a re-derivation. The weak table is the same crossing over a
+second resource, and the drain gates, the reset window, the journal ring and
+the park list are the same crossing over four more.
+
+The same question decides the rest of the protocol's TLS: `MID_DRAIN` and
+`TEARDOWN_DEPTH` are thread-locals guarding a drain whose entities belong
+to an actor, the reset window and the journal ring are owner-bound the same
+way
+([`../pure-destructors.md`](../pure-destructors.md#the-five-owner-bound-races),
+race 5), and the deferred-free park list is thread-local and flushed by its
+own thread ([`../domains.md`](../domains.md)). Each is correct while the
+owner is a thread and wrong once the owner is an actor that migrates.
+
+**What would answer this node:** one ruling on what an owner is — a thread,
+or an actor context the scheduler mounts — after which the weak table, the
+drain gates, the reset window, the journal ring and the park list follow it
+rather than each being decided separately. **What it blocks:** node D1,
+whose channels cannot be routed to an owner that is not defined.
+
+**Most of the structural half closes on 2026-08-23, and not by a ruling about
+owners.** Two facts of `../../../runtime/actors.md` bound it. An actor's own
+memory is collected by the actor itself, at its message boundary, on the thread
+executing it — no poll safepoints inside actor code, the scope being one actor's
+arenas, and the concurrent part shrinking to "the general heap outside any
+actor". And nothing enters an actor except through the queue, so its object
+graph is closed by construction. Inside an actor there is therefore never a
+second thread to disagree with, and the drain gates, the reset window and the
+journal ring, all of which live inside one execution, need no owner assigned.
+The deferred-free park list is a thread resource on its own evidence: the list
+is thread-local and the frees it defers are bound to the heap that issued the
+block (`ll-model` `src/memory/deferred_free.rs`), and an actor's own memory is
+returned by arena reset rather than parked. The static-block registry is
+disposed at thread exit and was never actor state.
+
+**What is left of the ownership half** is the weak table and the general heap.
+For the weak table Edmond ruled on 2026-08-23 that a weak reference does not
+cross the actor queue — an object holding one is not sendable and an object that
+is the target of one may not be moved
+([`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md)) — so a cell and its
+target stay in one actor, and the rows are the actor's. What the table's
+per-thread residence then owes is the mechanism: rows keyed by actor, rows
+following the actor, or an actor pinned while it has subscribers. For the
+general heap the stamp half of this node stands unchanged.
+
+**Three obligations were added to this node on 2026-08-23**, by the review
+chain over the context-aware calling convention
+([`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md)). First, the
+assignment of the six per-thread structures splits in two before it can be
+made: some are thread-owned resources correct under a thread invariant — the
+block header's owner, the C-standard allocator surface, the buffer arena —
+and are not waiting on this node at all, while the rest are actor state and
+are. Second, a crossing into foreign code needs an entry mark saying a thread
+is out of the ack population, and the measurement that would justify it
+against the standing 2026-07-25 rejection. Third, that crossing needs a
+re-entry mechanism for a callback, and this chain established two constraints
+on it: it must survive a `longjmp` that skips the compiler's bracket, so a
+discipline resting on drop glue will not do, and it must answer a callback
+arriving on a thread that never entered.
+
+### E2. AArch64 header access  [hardware]
+
+`../rc-walk.md` open question 2. x86-64 is settled — plain moves, no lock
+prefix, no read-modify-write. The instruction half of the AArch64 claim is
+settled too; the cost half is not, and no machine here can take it.
+
+### E3. The domains proposal sits behind E1  [sorted; the largest hole is named by the proposal itself]
+
+[`../domains.md`](../domains.md) is the standing multi-mutator design and
+carries its own open list, which E1 as a single node hides. Sorted by what
+the epoch protocol actually needs:
+
+**E1's question wearing another hat.** The list's actors item, recorded
+2026-07-28, says `actors.md`'s allocation-site selection assumes a general
+heap owned by no domain, that this memory model has none, and that a
+transferable entity promoted out of an actor's arena therefore has a thread
+for a host and an actor for a holder. That is E1, and it is owed a
+re-derivation there rather than here. It is also the sentence that refuted
+E1's first draft, which argued from a general heap that this item says does
+not exist.
+
+**What the epoch protocol needs before anything else.** Three items, and
+the proposal ranks the first itself:
+
+- **A domain dying mid-epoch** — an epoch nobody will close, a parked list,
+  a weak table — which `../domains.md` calls the largest hole in the model.
+  It is also what makes D1's constraint 4 sharp: a channel routed to an
+  owner has to say what happens when the owner goes.
+- **Per-domain enumeration does not exist.** The snapshot is global today
+  (`ll-model` `src/memory/heap.rs`), which the same file's inventory of
+  single-mutator points already records.
+- **The drain-exclusivity window is proven for one mutator**, and the
+  re-derivation is owed — the same third link node D1 rewrites for the
+  hand-off, now for a second reason.
+
+**What is the movable-value design and does not touch the walk.** Frozen
+from birth or after the send, `~=` on a DAG, the move's counter semantics,
+where the resurrection ban is raised, what the arena copy of I6 owes, and
+whether a `shared` class may have a destructor at all. They belong to the
+proposal and are cited here so nobody folds them into the collector's
+questions.
+
+**One hard limit worth surfacing, because it is the same shape as A7's.**
+The box that gives a shared entity its per-domain handle needs an entity
+kind, and the kind field has **exactly one code left**, which `resource`
+also wants ([`../../layouts.md`](../../layouts.md)). Three bits, seven kinds
+assigned, one spare, two claimants.
+
+**What would answer this node:** nothing here, until E1 says what an owner
+is. The sorting above is what this node contributes.
+
+### E4. What may be moved into an actor, and what a shared pointer owes  [design]
+
+Edmond ruled the two forms on 2026-08-23
+([`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md)): a shared object
+reaches an actor as a **copied pointer** into memory the actor does not own and
+reads by dereferencing, and a moved object joins a **list of moved objects**
+handled as an object moved into another thread is. Both are stated; neither is
+specified. This node holds what follows from them.
+
+**The move's restrictions, derived from rules already in force rather than
+ruled.** Each is the same argument — after the handoff the sender keeps no
+binding and the object is inside another actor, whose graph nothing may enter
+except through the queue.
+
+- **No weak subscriber.** Ruled directly on 2026-08-23: the subscription row
+  stays in the sender's table while the entity leaves, so a target of a weak
+  reference falls back to a deep copy.
+- **No `&` binding in the sender.** A reference box is a writable alias
+  ([`../../values.md`](../../values.md#referencebox-)); a binding that survived
+  the move would be a foreign writer inside the recipient.
+- **No live second holder.** The send makes the sender's bindings dead
+  ([`../../../runtime/actors.md`](../../../runtime/actors.md#message-payload-discipline)),
+  so a second counted holder in the sender would name memory it no longer owns.
+  For a COW value that reads as: count 1, or the form is a copy rather than a
+  move.
+- **No `#[Borrow]` view over it.** A raw pointer held by the C side into a
+  moved object is a door the queue does not control
+  ([`../../memory/ffi.md`](../../memory/ffi.md#the-owner-model)).
+- **A closed reachable set.** Every object reachable from the moved one is
+  itself moved, immortal, or shared by pointer; an edge left pointing into the
+  sender's arena is the cross-arena reference `arenas.md` forbids by
+  construction.
+- **Not arena-resident.** A proven-transferable object is born in the general
+  heap ([`../../../runtime/actors.md`](../../../runtime/actors.md#allocation-site-selection));
+  arena memory dies at the sender's reset and cannot be handed on.
+
+**What would answer the node.** For the move: which of the six above are
+compile-time refusals and which are pack-time tests, and what the moved-objects
+list holds, who appends to it and who clears it — the arena's escapee list with
+its hold-counts and its promotion at reset is the analogue
+([`../../memory/arena-reset.md`](../../memory/arena-reset.md#step-1--validate-trace-destruct-a-fixpoint-loop)),
+and no such list exists in the crate today. For the shared pointer, two things:
+what keeps the referent alive while an actor dereferences it — its creating
+owner, or a lease for the duration — and how the actor's own collection is kept
+from reading the pointer as one of its edges, which it must be, or the exact
+test balances against memory the actor does not own. That second half is node
+G1's shape at actor scope: an uncounted edge, which ruling 11 answered for a
+weak cell by making the read produce an owned value.
+
+**What it blocks:** the payload discipline is what decides whether an actor's
+graph is closed, and every per-actor argument in this file rests on its being
+closed.
+
+## F. Prior art, read against the graph
+
+### F1. Barrier forms  [read]
+
+LXR's field logging and SATB are already in this repository. Coalescing
+(sliding-view) reference counting, Levanoni and Petrank, is not, and is the
+shape A5 asks for: one log entry per object per epoch rather than one pair
+per write. Feeds A5.
+
+### F2. Cycle collection  [read]
+
+Arborescent GC (ISMM 2025) is the only published shape found that decomposes
+D4's global question into local ones — a spanning forest inside the program's
+own graph, checked locally on each edge removal. Against it, about two words
+per object, a figure [`../gc-research.md`](../gc-research.md) marks as read
+from a summary of the PDF rather than verified against the text. Feeds D2 and
+D4, which have no other candidate.
+
+### F3. Partial tracing  [read, record only]
+
+**Concurrent Deferred Partial Tracing (PLDI 2026) is the published form of
+the capture-count regime** — "DRC counts heap edges and traces the roots; PT
+counts the roots and traces the heap" — and it carries the same blocker this
+design refused it for, destruction timing. Recorded so that the refusal is
+findable against the literature. Nothing in it is proposed for this design.
+## G. The proof side, inherited from gc-horizon.md
+
+A node per open question of [`../gc-horizon.md`](../gc-horizon.md), plus the
+closed ones at the end so the section indexes that document whole. `walk/`
+rules where the two disagree; on this side there is nothing to disagree
+about, the proof text being unmoved.
 
 ### G1. The weak cell is an uncounted edge  [closed]
 
@@ -1178,16 +1723,21 @@ frame only; the promotion-point wording is quoted without the amendment in
 `../gc-horizon-states.md` and in six case files. Both are step S5.7 of
 `../../../dev/PLAN.md`.
 
-### G4. COW and unique ownership intersect  [ruled; the trigger set stays open]
+### G4. COW and unique ownership intersect  [ruled for COW; the trigger set stays open, and is restated over A7's discriminant]
 
 `../gc-horizon.md` question 10. **Ruled by Edmond, 2026-08-22: COW wins**
 (`../../../dev/DECISIONS.md`). The unique-ownership proof establishes
 lifetime — one owning slot, death at the overwrite — and lifetime is not
 what the separation test asks, so the proof neither answers that test nor
 licenses removing the count. A COW-eligible entity keeps its count
-whatever else is proved about it, and the intersection is empty rather
-than contradictory: the occupancy sentinel and the COW flag never sit in
-one header.
+whatever else is proved about it, so the intersection is empty by the
+ruling. It is not empty by header layout, which a draft claimed: A7 puts the
+unique-ownership discriminant in the retired condemned byte, bits 24-31,
+while COW is bit 10, so the two can be set in one header and the layout
+forbids no collision. A7 also establishes that the count word of a unique
+entity holds an occupancy marker with the value 1, the same value an ordinary
+entity holding one reference reads, so the two defects below are about writes
+to that marker rather than about a value that discriminates anything.
 
 The elision licence
 [`../../values.md`](../../values.md#refcount-is-always-maintained-on-cow-entities)
@@ -1200,11 +1750,13 @@ ownership applies to it normally.
 **What stays open is the trigger set, which the collision only exposed.**
 Two defects survive the ruling because neither is about COW.
 
-- **A retain against the sentinel from a base case.** The unique-crossing
-  base case ([`../gc-horizon.md`](../gc-horizon.md#the-ownership-lattice))
-  classifies a borrow as owned *because* the entity is unique. Where the
+- **A retain against the occupancy marker from a base case.** The
+  unique-crossing base case
+  ([`../gc-horizon.md`](../gc-horizon.md#the-ownership-lattice)) classifies a
+  borrow as owned *because* the entity is unique. Where the
   borrow's target is that entity — `$n = $this->e` on the owning slot —
-  the retain lands on the sentinel, and the demotion trigger set names
+  the retain lands on the occupancy marker and raises it to 2, and the
+  demotion trigger set names
   convention retains and horizon-reaching borrows only, so nothing fires.
   Reading the set as a closure over the lowering does not repair it: the
   base case's predicate is the verdict the set computes, so the two
@@ -1212,11 +1764,11 @@ Two defects survive the ruling because neither is about COW.
   assumption of uniqueness, and never revisited, it terminates — and that
   one-pass rule then demotes every entity ever loaded into a local, whose
   cost is node A3's share and A6 has not measured it.
-- **A release against the sentinel.** `new` is owned by the lattice, which
-  absorbs the creation reference and releases at the drop point
+- **A release against the occupancy marker.** `new` is owned by the lattice,
+  which absorbs the creation reference and releases at the drop point
   ([`../gc-horizon.md`](../gc-horizon.md#the-ownership-lattice)), while
   the owning store into a unique slot takes no count — so the temporary's
-  release drives the sentinel to zero, which is eager death, a destructor
+  release drives the marker to zero, which is eager death, a destructor
   call, a free, and a walker reading an occupied slot as free. Either the
   trigger set names release sites, or the owner's allocation is specified
   as a move that consumes the temporary.
@@ -1264,6 +1816,145 @@ sets, with Edmond's veto open.
 selective collector-computed counts. That is Form C, and the capture-count
 regime is its descendant.
 
+### G10. Weak observation is outside the drop-point policy and outside the oracle  [design]
+
+`../gc-horizon.md` question 14. The drop-point policy moves a
+destructor-free class's free to its last use because the timing is
+unobservable, and a `WeakReference` cell or a `WeakMap` key observes that
+death; the differential oracle then compares destructor sequences and death
+sets per batch, so the relocation is visible to the program and invisible to
+the check. **What would answer it:** the oracle gains weak-cell transitions,
+`WeakMap` removals and the values weak loads return, or weak-subscribed
+targets are excluded from both moves, and the policy states what
+unobservable means once a subscriber exists. **What it blocks:** the
+differential lowering as an instrument, which is S4's precondition.
+
+### G11. The destructor-free predicate reads `__destruct` and nothing else  [design]
+
+`../gc-horizon.md` question 15. A suspended generator satisfies P0 and still
+runs `finally` blocks when its segment is unwound, and the weak cell's kind-5
+teardown arm clears a weak-table registration under the same predicate.
+**What would answer it:** the predicate computed over observable
+finalization rather than over `__destruct` alone, with the engine-side
+handlers that count named. **What it blocks:** rung P0's licence, which is
+the collector-side arm that has a population today (A9).
+
+### G12. "Owned" must name an emitted count rather than a classification  [design]
+
+`../gc-horizon.md` question 16. Inlining deletes a callee's by-value
+parameter pair while the borrow metadata still ends at that now-uncounted
+copy, so the chain ends in an uncounted root. Two shapes beside it: the width
+of the elision rule is undecided, and in the immortal and request-arena
+categories the promotion retain moves no count, so a local is labelled owned
+with no live count. **What would answer it:** pair elision relabels the local
+and rewrites the chains ending in it, or an elided local anchors no borrow;
+and chains are rebuilt and certificates checked after optimisation rather
+than before. **What it blocks:** G2, which is the same defect read from the
+category side.
+
+### G13. The horizon set is enumerated over IR that is not final  [design]
+
+`../gc-horizon.md` question 17. A property hook, a magic accessor, a
+`__toString` cast, an iteration hook, autoload, an error handler and a stream
+wrapper each run user code with no call in the source; in the other direction
+lowering expands property and type operations, allocation slow paths and
+helpers into invokes after a region was certified free of them. **What would
+answer it:** every implicit invoke carries its normal and exceptional effects
+in the final effectful IR, horizons are enumerated there, and the placement
+passes name what invalidates them. **The rule cannot be adopted alone:** over
+final lowered IR every `ll_*` entry is a call with no trusted summary, which
+empties the free region, so it stands or falls with G5.
+
+### G14. The non-frame root categories have no identity or revocation rules  [design]
+
+`../gc-horizon.md` question 18. A chain may end in an arena slot, a static,
+an immortal or an FFI handle, and tearing down a static table, unloading a
+module or unregistering a handle destroys such a root with no managed-slot
+store, so no horizon kind names the event while `stable_path` reads
+unchanged.
+
+**This is where ruling 7 stops holding.** The ruling moves every reference
+the C side can name into a declared field of the wrapper, so the handle is no
+longer what a chain ends in — and what roots the wrapper opens in its place.
+A field of a heap object qualifies as a root only through the chain rule,
+never on its own
+([`../../memory/static-lifetimes.md`](../../memory/static-lifetimes.md#what-may-own-a-borrow)),
+and a wrapper reachable only from the C side carries no counted in-edge at
+all, so "the collector traces the wrapper as an ordinary entity" names no
+mechanism that reaches it. Folding ruling 7 into the lattice's root list is
+owed and unstarted.
+
+**What would answer it, per category:** the root's identity, what owns it,
+what creates and revokes it, whether revocation is a non-liftable horizon,
+and a non-reusable generation carried in the certificate.
+
+### G15. The closed-world closure is computed in an open world  [design]
+
+`../gc-horizon.md` question 19. Transitive purity, destructor-freedom and the
+acyclic flag are computed over a closed class set, while autoloading, `eval`,
+plugin code and separately built units add classes afterwards; a subclass
+adding `__destruct` or a property hook makes a shipped elision unsound at a
+site whose class bit and summary version both still validate. **What would
+answer it:** whether the most-derived class set is closed and versioned
+across separately compiled units, and what loading a widening class does —
+invalidate and recompile the dependants, or force counted lowering at the
+original polymorphic site. **What it blocks:** A9, B2 and every proof
+`compiler-proofs.md` builds on the field-type graph.
+
+### G16. The verification instruments detect a first divergence, not the invariant  [design]
+
+`../gc-horizon.md` question 20. The shadow-count lowering fires when a shadow
+word reaches zero under a live borrow, so a false proof whose target has a
+second owner stays latent and a promotion emitted twice never crosses zero.
+**What would answer it:** verification builds record allocation generations
+and the identity of every edge in each live chain and check at each
+invalidating operation that the chain is unchanged or the borrow already
+promoted; the count equation is reconciled in both directions at quiescent
+points; and the checker reconstructs the CFG, live ranges and dangerous
+operations from final lowered IR rather than reading them from the producer.
+**What it blocks:** both verification instruments, and with them S4.
+
+### G17. The economics instruments do not price what the design claims  [design]
+
+`../gc-horizon.md` question 21. One defect per instrument: the census channel
+counts horizon crossings where the cost is promotions per acquisition; pads,
+certificates and unwind metadata can hold `Θ(N·H)` entries for linear source
+with no fallback-to-owned cap; and the elision counter does not say whether
+its increment sits at the acquisition or at the drop, which the unwind paths
+distinguish. **The pair-cost half is this graph's own business:** A1 priced an
+overwriting store's pair, two foreign headers, where the proofs of section A
+remove one touch or two depending on the lever, and A1's table gives the
+range as a derivation rather than a measurement.
+The borrow pair's own sweep — header sharing, NUMA, working set, final
+against non-final path — is owed by the economics section and unstarted.
+
+### Closed on the proof side
+
+Five of `../gc-horizon.md`'s questions are closed and are kept here so the
+section indexes that document whole rather than a selection of it.
+
+- **Question 3**, the corpus names, settled 2026-08-18 with Edmond's veto
+  open: WordPress, Monica and Sylius, each with its vendor tree. A6's three
+  taken quantities came off a Laravel 13 skeleton instead, which no step has
+  agreed to; A6 records the divergence.
+- **Question 4**, the hybrid's granularity, ruled by Edmond 2026-08-18: the
+  class bit is the default, always-provable Swift-style elision is lawful per
+  site in both regimes, fallible per-site deviation stays behind the
+  certificate-plus-shadow-lowering gate, and no rule introduces a write
+  barrier.
+- **Question 12**, selective collector-computed counts, closed by the refusal
+  of 2026-08-22; the record is in G9.
+- **Question 13**, which end of a dominator chain "closest" names, closed
+  2026-08-22: the latest, with the execute-at-most-once condition of question
+  9 excluding the leak the reading admits. The back-edge poll does not
+  exclude it, which is the same denial A5 rests on.
+- **Question 22**, the loop-born borrow's two readings, closed 2026-08-23
+  over strict SSA in favour of the liveness reading: a definition dominates
+  its whole live range, so the owned base case cannot fail for a non-phi
+  borrow, and a borrow live across a back edge is a loop-header phi the edge
+  rule already decides. Closed by argument rather than by measurement, the
+  subject being a property of SSA rather than a quantity.
+
 ## H. Verification debt
 
 ### H1. Both model-checker specifications model a protocol that is gone  [scoped by a run; the re-derivation is unstarted]
@@ -1308,248 +1999,6 @@ than a task beside it — which is what
 [`../gc-horizon-cases/README.md`](../gc-horizon-cases/README.md) already
 tells the case book about its third candidate oracle.
 
-### E1. Actors and the epoch protocol  [structures resolved 2026-08-23; the stamp half stays open]
-
-Refcounts are non-atomic and the crate is single-mutator
-(`../rc-walk.md`). The node asked whether each actor runs its own epoch,
-and what the collector's single shared write — the epoch stamp — becomes
-across several of them.
-
-**The stamp is single-writer today, and not for the reason a draft gave.**
-That draft argued that only the general heap has an epoch, so the byte has
-one writer. Two things refute it. There is no general heap in this memory
-model — every block belongs to some thread's heap, which
-`../../../runtime/actors.md`'s own open list records and node E3 repeats —
-and an actor's memory is not only its arenas: a provably transferable
-object is born directly in the general-heap category and held by the actor
-while hosted by whichever pool thread mounts it. Second, the walk stamps
-outside the category it enrols: `walk_rows` writes the stamp and *then*
-tests the memory category (`ll-model` `src/collector.rs`), so the first
-epoch that meets a slot reading zero or the current number stamps it
-whatever its category, while only the `GcHeap` ones ever get a row. The set
-that reaches the walk is `GcHeap` and `LongLived` together — the entity
-blocks both allocate from, the walker skipping the second by category per
-entity (`ll-model` `src/memory/routing.rs`) — plus the three populations the
-same snapshot adds: pooled large-entity blocks, retained former-arena blocks
-and OS-direct entity runs.
-
-What actually keeps one writer is that the protocol is one-at-a-time by
-construction: the epoch number, the handshake flag, the ack counter, the
-verdict queue and the outstanding count are process-global statics and
-opening an epoch asserts that epochs do not nest. Two collectors would
-reach the same header through the global block registry, each reading the
-other's number as an old stamp — [`../domains.md`](../domains.md) invented
-a per-block "epoch it was snapshotted in" field for that reason and noted
-that a bare 1-255 number does not say whose epoch it is. **So the stamp
-half is not answered; it is held by the same single-mutator scaffolding
-E1's other half is about.**
-
-**The ownership half is worse than "undecided": two in-force documents
-disagree about what an owner is.**
-[`../../../runtime/actors.md`](../../../runtime/actors.md#serial-execution-without-thread-affinity)
-says an actor is not bound to a thread — the scheduler runs it on whatever
-pool thread is free and it may migrate between messages, the invariant
-being only that at most one thread executes it at a time.
-[`../../weak-references.md`](../../weak-references.md#the-weak-table-address--subscriber-row)
-builds the weak table **per thread**, calls entities thread-confined, runs
-every notification on the owning thread, and disposes the table at thread
-exit. It never mentions actors.
-
-The two cannot both hold. An actor creates a weak reference while mounted
-on one thread, so the row lands in that thread's table; the actor migrates;
-the entity dies on the new thread, which looks in its own table, finds no
-row, and never nulls the cell. The old thread then exits and disposes a
-table still holding rows for live entities.
-
-**Half of this is already recorded, for a different resource.**
-[`../domains.md`](../domains.md) noted on 2026-07-28 that a transferable
-entity promoted out of an actor's arena lands in the entity heap of
-whichever pool thread was mounting the actor, "so its host is a thread while
-its holder is an actor", and called the payload table and the allocation-site
-selection owed a re-derivation. The weak table is the same crossing over a
-second resource, and the drain gates, the reset window, the journal ring and
-the park list are the same crossing over four more.
-
-The same question decides the rest of the protocol's TLS: `MID_DRAIN` and
-`TEARDOWN_DEPTH` are thread-locals guarding a drain whose entities belong
-to an actor, the reset window and the journal ring are owner-bound the same
-way
-([`../pure-destructors.md`](../pure-destructors.md#the-five-owner-bound-races),
-race 5), and the deferred-free park list is thread-local and flushed by its
-own thread ([`../domains.md`](../domains.md)). Each is correct while the
-owner is a thread and wrong once the owner is an actor that migrates.
-
-**What would answer this node:** one ruling on what an owner is — a thread,
-or an actor context the scheduler mounts — after which the weak table, the
-drain gates, the reset window, the journal ring and the park list follow it
-rather than each being decided separately. **What it blocks:** node D1,
-whose channels cannot be routed to an owner that is not defined.
-
-**Most of the structural half closes on 2026-08-23, and not by a ruling about
-owners.** Two facts of `../../../runtime/actors.md` bound it. An actor's own
-memory is collected by the actor itself, at its message boundary, on the thread
-executing it — no poll safepoints inside actor code, the scope being one actor's
-arenas, and the concurrent part shrinking to "the general heap outside any
-actor". And nothing enters an actor except through the queue, so its object
-graph is closed by construction. Inside an actor there is therefore never a
-second thread to disagree with, and the drain gates, the reset window and the
-journal ring, all of which live inside one execution, need no owner assigned.
-The deferred-free park list is a thread resource on its own evidence: the list
-is thread-local and the frees it defers are bound to the heap that issued the
-block (`ll-model` `src/memory/deferred_free.rs`), and an actor's own memory is
-returned by arena reset rather than parked. The static-block registry is
-disposed at thread exit and was never actor state.
-
-**What is left of the ownership half** is the weak table and the general heap.
-For the weak table Edmond ruled on 2026-08-23 that a weak reference does not
-cross the actor queue — an object holding one is not sendable and an object that
-is the target of one may not be moved
-([`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md)) — so a cell and its
-target stay in one actor, and the rows are the actor's. What the table's
-per-thread residence then owes is the mechanism: rows keyed by actor, rows
-following the actor, or an actor pinned while it has subscribers. For the
-general heap the stamp half of this node stands unchanged.
-
-**Three obligations were added to this node on 2026-08-23**, by the review
-chain over the context-aware calling convention
-([`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md)). First, the
-assignment of the six per-thread structures splits in two before it can be
-made: some are thread-owned resources correct under a thread invariant — the
-block header's owner, the C-standard allocator surface, the buffer arena —
-and are not waiting on this node at all, while the rest are actor state and
-are. Second, a crossing into foreign code needs an entry mark saying a thread
-is out of the ack population, and the measurement that would justify it
-against the standing 2026-07-25 rejection. Third, that crossing needs a
-re-entry mechanism for a callback, and this chain established two constraints
-on it: it must survive a `longjmp` that skips the compiler's bracket, so a
-discipline resting on drop glue will not do, and it must answer a callback
-arriving on a thread that never entered.
-
-### E4. What may be moved into an actor, and what a shared pointer owes  [design]
-
-Edmond ruled the two forms on 2026-08-23
-([`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md)): a shared object
-reaches an actor as a **copied pointer** into memory the actor does not own and
-reads by dereferencing, and a moved object joins a **list of moved objects**
-handled as an object moved into another thread is. Both are stated; neither is
-specified. This node holds what follows from them.
-
-**The move's restrictions, derived from rules already in force rather than
-ruled.** Each is the same argument — after the handoff the sender keeps no
-binding and the object is inside another actor, whose graph nothing may enter
-except through the queue.
-
-- **No weak subscriber.** Ruled directly on 2026-08-23: the subscription row
-  stays in the sender's table while the entity leaves, so a target of a weak
-  reference falls back to a deep copy.
-- **No `&` binding in the sender.** A reference box is a writable alias
-  ([`../../values.md`](../../values.md#referencebox-)); a binding that survived
-  the move would be a foreign writer inside the recipient.
-- **No live second holder.** The send makes the sender's bindings dead
-  ([`../../../runtime/actors.md`](../../../runtime/actors.md#message-payload-discipline)),
-  so a second counted holder in the sender would name memory it no longer owns.
-  For a COW value that reads as: count 1, or the form is a copy rather than a
-  move.
-- **No `#[Borrow]` view over it.** A raw pointer held by the C side into a
-  moved object is a door the queue does not control
-  ([`../../memory/ffi.md`](../../memory/ffi.md#the-owner-model)).
-- **A closed reachable set.** Every object reachable from the moved one is
-  itself moved, immortal, or shared by pointer; an edge left pointing into the
-  sender's arena is the cross-arena reference `arenas.md` forbids by
-  construction.
-- **Not arena-resident.** A proven-transferable object is born in the general
-  heap ([`../../../runtime/actors.md`](../../../runtime/actors.md#allocation-site-selection));
-  arena memory dies at the sender's reset and cannot be handed on.
-
-**What would answer the node.** For the move: which of the six above are
-compile-time refusals and which are pack-time tests, and what the moved-objects
-list holds, who appends to it and who clears it — the arena's escapee list with
-its hold-counts and its promotion at reset is the analogue
-([`../../memory/arena-reset.md`](../../memory/arena-reset.md#step-1--validate-trace-destruct-a-fixpoint-loop)),
-and no such list exists in the crate today. For the shared pointer, two things:
-what keeps the referent alive while an actor dereferences it — its creating
-owner, or a lease for the duration — and how the actor's own collection is kept
-from reading the pointer as one of its edges, which it must be, or the exact
-test balances against memory the actor does not own. That second half is node
-G1's shape at actor scope: an uncounted edge, which ruling 11 answered for a
-weak cell by making the read produce an owned value.
-
-**What it blocks:** the payload discipline is what decides whether an actor's
-graph is closed, and every per-actor argument in this file rests on its being
-closed.
-
-### E2. AArch64 header access  [hardware]
-
-`../rc-walk.md` open question 2. x86-64 is settled — plain moves, no lock
-prefix, no read-modify-write. The instruction half of the AArch64 claim is
-settled too; the cost half is not, and no machine here can take it.
-
-### E3. The domains proposal sits behind E1  [sorted; the largest hole is named by the proposal itself]
-
-[`../domains.md`](../domains.md) is the standing multi-mutator design and
-carries its own open list, which E1 as a single node hides. Sorted by what
-the epoch protocol actually needs:
-
-**E1's question wearing another hat.** The list's actors item, recorded
-2026-07-28, says `actors.md`'s allocation-site selection assumes a general
-heap owned by no domain, that this memory model has none, and that a
-transferable entity promoted out of an actor's arena therefore has a thread
-for a host and an actor for a holder. That is E1, and it is owed a
-re-derivation there rather than here. It is also the sentence that refuted
-E1's first draft, which argued from a general heap that this item says does
-not exist.
-
-**What the epoch protocol needs before anything else.** Three items, and
-the proposal ranks the first itself:
-
-- **A domain dying mid-epoch** — an epoch nobody will close, a parked list,
-  a weak table — which `../domains.md` calls the largest hole in the model.
-  It is also what makes D1's constraint 4 sharp: a channel routed to an
-  owner has to say what happens when the owner goes.
-- **Per-domain enumeration does not exist.** The snapshot is global today
-  (`ll-model` `src/memory/heap.rs`), which the same file's inventory of
-  single-mutator points already records.
-- **The drain-exclusivity window is proven for one mutator**, and the
-  re-derivation is owed — the same third link node D1 rewrites for the
-  hand-off, now for a second reason.
-
-**What is the movable-value design and does not touch the walk.** Frozen
-from birth or after the send, `~=` on a DAG, the move's counter semantics,
-where the resurrection ban is raised, what the arena copy of I6 owes, and
-whether a `shared` class may have a destructor at all. They belong to the
-proposal and are cited here so nobody folds them into the collector's
-questions.
-
-**One hard limit worth surfacing, because it is the same shape as A7's.**
-The box that gives a shared entity its per-domain handle needs an entity
-kind, and the kind field has **exactly one code left**, which `resource`
-also wants ([`../../layouts.md`](../../layouts.md)). Three bits, seven kinds
-assigned, one spare, two claimants.
-
-**What would answer this node:** nothing here, until E1 says what an owner
-is. The sorting above is what this node contributes.
-
-### F1. Barrier forms  [read]
-
-LXR's field logging and SATB are already in this repository. Coalescing
-(sliding-view) reference counting, Levanoni and Petrank, is not, and is the
-shape A5 asks for: one log entry per object per epoch rather than one pair
-per write. Feeds A5.
-
-### F2. Cycle collection  [read]
-
-Arborescent GC (ISMM 2025) is the only published shape found that decomposes
-D4's global question into local ones — a spanning forest inside the program's
-own graph, checked locally on each edge removal. It costs about two words per
-object. Feeds D2 and D4, which have no other candidate.
-
-### F3. Partial tracing  [read, record only]
-
-**Concurrent Deferred Partial Tracing (PLDI 2026) is the published form of
-the capture-count regime** — "DRC counts heap edges and traces the roots; PT
-counts the roots and traces the heap" — and it carries the same blocker this
-design refused it for, destruction timing. Recorded so that the refusal is
-findable against the literature. Nothing in it is proposed for this design.
 
 ## Inherited record
 

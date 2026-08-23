@@ -181,7 +181,7 @@ the sentinel as a count is undecided
    Edmond on 2026-08-22: COW wins, and the intersection is empty rather
    than contradictory, the occupancy sentinel and the COW flag never
    sitting in one header
-   ([walk/questions.md](../walk/questions.md#g4-cow-and-unique-ownership-intersect--ruled-the-trigger-set-stays-open)).
+   ([walk/questions.md](../walk/questions.md#g4-cow-and-unique-ownership-intersect--ruled-for-cow-the-trigger-set-stays-open-and-is-restated-over-a7s-discriminant)).
    What the collision exposed and the ruling does not settle is the
    trigger set, which item 5 carries. The shape as it stood, kept because
    the argument below is what the ruling answers:
@@ -238,5 +238,5 @@ the sentinel as a count is undecided
    says no operation touches. Reading the trigger set as a closure over
    the lowering does not repair it, because the base case's predicate is
    the verdict the set computes
-   ([walk/questions.md](../walk/questions.md#g4-cow-and-unique-ownership-intersect--ruled-the-trigger-set-stays-open)).
+   ([walk/questions.md](../walk/questions.md#g4-cow-and-unique-ownership-intersect--ruled-for-cow-the-trigger-set-stays-open-and-is-restated-over-a7s-discriminant)).
    Question 16 of [gc-horizon.md](../gc-horizon.md#open-questions).

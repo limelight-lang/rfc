@@ -1254,7 +1254,7 @@ under [gc-horizon-cases/](gc-horizon-cases/) carry the failing shape.
     retains and horizon-reaching borrows, and a base-case retain
     against the occupancy sentinel fires none of them, while an owned
     temporary's drop-point release drives that sentinel to zero
-    ([walk/questions.md](walk/questions.md#g4-cow-and-unique-ownership-intersect--ruled-the-trigger-set-stays-open)).
+    ([walk/questions.md](walk/questions.md#g4-cow-and-unique-ownership-intersect--ruled-for-cow-the-trigger-set-stays-open-and-is-restated-over-a7s-discriminant)).
 11. **The trusted-effect boundary is not specified.** A stored callee
     summary is not the compiler's only source of effect knowledge:
     interprocedural body analysis, builtin and intrinsic models, runtime
@@ -1265,15 +1265,19 @@ under [gc-horizon-cases/](gc-horizon-cases/) carry the failing shape.
     the other direction. The design needs one source-independent rule for
     sufficiency, trust, composition, freshness and invalidation of call
     effects.
-12. **Selective collector-computed counts are a candidate, not a
-    composition rule yet.** Form C needs decisions for the canonical
+12. ~~**Selective collector-computed counts are a candidate, not a
+    composition rule yet.**~~ Closed 2026-08-22 by the refusal of the
+    capture-count regime, which is Form C's descendant
+    ([walk/questions.md](walk/questions.md), G9 and the README's "What
+    decided it"); the strikethrough was owed from that day and written
+    2026-08-23. What it needed and never got: decisions for the canonical
     local-root token and its multiplicity, the `ImmediateCounted` /
     `DeferredCounted` header discriminant, the cross-regime boundary
     count, actor-send integration, occupancy independent of RC, and the
     collector's exact validation under concurrent mutation. An MMTk
     binding may host the experiment, but neither stock MMTk nor its
-    pinning API discharges these obligations. Until all six are ruled,
-    every entity remains Form A.
+    pinning API discharges these obligations. Every entity remains
+    Form A.
 
 13. ~~**"Closest" names one end of a dominator chain and the document
     does not say which.**~~ Closed 2026-08-22: the latest. Read as the

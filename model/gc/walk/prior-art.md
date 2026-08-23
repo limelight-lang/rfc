@@ -47,8 +47,14 @@ re-deriving it.
 
 ## F1. Barrier forms cheaper than the counted pair
 
-The measured pair costs 4.1 ns warm and 88 ns at a million-entity working
-set (`ll-model` `dev/BENCHMARKS.md`, 2026-08-22). What a barrier must supply
+The measured pair costs 2.9 ns warm and 33 ns at a million-entity working set
+(`ll-model` `dev/BENCHMARKS.md`, 2026-08-22; the 4.1 and 88 ns of the first
+probe that day are retracted in the same file). Both figures are an
+overwriting store's two foreign headers, and A1's table splits them into
+about 2.9 ns of instructions and about 15 ns per cold header, so a barrier
+that touches one header is compared against about 16 ns rather than against
+33. Every figure in that split is derived from A1's two arms and none is
+measured. What a barrier must supply
 here is narrower than what the count supplies — the count also frees at zero,
 answers the uniqueness test and carries the arena's escape hold-count — so
 nothing below replaces it. They are read for the store path only, and only if
@@ -84,8 +90,10 @@ as it takes. Two published lines attack that.
   Descends from Even-Shiloach dynamic reachability. This is the one shape
   found that decomposes D4's global question into local ones, which is
   exactly what a bound needs. Against it, from the same survey: roughly two
-  words per object, which cancels the compacted 8-byte `RcHeader`;
-  multithreading unimplemented; synthetic evaluation. The survey's verdict is
+  words per object, a figure [`../gc-research.md`](../gc-research.md) marks as
+  read from a summary of the PDF rather than verified against the text, and
+  which if it holds cancels the compacted 8-byte `RcHeader`; multithreading
+  unimplemented; synthetic evaluation. The survey's verdict is
   "watch, do not adopt", and that verdict was written before D4 was a named
   node.
 - **Bacon and Rajan's trial deletion**

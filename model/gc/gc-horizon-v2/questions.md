@@ -388,7 +388,12 @@ quantity: the share of counted stores that miss cache. A counted store
 touches two foreign object headers at random addresses, and if those miss,
 the real price of counting is around 80 ns rather than 2.4 — an order above
 its instruction cost, and the threshold collapses to about one store per
-entity. Against a card or SATB barrier the cache argument does not help,
+entity. (The 80 ns was an estimate and it was measured on 2026-08-22: an
+overwriting store's pair costs 33 ns at a million entities, so the estimate
+is high by a factor of 2.4 and every crossover on it is undrawn —
+[`../walk/questions.md`](../walk/questions.md), A1. Left in place because
+this document is a record of the refused regime rather than a text in
+force.) Against a card or SATB barrier the cache argument does not help,
 because a barrier touches no foreign header either, and the threshold rises
 to 200-270 stores per entity — plus the barrier pays no pause.
 

@@ -1228,6 +1228,17 @@ that channel — it is open at the already-permitted boundaries identically — 
 changes what a stale foreign read meets, a hollow member rather than a
 populated one.
 
+**The per-cell figure below is borrowed from another operation, and the
+figures derived from it inherit that.** B4 measured the walk *reading* a
+cell (`collector::tests::what_an_array_row_costs_the_walk`, node B4). A
+severed cell is a store plus a push onto the displaced vector, and a
+released one an atomic decrement that may run a whole teardown — cheaper
+and dearer than the read respectively, and neither measured. So the
+millisecond figures and the slice size are the walk's price standing in for
+two prices nobody has taken, which is what makes the distribution of
+per-entity sever cost the blocking item rather than a nicety. D6 corrected
+the same borrowing once already.
+
 **Edmond's latency instinct holds, and it is a comparison rather than a
 preference.** One stretch does strictly less work — no cursor, no re-entry, no
 per-slice check — and closes the epoch soonest, which matters because an open
@@ -1266,20 +1277,100 @@ while the epoch is active, so **every thread's parked memory stays parked for
 the length of the pause**, not only this component's. The bounded mutator
 pause is bought with an unbounded epoch — which is the side of the ledger the
 philosophy of 2026-08-18 says to move work to, but it is owed a completion
-bound that `../pure-destructors.md` already calls part of the design rather
-than an option on it.
+bound. `../pure-destructors.md` calls that bound part of the design rather
+than an option on it, in a section its 2026-08-23 banner keeps as a record;
+the requirement survives the amendment, the alternative that section names
+being the same pipeline run entirely on the mutator, but no document in
+force states it and where it belongs is unplaced.
 
 **The guards stay outstanding across the pause, and the leak is wider than the
 members.** The concurrent walk cannot run — the epoch is held open — but the
 synchronous collection runs on this very thread by design, reads a guarded
 member as a root, and at the permitted boundary the members' fields are still
 populated, so it pins the whole transitive closure: members and external
-children alike. One thing nothing covers: `MID_DRAIN` must be cleared across
-the pause or the thread never attends another checkpoint, and a synchronous
-collection starting while a paused drain's guards are outstanding is not
-modelled. Sage's own argument that the two guard sets stay disjoint is an
-argument, so it does not close it; a kill variant beside the three `DW_*`
-configurations would.
+children alike.
+
+**The pin is arithmetic, and four clauses carry it.** A member holds a count
+no walked cell explains — the guard — and `exact_test(members, 1)` says so
+after the destructors have run, so `RC − IN = 1` and every member is a root.
+A child of an emptied cell has lost an in-edge while the displaced vector
+still holds the count, so its `RC − IN` rose by one against what the
+collector confirmed. A child of a cell not yet emptied is reachable through a
+live cell from a member, and the member is a root. And the mark walk
+propagates forward from what it marks (`ll-model` `src/walk.rs`,
+`garbage_components`), so a descendant of any of the three is marked with
+it — which is the clause the closure of the component rests on, and the one
+a first draft of this paragraph left out. Nothing of the paused component is
+therefore unmarked, whatever its shape, and the collection condemns nothing
+of it.
+
+**One instance is checked, 2026-08-23, and it is an instance rather than the
+warrant.** `../../../dev/tools/rc-walk/DrainPause.tla` carries the component
+`m1 ↔ m2`, a child a program root also holds, a child a second garbage cycle
+also holds, and four configurations. `DP_sound` exhausts clean at 45 states
+and `DP_refused_boundaries`, which also opens the two seams the verdict
+refuses, at 48 — the three extra being a displaced vector drained halfway,
+which no permitted boundary reaches. The clean runs are not vacuous: the
+collection condemns and frees the second cycle at the boundaries they reach,
+so what exhausts clean is a run in which the collector works and leaves the
+paused component alone. Two configurations violate, and each removes one of
+the four clauses. `DP_guard_dropped` holds no guard across the pause and
+loses the members themselves (`NoOwnedFreed`). `DP_double_drop` drops an
+external child's count as the cell is emptied and keeps the displaced entry
+too — the shape `ref_store` invites, being the composition of the publish
+and the drop — and the collection reaps that child while a drop is still
+owed on it (`NoOwedDrop`). The reachability and mark-propagation clauses
+have no kill configuration, so two of the four are load-bearing by check and
+two by argument.
+
+**What the instance abstracts, each bounding the result.** The prologue is
+one step, which is sound for a member's own count and silent about what a
+destructor does to a non-member; a destructor that calls the collection
+itself is an interleaving the model has no state for. The *mutator* runs no
+program code at the pause, so retains and releases on non-members are
+outside it — the collection does run user code there, and the model
+collapses that too: its guard, weak nulling, destructors, re-verify and
+acquittal are one atomic free, so nothing here says what a destructor run by
+the collection at a pause may do. The sever releases an in-component child
+as it empties the cell, where `sever_component` empties every member's cells
+first and releases afterwards; the modelled count is the lower of the two,
+so the clean runs cover both. There is one message, so the first verdict's
+between-messages boundary has no state. The population's external children
+are leaves, so "whatever its shape" leans on the fourth clause rather than
+on the runs. And there is no foreign handle, so the FFI channel named above
+is untouched.
+
+**Three things the review found against the design rather than against the
+model.** First, the ceiling as chosen bounds step 6 and leaves step 8
+unbounded: `drop_ref` runs once per external counted cell of the whole
+component and each call may run a full teardown (`ll-model` `src/walk.rs`,
+`drain_confirmed`), and for the commonest shape — an array of objects —
+every cell is external, so the whole release cost lands there and the split
+sever buys nothing. The warrant already licenses the repair, a boundary
+inside step 8: a child there has a parked count and no in-edge, which is the
+second clause, and `DP_refused_boundaries` checks exactly that seam. Second,
+`MID_DRAIN` held across the pause is not a policy today's code can express —
+the flag is set at pickup and cleared unconditionally on the way out of
+`checkpoint_attend` (`src/epoch.rs`), and a pause returns through that
+clear, so holding it means moving the clear to the drain's completion site.
+Third, a paused drain makes a dying collector spin: `impl Drop for Epoch`
+yields in a loop while `outstanding_verdicts()` is non-zero
+(`src/collector.rs`), a wait its own comment sizes as "until the owning
+thread's next checkpoint" and which a pause stretches to program time.
+
+**`MID_DRAIN` is what the check leaves open, and each arm now has its cost.**
+Held across the pause, the thread still acks the collector's handshake —
+`ack_handshake` runs before the test (`ll-model` `src/epoch.rs`,
+`checkpoint_attend`) — but picks up no message and flushes no parked memory
+until the drain ends. Cleared, a second drain may start inside the paused
+one, and it acquits on this one's residue: a parked count on a child of the
+paused component exceeds every in-degree that second component's exact test
+computes, so the component is dropped whole and waits an epoch. That is a
+completeness cost rather than a safety one, and it argues for holding.
+Beside it stands a cost nobody had priced on either arm: `OUTSTANDING_VERDICTS`
+stays non-zero for the whole pause, so every checkpoint the paused thread
+reaches takes the cold branch — with the flag cleared, one lock of the global
+verdict queue per checkpoint over program code.
 
 **Resumption needs a cursor and no re-verification.** The remainder is still
 garbage at the permitted boundary: the counted channel is closed by the exact
@@ -2190,17 +2281,21 @@ section indexes that document whole rather than a selection of it.
 
 ## H. Verification debt
 
-### H1. Both model-checker specifications model a protocol that is gone  [scoped by a run; the re-derivation is unstarted]
+### H1. Two of the three model-checker specifications model a protocol that is gone  [scoped by a run; the re-derivation is unstarted]
 
 `../../../dev/tools/rc-walk/README.md` and `../drain-window.md` record the
-drift: the TLA+ specifications were written against the pre-amendment
-protocol, while eager death is the premise of everything since.
+drift: `RcWalk.tla` and `DrainWindow.tla` were written against the
+pre-amendment protocol, while eager death is the premise of everything
+since. `DrainPause.tla` is the third and carries no drift — it was written
+on 2026-08-23 over the protocol in force, for node D3.
 
 **The battery is alive, and it agrees with itself.** Run whole on
 2026-08-22, OpenJDK 21 with the vendored TLC: 22 scenario configs against
 `RcWalk.tla` and 4 against `DrainWindow.tla`, **all 26 matching the
-expectation recorded for them** in
-[`../rc-walk-proof.md`](../rc-walk-proof.md) — every sound config
+expectation recorded for them** — the 22 in
+[`../rc-walk-proof.md`](../rc-walk-proof.md) and the four in
+[`../drain-window.md`](../drain-window.md), which is where the
+`DrainWindow` expectations live — every sound config
 exhausts clean, every kill config ends in its violated invariant, and the
 two liveness kills (`SC_dtor_reentrant`, `SC_nosever`) end in a violated
 temporal property. Scenario runs take seconds. So the instrument works
@@ -2222,13 +2317,28 @@ exact test, the sever and the deferred queue.
 rewrite: the condemned byte leaves the state vector; the death action
 loses its deferral arm and commits at zero; the acquittal action stops
 posting and becomes collector-private; the drain's entry condition
-becomes the corpse rule. Then the rulings of 2026-08-22 add what has no
-model at all — the collector as the freeing path, the hand-off and
-hand-back crossings of node D1, and the batch bound of D3.
+becomes the corpse rule. Then the rulings of 2026-08-22 added what had no
+model at all, and one day changed that list: ruling 5 of 2026-08-23 retired
+the collector as the freeing path and D1 closed the hand-off crossings with
+it, so what the re-derivation owes is the mutator's own drain. Of that,
+`DrainPause.tla` models one slice — what a synchronous collection may
+condemn while that drain is stopped at a boundary. The ceiling, the cursor
+and the resumption D3's ruling implies have no model still.
 
-**What it blocks:** any model-checker scenario written today inherits the
-drift, so the re-derivation is a precondition of that instrument rather than a
-task beside it. The consumer it used to name — the case book's third candidate
+**What it blocks:** any scenario written *against these two specs* inherits
+the drift, so the re-derivation is a precondition of reusing them rather than
+a task beside them. A scenario written from scratch over the protocol in
+force does not, which is what `DrainPause.tla` establishes by example — at
+the price of sharing nothing with the battery.
+
+**One number in that record no longer reproduces**, re-run 2026-08-23 on
+OpenJDK 21.0.11 with the same vendored TLC: five sound configs exhaust at a
+different distinct-state count than `../rc-walk-proof.md`'s battery table
+records — `SC_allocblack_sound` 897 against 692, `SC_selfloop_sound` 5 946
+against 5 852, `SC_borrow_sound` 818 against 817, `SC_f5_new` 1 354 against
+1 352, `SC_dc3_new` 2 539 against 1 603. Every pass-or-kill expectation still
+matches, so the drift this node names is untouched; what moved is either the
+spec or the table, and which one is unestablished. The consumer it used to name — the case book's third candidate
 oracle — became a record on 2026-08-23, so what the instrument serves now is
 this document's own questions.
 

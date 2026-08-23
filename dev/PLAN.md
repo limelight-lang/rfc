@@ -1,6 +1,6 @@
 # PLAN
 
-Updated: 2026-08-22 · Active: S5
+Updated: 2026-08-23 · Active: S5
 
 Destination, as amended 2026-08-23: the collector design of record is
 readable here as a question graph — thirty questions about the collector and
@@ -425,6 +425,68 @@ broken links.
         the four walked populations; E1's set still omitted the pooled
         large-entity blocks; and the benchmark's control sentence was false
         under every reading. Two rounds, then the device is dropped.
+      2026-08-23, node D3: what a synchronous collection may condemn
+        while a drain is paused now has a warrant and one checked
+        instance. The warrant is arithmetic and general — the guard, the
+        parked count and reachability from a guarded member each make one
+        class of the component a root. The instance is
+        `dev/tools/rc-walk/DrainPause.tla`, four configs:
+        `DP_sound` and `DP_refused_boundaries` exhaust clean at 39 states,
+        of which 19 have the collection already reaping a second garbage
+        cycle, so the clean runs are not vacuous; `DP_guard_dropped`
+        violates `NoOwnedFreed` and `DP_double_drop` violates
+        `NoOwedDrop`. Left open: whether `MID_DRAIN` may be cleared across
+        the pause. Both arms now carry a price — held, the thread picks up
+        no message for the length of the pause; cleared, a nested drain
+        acquits on the paused drain's parked counts.
+      Critic 2026-08-23 round 1 (over the first version of that model):
+        nine findings, all accepted. The invariant counted frees instead
+        of naming a hazard; condemnation omitted the corpse rule that
+        opens Phase 4, which made two of the three kills unreachable in
+        the code; the control was a zero-count orphan the collector
+        refuses to touch; the prologue's one-step ground was false, the
+        true one being that the guard precedes the only user code and
+        `exact_test(members, 1)` catches its effect on a member; the
+        permitted-boundary set silently included the sever-to-`unguard`
+        seam; the displaced vector is a vector and the release dropped one
+        count per child rather than one per emptied cell; and the prose
+        claimed for every component what one instance had shown. The model
+        was rewritten over all nine, and the consolidation pass's own
+        eight — H1's "both specifications", `MID_DRAIN` against
+        `ack_handshake`, and the citation defects — are folded in with
+        them.
+      Critic 2026-08-23 round 2 (over round 1's fixes): nine findings, all
+        accepted, and three of them are against the design rather than the
+        model. `DP_refused_boundaries` had reached the same 39 states as
+        the sound run, so its clean result was no evidence about the
+        refused seams — the release is now modelled entry by entry and the
+        config carries three states of its own. The chosen ceiling bounds
+        the sever and leaves `drop_ref` over the external children
+        unbounded, which for an array of objects is the whole cost.
+        `MID_DRAIN` held across the pause is not a policy today's code can
+        express, the flag being cleared on the way out of
+        `checkpoint_attend`. A paused drain makes `impl Drop for Epoch`
+        spin on `outstanding_verdicts`. Beside them: the warrant needed a
+        fourth clause, the mark walk's forward propagation, without which
+        it covers only members and direct children; the corpse rule was
+        modelled over the unmarked set where the code applies it per
+        component, and is inert in all four runs, which was measured by
+        removing it; the collection's own destructor and acquittal arms
+        are collapsed and that was unstated; and D3 spent B4's 43-47 ns —
+        the walk *reading* a cell — on the sever and the release, which is
+        the borrowing D6 corrected once already, so the millisecond
+        figures and the slice size are labelled rather than quoted.
+        Two rounds, then the device is dropped.
+      Consolidation 2026-08-23, two passes: eighteen findings between
+        them, all executed. H1 said "both specifications" where there are
+        three and listed a freeing path ruling 5 retired; it cited
+        `rc-walk-proof.md` for the four `DrainWindow` expectations, which
+        live in `drain-window.md`; five sound configs of the `SC_*`
+        battery no longer exhaust at the distinct-state counts that table
+        records, re-run and recorded in H1; `MID_DRAIN` held does not stop
+        the handshake ack, only the pickup and the flush; and D3 took the
+        epoch's completion bound from a section `pure-destructors.md` now
+        keeps as a record.
       handoff: state at the end of 2026-08-22. **Closed and holding:** A1,
         A5 (the width is not the lever; the prefetch is measured and
         unsettled), A7 (the discriminant is a bit of the retired condemned

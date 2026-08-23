@@ -1058,8 +1058,13 @@ ruling 5 over that, so nothing returns to the collector and nothing needs to.
 What survives in this node is the one channel's own specification, and the
 requirement list a review round left on the attempt of 2026-08-22. **One
 requirement was added the same day**: the specification carries the drain
-cursor D3 needs, an index into the member vector and a tag for which of the
-two permitted boundaries the pause stopped at.
+cursor D3 needs. After the second Sage pass licensed a split inside one
+entity, that cursor is five fields rather than two — the member vector, the
+member set, a tag saying the sever has begun, a member index paired with a
+position inside that member's storage, and the displaced-so-far vector.
+Whether a pickup during a pause may admit a second drain, and whether two
+paused severs may be outstanding at once, is this specification's business
+too.
 
 A specification was attempted on 2026-08-22 against
 the queue in `ll-model` `src/epoch.rs` and a review round broke it in five
@@ -1175,8 +1180,78 @@ was told, and every other boundary is covered by a test the mutator can re-run
 that equality is meaningless, the sever being what destroys the in-degrees it
 reads.
 
-**The consequence is blunt: the permitted boundaries sit outside the unit the
-ceiling exists to bound.** The unbounded per-entity cost is the sever, so at
+**Narrowed the same day by a second Sage pass, `Final`, and this one gives
+the ceiling its mechanism.** Edmond challenged the sever half — a very large
+array's cells nulled in batches, the mutator returning to the program between
+them — and the verdict licenses it. **The sever of one entity may be split at
+cell granularity**, after a cell's empty-and-record pair completes and before
+the next begins. That pair is the only granularity there is: pause between
+emptying the cell and recording the child and the child has neither a cell nor
+a count. Steps 6 to 8 still admit no boundary *between* them — `unguard` runs
+once, after the last cell of the last member, and the external children drop
+after it.
+
+The first ground of the earlier verdict falls, and Edmond's reading of it was
+right: hollow members forbid nothing, because the exact test excluded every
+outside counted reference and the weak nulling ran before any destructor, so
+program code cannot name a member across a pause whether its fields are
+populated or empty — which is what the post-prologue boundary already rests
+on. The second ground bars a *check* inside the sever, not a *pause*, and no
+check runs there in any case, the remainder needing no re-verification.
+
+**So D3's first candidate is chosen: the ceiling is checked inside the sever,
+at the cell granularity where B4 measured the cost uniform.** The second — 
+refusing to admit an unbounded unit at all, which is what ruling 8 does for
+destructors — stays available as policy and is Edmond's to adopt, no longer
+forced by structure.
+
+**Resumption carries five things**, none of them specified: the member vector,
+the member set, a tag saying the sever has begun, a cursor of member index
+plus position inside that member's storage, and the displaced-so-far vector.
+An in-component child may be released at any boundary — it stops at its guard
+— while an external child is held unreleased until after `unguard`, exactly as
+the unsplit drain holds it.
+
+**Resurrection is closed on every managed channel and open on one.** A
+destructor cannot run twice: `run_pre_destructor` refuses on `DESTRUCTOR_RAN`
+and sets it, in the `rc-walk` build through `mutator_update_flags` (`ll-model`
+`src/object.rs`). Another entity's destructor cannot name a member — the
+counted channel is closed by the exact test, the weak channel by the nulling,
+and minting a new weak reference needs a live reference to the target. The
+synchronous collection hands no reference to program code and cannot condemn
+what a pause holds: a guard is a count with no edge and a nulled cell is an
+edge removed with no count removed, so `RC − IN` only rises and
+`garbage_components` reads a rise as a root. **The open channel is FFI, node
+G14:** a wrapper the C side holds carries no counted in-edge, so a foreign
+handle to a member is invisible to every test above. The split does not open
+that channel — it is open at the already-permitted boundaries identically — it
+changes what a stale foreign read meets, a hollow member rather than a
+populated one.
+
+**Edmond's latency instinct holds, and it is a comparison rather than a
+preference.** One stretch does strictly less work — no cursor, no re-entry, no
+per-slice check — and closes the epoch soonest, which matters because an open
+epoch parks every thread's deferred memory. Splitting stretches the drain
+across program time, so that backlog grows process-wide for the whole stretch;
+what it buys is the mutator's worst-case pause, by construction. The deciding
+quantities are the entity's cell count times B4's 43-47 ns per cell against
+ruling 3's ceiling, and beside it the parked-memory accrual per unit of open
+epoch. A million-cell array is 43 to 47 ms in one stretch; at a pause budget
+near a millisecond that is roughly twenty thousand cells to a slice, and no
+argument recovers the one-stretch form there. Where no budget binds tighter
+than the entity's whole cost, one stretch wins every other column.
+
+**The mechanism does not exist in code.** `sever_counted_children` and
+`sever_entries` take a displaced vector and no cursor (`ll-model`
+`src/array/entity.rs`, `src/array/vector.rs`, `src/array/table.rs`), and
+`sever_cells` walks an entity's cells through a callback with no resumption
+point. What still decides whether the ceiling ever fires inside a sever in
+practice is the measurement already named: the distribution of per-entity
+sever cost.
+
+**What the first verdict established and this one leaves standing: the
+permitted boundaries between messages and after the prologue sit outside the
+unit the ceiling bounds.** The unbounded per-entity cost is the sever, so at
 the only moment the question can arise the mutator must finish. Leaving the
 remainder is sound and worth having, and it is not an answer to ruling 3. What
 would bound the unit is one of the two candidates below, and the measurement

@@ -1392,3 +1392,43 @@ one channel by which a paused-over member could still be reached (node G14);
 and the unmodelled case of a synchronous collection starting while a paused
 drain's guards are outstanding, which wants a kill variant rather than an
 argument.
+
+### 2026-08-23 — Sage: the sever of one entity may be split, at cell granularity  `Final`
+
+Edmond challenged the first verdict's sever half — why a very large array
+cannot have its cells nulled in batches with the mutator returning to the
+program between them — and sent the question to Sage on Fable. The verdict
+narrows the first rather than overturning it.
+
+- **A split inside one entity is permitted, between cells**, after a cell's
+  empty-and-record pair completes and before the next begins. That pair is
+  the only granularity: pause inside it and the child has neither a cell nor
+  a count. Steps 6 to 8 still admit no boundary between them.
+- **The first verdict's "hollow members" ground falls, and Edmond's reading
+  was right.** Hollowness forbids nothing, because the exact test excluded
+  every outside counted reference and the weak nulling ran before any
+  destructor, so program code cannot name a member across a pause however its
+  fields look — which is what the already-permitted boundary rests on. The
+  second ground bars a check inside the sever, not a pause, and no check runs
+  there anyway.
+- **This chooses D3's first candidate:** the ceiling is checked inside the
+  sever, at the cell granularity where B4 measured the cost uniform. Refusing
+  large entities altogether stays available as policy, Edmond's to adopt.
+- **Resurrection is closed on every managed channel** — a destructor cannot
+  run twice, another entity's destructor cannot name a member, and the
+  synchronous collection can only err toward live, a guard being a count with
+  no edge and a nulled cell an edge removed with no count removed. **Open on
+  FFI**, node G14, where a wrapper the C side holds carries no counted
+  in-edge; the split does not open that channel, it changes what a stale
+  foreign read meets.
+- **Edmond's latency instinct holds as a comparison.** One stretch does
+  strictly less work and closes the epoch soonest, and an open epoch parks
+  every thread's deferred memory. A million-cell array is 43-47 ms in one
+  stretch; at a pause budget near a millisecond that is roughly twenty
+  thousand cells to a slice.
+
+**Not closed:** the epoch's completion bound, which a split lengthens; the
+kill variant for a synchronous collection meeting outstanding guards, now
+with a second shape to model; G14; the cursor's home, waiting on D1. And the
+code — `sever_counted_children`, `sever_entries` and `sever_cells` carry no
+cursor today.

@@ -166,6 +166,10 @@ differential lowering runs on.
 - The terminology note of [README.md](README.md#terminology-three-meanings-of-borrow-in-this-repository),
   which separates `#[Borrow]` from the anchored borrow and from ffi.md's
   own "anchor".
+- [adversarial.md](adversarial.md), PH8, PH25 and PH26 — a trusted "pure"
+  call whose C side rewrites a managed slot, a handle that keeps an address
+  stable while emitting no count, and foreign mutation that happens at no
+  IR site.
 
 ## 9. Open items
 
@@ -201,3 +205,17 @@ differential lowering runs on.
    contributes no count and is trusted as a root by declaration. The
    repository states the root category and states no obligation on the
    foreign side that keeps it true.
+5. **A handle terminates a chain only if it emits or absorbs a count.**
+   Item 4 states that an FFI-handle root is checked by nothing; PH25 adds
+   that raw, weak, borrowed and pinned handles emit no count at all, so
+   such a chain gives the exact test no external reference to find, and
+   PH26 adds asynchronous foreign mutation, which occurs at no IR site a
+   static horizon could cover. Both are bounded by ruling 7 of 2026-08-22
+   — every reference the C side can name lies in a declared field of the
+   wrapper, and the C structure holds at most a raw address of what the
+   wrapper already holds
+   ([walk/questions.md](../walk/questions.md#rulings-of-2026-08-22)) —
+   which answers PH25 in its own direction and leaves the root list of
+   [gc-horizon.md](../gc-horizon.md#the-ownership-lattice) still naming a
+   handle. Folding the ruling into this file is step S5.7 of
+   `dev/PLAN.md`. Question 18.

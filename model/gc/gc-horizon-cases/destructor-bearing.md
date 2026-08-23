@@ -177,6 +177,9 @@ compiler.
 - [gc-horizon.md](../gc-horizon.md#the-record) — Critic round 3 raised the
   move of `__destruct` off the scope-end pin as a soundness finding, and
   round 4 closed the subclass hole in the same exclusion.
+- [adversarial.md](adversarial.md), PH11 and PH17 — a subclass loaded
+  after the caller shipped, and a class whose destruction is observable
+  without a `__destruct`.
 
 ## 9. Open items
 
@@ -210,3 +213,11 @@ compiler.
    the hypothesis on record is that this obligation prunes harder than any
    other rule ([pure-destructors.md](../pure-destructors.md#the-purity-ladder)).
    Every class it prunes lands on this exclusion.
+5. **The predicate reads `__destruct` and no other finalization.** P0 is
+   "no `__destruct` in the hierarchy"
+   ([pure-destructors.md](../pure-destructors.md#the-purity-ladder)), and
+   section 2's table reads P0 as destructor-free. A suspended generator
+   satisfies P0, and destroying it unwinds its segment separately so its
+   pending `finally` blocks run
+   ([exceptions.md](../../../runtime/exceptions.md#inlining-and-generators)).
+   Question 15.

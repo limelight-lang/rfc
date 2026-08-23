@@ -241,6 +241,11 @@ collector this design does not target
   is [caches.md](../../caches.md#the-sites), and the Borrowed state this
   design's borrow specialises is
   [static-lifetimes.md](../../memory/static-lifetimes.md#ownership-states-and-moves).
+- [adversarial.md](adversarial.md), PH7, PH11, PH12, PH18 and PH21 — the
+  five attacks on this case's rows: an alias the summary's field-level
+  effects miss, a subclass loaded after the caller shipped, a stale
+  summary whose own version is unchanged, a callee that runs with no call
+  in the source, and the convention retain deleted after inlining.
 
 ## 9. Open items
 
@@ -270,3 +275,19 @@ collector this design does not target
    channel, bracketed under two receiver resolutions, and only the
    under-approximation carries kill authority
    ([gc-horizon.md](../gc-horizon.md#economics)).
+6. **Every implicit invoke owes its effects to the final IR.** Property
+   hooks, magic access, casts, iteration hooks, autoload, error handlers
+   and stream wrappers run user code with no call in the source, so the
+   obligation runs the other way from the horizon list: a mechanism that
+   reaches user code must appear in the final effectful IR, or the pass
+   that enumerates horizons will not see it. A later lowering pass can
+   also turn a certified region into one that contains an invoke.
+   Question 17.
+7. **The convention retain can be deleted after inlining.** The by-value
+   parameter's counted reference is section 2's base case, and out of
+   line it may end another borrow's chain. The lowering already ships the
+   pass that removes it: `ll_retain` is annotated for reordering and
+   paired retain/release within a function cancel out
+   ([lowering.md](../../lowering.md#optimization-summary)), so after
+   inlining the dependent chain ends at an uncounted SSA copy. Question
+   16, whose other case is [object.md](object.md).

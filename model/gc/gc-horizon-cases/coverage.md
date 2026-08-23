@@ -5,14 +5,16 @@
 Where every case already written in this repository lands in the sixteen
 GC-horizon cases, and which ones land nowhere with the reason. The
 population is bounded and enumerable: the collector family's named
-identifiers, the critical review's findings, and the PHP-fenced worked
-examples of the five documents that state ownership, borrow, death, weak
-and COW semantics. Everything outside that population is excluded by
-class, with one reason per class, rather than row by row.
+identifiers, the critical review's findings, Edmond's thirty-five
+adversarial cases, and the PHP-fenced worked examples of the five
+documents that state ownership, borrow, death, weak and COW semantics.
+Everything outside that population is excluded by class, with one reason
+per class, rather than row by row.
 
 A row saying "no case" is a result, not a gap in this table: it records
-that the shape belongs to the collector's own correctness and is
-untouched by the lattice.
+that no entity kind and no proof-ending event owns the shape, because it
+belongs to the collector's own correctness, to the placement rule, to the
+verification instruments or to the economics instead.
 
 ## Danger cases
 
@@ -82,6 +84,149 @@ production driver, the free path's allocation, per-epoch metadata,
 `debug_assert` in soundness transitions, the unimplemented acyclic
 optimization, repeated acquittal under mutation, and the single-mutator
 protocol — land in no case.
+
+## Edmond's adversarial cases
+
+Source: [adversarial.md](adversarial.md), PH1 to PH35, written 2026-08-20
+against revision 5 of [gc-horizon.md](../gc-horizon.md). Every number lands
+in the case that owns its shape, or in a row saying "no case" with the
+reason; eight land in no case. Twenty of the thirty-five named a hole the
+algorithm did not carry, and they opened eight questions, 14 to 21, of
+[gc-horizon.md](../gc-horizon.md#open-questions).
+
+| Case | Lands in | Why |
+|---|---|---|
+| PH1 — destructor-free is not death-unobservable | [weakref.md](weakref.md) | the target is destructor-free, so the drop-point policy drops it at last use ([static-lifetimes.md](../../memory/static-lifetimes.md#drop-point-policy)); a weak subscriber makes that death observable, which the policy's premise does not admit — question 14 |
+| PH2 — WeakMap observes it without `get()` | [weakref.md](weakref.md) | PH1's independent witness, through a weak-key table instead of a cell; the table's own mechanism is node D6 of [walk/questions.md](../walk/questions.md#d6-weakmap-ephemerons--open-the-cost-was-overstated-and-a-cheaper-shape-exists) |
+| PH3 — the differential oracle declares the break legal | no case | an obligation on the differential lowering, whose oracle is the destructor sequence and the death set per batch ([gc-horizon.md](../gc-horizon.md#verification-artifacts-a-precondition-of-implementation)); weak-cell transitions are in neither — question 14 |
+| PH4 — an elided pair was another chain's root | [object.md](object.md), [unique-entity.md](unique-entity.md), [arena.md](arena.md) | the chain ends in an owned local, and PH4 asks what "owned" names when no live count was emitted; the always-provable route is bounded away from PH4's own snippet, the COW base-case retain against a standing sentinel is a second such local, and a promotion retain in a counted-out category is a third — question 16, and question 8 for the third |
+| PH5 — arena reset removes a root category | [arena.md](arena.md) | the reset is the case's own second uncovered event, recorded there under question 8 |
+| PH6 — suspension carries an arena borrow across a reset | [suspension.md](suspension.md), [arena.md](arena.md) | the hole report's item 3, and the second half of question 2 |
+| PH7 — a summary misses a transitive alias | [call.md](call.md), [store.md](store.md) | a summary claims "severs no path", and the may-alias rule is what it claims against |
+| PH8 — FFI mutates a managed path behind a pure call | [ffi.md](ffi.md) | a constraint on question 11: an FFI summary lifts a horizon only if it forbids managed-slot mutation, pointer retention, callbacks and transfer. Ruling 7 of 2026-08-22 bounds what the C side can reach ([walk/questions.md](../walk/questions.md#rulings-of-2026-08-22)), and folding it into ffi.md is step S5.7 |
+| PH9 — promotion must dominate the throwing edge | [unwind.md](unwind.md) | ruled 2026-08-22, and the ruling is PH9's reading: the raise sites are in the placement quantifier ([gc-horizon.md](../gc-horizon.md#at-the-horizon-promotion)) |
+| PH10 — closure capture publishes a borrow | [closure.md](closure.md), [reference-box.md](reference-box.md) | the hole report's item 6; by-reference capture is the escape kind reference-box.md owns |
+| PH11 — late class loading widens a closed set | [destructor-bearing.md](destructor-bearing.md), [call.md](call.md) | the exclusion is computed by a closed-world closure and loading is open-world — question 19 |
+| PH12 — a dependency's summary changed | [call.md](call.md) | item 5's versioning rule, carried by question 1; PH12 states that summary identity must include the transitive dependency digest |
+| PH13 — checkpoint purity is data-dependent | [checkpoint.md](checkpoint.md) | item 1: the discharge has no compile-time form, and PH13 is why a runtime observation cannot supply one |
+| PH14 — an alias born after analysis | [store.md](store.md) | reflection and `&` are horizon kinds already; what is left is the may-alias rule's conservative default, which this case states |
+| PH15 — a phi merges equal pointers with different proofs | [object.md](object.md) | a phi's verdict is a lattice verdict, and this is the lattice case; the rule itself is in the promotion section, which carries PH15 by number: a phi falls to owned unless one chain dominates every incoming edge |
+| PH16 — the elision removes the checkpoint fabric | [checkpoint.md](checkpoint.md), [release.md](release.md) | release.md item 3 owns the thinned ack rate and names the compensating-poll rule as owed; PH16 states what that rule must bound, including the all-elided class |
+| PH17 — internal finalization without `__destruct` | [destructor-bearing.md](destructor-bearing.md), [suspension.md](suspension.md) | the ladder's P0 row reads "no `__destruct` in the hierarchy" ([pure-destructors.md](../pure-destructors.md#the-purity-ladder)), and a suspended generator's teardown runs `finally` under it — question 15 |
+| PH18 — implicit invokes are horizons too | [call.md](call.md) | a hook, a cast, autoload or an error handler runs user code with no call in the source, so every one of them owes its effects in the final IR before the horizon list can be read off it — question 17 |
+| PH19 — exception diagnostics publish borrowed values | [unwind.md](unwind.md) | the default trace mode publishes nothing — scalars by value, truncated strings, the class name for an object ([exceptions.md](../../../runtime/exceptions.md#arguments-must-not-hold-references)) — so what PH19 reaches is the heavier array-form `getTrace()` mode, whose capture is unspecified |
+| PH20 — phi liveness belongs to incoming edges | [release.md](release.md) | borrow-is-use is this case's rule; the promotion section carries PH20's edge form by number |
+| PH21 — inlining deletes the convention retain | [call.md](call.md) | the by-value parameter's counted reference is this case's base case, and ARC cleanup after inlining can delete it — question 16 |
+| PH22 — shared landing pads need edge-sensitive ownership | [unwind.md](unwind.md) | pad state is per exceptional edge and per SSA generation ([gc-horizon.md](../gc-horizon.md#at-the-horizon-promotion)) |
+| PH23 — a late lowering pass introduces a horizon | no case | phase ordering, which belongs to no entity kind and no event — question 17 |
+| PH24 — external roots are revocable capabilities | [arena.md](arena.md) | the non-frame roots are this case's subject, and revoking a static or a registry entry is in no horizon kind — question 18 |
+| PH25 — not every FFI handle is a counted root | [ffi.md](ffi.md) | item 4 records that an FFI-handle root is checked by nothing; the handle taxonomy PH25 supplies — raw, weak, borrowed, pinned — this repository does not define, and ruling 7 of 2026-08-22 answers it in PH25's own direction — question 18 |
+| PH26 — foreign mutation between IR events | [ffi.md](ffi.md) | an asynchronous callback mutates at no IR site, so no static horizon covers it; how much it can reach is bounded by ruling 7 — question 18 |
+| PH27 — root and summary identities suffer ABA | no case | certificate content: root generations and a loader-incarnation epoch — question 18 |
+| PH28 — shadow count cannot prove `stable_path` | [store.md](store.md) | this case's oracle rests on the shadow-count lowering as the only instrument that sees a may-alias error, and PH28 is the shape it does not see — question 20 |
+| PH29 — one-sided shadow zero misses duplicate promotion | no case | the same instrument in the other direction: two retains and one release never cross zero — question 20 |
+| PH30 — the certificate and the checker share an omission | no case | an obligation on the certificate gate: the checker reconstructs horizons from final IR rather than reading the producer's list — question 20 |
+| PH31 — a cold horizon makes promotion hot | no case | the census channel "horizon crossings per borrow lifetime" prices the wrong quantity; the ratio that prices cost is promotions per acquisition ([gc-horizon.md](../gc-horizon.md#economics)) — question 21 |
+| PH32 — proof metadata can grow quadratically | no case | compile time and code size are named as costs and carry no bound; PH32 names the sweep and the fallback-to-owned cap that would bound them — question 21 |
+| PH33 — finite checkpoint thinning is max-straggler dominated | [release.md](release.md) | the finite form of PH16; its several-mutator half waits on what an owner is, node E1 of [walk/questions.md](../walk/questions.md#e1-actors-and-the-epoch-protocol--open-both-halves-rest-on-the-same-scaffolding) |
+| PH34 — pair elision batches reclamation into a spike | [release.md](release.md) | eager death and the cascade are this case's subject, and the economics carries no tail budget |
+| PH35 — the release counter needs a conservation law | no case | an obligation on the release-build elision counter ([gc-horizon.md](../gc-horizon.md#economics)): executed acquisitions differ from executed drops, and the document does not say which end the counter sits at — question 21, which also records that the one measured pair is a different pair |
+
+**Two cases receive no PH number**: [array.md](array.md) and
+[string.md](string.md). The battery attacks no COW-by-kind exclusion at
+all, which is what both files exist for. It does attack the sentinel,
+through PH4's demand that "owned" name an emitted count, so
+[unique-entity.md](unique-entity.md) carries that number rather than
+none.
+
+### What the mapping found
+
+Nine disagreements between a PH case and a document in force. Each is
+recorded here and fixed nowhere, which is what the step asked for.
+
+1. **PH1 against the drop-point policy.** The policy splits by
+   observability and defines observability as a `__destruct` or a
+   finalizable resource
+   ([static-lifetimes.md](../../memory/static-lifetimes.md#drop-point-policy)).
+   A weak subscriber observes the death of a class with neither, so the
+   "unobservable" premise is false for every weak-subscribed target.
+   Question 14.
+2. **PH17 against the purity ladder's P0 row.** P0 is "no `__destruct` in
+   the hierarchy" ([pure-destructors.md](../pure-destructors.md#the-purity-ladder)),
+   and [destructor-bearing.md](destructor-bearing.md) reads P0 as
+   destructor-free for the exclusion. A suspended generator is P0 by that
+   reading and still runs pending `finally` blocks at teardown. Question 15.
+3. **PH28 against store.md's oracle.** [store.md](store.md) section 7 calls
+   the shadow-count lowering the only instrument that sees a may-alias
+   error. PH28's shape keeps the shadow word non-zero through an unrelated
+   owner, so a false path proof produces no divergence at all. Question 20.
+4. **PH25 against the root list.** The root list does not omit the
+   requirement, it asserts the opposite: every root category is counted,
+   "the store barrier retains on any store regardless of the holder's
+   category" ([rc-walk.md](../rc-walk.md#the-central-identity-roots-are-derived-not-enumerated)),
+   and the exact test's derivation rests on that assertion.
+   [ffi.md](ffi.md) and [arena.md](arena.md) repeat the list, and so does
+   the lattice's own anchor definition. PH25 says the assertion is false
+   for a handle that keeps an address stable while emitting no count.
+   Ruling 7 of 2026-08-22 answers in PH25's direction for the wrapper
+   ([walk/questions.md](../walk/questions.md#rulings-of-2026-08-22)), and
+   the root list still names a handle. Question 18.
+5. **PH31 against the census channel list.** The economics owes a channel
+   for horizon crossings per borrow lifetime
+   ([gc-horizon.md](../gc-horizon.md#economics)). A single promotion
+   hoisted to dominate a cold horizon executes on every call, so crossings
+   under-report the emitted pairs by the branch probability.
+6. **PH4 against the always-provable elision licence, and the bound
+   that keeps them apart.** The granularity ruling makes per-site elision
+   lawful in both regimes and the chain rule lets a chain end in an owned
+   local, so the two applied to one local produce a chain ending in an
+   uncounted root ([gc-horizon.md](../gc-horizon.md#the-ownership-lattice)).
+   The round-4 bound stops PH4's own snippet from reaching it: a rule
+   enters the always-provable set only where the enclosed region holds no
+   call, no store, no release and no checkpoint
+   ([gc-horizon.md](../gc-horizon.md#the-hybrid-counted-class-horizon-class)),
+   and PH4's borrow is passed to a call. What survives is PH21, which
+   deletes the same count by inlining and is bound by no region rule, and
+   one unstated thing: whether the convention pairs are in the set at
+   all. Question 16.
+
+7. **PH6 against arena.md's central finding.** PH6 has every suspension
+   promote its live anchored borrows before yielding, and that remedy is
+   the promotion retain alone. [arena.md](arena.md) states what the
+   retain does on an arena referent: retain and release return early on
+   the category test, so "this borrow costs one call pair in both worlds
+   and is protected in neither". PH5 is not in this finding — its rule
+   carries a second disjunct, the reset's own promotion fixpoint
+   retaining the whole path, which is the escapee hold-count and the
+   escaped-subgraph trace of
+   [arena-reset.md](../../memory/arena-reset.md#step-1--validate-trace-destruct-a-fixpoint-loop),
+   and that mechanism works. PH5's primary rule — the reset is a horizon
+   no ordinary call summary may lift — stands whatever the retain costs,
+   and it is what question 8 is missing.
+8. **PH16 against the ack budget's classification.** The economics puts
+   the thinned scope-exit ack among the three costs that sit outside the
+   formula, and [release.md](release.md) item 3 calls the effect "named
+   and unpriced". PH16 says the classification is the error: a loop whose
+   whole release run is elided leaves the epoch no ack site, so what
+   changed is the collector's progress premise rather than a cost term.
+9. **PH34 against the scheme's cost bound.** The promotion section
+   states that per borrow the scheme never costs more than the current
+   code and that overpayment "loses savings, never adds cost"
+   ([gc-horizon.md](../gc-horizon.md#at-the-horizon-promotion)). PH34
+   measures a currency that sentence does not cover: eliding a
+   destructor-free subtree's pairs moves its releases into one sever or
+   one checkpoint, so the instruction count falls while one request pays
+   the whole cascade.
+
+Two further disagreements are not this step's to record, both of them
+between a case file and a ruling of 2026-08-22. Open item 1 of
+[unwind.md](unwind.md) still offers the raise-site quantifier as an open
+reading, which question 9 settled. Open item 1 of
+[weakref.md](weakref.md) still poses question 7 as two open halves, while
+ruling 11 supplied the first and refused the second for forbidding more
+than the hazard; section 4 of the same file argues the refused
+precondition. Folding the rulings back into the sixteen cases is step
+S5.7 of `dev/PLAN.md`, which names the weak-reference case by item.
 
 ## Worked examples in the entity and memory RFCs
 

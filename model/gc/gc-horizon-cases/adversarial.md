@@ -7,9 +7,12 @@
 > and more adversarial reading, and the disagreement is a finding rather
 > than a typo.
 >
-> **Owed:** the mapping from PH1-PH35 into the sixteen cases and into
-> [coverage.md](coverage.md). It is step S2.5 of `dev/PLAN.md` and has
-> not run, so no case file yet cites a PH number.
+> **The mapping into the sixteen cases is
+> [coverage.md](coverage.md)**, section "Edmond's adversarial cases",
+> made 2026-08-23 as step S2.5 of `dev/PLAN.md`. Every number lands in
+> the case that owns its shape or in a row saying why it lands in none,
+> and twenty of the shapes opened eight new questions, 14 to 21, of
+> [gc-horizon.md](../gc-horizon.md#open-questions).
 
 
 **Status:** adversarial review, 2026-08-20. This file targets revision 5 of

@@ -172,6 +172,9 @@ the compiler the shadow lowering needs.
 - The terminology note of [README.md](README.md#terminology-three-meanings-of-borrow-in-this-repository)
   separates this case's edge from the `#[Borrow]` attribute of
   [ffi.md](ffi.md).
+- [adversarial.md](adversarial.md), PH1 and PH2 — the same referent
+  observed through a cell and through a `WeakMap` key, with the death
+  moved by the drop-point policy rather than by an elided retain.
 
 ## 9. Open items
 
@@ -201,3 +204,15 @@ the compiler the shadow lowering needs.
    ([weak-references.md](../../weak-references.md#death-notification)), so
    no analysis may read a non-null `get()` as a liveness proof for a
    third entity.
+5. **A weak-subscribed target's lifetime is decided by the drop-point
+   policy, not by this design.** The policy drops a destructor-free class
+   at last use because the timing is unobservable
+   ([static-lifetimes.md](../../memory/static-lifetimes.md#drop-point-policy)),
+   and a cell or a `WeakMap` key observes exactly that death. Question 14
+   of [gc-horizon.md](../gc-horizon.md#open-questions) carries it. What
+   this design does add lands on the same blind spot: the differential
+   oracle licenses a destructor-free target's free to move from its own
+   release into the parent's cascade, and borrow-is-use moves deaths on
+   the chain later, while the oracle compares destructor sequences and
+   death sets per batch — a weak cell reports both moves and the oracle
+   reports neither.

@@ -177,6 +177,9 @@ instruments do not exist.
   alive with a lifetime independent of the catching frame.
 - [closure.md](closure.md) is the other hole report, for the same reason
   in a different structure: the layout is unspecified.
+- [adversarial.md](adversarial.md), PH6 and PH17 — a borrow suspended
+  across an arena reset, and the suspended generator whose teardown runs
+  `finally` with no userland destructor.
 
 ## 9. Open items
 
@@ -207,3 +210,28 @@ instruments do not exist.
    so the boundary ends every live range rather than crossing one — for
    the actor's own frames. The parked caller's frame is the exception,
    and it is the same hole as item 3.
+5. **A generator's destruction is observable without a destructor.** A
+   suspended generator may be destroyed first, and its segment unwinds
+   separately so its `finally` blocks run
+   ([exceptions.md](../../../runtime/exceptions.md#inlining-and-generators)),
+   while the class satisfies P0 — no `__destruct` in the hierarchy. The
+   exclusion that keeps a destructor-bearing target owned therefore does
+   not fire for it. Question 15, whose other case is
+   [destructor-bearing.md](destructor-bearing.md). The item needs no
+   frame model: P0 classifies the generator and the teardown behaviour is
+   already written, in the section exceptions.md calls its own main open
+   item.
+6. **Section 2's escape hatch does not rest on the count it names.** The
+   conditional consequence says a borrow that survives a suspension is
+   counted from the moment it is stored. Where the frame object and the
+   referent are in one arena nothing is counted at all — the categories
+   match and the barrier does no extra work ([arena.md](arena.md),
+   section 2) — and what protects the borrow there is that the two die at
+   the same reset
+   ([arenas.md](../../memory/arenas.md#cross-arena-references)), or, if
+   the frame survives, that the reset's trace promotes the escaped
+   subgraph its field belongs to
+   ([arena-reset.md](../../memory/arena-reset.md#step-1--validate-trace-destruct-a-fixpoint-loop)).
+   The hatch holds and its stated reason does not cover the arena case.
+   PH6's attack lands on the separate-stack branch instead, which is item
+   3, and on the residency item 3 says is unspecified.

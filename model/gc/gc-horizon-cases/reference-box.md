@@ -226,6 +226,9 @@ against the existing ReferenceBox and array code.
   further answers.
 - [object.md](object.md), whose `$t` is the same borrow with no escape
   in its live range.
+- [adversarial.md](adversarial.md), PH10 — capture by reference, which
+  adds a writable alias to the local and is the escape kind this case
+  carries.
 
 ## 9. Open items
 

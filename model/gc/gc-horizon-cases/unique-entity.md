@@ -154,6 +154,9 @@ the sentinel as a count is undecided
 - `model/dev/design/owned-slots-and-the-walk.md` in the code repository —
   the cross-design constraint in its own words, and the ack-budget
   accounting the fast class thins.
+- [adversarial.md](adversarial.md), PH4 — "owned" must name an emitted
+  count rather than a label, which is what a retain against the sentinel
+  fails to be.
 
 ## 9. Open items
 
@@ -198,3 +201,15 @@ the sentinel as a count is undecided
    path-severing condition. The ruling is
    [gc-horizon.md](../gc-horizon.md#open-questions) question 5, and its
    working default is one analysis with two invalidation sets.
+5. **The COW base-case retain is emitted against a standing sentinel.**
+   PH4 requires that "owned" name an actually emitted live count rather
+   than a label, because another borrow's chain may end in an owned local
+   ([gc-horizon.md](../gc-horizon.md#the-ownership-lattice)). The
+   convention retains are not that case: the prover counts every one of
+   them as a second counted reference, so an entity that is ever returned
+   or passed is by proof never unique and the count word holds an
+   ordinary count. Item 1's third branch is that case. A COW base-case
+   retain fires no trigger of the demotion fixpoint, and it is written
+   into a count word that still holds the sentinel — an owned local with
+   no live count behind it, at a site nothing in the fixpoint reaches.
+   Question 16 of [gc-horizon.md](../gc-horizon.md#open-questions).

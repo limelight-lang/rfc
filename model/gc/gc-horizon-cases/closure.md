@@ -155,6 +155,9 @@ the one point where this design's uncounted region ends by construction.
   as an owed document.
 - [suspension.md](suspension.md) — the other hole report of this book, on
   the same terms.
+- [adversarial.md](adversarial.md), PH10 — the captured borrow published
+  through a return, a registry, a property or a backtrace, which is the
+  shape the missing specification has to answer.
 
 ## 9. Open items
 
@@ -186,3 +189,13 @@ before the lattice can be evaluated on a closure at all.
    ([pure-destructors.md](../pure-destructors.md#purity-is-transitive));
    a closure with captured counted slots has a death cascade and therefore
    owes one.
+6. **The by-value half of PH10 is answered by section 1's one fact; the
+   rest is not.** A capture is a store and the barrier retains, so a
+   closure published through a return, a registry, a property or a
+   backtrace carries a counted reference whatever its escape analysis
+   concluded. One shape stays open and needs the missing
+   specification: a closure the compiler does not allocate at all, where
+   there is no store and therefore no retain. The by-reference half needs
+   no layout — `use (&$x)` is a by-reference escape, a horizon kind with
+   no lift ([gc-horizon.md](../gc-horizon.md#the-horizon-list)), and it
+   is what [reference-box.md](reference-box.md) carries. PH10.

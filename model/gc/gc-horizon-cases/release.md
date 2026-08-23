@@ -194,6 +194,10 @@ existing `ll-model` crate. The third needs the compiler Phase D supplies.
   [pure-destructors.md](../pure-destructors.md#purity-is-transitive); the
   mutator's total cost, against which the ack budget is read, is
   [rc-walk.md](../rc-walk.md#what-the-mutator-pays-in-total).
+- [adversarial.md](adversarial.md), PH20, PH33 and PH34 — borrow-is-use
+  read on a phi edge, the thinned ack rate measured across mutators rather
+  than in one infinite loop, and the cascade this case's eager death
+  batches into one release site.
 
 ## 9. Open items
 
@@ -216,8 +220,23 @@ existing `ll-model` crate. The third needs the compiler Phase D supplies.
    The horizon list has no row for it, and the same open question 8
    records this.
 3. **The compensating-poll rule that would answer the thinned ack rate
-   does not exist here.** It is open question 3 of
+   does not exist here.** PH16 and PH33 of [adversarial.md](adversarial.md)
+   state what it must bound — a finite instruction, time or allocation
+   bound on the ack and the pickup, the all-elided class included, and the
+   epoch tail measured across mutators rather than in one loop. It is open question 3 of
    `model/dev/design/owned-slots-and-the-walk.md`, cited by
    [gc-horizon.md](../gc-horizon.md#economics) as a shared dependency, so
    the epoch-progress effect of eliding whole release runs is named and
    unpriced.
+4. **Eliding the pairs of a destructor-free subtree moves its releases
+   into one site.** The cascade this case describes runs at the owner's
+   sever or at a checkpoint instead of being distributed over the
+   children's own drop points, so the instruction count falls while one
+   request performs the whole cascade. The economics carries a unit pair
+   cost and no tail budget
+   ([gc-horizon.md](../gc-horizon.md#economics)); PH34 names the sweep
+   that would price it. The sentence the sweep would test is the
+   promotion section's cost bound — per borrow the scheme never costs
+   more than today's code, and overpayment "loses savings, never adds
+   cost" ([gc-horizon.md](../gc-horizon.md#at-the-horizon-promotion)) —
+   which is stated in pairs and says nothing about where they run.

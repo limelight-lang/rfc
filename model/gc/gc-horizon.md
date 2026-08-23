@@ -1252,6 +1252,205 @@ under [gc-horizon-cases/](gc-horizon-cases/) carry the failing shape.
     and the strategies that never stop threads compile the poll away
     ([strategies.md](strategies.md)).
 
+Questions 14 to 21 were opened by the mapping of Edmond's adversarial
+cases into the case book, 2026-08-23 (step S2.5 of `dev/PLAN.md`). Twenty
+of the thirty-five shapes named a hole this document did not carry. The
+mapping is [gc-horizon-cases/coverage.md](gc-horizon-cases/coverage.md)
+and the shapes are
+[gc-horizon-cases/adversarial.md](gc-horizon-cases/adversarial.md).
+
+14. **Weak observation is outside the drop-point policy's premise and
+    outside the differential oracle.** Two defects, and only the second
+    belongs to this design. The policy drops a class with no `__destruct`
+    and no finalizable resource at last use, on the ground that the timing
+    is unobservable
+    ([static-lifetimes.md](../memory/static-lifetimes.md#drop-point-policy)),
+    and a `WeakReference` cell or a `WeakMap` key observes that death; the
+    premise is false for any target with a subscriber, in both lowerings
+    alike, which is why PH1 calls itself a prerequisite rather than a
+    delta. What this design adds is invisible to its own instrument. The
+    differential oracle licenses a destructor-free target's free to move
+    from its own release into the parent's cascade
+    ([verification artifacts](#verification-artifacts-a-precondition-of-implementation)),
+    a weak cell is nulled at the referent's death, and the oracle compares
+    destructor sequences and death sets per batch and nothing else — so
+    the relocation is observable to the program and invisible to the
+    check. Borrow-is-use moves deaths on the anchor chain in the other
+    direction, later than the classic build. What would answer it: the
+    oracle gains weak-cell transitions, `WeakMap` removals and the values
+    weak loads return, or weak-subscribed targets are excluded from both
+    moves; and the policy states what unobservable means once a subscriber
+    exists. PH1 and PH2, whose case is
+    [gc-horizon-cases/weakref.md](gc-horizon-cases/weakref.md); PH3 is an
+    obligation on the oracle and lands in no case.
+15. **The destructor-free predicate reads `__destruct` and no other
+    finalization.** P0 is "no `__destruct` in the hierarchy"
+    ([pure-destructors.md](pure-destructors.md#the-purity-ladder)), and the
+    owned-from-birth exclusion reads P0 as destructor-free. A suspended
+    generator satisfies P0, and destroying it unwinds its segment
+    separately so its `finally` blocks run
+    ([exceptions.md](../../runtime/exceptions.md#inlining-and-generators)).
+    The repository holds a second instance already:
+    [gc-horizon-cases/weakref.md](gc-horizon-cases/weakref.md) item 2 asks
+    whether the kind-5 teardown arm, which clears a cell's weak-table
+    registration, leaves that kind transitively destructor-free. What is
+    missing is the predicate computed over observable finalization rather
+    than over `__destruct` alone, with the engine-side handlers that count
+    named. PH17; the cases are
+    [gc-horizon-cases/destructor-bearing.md](gc-horizon-cases/destructor-bearing.md)
+    and [gc-horizon-cases/suspension.md](gc-horizon-cases/suspension.md).
+16. **"Owned" must name an emitted count rather than a classification.**
+    Inlining reaches the defect through a transformation the lowering
+    already ships: `ll_retain` is annotated for reordering and paired
+    retain/release within a function cancel out
+    ([lowering.md](../lowering.md#optimization-summary)), so after
+    inlining the callee's by-value parameter pair is deleted while the
+    borrow metadata still ends at that now-uncounted SSA copy, and the chain then ends in an uncounted root, which is DC5's
+    shape
+    ([rc-walk-danger-cases.md](rc-walk-danger-cases.md#dc5--uncounted-borrow)).
+    The elision route is narrower than PH4 states, and its width is
+    undecided. An always-provable rule may take a counted class's local
+    pair at any site ([the hybrid](#the-hybrid-counted-class-horizon-class)),
+    while the round-4 bound admits a rule only where the enclosed region
+    holds no call, no store, no release and no checkpoint — which excludes
+    PH4's own snippet, whose borrow is passed to a call. Whether the
+    convention pairs, emitted because the calling convention emits them,
+    are in that set at all is unstated, and the answer decides whether PH4
+    and PH21 are one hole or two. What would answer the question either
+    way: pair elision relabels the local and rewrites the chains that end
+    in it, or an elided local anchors no borrow; and chains are rebuilt
+    and certificates checked after optimisation rather than before. A
+    third shape fails PH4's rule while eliding nothing, and it is question
+    8 read from this side: in the immortal and request-arena categories
+    the promotion retain is emitted and moves no count
+    ([gc-horizon-cases/arena.md](gc-horizon-cases/arena.md), section 4),
+    so the local is labelled owned with no live count and may anchor a
+    further borrow. PH4 and PH21; the cases are
+    [gc-horizon-cases/object.md](gc-horizon-cases/object.md) and
+    [gc-horizon-cases/call.md](gc-horizon-cases/call.md).
+17. **The horizon set is enumerated over IR that is not final.** A
+    property hook, a magic accessor, a `__toString` cast, an iteration
+    hook, autoload, an error handler and a stream wrapper each run user
+    code with no call in the source, so a pass enumerating call
+    instructions finds no horizon unless the final IR carries one. In the
+    other direction, a mid-level region certified to hold no call, store,
+    release or checkpoint can acquire one later, when lowering expands a
+    property or type operation, an allocation slow path, a safepoint or a
+    helper into an invoke. What would answer it: every implicit invoke
+    carries its normal and exceptional effects in the final effectful IR,
+    horizons are enumerated there rather than earlier, and LICM, PRE, loop
+    rotation, unrolling, unswitching and inlining invalidate placement.
+    The rule cannot be adopted alone: read over final lowered IR, every
+    `ll_*` entry the lowering emits is a call without a trusted summary,
+    which empties the free region
+    ([gc-horizon-cases/unwind.md](gc-horizon-cases/unwind.md) item 2), so
+    it stands or falls with question 11's admitted-source rule. PH18,
+    whose case is [gc-horizon-cases/call.md](gc-horizon-cases/call.md);
+    PH23 is phase ordering and lands in no case.
+18. **The non-frame root categories have no identity or revocation
+    rules.** A chain may end in an arena slot, a static, an immortal or an
+    FFI handle ([the lattice](#the-ownership-lattice)). Tearing down a
+    static table, unloading a module and unregistering a handle each
+    destroy such a root without an ordinary managed-slot store, so no
+    horizon kind names them while `stable_path` inside the heap reads
+    unchanged. This generalizes question 8, whose arena reset is one
+    instance of the same shape; the two are one question in mechanism and
+    are kept apart only because question 8 also carries the category
+    axis. For the FFI half the ruling of 2026-08-22 bounds what the
+    foreign side can reach: an FFI wrapper holds every reference the C
+    side can name in a declared field, and the C structure holds at most a
+    raw address of what the wrapper already holds
+    ([walk/questions.md](walk/questions.md#rulings-of-2026-08-22), ruling
+    7), so the handle is no longer what a chain ends in. What roots the
+    wrapper is the half that opens in its place: a field of a heap object
+    qualifies only through the chain rule and never on its own
+    ([static-lifetimes.md](../memory/static-lifetimes.md#what-may-own-a-borrow)),
+    and a wrapper reachable only from the C side carries no counted
+    in-edge at all. PH25 asserts a handle taxonomy — raw, weak, borrowed,
+    pinned — that this repository does not define, and PH26 asserts
+    foreign mutation at no IR site; both attack the root list of the
+    lattice, which still names an FFI handle, and folding ruling 7 into
+    that list is owed. What would answer it, per category: the root's
+    identity, what owns it, what creates and revokes it, whether
+    revocation is a non-liftable horizon, and a non-reusable generation
+    carried in the certificate. PH24 to PH26; the cases are
+    [gc-horizon-cases/ffi.md](gc-horizon-cases/ffi.md) and
+    [gc-horizon-cases/arena.md](gc-horizon-cases/arena.md). PH27 is
+    certificate content and lands in no case; its summary half is question
+    19's.
+19. **The closed-world closure is computed in an open world.** Transitive
+    purity, destructor-freedom and the acyclic flag are all computed over
+    a closed class set
+    ([pure-destructors.md](pure-destructors.md#purity-is-transitive)),
+    while autoloading, `eval`, plugin code and separately built units add
+    classes after the closure is computed. A subclass that adds
+    `__destruct` or a property hook makes a shipped elision unsound at a
+    site whose class bit and summary version both still validate. Question
+    1 carries summary versioning; this question is the class set behind
+    the summary. PH12 adds to question 1 that summary identity must
+    include the transitive dependency digest rather than the callee's
+    source version alone, and PH27 adds that summary freshness includes
+    residency and the root universe. What would answer this question:
+    whether the most-derived class set is closed and versioned across
+    separately compiled units, and what loading a widening class does —
+    invalidate and recompile the dependants, or force counted lowering at
+    the original polymorphic site. PH11 and PH12; the cases are
+    [gc-horizon-cases/destructor-bearing.md](gc-horizon-cases/destructor-bearing.md)
+    and [gc-horizon-cases/call.md](gc-horizon-cases/call.md).
+20. **The verification instruments detect a first divergence and not the
+    invariant.** The shadow-count lowering fires when a shadow word
+    reaches zero under a live borrow
+    ([verification artifacts](#verification-artifacts-a-precondition-of-implementation)).
+    A false path proof whose target has a second, unrelated owner never
+    drives the shadow to zero, so it stays latent; a promotion emitted
+    twice against one release never crosses zero either, and leaks or dies
+    late instead. The certificate gate is specified with an independent
+    checker warranting syntactic-horizon coverage
+    ([the hybrid](#the-hybrid-counted-class-horizon-class)); unstated are
+    the IR that checker enumerates over, which is question 17, and what it
+    verifies about placement — PH30 asks for the concrete retain
+    identifiers, the counted-root instructions, edge dominance and the
+    exceptional, cancel, suspend and deopt edges, which is the half that
+    catches a retain moved after placement. What would answer it:
+    verification builds record allocation generations and the identity of
+    every edge in each live chain, and check at each invalidating
+    operation that the chain is unchanged or the borrow already promoted;
+    the count equation is reconciled in both directions at quiescent
+    points; and the checker reconstructs the CFG, live ranges and
+    dangerous operations from final lowered IR rather than reading them
+    from the producer. PH28, whose case is
+    [gc-horizon-cases/store.md](gc-horizon-cases/store.md) — its oracle
+    rests on the instrument PH28 defeats; PH29 and PH30 are obligations on
+    the instruments and land in no case.
+21. **The economics instruments do not price what the design claims.**
+    One defect per instrument. The census channel "horizon crossings per
+    borrow lifetime" ([economics](#economics)) counts crossings, and a
+    promotion hoisted to dominate a cold horizon executes on every call,
+    so a branch taken once in a hundred reports one crossing and emits a
+    hundred pairs; the ratio that prices the cost is promotions per
+    acquisition. Compile time, code size and the per-site landing-pad sets
+    are named as costs outside the formula and carry no bound, while `N`
+    live borrows against `N` throwing horizons can hold `Θ(N·H)` entries
+    in pads, certificates and unwind metadata for linear source, with no
+    fallback-to-owned cap. And the release-build elision counter counts
+    the executions of the statically known elided sites, with the document
+    saying nothing about whether an increment sits at the acquisition or
+    at the drop; the two disagree on exactly the paths PH35 lists, since
+    an exception that skips the drop point still avoided both operations.
+    Reconciling executed acquisitions with the counter's number needs the
+    conservation law `acquired = dropped + transferred + unwind-dropped +
+    live-at-termination`. PH35's pair-cost half stays open, and the
+    measurement that exists is of a different pair: node A1 priced what an
+    overwriting store adds over a plain one — a retain of the new value
+    and a release of the displaced one, two foreign headers — at 2.9 ns
+    warm and 33 ns at a population of a million entities
+    ([walk/questions.md](walk/questions.md#a1-what-the-counted-pair-costs-against-its-working-set--measured)),
+    while this design elides one entity's retain and release. The borrow
+    pair's own sweep is the one the economics section already owes, and
+    PH35 names the axes it must carry: header sharing, NUMA, working set
+    and the final against non-final path. PH31, PH32 and PH35; all three
+    are obligations on the instruments and land in no case.
+
 ## The record
 
 The name is `gc-horizon`; it was `proof-horizon` until 2026-08-20.

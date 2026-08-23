@@ -200,6 +200,10 @@ arena and promotion paths; no for A4, which needs the compiler.
   belongs to; the category is the axis it does not vary.
 - [array.md](array.md) owns anchor identity under a re-seating, which is
   the same property retention relies on at reset.
+- [adversarial.md](adversarial.md), PH4, PH5, PH6 and PH24 — the reset that removes
+  a whole root category under a live borrow, and its generalisation: every
+  non-frame root is revocable by an operation that is no managed-slot
+  store.
 
 ## 9. Open items
 
@@ -214,7 +218,10 @@ arena and promotion paths; no for A4, which needs the compiler.
    inside an actor is a frame that spans a message boundary, and the only
    one this repository names is a parked fiber
    ([actors.md](../../../runtime/actors.md#the-queue-is-the-only-door)),
-   which is [suspension.md](suspension.md)'s hole.
+   which is [suspension.md](suspension.md)'s hole. Read from the count
+   side this is also PH4's rule failing: the retain is emitted and no
+   live count exists behind the local it marks owned, so a further borrow
+   may end its chain there — question 16.
 2. **The convention retains have the same defect, and question 8 names
    only the promotion retain.** The receiver and by-value parameter base
    cases exist because the callee frame holds a counted reference
@@ -243,3 +250,21 @@ arena and promotion paths; no for A4, which needs the compiler.
    ([arena-reset.md](../../memory/arena-reset.md#retention-dense-blocks)).
    The missing specification is the back-pointer scheme, and it is owed
    before evacuation lands rather than before this design does.
+5. **Every non-frame root is revocable, and the reset is one instance.**
+   A static table torn down, a module unloaded, an FFI handle
+   unregistered: each destroys a root this case's chains may end in
+   without an ordinary managed-slot store, so `stable_path` inside the
+   heap is intact while the counted root is gone. Question 18 asks for
+   identity, ownership and revocation per category. PH24.
+6. **PH6's remedy is the instruction section 4 prices at nothing.** It
+   has every suspension promote its live anchored borrows before
+   yielding, and on an arena referent `ll_retain` returns early on the
+   category test: the retain is emitted, the count does not move, and the
+   reset still decides by a hold-count the promotion never touched. PH5's
+   rule is not in this item — its second disjunct is the reset's own
+   promotion fixpoint retaining the whole path, which is the escapee
+   hold-count and the escaped-subgraph trace
+   ([arena-reset.md](../../memory/arena-reset.md#step-1--validate-trace-destruct-a-fixpoint-loop)),
+   and its primary rule is that the reset is a horizon no ordinary call
+   summary may lift. That primary rule is what item 3 and question 8 are
+   missing.

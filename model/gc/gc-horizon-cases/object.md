@@ -235,6 +235,10 @@ existing walk.
 - The three exclusion cases this one is the complement of:
   [array.md](array.md), [string.md](string.md),
   [reference-box.md](reference-box.md).
+- [adversarial.md](adversarial.md), PH4 — the chain of section 5 ends in
+  an owned frame local, and PH4 is what happens when that local's pair is
+  elided by an always-provable rule; PH15 bounds which phis may carry such
+  a chain at all.
 
 ## 9. Open items
 
@@ -257,3 +261,15 @@ existing walk.
    question 8 of [gc-horizon.md](../gc-horizon.md#open-questions),
    reached here because `Tax` may have instances in the request arena
    and in the GC heap with one lattice verdict between them.
+4. **An elided pair can remove the count this case's chain ends in.** The
+   chain of section 5 ends in `$c`, which is owned by convention, and
+   inlining plus ordinary ARC cleanup deletes exactly that pair while the
+   borrow metadata still ends at the now-uncounted copy — the chain then
+   ends in an uncounted root, which is DC5. The other route reaches a
+   plain property-load local rather than `$c`, and not in this snippet:
+   an always-provable rule may take a counted class's local pair, but
+   only where the enclosed region holds no call, no store, no release and
+   no checkpoint
+   ([gc-horizon.md](../gc-horizon.md#the-hybrid-counted-class-horizon-class)),
+   and section 3's store is inside `$c`'s live range. Whether the
+   convention pairs are in that set at all is unstated. Question 16.

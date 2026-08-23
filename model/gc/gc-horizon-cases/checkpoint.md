@@ -184,6 +184,9 @@ lowering and therefore the compiler.
 - [rc-walk-danger-cases.md](../rc-walk-danger-cases.md) carries DC5's
   mitigation sentence, which follows the chain invariant rather than
   leading it.
+- [adversarial.md](adversarial.md), PH13 and PH16 — the drained verdict
+  whose purity differs between two executions of one instruction, and the
+  loop whose whole release run is elided, leaving the epoch no ack site.
 
 ## 9. Open items
 

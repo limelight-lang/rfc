@@ -154,7 +154,7 @@ table accounts for its bounded population with no unresolved row.
         findings 1-11 and the critical review's ten, plus the six PHP-fenced
         examples; six families are excluded by class with a reason each.
 
-- [ ] S2.5 Map Edmond's PH1-PH35 into the case book
+- [x] S2.5 Map Edmond's PH1-PH35 into the case book
       done: every PH number in `model/gc/gc-horizon-cases/adversarial.md` is
         cited by the case that owns its shape, or listed in
         `gc-horizon-cases/coverage.md` as out of scope with a reason; every PH
@@ -162,6 +162,42 @@ table accounts for its bounded population with no unresolved row.
         reconciled silently; PH shapes that name a hole the algorithm does not
         carry become numbered open questions in `model/gc/gc-horizon.md`
       tier: T2 · role: Critic
+      Consolidation 2026-08-23: eight findings — the "seven" count counted
+        questions and read as a count of shapes; three rows named a case file
+        that cited no such number; question 18 attributed PH25's handle
+        taxonomy to an ffi.md item that does not carry it and to the
+        repository, which defines no such taxonomy; object.md applied the
+        always-provable route to a convention pair; the generator-`finally`
+        fact was stated three times with no source. Accepted whole.
+      Critic 2026-08-23 round 1: thirteen findings. PH15 and PH28 were "no
+        case" in the table and cited by the case files; the "no case" verdict
+        carried three incompatible definitions; question 14 asserted a weak
+        divergence neither lowering produces, since the drop-point policy
+        drops a destructor-free class at last use in both; PH4's break does
+        not compose with the round-4 bound on the always-provable set; PH5,
+        PH6, PH16 and PH34 contradict case files and were recorded as
+        additions; question 18 ignored ruling 7 of 2026-08-22; call.md stated
+        the implicit-invoke rule in the unsound direction; question 17 adopted
+        alone empties the free region. Accepted whole.
+      Critic 2026-08-23 round 2: ten findings over round 1's fixes, and four
+        of the fixes broke. Question 21 priced this design's pair with node
+        A1, which measured a different pair — a store's retain of the new
+        value and release of the displaced one, two foreign headers; the
+        suspension finding argued from the branch in which the frame dies
+        with the referent; the backtrace item prescribed a horizon on every
+        may-throw call against `exceptions.md`'s "Arguments must not hold
+        references"; the unique-entity item used the counterfactual section 2
+        excludes; PH5's second disjunct and primary rule were quoted away;
+        question 18 ended a chain in a heap field, which the chain rule
+        forbids. Accepted whole. Two rounds, then the device is dropped.
+      handoff: the mapping is `model/gc/gc-horizon-cases/coverage.md`,
+        section "Edmond's adversarial cases": 35 rows, 8 of them "no case",
+        9 recorded disagreements. Twenty shapes opened questions 14 to 21 of
+        `model/gc/gc-horizon.md`. Thirteen case files cite their numbers and
+        eleven carry a new open item. Linkcheck green at 1619 links.
+        **No step owns questions 14 to 21** — they are the proof side's, and
+        S5.4 resolves the walk's graph rather than this one; the debt is
+        named here and its step is Edmond's to place.
 
 ## S3 — Review  [in progress]
 
@@ -336,11 +372,16 @@ broken links.
         against today's lowering by roughly a factor of forty
         (`gc-horizon-v2/questions.md`, N).
       handoff: measured 2026-08-22, recorded in the code repository's
-        `dev/BENCHMARKS.md`. The overwriting store's pair costs 4.1 ns at a
-        working set of one child and 88 ns at a million, median of eight
-        runs; the spread at the wide end is a factor of seven, so the
-        direction is settled and the magnitude is not. Node N's unmeasured
-        ~80 ns estimate is inside the range and near its median. Probe:
+        `dev/BENCHMARKS.md`. **The figures below are retracted in that file
+        and superseded the same day** — the probe published every store
+        into one slot, so the displaced header was warm where the retained
+        one was cold. The standing figures are 2.9 ns with both foreign
+        headers warm and 33 ns at a population of a million entities,
+        median of six runs, spread 12 % at the wide end, and node N's
+        ~80 ns estimate is high by a factor of 2.4
+        (`model/gc/walk/questions.md`, A1). Retracted: 4.1 ns at a working
+        set of one child and 88 ns at a million, median of eight runs.
+        Probe:
         `memory::barrier::tests::what_a_counted_pair_costs_when_headers_miss`.
 - [x] S5.5 Give the design of record one home
       done: `model/gc/walk/` carries the protocol and the proof side under
@@ -372,8 +413,9 @@ broken links.
 - [ ] S5.7 Fold the outcome back into the case book
       done: each of the sixteen cases either states that the rulings of
         2026-08-22 leave it unchanged or carries the case's new shape under
-        them — ruling 11 touches the weak-reference case directly — and the
-        cases that cite `gc-horizon-v2/` as current are re-pointed;
+        them — ruling 11 touches the weak-reference case directly, ruling 7
+        the FFI case, and question 9's ruling `unwind.md`'s open item 1 — and
+        the cases that cite `gc-horizon-v2/` as current are re-pointed;
         `model/gc/gc-horizon-cases/weakref.md` still calls the weak-cell
         base case missing, which ruling 11 supplied, and
         `model/gc/gc-horizon-states.md` is folded on the same terms,

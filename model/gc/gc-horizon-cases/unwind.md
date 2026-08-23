@@ -182,6 +182,9 @@ reserve at all, and the failure half of the reserve protocol is unbuilt
   reason a release is a horizon and not a raise site.
 - [checkpoint.md](checkpoint.md) owns the poll, which appears here as a
   raise site and there as a drain site.
+- [adversarial.md](adversarial.md), PH9, PH19 and PH22 — the promotion
+  that must dominate the throwing edge, the backtrace that publishes a
+  borrowed argument, and the shared pad whose ownership is per edge.
 
 ## 9. Open items
 
@@ -219,3 +222,14 @@ reserve at all, and the failure half of the reserve protocol is unbuilt
    exceptions design
    ([exceptions.md](../../../runtime/exceptions.md#inlining-and-generators));
    the borrow half of that hole is [suspension.md](suspension.md).
+5. **One trace mode can publish a borrowed argument, and its capture is
+   unspecified.** The default mode publishes nothing that holds an entity
+   alive: scalars by value, truncated string copies, and for an object
+   the class name only, class metadata being immortal
+   ([exceptions.md](../../../runtime/exceptions.md#arguments-must-not-hold-references)).
+   Live values are needed only by the array form of `getTrace()`, which
+   that document makes a separate heavier mode whose promotion cost it
+   says must be documented rather than discovered — and whether its
+   capture goes through the store barrier is not written. Until it is, a
+   borrow passed to a callee that may raise under that mode has a
+   publication channel no summary describes. PH19.

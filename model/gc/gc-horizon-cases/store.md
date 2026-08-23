@@ -208,6 +208,11 @@ vendor trees, and it can only kill.
   directions are stated over.
 - The barrier's micro-operations and the `owner_cat` parameter are
   [strategies.md](../strategies.md#1-the-store-barrier-as-micro-operations).
+- [adversarial.md](adversarial.md), PH7 and PH14 — aliases the may-alias
+  rule must not lift: a proxy, hook or PHP reference that aliases a field
+  the summary excludes by name, and an alias created after the analysis by
+  reflection, `eval` or an included file. PH28 attacks the instrument
+  section 7 relies on.
 
 ## 9. Open items
 
@@ -233,3 +238,7 @@ vendor trees, and it can only kill.
    It is the conservative direction either way, and the case records it
    because the chain invariant's discharge is stated over attributable
    in-edges.
+4. **The instrument section 7 relies on has a blind spot on exactly this
+   case.** A false path proof whose target keeps a second, unrelated owner
+   never drives the shadow word to zero, so the may-alias error stays
+   latent rather than surfacing. Question 20.

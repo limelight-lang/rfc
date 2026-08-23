@@ -187,9 +187,12 @@ moved here whole. Several of them and several of the open questions in
 [gc-horizon.md](../gc-horizon.md#open-questions) are the same finding
 reached from two directions: PH5 and question 8 (the arena reset removes
 a root category), PH9 and question 9 (promotion must dominate the
-throwing edge), PH2 with PH3 and question 7 (the weak break). The
-mapping of every PH number into the sixteen cases has not been made yet
-and is step S2.5 of `dev/PLAN.md`.
+throwing edge, ruled 2026-08-22 as PH9 read it). The mapping of every PH
+number into the sixteen cases is [coverage.md](coverage.md), made
+2026-08-23; eight land in no case with a reason, and twenty of the
+shapes opened eight questions, 14 to 21 — among them the weak break of
+PH1 to PH3, which question 7 did not cover and ruling 11 did not
+close.
 
 ## Coverage
 

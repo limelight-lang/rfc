@@ -10,6 +10,41 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-23 — the actor context travels as an argument: context-aware functions
+
+**Decided (Edmond):** a function that works with an actor takes the actor
+context as an argument — a **context-aware** function. Nothing is installed,
+swapped or restored when the scheduler mounts an actor: no per-thread copy of
+actor state exists, so there is no base to re-point and no cache to
+invalidate. A function that is not context-aware does not touch actor state
+at all, and reaching one is a boundary crossing.
+
+**Supersedes the second half of the entry below**, of the same day, which
+served an extension's module globals by re-pointing one pointer at the mount.
+That half is unnecessary where an extension is compiled against this
+runtime's headers: the macro through which a module reads its globals is ours
+and resolves through the context the function already received, so the
+extension's source does not change either way. The first half stands — code
+this compiler emits carries the context.
+
+**Why:** every alternative buys the same reachability with a worse property. A
+swapped base or a reserved register reaches the owner without an argument and
+leaves open what happens at a boundary this runtime did not compile. Copied
+cells leave two copies of one state, invalidate every address taken inside
+them, and need a guaranteed write-back when a message ends in an abort. An
+argument in a register is also cheaper to read than a thread-local, so the ABI
+change is not a cost to defend.
+
+**Cost:** the runtime's PHP-facing surface changes shape — release, entity
+teardown and the epoch checkpoint gain a parameter they do not carry today.
+Not measured.
+
+**Open:** entry from code this runtime did not call — a callback from a C
+library, a thread that library created — arrives with no context and needs an
+entry shim to establish one. And a `static` inside libc or a third-party
+shared object is reached by none of this: it needs a declaration from the
+module or an actor pinned to a thread.
+
 ## 2026-08-23 — per-actor state: the compiler carries the context, the mount swaps one pointer
 
 **Decided (Edmond):** state that must follow an actor is reached two ways,

@@ -44,8 +44,8 @@ Consequences:
 - **The allocation context follows the actor, not the thread.** The
   "current arena" pointer is a field of the actor context, installed
   into TLS when the scheduler mounts the actor on a thread.
-- **So does every other piece of state that must follow the actor**, by
-  one of two routes decided by who compiled the code that reads it.
+- **So does every other piece of state that must follow the actor**, and it
+  travels the same way: as an argument — below.
 
 ## Where Per-Actor State Lives
 
@@ -53,42 +53,32 @@ A function called from an actor executes as the actor and knows nothing
 about it, so a `static` inside it makes the actor's state outlive the
 message. A process-global one races across threads and is overwritten
 across actors sharing a thread; a thread-local one survives the actor on
-that thread and is lost when the scheduler moves it. The route to
-per-actor state is decided by who compiled the code
-([DECISIONS](../dev/DECISIONS.md), 2026-08-23).
+that thread and is lost when the scheduler moves it.
 
-**Code this compiler emits carries the context.** It takes the actor
-context the way it already takes the allocation context, in a register, so
-no path it emits reads a thread-local to find its owner.
+**The answer is the calling convention.** A function that works with an
+actor takes the actor context as an argument: a **context-aware** function.
+Nothing is installed, swapped or restored when the scheduler mounts an
+actor, because no per-thread copy of actor state exists — there is no base
+to re-point and no cache to invalidate ([DECISIONS](../dev/DECISIONS.md),
+2026-08-23).
 
-**Code it does not emit keeps its source, and the mount serves it.** PHP's
-threaded build resolves every extension's module globals through the
-`storage` vector of a per-thread TSRM entry, so the scheduler re-points that
-one field at the mounted actor's vector: one store at the mount, no change to
-the extension, no change to what a read costs.
+**An extension becomes context-aware by recompilation, not by rewriting.**
+The macro through which a module reads its globals is supplied by this
+runtime's headers and resolves through the context the function already
+received, so the extension's source is unchanged.
 
-**The pointer is swapped, never the contents.** Copied values leave two
-copies and a rule about which is authoritative; one pointer leaves one
-copy, in the actor.
+**A function that is not context-aware does not touch actor state**, and
+reaching one is a boundary crossing, governed by the rule below.
 
-**No cached copy needs invalidating.** Each shared object holds a `__thread`
-copy of the cache pointer, and that pointer names the entry rather than the
-vector; the entry is per-thread and does not move, so the swap is invisible
-to it. The swap is legal at a message boundary, which is where the scheduler
-mounts.
-
-**One path it does not reach:** the engine's own globals resolve by an offset
-from the entry block rather than through the vector, so re-pointing the
-vector does not move them. Limelight supplies those names from a shim header,
-and through what indirection the shim defines them is undecided.
-
-Two things neither route reaches, both open. The runtime's own death paths
-— release, entity teardown and the epoch checkpoint — carry no context and
-do not read the extension vector, so how they find the owner is undecided
+Two things this does not reach, both open. Entry from code this runtime did
+not call — a callback from a C library, a thread that library created —
+arrives with no context, and what establishes one is undecided. And a
+`static` inside libc or a third-party shared object is reached by nothing
+here; it needs a declaration from the module or an actor pinned to a thread.
+The runtime's own death paths take the same route as everything else, but
+what they pass and where it comes from sits with the collector's owner
+question
 ([../model/gc/walk/questions.md](../model/gc/walk/questions.md#e1-actors-and-the-epoch-protocol--open-both-halves-rest-on-the-same-scaffolding)).
-And an extension that declares its own thread-local variables rather than
-module globals is served by neither: what such an author may use, and what
-the compiler can do for code it did not compile, is unanswered.
 
 ## The Queue Is the Only Door
 

@@ -57,6 +57,13 @@ application container is the usual root — and `HEAP_CHDIR` lets it live
 outside the application it boots, so nothing is written into the scanned
 project. `HEAP_MAX_DEPTH` bounds the walk, 64 by default.
 
+**Record the bootstrap beside the figures.** "Booted" is not a state a
+number can be re-taken from: the same Laravel tree gives 44 objects with no
+bootstrappers run, 327 with the kernel's, and 387 after one handled request.
+A6's booted column of 2026-08-22 reads 507 and no bootstrap was written down
+with it, so it can be read and not reproduced (2026-08-24). The corpus those
+figures came from is `~/laravel-spawn-example`, outside this repository.
+
 **Read the file's own header before quoting a figure.** Objects and the
 edges between them are exact; strings and arrays carry no identity in PHP,
 so the string count is a proxy that under-counts and the array count is per

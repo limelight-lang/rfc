@@ -99,7 +99,7 @@ it.
 ```mermaid
 flowchart TD
     A1[A1 the pair against its working set<br/>measured 2026-08-22] --> A6
-    A6[A6 the corpus scan<br/>corpus; three of seven taken] --> A5 & B1 & C2 & D6
+    A6[A6 the corpus scan<br/>corpus found, three of seven taken] --> A5 & B1 & C2 & D6
     A5[A5 a cheaper count word<br/>width and distance answered, miss and window open]
     A7[A7 the unique-ownership discriminant<br/>answered 2026-08-22] --> A3
     A3[A3 what the walk does with a unique entity<br/>answered 2026-08-23]
@@ -317,7 +317,7 @@ instrument that does not carry two populations at the wide end, or huge
 pages, or a machine that is not WSL2. The distance half of this question is
 closed and the miss half waits on that.
 
-### A6. The corpus scan  [corpus; three quantities of seven are taken]
+### A6. The corpus scan  [three quantities of seven are taken; the corpus is found, and the booted column cannot be re-taken]
 
 The root of section A, and one node standing for seven distinct
 measurements rather than for one. They share an instrument and nothing else,
@@ -380,8 +380,36 @@ the defect the episode did expose. The tool's denominator is
 `objects + strings + arraysWalked`, and `arraysWalked` — arrays reached, one
 count per reaching slot — is printed by the tool and is not a row here. The
 table prints `arraySlots` instead, a different counter with a nearby value.
-Re-running the scan with an `arrays walked` row is owed before either figure
-is quoted again.
+
+**The re-run was taken on 2026-08-24 and closes half of that.** The corpus is
+`~/laravel-spawn-example`, a Laravel `^13.0` tree outside this repository;
+Edmond did not know the path and gave leave to search for it, and it was
+identified by what it returns rather than by its version. Second run, one
+handled request, PHP 8.6.0-dev:
+
+| | recorded 2026-08-22 | re-run 2026-08-24 |
+|---|---|---|
+| objects, exact | 387 | 387 |
+| distinct strings, proxy | 721 | 723 |
+| array slots | 1 253 | 1 255 |
+| **arrays walked** | not printed | **1 255** |
+| counted slots | 3 753 | 3 759 |
+| companion records per entity | 0.31-0.32 | 0.32 |
+| entity share of records | 76 % | 75.9 % |
+
+So the entity total is `387 + 723 + 1255 = 2 365`, the string share
+`723 / 2365` = **30.6 %**, and the counted edges per entity
+`3759 / 2365` = **1.59** — both inside what the node already states, and now
+re-derivable from the rows.
+
+**The booted column does not reproduce, and the reason is a defect of its
+own.** "Booted" names a state the record does not define. The same tree
+scanned with no bootstrappers run gives 44 objects; with the kernel's
+bootstrappers run, 327; the record says 507, which is more than its own
+after-a-request column. Whichever bootstrap produced 507 is not written down,
+so that column can be read but not re-taken. **What is owed now is narrower
+than what was owed before:** the booted bootstrap, or the column's
+retirement.
 
 **What the figures are approximate about**, stated rather than assumed:
 objects and the edges between them are exact, `spl_object_id` giving

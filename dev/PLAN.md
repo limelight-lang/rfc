@@ -545,6 +545,47 @@ broken links.
         synchronous `collect_cycles` the draft named — and the repair
         strengthened the claim, both collections running with no epoch
         number.
+      2026-08-24, seven more nodes, four of them by measurement in
+        `ll-model` (`dev/BENCHMARKS.md`, four entries, all pinned to one
+        core and run three to nine times). **D3**: the per-cell price was
+        borrowed from B4 and is now taken — a severed cell 2.3 ns in an
+        object body and in array storage alike, a released child 1.0 ns
+        without death and 13.0 more with the teardown of an empty leaf,
+        null pair 0.10 — so a million-cell array severs in 2.3 ms rather
+        than 43-47, and the slice has two sizes rather than one, about
+        300 000 cells where the children survive and 65 000 where each
+        dies. **A5**: the prefetch distance swept over 1, 4, 8, 32 and 128
+        is not the lever — 0.7-1.0 ns of loss at every distance where the
+        reading is stable — and at the wide end three runs disagree about
+        the sign, so the instrument is named rather than the answer.
+        **B7**: the residue is 4.1 ns an entity, which makes a block skip
+        worth 8 µs at size class 32; the node's own account of that
+        residue was wrong, having read B1's sentence about an enrolled
+        leaf as one about a skipped one. **C4**: three handshake round
+        trips, each the mutator's checkpoint interval, over a drain floor
+        of 6 µs.
+      2026-08-24, three nodes without an instrument and one scoped.
+        **E4** splits the move's six restrictions three against the header
+        and three with no runtime test, finds the count test subsumes the
+        `&` binding, and names where the escapee list stops being the
+        analogue — its clearing event is the arena reset and a recipient
+        actor has none. **C2** prices its three objections against the
+        crate and one of the two repairs it proposed does not survive:
+        `Heap::free`'s branch is downstream of the parking decision.
+        **B6**'s second half is answered — kind never reaches the
+        allocator, so steering the fill by it is a threading problem
+        before it is a free-list one. **H1** is sharpened rather than
+        executed: three of its four items are already constants of
+        `RcWalk.tla`, and five of the 22 scenario configurations turn on a
+        lever the amendment removes, so those five are re-derived or
+        retired while the other seventeen owe only their counts. The
+        re-derivation itself is a stage's work and belongs to S4.
+      Critic 2026-08-24, over that batch: **started and not finished.**
+        Four lenses — the probes as instruments, the derived numbers, the
+        four argued nodes against their sources, and the consolidation
+        pass `dev/WORKFLOW.md` requires. Two of the four returned, 29
+        findings raised, none verified and none executed. The round is
+        owed before this batch can be called reviewed.
       handoff: state at the end of 2026-08-22. **Closed and holding:** A1,
         A5 (the width is not the lever; the prefetch is measured and
         unsettled), A7 (the discriminant is a bit of the retired condemned

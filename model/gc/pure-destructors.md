@@ -308,7 +308,10 @@ deferred memory is unbounded in epoch duration
 (`model/dev/RC_WALK_CRITICAL_REVIEW.md`). A completion bound — a
 deadline on the collector's tail, a per-checkpoint slice budget in the
 fallback — is part of this design rather than an option on it; the
-number is the tail-bound question below.
+number is the tail-bound question below. **The requirement moved to
+[gc/rc-walk.md](rc-walk.md), "Deferred physical release, and when an epoch
+ends", on 2026-08-24**: it survives this section's amendment, since it binds
+whoever does the work, and this section is a record.
 
 ## The trust model: a soundness-bearing bit
 

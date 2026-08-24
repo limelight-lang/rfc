@@ -109,7 +109,7 @@ flowchart TD
     B4[B4 arrays as the commonest spine<br/>measured 2026-08-22] --> A6
     B5[B5 the epoch-abort watermark<br/>open; returns no memory when it fires]
     B6[B6 skip by block, not by entity<br/>measured; segregate, not count]
-    B7[B7 soft segregation by skippability<br/>residue measured, two figures open] --> B6
+    B7[B7 soft segregation by skippability<br/>residue measured, three figures open] --> B6
 
     C1[C1 background cadence<br/>open; two candidates eliminated] --> B5 & C2 & C3
     C2[C2 the young-free exemption<br/>curve measured; unsound as written]
@@ -287,17 +287,21 @@ issued eight stores ahead. Where nothing misses it costs 0.9 ns per store,
 stable across runs. At a million entities seven repeats recovered +11.6,
 +7.3, −0.3, −1.3, +20.3, +1.3 and +7.2 ns — median +7.2, five of seven
 positive, and the spread crosses zero while the bare arm's own median moves
-between 79 and 107 ns. **The direction is suggestive and the magnitude is
-unmeasured.** Probe:
+between 79 and 107 ns. **That reading was superseded on 2026-08-24** by the
+pinned sweep below, which finds no sign at all at the wide end rather than a
+suggestive one; the seven repeats are kept as the record of what an unpinned
+run gave. Probe:
 `memory::barrier::tests::what_a_prefetch_recovers_from_a_cold_pair`.
 
 **The distance was swept on 2026-08-24 and it is not the lever, on a pinned
 core** (`ll-model` `dev/BENCHMARKS.md`). Five distances — 1, 4, 8, 32,
 128 — over three runs at five working sets. Where the reading is stable the
-answer does not move with the distance and the prefetch loses: 0.7 to 1.0 ns
-a store at working sets 1, 64 and 4 096, at every distance including 1,
-which prefetches for the very next store and can hide nothing. What that arm
-pays is two address computations and two instructions, and neither depends
+answer does not move with the distance and the prefetch loses: 0.55 to 1.30 ns
+a store at working sets 1, 64 and 4 096, ten of the fifteen readings between
+0.7 and 1.0, at every distance including 1, which prefetches for the very next
+store and can hide nothing. What that arm
+pays is three address computations and two instructions — the count the
+2026-08-22 entry for the same probe already gives — and none of them depends
 on how far ahead they are issued.
 
 **Where the prefetch could pay there is still no sign, and pinning did not
@@ -746,9 +750,11 @@ program. The second half of that question is answered below.
 reaches the allocator.** Read off `ll-model` on 2026-08-24: a heap's block
 lists are indexed by size class alone — `available`, `empty_reserve` and
 `owned`, each one pointer per class over 32 classes (`src/memory/heap.rs`) —
-and the only second dimension in the design is a whole `Heap` instance per
-block kind, `ThreadHeaps` holding a raw heap and an entity heap, with the kind
-a per-heap scalar stamped at refill. The entity factories pass a memory
+and the second dimensions that exist are not kind: a whole `Heap` instance per
+block kind, `ThreadHeaps` holding a raw heap and an entity heap; and, over the
+same per-class lists, the process-global abandoned pool, whose `heads` are
+indexed by population first and size class second so adoption can never move a
+block between raw and entity. The entity factories pass a memory
 category and a size and nothing else: `entity_alloc_in` drops everything but
 the size (`src/memory/routing.rs`), and `EntityKind` never leaves the factory.
 
@@ -757,12 +763,13 @@ free lists.** Before any list gains a dimension, the kind has to be threaded
 from the factory through `entity_alloc_in`, `entity_alloc` and `Heap::alloc`,
 none of which takes it. Only then does the list question arise, and there it
 is a multiplier on three arrays of 32 pointers per heap plus every site that
-indexes them — two dozen in `heap.rs` alone. B7's preference shape is the
+indexes them, twenty in `heap.rs`, and on the abandoned pool's own second
+dimension beside them. B7's preference shape is the
 cheaper answer to the same question precisely because it needs no second list:
 it asks the allocator to try a group first, which is a choice among existing
 lists rather than a new axis.
 
-### B7. Soft segregation: prefer the skippable group, fall back anywhere  [the residue measured 2026-08-24 at about 4 ns; the other two measurements stand]
+### B7. Soft segregation: prefer the skippable group, fall back anywhere  [the residue measured 2026-08-24 at about 4 ns; all three of the node's own measurements stand]
 
 Proposed by Edmond for the design queue. **The mechanism as stated:** the
 allocator is handed the block group to prefer; it tries to allocate there
@@ -830,9 +837,10 @@ same 8 ms baseline, and the four-point line's residual runs 0.3 to 0.7 ms.
 block removes about 4 ns times its slot count: **8 µs per block** at size
 class 32 and 4 µs at class 64. Against B1's enrolled leaf row of 39-46 ns,
 the entity skip already returns about nine tenths of a row and the block
-skip returns the last tenth. That ratio is what the fallback's cost on the
-allocation path and B6's per-block counter have to be worth, and both are
-still unmeasured.
+skip returns the last tenth. That ratio is what this node's own three
+measurements have to be worth — the share of blocks uniform under preference,
+the fallback's cost on the allocation path, and whether B6's per-block counter
+earns its word — and none of the three is taken.
 
 **What it does not supply: a guarantee.** With a fallback no block is uniform
 by construction, so the walk keeps testing rather than trusting, and the
@@ -1000,15 +1008,18 @@ change of a shape that path already carries — the park site does a
 process-global relaxed load, and the exemption's test is a second load of the
 same kind.
 
-*The retiring block's repair is refused by where the parking decision sits.*
-The paragraph above offers `Heap::free`'s `used == 0` branch as the place to
-refuse. That branch is downstream of the decision: `ll_free` parks and returns
-before it reaches `Heap::free` at all (`src/memory/stdapi.rs`), so the branch
-runs only on frees that were **not** parked, which are not the frees the
-exemption is about. The condition has to rise to the parking site, where the
-occupancy is not in a register and the owner compare has not run, or the
-parking has to descend into `Heap::free`. Either is larger than the sentence
-above priced it.
+*The retiring block's repair sits downstream of the decision it would
+refuse.* The paragraph above offers `Heap::free`'s `used == 0` branch as the
+place to refuse the exemption. `ll_free` decides whether to park and returns
+before it reaches `Heap::free` at all (`src/memory/stdapi.rs`), and an
+exempted free is by construction one that was **not** parked — so the branch
+does run on exactly these frees, and it runs after the exemption has already
+been taken. It cannot refuse the exemption. **What it can refuse is the
+retirement**, which is the hazard itself: the branch's own action is
+`retire_empty`, and declining that while an epoch is in flight leaves the
+block commissioned under the snapshot that names it. That is a smaller repair
+than either the node or a draft of this paragraph proposed, and it is placed
+where the occupancy is already in a register.
 
 *The second walker is not a source change at all.* A flag exists and a free
 path could read it — `walk_active()` is `pub(crate)` (`src/walk.rs`) — but it
@@ -1131,9 +1142,17 @@ runs agreeing within a microsecond:
 | ~104 | 8.0 | 9.1 | 9.7 |
 | 13 | 128 | 76 | 131 |
 
-**The two acks are the checkpoint interval and nothing else**, which is
-what this node argued and nobody had shown: at thirteen checkpoints an
-epoch the three waits total about 335 µs, at a thousand about nine. **The
+Two runs, agreeing to a tenth of a microsecond in the columns that read 0.1,
+to a microsecond in the rest, and to 3 % in the last row — where 3 % is about
+four microseconds.
+
+**Both acks are bounded by the checkpoint interval and neither is only
+that**: at about 1 180 checkpoints an epoch the open ack reads 1.3 µs and the
+condemn ack 0.1, thirteen times apart at one and the same interval, because
+the mutator's position in its loop when the flag goes up is not the same for
+the two raises. What the interval sets is the bound, and the bound is what
+grows: the three waits total about 335 µs at thirteen checkpoints an epoch and
+about eight at 1 180. **The
 drain has a floor the acks do not** — never under about 6 µs even against
 a mutator that checkpoints continuously, because the message still has to
 be picked up, drained, and its outstanding count let fall. So rung 2's
@@ -1336,16 +1355,15 @@ that channel — it is open at the already-permitted boundaries identically — 
 changes what a stale foreign read meets, a hollow member rather than a
 populated one.
 
-**The per-cell figure below is borrowed from another operation, and the
-figures derived from it inherit that.** B4 measured the walk *reading* a
-cell (`collector::tests::what_an_array_row_costs_the_walk`, node B4). A
-severed cell is a store plus a push onto the displaced vector, and a
-released one an atomic decrement that may run a whole teardown — cheaper
-and dearer than the read respectively, and neither measured. So the
-millisecond figures and the slice size are the walk's price standing in for
-two prices nobody has taken, which is what makes the distribution of
-per-entity sever cost the blocking item rather than a nicety. D6 corrected
-the same borrowing once already.
+**Superseded 2026-08-24 by the measurement below, and kept because the
+borrowing it names ran through three documents.** It read: the per-cell
+figure is borrowed from another operation and the figures derived from it
+inherit that; B4 measured the walk *reading* a cell, while a severed cell is
+a store plus a push and a released one an atomic decrement that may run a
+whole teardown — cheaper and dearer than the read respectively, and neither
+measured. Both are measured now. What survives the supersession is the
+blocking item: the *distribution* of per-entity sever cost over a real heap,
+which a per-cell price does not give.
 
 **Edmond's latency instinct holds, and it is a comparison rather than a
 preference.** One stretch does strictly less work — no cursor, no re-entry, no
@@ -1364,10 +1382,11 @@ does, at an empty leaf class. A million-cell array is therefore **2.3 ms** to
 sever in one stretch rather than the 43 to 47 the borrowed read gave.
 
 **And the slice size has no single value, which the one borrowed figure
-hid.** At a pause budget near a millisecond it is about 300 000 cells where
-the displaced children survive the drop, and about 65 000 where each one dies
-at an empty leaf; a class with a destructor or with children of its own pays
-more than the second. Both replace "roughly twenty thousand cells to a
+hid.** A surviving child costs the sever plus the count-down, 3.3 ns, so a
+millisecond buys about 300 000 cells; a dying one costs the sever, the
+count-down and the teardown, 16.3 ns, so a millisecond buys about 61 000. A
+class with a destructor or with children of its own pays more than the
+second. Both replace "roughly twenty thousand cells to a
 slice". Where no budget binds tighter than the entity's whole cost, one
 stretch still wins every other column, and the margin it wins by is now an
 order wider.
@@ -2025,24 +2044,28 @@ except through the queue.
 Three are readable at pack time from the entity's own header word, and the bits
 exist: **no weak subscriber** is `HAS_WEAK_REFERENCES`, flag 7, which is the
 test `../../../runtime/actors.md` already names; **not arena-resident** is the
-two category bits; and **no live second holder** is the refcount. That third
-test **subsumes the `&` restriction**: a reference box is a GC-heap entity
-whose `Value` slot is published through the counting store (`ll-model`
-`src/reference.rs`, `src/memory/barrier.rs`), so a binding that survived the
-move is a second holder and reads as a count above one. Two restrictions, one
-test — at the price that a refusal cannot say which of them it fired on.
+two category bits; and **no live second holder** is the refcount.
 
-The other three have no runtime test, and the flag word has no room reserved
-for one: `src/refcount.rs` describes every bit, and none of them records an
-outstanding borrow. **A `#[Borrow]` view is invisible by construction** — a
-borrowed field is "not owned, not freed, anchored to an owner"
-([`../../memory/ffi.md`](../../memory/ffi.md#the-owner-model)), so it writes no
-count, which is exactly what puts it outside the one test that would otherwise
-have caught it. **A closed reachable set** is a trace rather than a test, and
-its cost is the size of the moved subgraph. So the classification the node
-asked for: three pack-time tests over the header, one pack-time trace, and one
-restriction that is a compile-time refusal or nothing, since nothing at run
-time knows.
+**The `&` restriction is a fourth runtime test rather than a case of the
+third**, and a draft of this paragraph had it the other way. A reference box
+does not add a holder: "a reference is a separate refcounted box containing
+one Value slot. Variables bound by `&` point to the same box"
+([`../../values.md`](../../values.md#referencebox-)), so the box **replaces**
+the binding and the referent's count is unchanged at one. What pack time can
+see instead is that the sender's slot holds an entity of kind Reference rather
+than the object, which is a kind test on the value being packed — cheap, and
+in the same word as the other three.
+
+**Two restrictions have no runtime test at all.** A `#[Borrow]` view is
+invisible by construction: a borrowed field is "not owned, not freed, anchored
+to an owner" ([`../../memory/ffi.md`](../../memory/ffi.md#attribute-catalog)),
+so it writes no count and touches no flag. And a closed reachable set is a
+trace rather than a test, its cost the size of the moved subgraph. Room for a
+bit is not what is missing — the condemned byte, bits 24-31, was retired by
+the eager-death amendment and `ll-model` `src/refcount.rs` says so — what is
+missing is anything to write into one. So the classification the node asked
+for: four pack-time tests over the header word, one pack-time trace, and one
+restriction that is a compile-time refusal or nothing.
 
 **What the moved-objects list holds, and where the analogue breaks.** The
 escapee list is an append-only log of entity addresses on the arena (`ll-model`
@@ -2610,28 +2633,32 @@ it, so what the re-derivation owes is the mutator's own drain. Of that,
 condemn while that drain is stopped at a boundary. The ceiling, the cursor
 and the resumption D3's ruling implies have no model still.
 
-**The list is smaller than a rewrite for a reason the node did not name, and
-larger than a list for another, read off the battery on 2026-08-24.** Three of
-the four items are already **constants of the specification** rather than
-lines of it: `RcWalk.tla` declares `ByteOnly` (Phase 3 re-reads a byte instead
-of running Phase 4), `OldDeath` (a condemned entity dies on the ordinary path)
-and `NoDefer` (a freed slot is reusable inside an epoch), and the death rule
-is one predicate over them, `MayDie(c, cbF) == OldDeath \/ ~cbF[c]`. So the
-protocol in force is not absent from the specification; it is one setting of
-switches the specification already has, and what the re-derivation removes is
-the *other* setting and the condemned-byte field the predicate reads.
+**One of the four items is already a switch of the specification, and the
+other three are not** — read off `RcWalk.tla` and the battery on 2026-08-24.
+The death action's deferral arm is a constant: the rule is one predicate,
+`MayDie(c, cbF) == OldDeath \/ ~cbF[c]`, and `OldDeath = TRUE` already means
+a condemned entity dies on the ordinary path, which is what the amendment
+makes universal. The condemned byte itself is not a switch but the field that
+predicate reads, `cbF`, and it leaves the state vector with the rest of the
+protocol; the acquittal action's posting and the drain's entry condition have
+no constant at all. Beside them the specification carries two more switches
+the amendment also retires without either being on the node's list —
+`ByteOnly` (Phase 3 re-reads a byte instead of running Phase 4) and `NoDefer`
+(a freed slot is reusable inside an epoch).
 
-**That is what makes it more than a list.** Of the 22 scenario
-configurations, **five turn on a lever the amendment removes** — three set
+**What that costs the battery is five of its 22 configurations.** Three set
 `ByteOnly` (`SC_borrow_byte`, `SC_dc2`, `SC_selfloop_byte`) and two set
-`OldDeath` (`SC_f5_old`, `SC_dc3_old`) — and their expectations are not
-portable. A kill config whose lever is "the pre-amendment rule" has no
-subject once that rule is the only rule; worse, under the amendment
-`OldDeath` describes the protocol in force, so a config expecting it to
-violate an invariant would be asserting that the design is unsound. Those
-five are re-derived or retired, not re-run. The other seventeen keep their
-pass-or-kill expectation and owe only their distinct-state counts, which
-change with the state vector whatever else does not.
+`OldDeath` (`SC_f5_old`, `SC_dc3_old`). The two `OldDeath` rows are recorded
+in [`../rc-walk-proof.md`](../rc-walk-proof.md) as **premise probes that pass
+because the premise is unreachable**, not as kills — so what the amendment
+does to them is not to move an expectation but to invert what they probe: the
+premise becomes the rule, and a probe for an unreachable state has nothing
+left to look for. Removing a switch also unmakes its FALSE setting, so the
+seventeen that leave it clear lose an arm of their own state graph rather than
+a line of their configuration. Those five are re-derived or retired, not
+re-run; the other seventeen keep their pass-or-kill expectation and owe their
+distinct-state counts, which change with the state vector whatever else does
+not.
 
 **What it blocks:** any scenario written *against these two specs* inherits
 the drift, so the re-derivation is a precondition of reusing them rather than

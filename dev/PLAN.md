@@ -580,12 +580,39 @@ broken links.
         lever the amendment removes, so those five are re-derived or
         retired while the other seventeen owe only their counts. The
         re-derivation itself is a stage's work and belongs to S4.
-      Critic 2026-08-24, over that batch: **started and not finished.**
-        Four lenses — the probes as instruments, the derived numbers, the
-        four argued nodes against their sources, and the consolidation
-        pass `dev/WORKFLOW.md` requires. Two of the four returned, 29
-        findings raised, none verified and none executed. The round is
-        owed before this batch can be called reviewed.
+      Critic 2026-08-24 round 1, over that batch: four lenses — the probes
+        as instruments, the derived numbers, the four argued nodes against
+        their sources, and the consolidation pass `dev/WORKFLOW.md`
+        requires. 54 findings; the verification pass did not run, so every
+        one was checked by hand against its source before execution, and
+        all that survived were executed. **Three reversed something the
+        batch asserted.** A dying cell costs 16.3 ns and not 15.3 — the
+        count-down was dropped — so the slice is 61 000 cells rather than
+        65 000. C2's refutation of its own retiring-block repair was
+        inverted: an exempted free is precisely a free that was not parked,
+        so `Heap::free`'s branch does run on it, and what that branch can
+        refuse is the retirement rather than the exemption, which is a
+        smaller repair than either the node or the draft proposed. And E4's
+        subsumption was wrong in the other direction: a reference box
+        **replaces** the binding rather than adding a holder
+        (`model/values.md`), so the referent's count is unchanged and the
+        `&` restriction is a fourth pack-time test — on the packed value's
+        kind — rather than a case of the count.
+        Beside them: the paragraph D3's measurement retires was left
+        standing in the present tense above it, and A5's was left standing
+        the same way; the array arms build mixed vectors, so they never
+        reach the table the entry named; the null pair bounds the two
+        read-only object arms and nothing else; the skipped-entity slope
+        times a whole epoch, and `snapshot` allocates four bytes per slot
+        inside that window, so 4.1 ns is an upper bound on the residue;
+        the two handshake acks are bounded by the checkpoint interval and
+        are not equal to it; H1 has one of its four items as a constant
+        rather than three, and its two `OldDeath` configurations are
+        recorded as premise probes that pass rather than as kills; and B6
+        missed a second dimension over the same per-class lists, the
+        abandoned pool's, indexed by population first.
+        **Round 2 is owed**, by the rule that a second round finds a defect
+        in the first round's fixes.
       handoff: state at the end of 2026-08-22. **Closed and holding:** A1,
         A5 (the width is not the lever; the prefetch is measured and
         unsettled), A7 (the discriminant is a bit of the retired condemned

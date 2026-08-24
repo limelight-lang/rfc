@@ -223,6 +223,15 @@ type's metadata; the runtime needs nothing new for them.
 
 ## Deferred
 
+- **What roots a wrapper only the C side holds** — a hole, reported 2026-08-24
+  and not closed here. The collector derives roots rather than enumerating
+  them, so an entity nothing in the language holds reads as garbage however
+  many raw pointers the foreign side keeps to it, and the ruling that puts
+  every reachable reference into a declared field of the wrapper says nothing
+  about what holds the wrapper. Node B8 of
+  [../gc/walk/questions.md](../gc/walk/questions.md) carries it, with an idea
+  of Edmond's — a small registry of held objects the walk would read as a root
+  source — recorded there and undecided.
 - **Foreign functions and libraries** — declaring imported C functions
   (signatures, calling conventions, per-argument marshalling); belongs
   with the interop RFC.

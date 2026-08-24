@@ -580,6 +580,19 @@ broken links.
         lever the amendment removes, so those five are re-derived or
         retired while the other seventeen owe only their counts. The
         re-derivation itself is a stage's work and belongs to S4.
+      2026-08-24, two more of Edmond's own questions. **The completion
+        bound moved to `model/gc/rc-walk.md`**, beside the gate it follows
+        from, rather than to D3: D3 carries ruling 3's ceiling, which
+        bounds one batch, while this bounds the whole — how long one
+        posted verdict may stay outstanding — and filing them together
+        would have hidden that. **And node B8 is new**: what roots an
+        entity only the C side holds. The walk derives roots, so an entity
+        nothing in the language holds reads as garbage however many raw
+        pointers the foreign side keeps; ruling 7 covers the wrapper's
+        children and not the wrapper. Edmond's idea, recorded and
+        undecided: a small registry of held objects the walk reads as a
+        root source. The runtime half of the struck G14 moved there and
+        G14 stays a record.
       Critic 2026-08-24 round 1, over that batch: four lenses — the probes
         as instruments, the derived numbers, the four argued nodes against
         their sources, and the consolidation pass `dev/WORKFLOW.md`

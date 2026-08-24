@@ -110,6 +110,7 @@ flowchart TD
     B5[B5 the epoch-abort watermark<br/>open; returns no memory when it fires]
     B6[B6 skip by block, not by entity<br/>measured; segregate, not count]
     B7[B7 soft segregation by skippability<br/>residue measured, three figures open] --> B6
+    B8[B8 what roots a C-held entity<br/>design; an idea recorded 2026-08-24]
 
     C1[C1 background cadence<br/>open; two candidates eliminated] --> B5 & C2 & C3
     C2[C2 the young-free exemption<br/>curve measured; unsound as written]
@@ -137,11 +138,14 @@ flowchart TD
 ```
 
 **Reading the arrows.** `X --> Y` means X must be answered before Y can be,
-so the roots are the nodes nothing points at. Thirty nodes and nineteen edges
+so the roots are the nodes nothing points at. Thirty-one nodes and nineteen
+edges
 after the scope ruling of 2026-08-23, which struck four questions of section A
 — A2, A4, A8 and A9 — one of section B, B2, and the whole of section G.
 
-**Nine nodes carry no edge, for four reasons.** B3, D2 and D4 are closed and
+**Ten nodes carry no edge, for five reasons.** B8 is new and unattached,
+its consumers being ruling 7 and D3's resurrection line rather than a node.
+B3, D2 and D4 are closed and
 block nothing still open, so they are in the graph to be found by a reader
 rather than to be traversed. D3 and E2 wait on a measurement and on a machine
 and answer to no other node. F2 and F3 are records of prior art: F2 is read
@@ -873,6 +877,39 @@ earns its word — and none of the three is taken.
 **What it does not supply: a guarantee.** With a fallback no block is uniform
 by construction, so the walk keeps testing rather than trusting, and the
 question is only whether the test starts paying.
+
+### B8. What roots an entity only the C side holds  [design; an idea recorded 2026-08-24, undecided]
+
+The walk derives roots rather than enumerating them: an entity is a root
+when `RC − IN > 0`, that is when something holds it that the walk did not
+see. An entity **only** a C extension holds has no such holder. Its count is
+zero, nothing points at it from the walked population, and the walk reads it
+as garbage.
+
+**Ruling 7 does not reach it.** The ruling puts every reference the C side
+can name into a declared field of an FFI wrapper, so the wrapper's *children*
+are safe — the walk finds them through it. What roots the **wrapper** the
+ruling leaves open: a field of a heap object is a root only through the chain
+rule ([`../../memory/static-lifetimes.md`](../../memory/static-lifetimes.md#what-may-own-a-borrow)),
+never on its own, so "the collector traces the wrapper as an ordinary entity"
+names no mechanism that reaches a wrapper nothing in the language holds. The
+consequence is a free under a live C pointer.
+
+**An idea, Edmond, 2026-08-24, recorded and not decided:** something like a
+**micro-list of held objects** — a small registry the foreign side adds to and
+the walk reads as a root source. Nothing about its shape is settled: who
+appends, who removes, what a leaked entry costs, whether it is per thread or
+per process, and whether it is the same list node E4's moved objects want.
+
+**Where it came from.** Node G14 carried half of this before section G was
+struck as compiler business on 2026-08-23; that half is not compiler business,
+and D3's resurrection line rests on it — resurrection is closed on every
+managed channel and open on FFI alone. G14 stays a record; the runtime half
+is here.
+
+**What would answer it:** the registry's shape, or a written refusal — the
+design saying it accepts the hole and naming what a C extension must do
+instead.
 
 ## C. When the collector runs
 
@@ -2605,6 +2642,12 @@ owed and unstarted.
 **What would answer it, per category:** the root's identity, what owns it,
 what creates and revokes it, whether revocation is a non-liftable horizon,
 and a non-reusable generation carried in the certificate.
+
+**The runtime half of this node left it on 2026-08-24** — what roots a wrapper
+only the C side holds is not compiler business and outlived the strike. It is
+node B8, with Edmond's idea of a micro-list of held objects recorded there.
+What stays here is the rest: the lattice's root list, and the categories a
+horizon kind does not name.
 
 #### G15. The closed-world closure is computed in an open world  [design]
 

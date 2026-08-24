@@ -565,10 +565,10 @@ broken links.
         trips, each the mutator's checkpoint interval, over a drain floor
         of 6 µs.
       2026-08-24, three nodes without an instrument and one scoped.
-        **E4** splits the move's six restrictions three against the header
-        and three with no runtime test, finds the count test subsumes the
-        `&` binding, and names where the escapee list stops being the
-        analogue — its clearing event is the arena reset and a recipient
+        **E4** splits the move's six restrictions against the header word —
+        four and two after the Critic round corrected the draft's
+        subsumption of the `&` binding — and names where the escapee list
+        stops being the analogue — its clearing event is the arena reset and a recipient
         actor has none. **C2** prices its three objections against the
         crate and one of the two repairs it proposed does not survive:
         `Heap::free`'s branch is downstream of the parking decision.
@@ -618,12 +618,19 @@ broken links.
         Laravel ^13.0, and `heap-composition.php` over it returns the four
         figures A6 and B6 record — 0.32 companions an entity, 17 size
         classes over 25 pairs at 8 tail blocks, 75.9 % entity share, and
-        723 strings of 2 365 entities. So A6's remaining quantities and the
-        corpus-gated halves of B1, C1, B7 and D6 are no longer blocked.
+        723 strings of 2 365 entities, and the `arrays walked` row A6 was
+        owed is taken. **What that does not unblock**, corrected by the
+        second Critic round: A6's two remaining quantities wait on a scan
+        nobody has written and on a compiler, not on a corpus; and where
+        B1, B6 and D6 are corpus-gated they are gated on a **plurality of
+        programs**, which naming the one tree behind the existing figures
+        does not supply. What is unblocked is re-taking a figure over this
+        tree, and the booted column turns out not to be re-takeable at
+        all — "booted" names a state the record does not define.
         **And D3's ceiling has a mechanism.** Edmond declined to rule the
         split of step 8 separately — the adopted strategy answers it, and a
         clock is admissible — so the shape follows from a price nobody had
-        taken: a monotonic read is 13.0 ns against a severed cell at 2.3
+        taken: a monotonic read is 13.2 ns against a severed cell at 2.3
         and a released child at 1.0. The ceiling is therefore a charged
         budget on a register between clock reads, the clock read once per
         slice boundary and once after every destructor, recorded in

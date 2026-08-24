@@ -20,7 +20,7 @@ strategy applied one level down rather than a ruling of its own: Edmond
 declined to rule it separately on 2026-08-24, saying the adopted strategy
 answers it and naming a clock as an admissible mechanism.
 
-**Why:** a monotonic clock read is 13.0 ns on the reference box, against a
+**Why:** a monotonic clock read is 13.2 ns on the reference box, against a
 severed cell at 2.3 and a released child at 1.0 (`ll-model`
 `dev/BENCHMARKS.md`, 2026-08-24). Checking per cell would cost six times the
 work it bounds. One read per slice at a millisecond budget is one part in

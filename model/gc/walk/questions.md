@@ -1425,7 +1425,7 @@ bounds the batch by time — and he named reading a clock as an admissible
 mechanism, leaving the shape open. The shape follows from two prices measured
 the same day.
 
-**A clock read is 13.0 ns**, the steadiest figure the probe takes (three runs
+**A clock read is 13.2 ns**, the steadiest figure the probe takes (three runs
 inside 0.6 ns). That is six severed cells, thirteen released children, or one
 whole mechanical teardown. So the ceiling cannot be a check on the mechanical
 path: per cell it would cost six times the work it bounds. It also cannot be a
@@ -1441,12 +1441,24 @@ where the drain yields.**
    previous read against the truth. Ruling 3's between-entity check is the
    same read where a slice happens to end at an entity.
 2. **Between reads, each unit debits its measured price on a register** — 2.3
-   ns for a severed cell, 1.0 for a released child, 14.0 for one that reaches
-   zero and runs a mechanical teardown. One add, no clock, and exact rather
-   than assumed, because the prices are measured.
+   ns for a severed cell, 1.0 for a released child, 14.0 for an entity whose
+   count reaches zero and whose teardown runs no user code. One add, no clock,
+   and measured rather than assumed. **Each price is a floor and the charge
+   therefore undercharges**, with a sign that is known rather than open: the
+   sever arms swept their parents in allocation order, which is friendlier
+   than the scatter a component gives the drain, and the teardown price is an
+   empty leaf's — no destructor, no children, no outside cells. So the debit
+   is charged **per entity the teardown reaches**, inside its recursion,
+   rather than once for the child that started it; a subgraph freed by one
+   drop is many units and not one. What the floors leave is a slice that ends
+   later than the budget says, never earlier, and step 1 is what bounds how
+   much later.
 3. **A destructor gets a read of its own.** It is the only unbounded unit and
    the only one long enough for 13 ns to disappear into, and it is the one
-   place where a charge cannot be written in advance.
+   place where a charge cannot be written in advance. A read is not a
+   boundary: where the drain may stop is the two Sage verdicts' business and
+   is unchanged by this, which only says where the budget learns what it
+   spent.
 
 **Why a count bounds a pause here where ruling 3 said it does not.** The
 ruling refused *a count of entities* on the ground that a destructor is user
@@ -1456,11 +1468,13 @@ gives its own read. So the ruling's reason does not carry down to cells, and
 this is an application of the strategy rather than an exception to it.
 
 **What it leaves open, and it is calibration rather than shape.** The charged
-prices are this box's. Between two reads nothing corrects them, so the error
-can only accumulate inside one slice and is the ratio of the true per-cell
-price to the charged one — bounded by construction, unmeasured in size. Where
-the prices are taken and how often is the constant this node still owes,
-beside the ceiling's own value.
+prices are this box's and each is a floor, so a slice overruns rather than
+underruns and the direction is not in doubt; what is unmeasured is the size —
+the ratio of the true per-unit price under a scattered component to the
+charged one, and what a class with a destructor or with children adds to the
+teardown floor. Between two reads nothing corrects either, so the error is
+capped at one slice by construction. Where the prices are calibrated and how
+often is the constant this node still owes, beside the ceiling's own value.
 
 **The mechanism does not exist in code.** `sever_counted_children` and
 `sever_entries` take a displaced vector and no cursor (`ll-model`
@@ -2111,11 +2125,13 @@ except through the queue.
   heap ([`../../../runtime/actors.md`](../../../runtime/actors.md#allocation-site-selection));
   arena memory dies at the sender's reset and cannot be handed on.
 
-**The six restrictions split three and three against the header, 2026-08-24.**
-Three are readable at pack time from the entity's own header word, and the bits
-exist: **no weak subscriber** is `HAS_WEAK_REFERENCES`, flag 7, which is the
-test `../../../runtime/actors.md` already names; **not arena-resident** is the
-two category bits; and **no live second holder** is the refcount.
+**The six restrictions split four and two against the header word,
+2026-08-24.** Four are readable at pack time from it: **no weak subscriber** is
+`HAS_WEAK_REFERENCES`, flag 7, which is the test `../../../runtime/actors.md`
+already names; **not arena-resident** is the two category bits; **no live
+second holder** is the refcount; and **no `&` binding**, below, is the kind of
+the value being packed. A first version of this paragraph made the last a case
+of the third and counted three; it is not.
 
 **The `&` restriction is a fourth runtime test rather than a case of the
 third**, and a draft of this paragraph had it the other way. A reference box
@@ -2717,19 +2733,21 @@ the amendment also retires without either being on the node's list —
 `ByteOnly` (Phase 3 re-reads a byte instead of running Phase 4) and `NoDefer`
 (a freed slot is reusable inside an epoch).
 
-**What that costs the battery is five of its 22 configurations.** Three set
-`ByteOnly` (`SC_borrow_byte`, `SC_dc2`, `SC_selfloop_byte`) and two set
-`OldDeath` (`SC_f5_old`, `SC_dc3_old`). The two `OldDeath` rows are recorded
+**What that costs the battery is six of its 22 configurations.** Three set
+`ByteOnly` (`SC_borrow_byte`, `SC_dc2`, `SC_selfloop_byte`), two set
+`OldDeath` (`SC_f5_old`, `SC_dc3_old`) and two set `NoDefer` (`SC_dc3_old`
+again, and `SC_dc3_new`) — six distinct files, `SC_dc3_old` turning on two
+levers at once. The two `OldDeath` rows are recorded
 in [`../rc-walk-proof.md`](../rc-walk-proof.md) as **premise probes that pass
 because the premise is unreachable**, not as kills — so what the amendment
 does to them is not to move an expectation but to invert what they probe: the
 premise becomes the rule, and a probe for an unreachable state has nothing
 left to look for. Removing a switch also unmakes its FALSE setting, so the
-seventeen that leave it clear lose an arm of their own state graph rather than
-a line of their configuration. Those five are re-derived or retired, not
-re-run; the other seventeen keep their pass-or-kill expectation and owe their
-distinct-state counts, which change with the state vector whatever else does
-not.
+sixteen that leave every one of them clear lose an arm of their own state
+graph rather than a line of their configuration. Those six are re-derived or
+retired, not re-run; the other sixteen keep their pass-or-kill expectation and
+owe their distinct-state counts, which change with the state vector whatever
+else does not.
 
 **What it blocks:** any scenario written *against these two specs* inherits
 the drift, so the re-derivation is a precondition of reusing them rather than

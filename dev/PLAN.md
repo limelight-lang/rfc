@@ -1,6 +1,6 @@
 # PLAN
 
-Updated: 2026-08-23 · Active: S5
+Updated: 2026-08-24 · Active: S5
 
 Destination, as amended 2026-08-23: the collector design of record is
 readable here as a question graph — thirty questions about the collector and
@@ -499,6 +499,52 @@ broken links.
         `RcWalk.tla` and the five configurations are byte-identical to
         their content at `4d0ad5d`, the commit that wrote the table, and a
         distinct-state count does not depend on the run.
+      2026-08-24, node E1: the stamp half is answered for actors and the
+        multiplicity question moves to E3; the weak table's residence is
+        narrowed from three candidates to two and priced against `ll-model`.
+        The stamp ground is the crate's rather than an argument —
+        `collector_stamp_epoch` has one production caller, the epoch's own
+        walk, and neither collection the design gives an actor reaches it.
+        The residence half stops there by the rule this stage taught: no
+        instrument prices a candidate, the crate having no actor and no
+        scheduler, so what is written is each candidate's call-site cost and
+        the finding that rows following the actor presuppose rows keyed by
+        actor rather than competing with them. Folded into
+        `runtime/actors.md`, `model/weak-references.md` and node E3, which
+        gains the multiplicity as a fourth item. The graph section was
+        repaired in the same pass: a duplicated block naming struck nodes as
+        live is cut, the edgeless list now matches the mermaid at nine nodes
+        over four reasons, and the strike is counted as four questions of
+        section A plus B2.
+      Critic 2026-08-24 round 1 (over that work): 38 findings, nine survived
+        verification and all nine were executed. The heaviest was against its
+        centre — `dev/DECISIONS.md`'s calling-convention entry *rejects*
+        moving the weak table into `LLContext` and names this node as the
+        reason, where the draft had cited it as prescribing exactly that.
+        Beside it: the heading claimed the actor half where only the stamp
+        half was answered; D7 was filed as blocking nothing while its own
+        text named D1; and the edgeless taxonomy announced three reasons over
+        four groups.
+      Critic 2026-08-24 round 2 (over round 1's fixes): 18 findings, six
+        survived and all were executed. A bolded sentence the answer
+        superseded was left standing and denied the new heading; the same
+        paragraph called the protocol one-at-a-time *by construction*, which
+        the crate refutes — what objects to nesting is a `debug_assert!`
+        release builds compile out — and listed the epoch number among the
+        process-global statics, where `Epoch::open` keeps it in the instance.
+        The section G preamble still counted five struck nodes of section A.
+        Two rounds, then the device is dropped.
+      Consolidation 2026-08-24, per `dev/WORKFLOW.md`: thirteen findings,
+        four survived and all were executed, plus one the verifier refused
+        and reading settled the other way. Three of the four were one
+        mis-citation repeated: `domains.md`'s per-block "epoch number it was
+        snapshotted in" is §7's gate on a remote-free drain, never a proposed
+        shape for the entity stamp, and E1 carried that attribution before
+        this sitting. The refused one was the load-bearing step of the stamp
+        answer — `actors.md` names `rc-trace` for an actor's arenas, not the
+        synchronous `collect_cycles` the draft named — and the repair
+        strengthened the claim, both collections running with no epoch
+        number.
       handoff: state at the end of 2026-08-22. **Closed and holding:** A1,
         A5 (the width is not the lever; the prefetch is measured and
         unsettled), A7 (the discriminant is a bit of the retired condemned

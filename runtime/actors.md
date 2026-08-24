@@ -91,8 +91,10 @@ boundary, on the thread executing it, so inside an actor there is never a second
 thread to disagree with; and the frees the park list defers are bound to the
 heap that issued the block, which is a thread's
 (`ll-model` `src/memory/deferred_free.rs`). What is left of the question is the
-general heap outside any actor
-([../model/gc/walk/questions.md](../model/gc/walk/questions.md#e1-actors-and-the-epoch-protocol--structures-resolved-2026-08-23-the-stamp-half-stays-open)).
+weak table's residence, which is node E1
+([../model/gc/walk/questions.md](../model/gc/walk/questions.md#e1-actors-and-the-epoch-protocol--the-stamp-half-answered-for-actors-2026-08-24-four-items-open)),
+and whether two epochs are ever in flight at once, which E1 handed to node E3
+on 2026-08-24.
 Entry from code this runtime did not call arrives with no context, and what
 establishes one is undecided. And a `static` inside a foreign shared object is
 reached by nothing here: it needs a declaration from the module or an actor

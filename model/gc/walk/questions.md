@@ -99,7 +99,7 @@ it.
 flowchart TD
     A1[A1 the pair against its working set<br/>measured 2026-08-22] --> A6
     A6[A6 the corpus scan<br/>corpus; three of seven taken] --> A5 & B1 & C2 & D6
-    A5[A5 a cheaper count word<br/>width answered, window unpriced]
+    A5[A5 a cheaper count word<br/>width answered, prefetch and window unpriced]
     A7[A7 the unique-ownership discriminant<br/>answered 2026-08-22] --> A3
     A3[A3 what the walk does with a unique entity<br/>answered 2026-08-23]
 
@@ -123,7 +123,7 @@ flowchart TD
     D6[D6 WeakMap ephemerons<br/>open; the shape is written, the corpus is not]
     D7[D7 how a mutator is activated<br/>answered 2026-08-23: nobody is]
 
-    E1[E1 what an owner is<br/>structures resolved, stamp open] --> D1 & E3 & E4
+    E1[E1 actors and the epoch protocol<br/>stamp half answered for actors, four items open] --> D1 & E3 & E4
     E2[E2 AArch64 header access<br/>hardware]
     E3[E3 the domains proposal<br/>sorted; waits on E1]
     E4[E4 what may be moved into an actor<br/>design] --> D1
@@ -136,33 +136,19 @@ flowchart TD
 ```
 
 **Reading the arrows.** `X --> Y` means X must be answered before Y can be,
-so the roots are the nodes nothing points at. Thirty nodes and nineteen
-edges after the scope ruling of 2026-08-23 struck five compiler questions of
-section A and the whole of section G; what the strike removed most of was section A's
-fan-out, the corpus scan having fed four proofs that are no longer this
-document's business.
+so the roots are the nodes nothing points at. Thirty nodes and nineteen edges
+after the scope ruling of 2026-08-23, which struck four questions of section A
+— A2, A4, A8 and A9 — one of section B, B2, and the whole of section G.
 
-**Nodes with no edge, and why.** B3, D2 and D4 are closed and block nothing
-still open. C1 and C2 depend on each other and the graph draws
-`C1 --> C2` alone: C2's free variable is the interval between walks, which C1
-sets, while C1's threshold is written in a currency C2's exemption changes,
-so the pair converges by iteration rather than by ordering. The rest — D3,
-E2, F2, F3 and H1 — either wait on a measurement or a machine, or stand
-alone.
-
-**Reading the arrows.** `X --> Y` means X must be answered before Y can be,
-so the roots are the nodes nothing points at.
-
-**Fifty-one nodes, eleven of them carrying no edge, for four reasons.** B3,
-D2, D4 and G1 are closed and block nothing still open, so they are in the
-graph to be found by a reader rather than to be traversed. D3 and E2 wait on a
-measurement and on a machine and answer to no other node. G3 and G17 are open
-and genuinely unattached: G3's generator half and G17's instrument defects
-each stand alone. F2 and F3 are records of prior art: F2 is read against D2
-and D4, which are closed, so it blocks nothing until ruling 10 is revisited,
-and F3 feeds nothing by design. H1 is the eleventh and is separate again — it
-blocks the model-checker specifications, an instrument this graph holds no
-node for, whose consumer is the case book's third candidate oracle.
+**Nine nodes carry no edge, for four reasons.** B3, D2 and D4 are closed and
+block nothing still open, so they are in the graph to be found by a reader
+rather than to be traversed. D3 and E2 wait on a measurement and on a machine
+and answer to no other node. F2 and F3 are records of prior art: F2 is read
+against D2 and D4, which are closed, so it blocks nothing until ruling 10 is
+revisited, and F3 feeds nothing by design. D7 and H1 each keep an open half
+that no node in this graph consumes: D7's checkpoint-free thread, waiting on a
+bound over how long such a stretch runs in real code, and H1's re-derivation,
+which the two model-checker specifications need before either can be reused.
 
 **C1 and C2 depend on each other and the graph draws `C1 --> C2` alone.**
 C2's free variable is the interval between walks, which C1 sets; C1's
@@ -178,9 +164,10 @@ where to start.
 2026-08-23.** B5 and C1 pointed at each other; the watermark's firing point
 has to be named before its cost, which puts B5 behind C1 and not beside it.
 C2 pointed at C1, which is the half of the mutual dependency described above.
-G7 and G8 pointed at G6 where the summary language is what they read. B1 and
-The acyclic class flag pointed at C1 with nothing in either body claiming to block the cadence,
-and those two edges are removed rather than redrawn.
+G7 and G8 pointed at G6 where the summary language is what they read, and all
+three were struck later the same day. B1 and B2 pointed at C1 with nothing in
+either body claiming to block the cadence, and those two edges are removed
+rather than redrawn.
 
 **A6's table is not this edge set.** The table under A6 lists which node
 *consumes* each measured quantity, which is a wider relation than blocking: a
@@ -1573,14 +1560,22 @@ from outside.
 
 **What would answer it:** a bound on how long a checkpoint-free stretch can
 last in real code, which is what decides whether the first answer is
-acceptable — the same measurement A5 needs, from the other side.
+acceptable. A draft called this the measurement A5 needs from the other side,
+and A5 refuses it by name: its quantity is the distance between two
+checkpoints that can run the test, which it says is the larger window, and
+asking for the checkpoint-free stretch instead would close A5 against
+coalescing a second time. The two are different measurements over the same
+execution.
 
-**What it blocks:** D1's hand-back direction, which is where a grown queue
-comes from.
+**What it blocks: nothing, since 2026-08-23.** The clause this node carried —
+D1's hand-back direction, where a grown queue comes from — was written before
+Edmond restated ruling 5, and D1 closed the hand-back the same day: the
+mutator frees what it confirms and nothing returns to the collector. The open
+half above waits on a measurement rather than on another node.
 
 ## E. Threads, actors and the machine
 
-### E1. Actors and the epoch protocol  [structures resolved 2026-08-23; the stamp half stays open]
+### E1. Actors and the epoch protocol  [the stamp half answered for actors 2026-08-24; four items open]
 
 Refcounts are non-atomic and the crate is single-mutator
 (`../rc-walk.md`). The node asked whether each actor runs its own epoch,
@@ -1605,16 +1600,26 @@ entity (`ll-model` `src/memory/routing.rs`) — plus the three populations the
 same snapshot adds: pooled large-entity blocks, retained former-arena blocks
 and OS-direct entity runs.
 
-What actually keeps one writer is that the protocol is one-at-a-time by
-construction: the epoch number, the handshake flag, the ack counter, the
-verdict queue and the outstanding count are process-global statics and
-opening an epoch asserts that epochs do not nest. Two collectors would
-reach the same header through the global block registry, each reading the
-other's number as an old stamp — [`../domains.md`](../domains.md) invented
-a per-block "epoch it was snapshotted in" field for that reason and noted
-that a bare 1-255 number does not say whose epoch it is. **So the stamp
-half is not answered; it is held by the same single-mutator scaffolding
-E1's other half is about.**
+What keeps one writer is the protocol's single set of state: the handshake
+flag, the ack counter, the verdict queue, the outstanding count and the
+deferred-free activity bit are process-global statics with no second copy
+(`src/epoch.rs`, `src/memory/deferred_free.rs`). The epoch number is not among
+them — the static is a dispenser and `Epoch::open` keeps the number it draws
+in the instance (`src/collector.rs`) — so two epochs would run under two
+numbers. Two collectors would then reach the same header through the global
+block registry, each reading the other's number as an old stamp. Nothing is
+proposed for that: [`../domains.md`](../domains.md) does carry a per-block
+"epoch number it was snapshotted in", but §7 invents it to gate the drain of a
+block's remote-free queue against retirement, its own sidebar saying the field
+gates the queue only — and adding that no epoch number is published outside
+the collector, so a bare 1-255 number does not say whose epoch it is.
+
+**Superseded 2026-08-24 by the answer below**, which reads the same statics
+against a second epoch rather than against a second actor: a draft closed this
+paragraph with "the stamp half is not answered; it is held by the same
+single-mutator scaffolding E1's other half is about", and it also called the
+protocol one-at-a-time *by construction*, which the crate does not support —
+what objects to nesting is a `debug_assert!` release builds compile out.
 
 **The ownership half is worse than "undecided": two in-force documents
 disagree about what an owner is.**
@@ -1625,7 +1630,8 @@ being only that at most one thread executes it at a time.
 [`../../weak-references.md`](../../weak-references.md#the-weak-table-address--subscriber-row)
 builds the weak table **per thread**, calls entities thread-confined, runs
 every notification on the owning thread, and disposes the table at thread
-exit. It never mentions actors.
+exit. Its own actor section, added 2026-08-23, closes the queue crossing and
+says the residence question is this node's.
 
 The two cannot both hold. An actor creates a weak reference while mounted
 on one thread, so the row lands in that thread's table; the actor migrates;
@@ -1678,9 +1684,93 @@ cross the actor queue — an object holding one is not sendable and an object th
 is the target of one may not be moved
 ([`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md)) — so a cell and its
 target stay in one actor, and the rows are the actor's. What the table's
-per-thread residence then owes is the mechanism: rows keyed by actor, rows
-following the actor, or an actor pinned while it has subscribers. For the
-general heap the stamp half of this node stands unchanged.
+per-thread residence then owes is the mechanism, and the three candidates
+reduce to two.
+
+**Rows keyed by actor change the container rather than the key**, priced
+2026-08-24 against `ll-model`. The key is already the target's address, a row
+being address to canonical cell, so what moves is the table itself, out of a
+thread-local `Cell` (`src/weak.rs`). **Where it moves to is not free to
+choose**: the calling-convention entry of 2026-08-23 rejects putting the six
+per-thread structures, the weak table first among them, into `LLContext`, and
+gives this node as the reason — the move "would decide node E1 by
+construction" and dismantles the thread-exit disposal order
+([`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md)). What the same
+entry does prescribe is the reaching mechanism rather than the residence: an
+interior path takes the owner it works on as a parameter. So this candidate
+owes a container the notification paths reach through that parameter, and it
+owes the disposal order a replacement. The price of the parameter is eight
+context-less call sites in five files, counted 2026-08-24. `notify_death`,
+`notify_members`, `weakref_die` and `drain_arena_weak_log` take no context,
+nor does `ll_entity_die` above them, so the owner has to reach `object.rs`
+twice, `gc.rs` twice, `walk.rs` twice, and `promote.rs` and
+`memory/arena.rs` once each. The last two already carry the arena they reset
+while their drain reads the current thread's table, which is the residue
+below. A ninth site is the disposal the rejection named: it is step 4 of
+thread exit (`src/memory/heap.rs`), pinned there against the day static-block
+teardown existed, and a per-actor table is not thread exit's to dispose.
+
+**Rows following the actor presuppose that first candidate** rather than
+competing with it. The map carries no owner column, so selecting one actor's
+rows needs either the per-actor container or a second index built for it.
+Beyond that it adds an ordering at the handoff, the cell's `target` being a
+plain field written only by the owning thread.
+
+**Pinning the actor costs nothing in this module and spends the invariant
+`actors.md` rests on.** The per-actor row count it needs rides for free: one
+insertion site and two removal sites, each coinciding with a set or a clear of
+`HAS_WEAK_REFERENCES`. What it pays with is migration, since an actor holding
+one weak reference stops being schedulable elsewhere, and free migration is
+what "at most one thread executes it at a time" was weakened to preserve.
+
+**A residence for the table is already written, in a proposal.**
+[`../domains.md`](../domains.md) makes it per-domain and keyed by address, a
+domain being a thread or an actor mounted on one, dated 2026-07-28 — before
+this node asked. That document marks itself a proposal scoped to threads with
+actors deferred, so what it supplies is a shape rather than a ruling. It also
+says what keeps the shape from being free: a domain dying mid-epoch leaves a
+weak table behind, which it calls the largest hole in the model.
+
+**What is left of this half.** An arena's weak log follows the arena while its
+drain reads the current thread's table (`src/memory/arena.rs`, `src/weak.rs`),
+so an arena's owner has to be named beside the actor's. And no instrument
+prices any candidate: the crate has no actor and no scheduler, so the three
+figures above are call-site counts rather than measurements. By the rule this
+stage taught, the half stops here rather than being closed by the argument.
+
+**The stamp half is answered for actors, and what is left goes to E3.** No
+actor produces a second writer of the epoch byte, and the ground is the
+crate's rather than an argument: `collector_stamp_epoch` has one production
+caller, the epoch's own walk (`src/collector.rs`, `src/refcount.rs`). Neither
+collection the design gives an actor reaches it — `rc-trace`, which
+[`../../../runtime/actors.md`](../../../runtime/actors.md#per-actor-collection-at-message-boundaries)
+names for an actor's arenas, and the synchronous whole-heap `collect_cycles`
+both run without an epoch number (`src/gc.rs`, `src/walk.rs`). The pickup gate
+adds the second half of the separation: it reads `collect_cycles`'s
+thread-local flag, so a message drain and that collection never interleave on
+the thread the actor is mounted on (`src/epoch.rs`).
+
+**What a second epoch would collide on is not the byte.** The byte is a plain
+relaxed store, last writer wins, and it records no owner: two distinct numbers
+cost the allocate-black skip, each walk reading the other's stamp as older and
+enrolling an entity the other exempted, while colliding numbers make both
+skip, which is conservative. The state with no second copy is the protocol's.
+The handshake flag, the ack counter, the verdict queue, the outstanding count
+and the deferred-free activity bit are process-global statics, so the first
+`close` clears the activity bit while a second walk still reads it
+(`src/epoch.rs`, `src/memory/deferred_free.rs`). What objects to a second
+epoch is a `debug_assert!` that release builds compile out, and `Epoch::drop`
+spinning on the outstanding count. The situation is unreachable today:
+`Epoch::open` has no caller outside tests and `collector.rs` exports no ABI
+symbol.
+
+Whether two epochs are ever in flight at once is the domains question rather
+than the actor question, and `../domains.md` owns it — through §6's disjoint
+slices and the per-domain enumeration its §11 records as missing, rather than
+through the block field of §7, which gates a queue drain. Node E3 carries it.
+
+**Four items stay open on this node**, and the status line counts them: the
+weak table's residence above, and the three obligations below.
 
 **Three obligations were added to this node on 2026-08-23**, by the review
 chain over the context-aware calling convention
@@ -1707,7 +1797,8 @@ settled too; the cost half is not, and no machine here can take it.
 
 [`../domains.md`](../domains.md) is the standing multi-mutator design and
 carries its own open list, which E1 as a single node hides. Sorted by what
-the epoch protocol actually needs:
+the epoch protocol actually needs, the first three taken from that list and
+the fourth handed here by E1 on 2026-08-24:
 
 **E1's question wearing another hat.** The list's actors item, recorded
 2026-07-28, says `actors.md`'s allocation-site selection assumes a general
@@ -1718,7 +1809,7 @@ re-derivation there rather than here. It is also the sentence that refuted
 E1's first draft, which argued from a general heap that this item says does
 not exist.
 
-**What the epoch protocol needs before anything else.** Three items, and
+**What the epoch protocol needs before anything else.** Four items, and
 the proposal ranks the first itself:
 
 - **A domain dying mid-epoch** — an epoch nobody will close, a parked list,
@@ -1731,6 +1822,17 @@ the proposal ranks the first itself:
 - **The drain-exclusivity window is proven for one mutator**, and the
   re-derivation is owed — the same third link node D1 rewrites for the
   hand-off, now for a second reason.
+- **Whether two epochs are ever in flight at once**, handed here by E1 on
+  2026-08-24. Actors raise no second writer of the epoch byte, so the
+  multiplicity that is left is this proposal's. Five process-global statics
+  have no second copy — the handshake flag, the ack counter, the verdict
+  queue, the outstanding count and the deferred-free activity bit
+  (`ll-model` `src/epoch.rs`, `src/memory/deferred_free.rs`) — and the first
+  epoch to close clears the activity bit under a second walk still reading
+  it. Neither half has a proposal: `../domains.md` answers multiplicity with
+  §6's disjoint slices and the per-domain enumeration §11 records as missing,
+  and its per-block "epoch number it was snapshotted in" is §7's gate on a
+  remote-free drain rather than a shape for either.
 
 **What is the movable-value design and does not touch the walk.** Frozen
 from birth or after the send, `~=` on a DAG, the move's counter semantics,
@@ -1746,7 +1848,9 @@ also wants ([`../../layouts.md`](../../layouts.md)). Three bits, seven kinds
 assigned, one spare, two claimants.
 
 **What would answer this node:** nothing here, until E1 says what an owner
-is. The sorting above is what this node contributes.
+is — except the fourth item above, which E1 handed over precisely because it
+turns on no owner ruling. The sorting, and that item, are what this node
+contributes.
 
 ### E4. What may be moved into an actor, and what a shared pointer owes  [design]
 
@@ -1828,8 +1932,8 @@ design refused it for, destruction timing. Recorded so that the refusal is
 findable against the literature. Nothing in it is proposed for this design.
 ## G. The proof side, struck 2026-08-23 as compiler business
 
-Edmond ruled it out of this repository on 2026-08-23, in the same pass as
-the five nodes of section A and for the same reason. The exchange that
+Edmond ruled it out of this repository on 2026-08-23, in the same pass that
+struck A2, A4, A8, A9 and B2, and for the same reason. The exchange that
 settled it: pairs on local references **are** removed where the compiler can
 prove it safe, a horizon is the place where the proof stops covering a borrow
 and the pair goes back, and both are the compiler's business — «убираем, но

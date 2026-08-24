@@ -107,6 +107,20 @@ create and death. Consequence: the thread-exit teardown that already
 walks static blocks ([classes.md](classes.md), "Teardown at thread
 exit") also disposes the thread's weak table.
 
+**The owner named above is a thread because this runtime has one mutator per
+thread and no actor.** Once the scheduler mounts an actor, "the owning thread"
+stops being constant across an entity's life: the actor may migrate between
+messages while its rows stay in the table of the thread it left. The residence
+that survives migration is the open half of node
+[E1](gc/walk/questions.md#e1-actors-and-the-epoch-protocol--the-stamp-half-answered-for-actors-2026-08-24-four-items-open),
+which enumerates the candidates and their call-site costs and chooses none; [gc/domains.md](gc/domains.md), a proposal
+scoped to threads with actors deferred, already writes the table as
+per-domain and keyed by address, a domain being a thread or an actor mounted
+on one — a shape rather than a ruling. Every per-thread claim in this section holds under the
+thread invariant and is re-read against that node when the mechanism lands —
+the thread-exit disposal above included, which under a per-actor table is no
+longer thread exit's business.
+
 ### Operations
 
 - **`create(obj)`** — flag clear: allocate the entity (`refcount` 1,
@@ -222,7 +236,10 @@ Two smaller pins the sites imply:
   graph containing a kind-5 entity (`thread_clone` / `thread_move`),
   and the death path of a `long-lived`-category target, are
   **reserved** for the threading pass — the per-thread/no-locks claim
-  must be re-examined there, not silently extended.
+  must be re-examined there, not silently extended. A migrating actor is
+  the second occasion for that re-examination, and this bullet's disposal
+  step is one of the claims it takes: see
+  [E1](gc/walk/questions.md#e1-actors-and-the-epoch-protocol--the-stamp-half-answered-for-actors-2026-08-24-four-items-open).
 
 ## Across an actor boundary
 
@@ -239,7 +256,7 @@ decidable from the class where the class is closed. Decided 2026-08-23
 
 What this does not settle is where the table lives when an actor moves
 between threads: the queue is not the door that shape uses. That is node
-E1 of [gc/walk/questions.md](gc/walk/questions.md#e1-actors-and-the-epoch-protocol--structures-resolved-2026-08-23-the-stamp-half-stays-open).
+E1 of [gc/walk/questions.md](gc/walk/questions.md#e1-actors-and-the-epoch-protocol--the-stamp-half-answered-for-actors-2026-08-24-four-items-open).
 
 ## `WeakMap` cleanup is eager, not lazy
 

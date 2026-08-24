@@ -149,7 +149,7 @@ single-mutator invariant.
 
 **Open, with owners:** which of the six structures are actor state, and the
 epoch duty and re-entry slot a foreign crossing would need — node E1
-([../model/gc/walk/questions.md](../model/gc/walk/questions.md#e1-actors-and-the-epoch-protocol--structures-resolved-2026-08-23-the-stamp-half-stays-open));
+([../model/gc/walk/questions.md](../model/gc/walk/questions.md#e1-actors-and-the-epoch-protocol--the-stamp-half-answered-for-actors-2026-08-24-four-items-open));
 the message owner field and pickup routing — node D1; the entry shim for a
 callback on a thread this runtime did not create, and a C-callable writer for
 the mount word, which does not exist today (`ll-model`
@@ -243,7 +243,7 @@ one.
 entity teardown, the epoch checkpoint — reach the owner. They carry no
 context today and do not read the extension vector, so neither half of this
 decision reaches them
-([model/gc/walk/questions.md](../model/gc/walk/questions.md#e1-actors-and-the-epoch-protocol--structures-resolved-2026-08-23-the-stamp-half-stays-open)).
+([model/gc/walk/questions.md](../model/gc/walk/questions.md#e1-actors-and-the-epoch-protocol--the-stamp-half-answered-for-actors-2026-08-24-four-items-open)).
 
 ## 2026-08-22 — copy-on-write outranks the unique-ownership proof
 

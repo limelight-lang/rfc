@@ -118,7 +118,7 @@ flowchart TD
 
     D1[D1 the channel to the mutator<br/>open; one direction, not two] --> D5
     D2[D2 cutting a garland<br/>closed]
-    D3[D3 the batch constants<br/>per-cell price measured, ceiling open]
+    D3[D3 the batch constants<br/>prices and mechanism settled, constants open]
     D4[D4 the indivisible verification<br/>closed by ruling 10]
     D5[D5 collector-side destructor calls<br/>open; nearly unrealisable]
     D6[D6 WeakMap ephemerons<br/>open; the shape is written, the corpus is not]
@@ -1285,7 +1285,7 @@ The garland is judged whole. Edmond deferred this to Sage earlier the same
 day, on the premise that the pause had to be bounded; the ruling removes the
 premise, and the deferral with it.
 
-### D3. The batch constants  [the per-cell price measured 2026-08-24; the ceiling's own constants and the per-entity distribution stay open]
+### D3. The batch constants  [the per-cell prices and the ceiling's mechanism settled 2026-08-24; its constants and the per-entity distribution stay open]
 
 Ruling 3. The time ceiling of a freeing batch, and how far memory pressure
 relaxes it. Freeing moved to the mutator on 2026-08-23, so the ceiling bounds
@@ -1390,6 +1390,49 @@ second. Both replace "roughly twenty thousand cells to a
 slice". Where no budget binds tighter than the entity's whole cost, one
 stretch still wins every other column, and the margin it wins by is now an
 order wider.
+
+**The ceiling's mechanism, chosen 2026-08-24.** Edmond declined to rule the
+split of step 8 separately: the adopted strategy already answers it — ruling 3
+bounds the batch by time — and he named reading a clock as an admissible
+mechanism, leaving the shape open. The shape follows from two prices measured
+the same day.
+
+**A clock read is 13.0 ns**, the steadiest figure the probe takes (three runs
+inside 0.6 ns). That is six severed cells, thirteen released children, or one
+whole mechanical teardown. So the ceiling cannot be a check on the mechanical
+path: per cell it would cost six times the work it bounds. It also cannot be a
+bare count of cells, which assumes a mix and is wrong by a factor of five
+between an all-surviving batch at 3.3 ns a cell and an all-dying one at 16.3.
+
+**The mechanism is a charged budget between clock reads, and the clock is read
+where the drain yields.**
+
+1. **One read per slice boundary**, which is where the answer matters and the
+   only place the drain stops. At a millisecond budget that is one part in
+   seventy-seven thousand, and it reconciles everything charged since the
+   previous read against the truth. Ruling 3's between-entity check is the
+   same read where a slice happens to end at an entity.
+2. **Between reads, each unit debits its measured price on a register** — 2.3
+   ns for a severed cell, 1.0 for a released child, 14.0 for one that reaches
+   zero and runs a mechanical teardown. One add, no clock, and exact rather
+   than assumed, because the prices are measured.
+3. **A destructor gets a read of its own.** It is the only unbounded unit and
+   the only one long enough for 13 ns to disappear into, and it is the one
+   place where a charge cannot be written in advance.
+
+**Why a count bounds a pause here where ruling 3 said it does not.** The
+ruling refused *a count of entities* on the ground that a destructor is user
+code and per-entity cost has no bound. A cell's mechanical cost does have one,
+and it is measured; the unbounded part is the destructor, which step 3 above
+gives its own read. So the ruling's reason does not carry down to cells, and
+this is an application of the strategy rather than an exception to it.
+
+**What it leaves open, and it is calibration rather than shape.** The charged
+prices are this box's. Between two reads nothing corrects them, so the error
+can only accumulate inside one slice and is the ratio of the true per-cell
+price to the charged one — bounded by construction, unmeasured in size. Where
+the prices are taken and how often is the constant this node still owes,
+beside the ceiling's own value.
 
 **The mechanism does not exist in code.** `sever_counted_children` and
 `sever_entries` take a displaced vector and no cursor (`ll-model`

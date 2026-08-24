@@ -613,6 +613,21 @@ broken links.
         abandoned pool's, indexed by population first.
         **Round 2 is owed**, by the rule that a second round finds a defect
         in the first round's fixes.
+      2026-08-24, the corpus and the ceiling's mechanism. **The corpus is
+        found and identified by reproduction**: `~/laravel-spawn-example`,
+        Laravel ^13.0, and `heap-composition.php` over it returns the four
+        figures A6 and B6 record — 0.32 companions an entity, 17 size
+        classes over 25 pairs at 8 tail blocks, 75.9 % entity share, and
+        723 strings of 2 365 entities. So A6's remaining quantities and the
+        corpus-gated halves of B1, C1, B7 and D6 are no longer blocked.
+        **And D3's ceiling has a mechanism.** Edmond declined to rule the
+        split of step 8 separately — the adopted strategy answers it, and a
+        clock is admissible — so the shape follows from a price nobody had
+        taken: a monotonic read is 13.0 ns against a severed cell at 2.3
+        and a released child at 1.0. The ceiling is therefore a charged
+        budget on a register between clock reads, the clock read once per
+        slice boundary and once after every destructor, recorded in
+        `dev/DECISIONS.md`.
       handoff: state at the end of 2026-08-22. **Closed and holding:** A1,
         A5 (the width is not the lever; the prefetch is measured and
         unsettled), A7 (the discriminant is a bit of the retired condemned

@@ -10,6 +10,37 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-24 — the batch ceiling is a charged budget between clock reads, not a check
+
+**Decided:** ruling 3's time ceiling is enforced by debiting each mechanical
+unit's measured price against a budget on a register, and reading the clock
+only where the drain yields — once per slice boundary — plus once after every
+destructor. Step 8 is split on the same budget as the sever, which is the
+strategy applied one level down rather than a ruling of its own: Edmond
+declined to rule it separately on 2026-08-24, saying the adopted strategy
+answers it and naming a clock as an admissible mechanism.
+
+**Why:** a monotonic clock read is 13.0 ns on the reference box, against a
+severed cell at 2.3 and a released child at 1.0 (`ll-model`
+`dev/BENCHMARKS.md`, 2026-08-24). Checking per cell would cost six times the
+work it bounds. One read per slice at a millisecond budget is one part in
+seventy-seven thousand, and it reconciles everything charged since the last
+read.
+
+**Why a count bounds a pause here and not in ruling 3:** that ruling refused a
+count *of entities* because a destructor is user code with no bound. A cell's
+mechanical cost is bounded and measured; the destructor keeps a read of its
+own.
+
+**Rejected:** a clock read per cell, on the price above; and a bare count of
+cells, which assumes a mix and is wrong by a factor of five between an
+all-surviving batch at 3.3 ns a cell and an all-dying one at 16.3.
+
+**Open:** where the charged prices are calibrated and how often. Between two
+reads nothing corrects them, so the error is bounded by one slice and its size
+is unmeasured. Node D3 of `model/gc/walk/questions.md` carries it with the
+ceiling's own value.
+
 ## 2026-08-23 — what a shared object is inside an actor, and what a moved one is
 
 **Decided (Edmond).** An actor is a virtual thread and the memory manager

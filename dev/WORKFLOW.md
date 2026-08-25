@@ -50,11 +50,16 @@ reader, not the author, and it looks for four things:
 
 - **A citation that does not say what it is cited for.** Quote against
   source, line by line.
-- **A superseded document used as if it were in force.** `rc-walk.md` is the
-  first version of the walk; `gc-horizon-v2/` is a refused regime. Text taken
-  from either is a record, never an obligation the new work must satisfy, and
-  a new document that reconciles itself against them has taken the wrong
-  authority.
+- **A superseded document used as if it were in force.** `model/gc/rc-walk.md`
+  is the protocol text and is in force — its own banner says design,
+  partially built, with product code in `ll-model`. What is a record is
+  `gc-horizon-v2/`, a refused regime; `gc-horizon.md`, `gc-horizon-cases/` and
+  `walk/compiler-proofs.md`, struck as compiler business on 2026-08-23; and
+  the pre-amendment protocol of `rc-walk-model.md`. Text taken from a record
+  is never an obligation the new work must satisfy, and a new document that
+  reconciles itself against one has taken the wrong authority. A draft of this
+  bullet named `rc-walk.md` among them, which would send this pass to
+  discount the one document every ruling cites.
 - **Two of the new documents contradicting each other**, or a banner, status
   line or index row contradicting the body it introduces.
 - **A claim with no source at all** — a number, a mechanism or a rule stated

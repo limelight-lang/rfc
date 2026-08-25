@@ -57,15 +57,33 @@ application container is the usual root — and `HEAP_CHDIR` lets it live
 outside the application it boots, so nothing is written into the scanned
 project. `HEAP_MAX_DEPTH` bounds the walk, 64 by default.
 
-**Record the bootstrap beside the figures.** "Booted" is not a state a
-number can be re-taken from: the same Laravel tree gives 44 objects with no
-bootstrappers run, 327 with the kernel's, and 387 after one handled request.
-A6's booted column of 2026-08-22 reads 507 and no bootstrap was written down
-with it, so it can be read and not reproduced (2026-08-24). The corpus those
-figures came from is `~/laravel-spawn-example`, outside this repository.
+**The bootstrap is `heap-bootstrap-laravel.php`, beside this file.** It boots
+the application and handles one GET of the health route `/up`, and every
+figure taken through it cites it. Pass it by absolute path: `HEAP_CHDIR`
+changes directory before the bootstrap is resolved.
 
-**Read the file's own header before quoting a figure.** Objects and the
-edges between them are exact; strings and arrays carry no identity in PHP,
-so the string count is a proxy that under-counts and the array count is per
-slot and over-counts. Which way each error runs is what decides whether a
-figure is a floor or a ceiling.
+**A figure whose bootstrap is not written down can be read and not re-taken**,
+which is why that file exists. "Booted" names no state a number comes back
+from — the same tree gives 44 objects with no bootstrappers run and 327 with
+the kernel's, against A6's recorded 507 — and the re-run of 2026-08-24 wrote
+down no bootstrap either: four plausible ones give 373 to 378 objects where it
+recorded 387, on a tree untouched since 2026-07-02. The corpus is
+`~/laravel-spawn-example`, outside this repository, a Laravel `^13.0`
+application with an async adapter and four extra provider trees rather than a
+skeleton.
+
+**Read the file's own header before quoting a figure.** Object identity is
+exact; strings and arrays carry no identity in PHP, so the string count is a
+proxy that under-counts and the array count is per slot and over-counts.
+Which way each error runs is what decides whether a figure is a floor or a
+ceiling.
+
+**Two populations the walk of `ll-model` counts and this scan does not**,
+found by review 2026-08-25 and printed as their own rows since. A hash entry's
+string key is a counted child beside the value, and the scan classifies
+values: the `string keys` row is the edges the slot rows omit and the key
+contents seen nowhere else are the string entities they omit. And an object
+whose state reflection cannot read — every closure, and any internal class
+with no declared properties — contributes a row and no edges, which the
+`state not read` row counts; that one is a floor with no bound, since what
+those objects hold is unreachable rather than absent.

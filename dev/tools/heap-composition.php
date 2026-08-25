@@ -139,8 +139,32 @@ final class Tally
      * layout and so park a payload record beside the entity slot.
      */
     public int $outOfLineStrings = 0;
-    /** Objects whose properties could not be read. */
+    /**
+     * Objects this walk reads no state from: `properties_of` returned an
+     * empty array, so the object contributes a row and no edges. An
+     * internal class with no declared properties answers that way, and so
+     * does every closure — see [`Tally::$closures`].
+     */
     public int $unreadable = 0;
+
+    /**
+     * Closures met. A closure's bound `$this`, its `use` captures and its
+     * scope are unreachable to reflection over properties, so each one is
+     * a floor of one row and zero edges; Limelight keeps closures as their
+     * own entity kind and they hold what this walk cannot see.
+     */
+    public int $closures = 0;
+
+    /**
+     * String keys of array entries, counted per entry. The walk of
+     * `ll-model` counts a hash entry's string key as a counted child
+     * beside the value (node B4), and the slot rows above count values
+     * only, so this bounds the edges those rows omit.
+     */
+    public int $stringKeys = 0;
+
+    /** @var array<string, true> distinct string-key contents */
+    public array $keyStrings = [];
 
     /**
      * Objects per slot count, which is what picks an object's size class:
@@ -213,8 +237,16 @@ function walk(array $roots, Tally $tally, int $maxDepth): void
             $class = $value::class;
             $tally->classes[$class] = ($tally->classes[$class] ?? 0) + 1;
 
+            if ($value instanceof Closure) {
+                $tally->closures++;
+            }
+
             $declared = properties_of($value);
             $count = count($declared);
+            if ($declared === []) {
+                $tally->unreadable++;
+            }
+
             $tally->slotCounts[$count] = ($tally->slotCounts[$count] ?? 0) + 1;
             record_class($tally, 'object', OBJECT_PREFIX + 16 * $count);
             foreach ($declared as $slot) {
@@ -233,8 +265,13 @@ function walk(array $roots, Tally $tally, int $maxDepth): void
                 $tally->nonEmptyArrays++;
             }
 
-            foreach ($value as $element) {
+            foreach ($value as $key => $element) {
                 $tally->arrayElements++;
+                if (is_string($key)) {
+                    $tally->stringKeys++;
+                    $tally->keyStrings[$key] = true;
+                }
+
                 classify($element, $tally);
                 if (is_object($element) || is_array($element)) {
                     $stack[] = [$element, $depth + 1];
@@ -347,9 +384,27 @@ printf(
     $objects === 0 ? 0.0 : $countedSlots / $objects
 );
 printf(
-    "  object-to-object edges   %d, %.2f per object\n",
+    "  object-valued slots      %d, %.2f per object (an array cell counts here too)\n",
     $tally->objectSlots,
     $objects === 0 ? 0.0 : $tally->objectSlots / $objects
+);
+// The rows above count values only. A hash entry's string key is a counted
+// child of the array in `ll-model`'s walk (node B4), so the key count is the
+// edges those rows omit, and the key strings absent from `strings` are the
+// string entities they omit.
+$newKeyStrings = count(array_diff_key($tally->keyStrings, $tally->strings));
+printf(
+    "  string keys              %d, %d distinct, %d of them counted nowhere above\n",
+    $tally->stringKeys,
+    count($tally->keyStrings),
+    $newKeyStrings
+);
+// A row with no edges is a floor, not a leaf: what the object holds may be
+// unreachable to reflection rather than absent.
+printf(
+    "  state not read           %d objects, of them %d closures\n",
+    $tally->unreadable,
+    $tally->closures
 );
 
 // The size class an object lands in follows from its slot count, so the

@@ -693,22 +693,36 @@ at once: a posted message can never name a slot recycled underneath it,
 and the collector can never condemn the same entity twice with two
 messages in flight — at most one epoch's verdict is outstanding, ever.
 
-**And that gate is what makes a `completion bound` part of the design
-rather than an option on it**, moved here 2026-08-24 from
-[pure-destructors.md](pure-destructors.md), whose section on it is a record
-since the mutator became the freeing path. The requirement survived the
-change of who does the work: while a posted confirmation is unacknowledged
-the epoch stays open, and while it stays open no thread returns freed memory
-to its allocator — it parks. So one slow component holds every thread's
-memory, and the growth is unbounded in epoch duration.
+**And that gate is what makes a completion bound part of the design rather
+than an option on it** (code lag), moved here 2026-08-24 from
+[pure-destructors.md](pure-destructors.md#the-hand-off-drain), whose section
+on it is a record since the mutator became the freeing path. The requirement
+survived the change of who does the work: while a posted confirmation is
+unacknowledged the epoch stays open, and while it stays open no thread returns
+freed memory to its allocator — it parks. So one slow component holds every
+thread's memory.
 
 **It is not ruling 3's ceiling and must not be folded into it.** That ceiling
 bounds one batch — how long the mutator may spend before it yields — and says
 nothing about how many batches a component takes. Each slice short and the
 count of slices unbounded leaves the epoch open just as long. The bound here
-is on the whole: how long one posted verdict may stay outstanding. The number
+is on the whole: how long one posted verdict may stay outstanding.
+
+**Read it against the accepted limit above rather than instead of it.** That
+passage bounds parked volume by `churn rate × epoch duration` and disposes of
+it the other way — deliberately without a mutator-side fallback, the memory
+returning at the thread's first death or poll, with two collector-side
+mechanisms backlogged instead. The two do not agree, and what decides between
+them is that no arm exists for a deadline: principle 4 forbids stopping a
+thread from outside, nothing is pushed toward one, so a bound here can only
+be something the collector does to itself. **Three quantities sit in that
+window and this requirement names one of them** — the stall before the
+handshake ack, during which parking is already on and nothing is posted; the
+stretch a posted verdict stays outstanding; and the flush latency after the
+epoch closes, which waits on each owning thread's next checkpoint. The number
 is unmeasured and needs a workload, which is the same gate node C1 sits
-behind ([walk/questions.md](walk/questions.md)).
+behind. Node D8 of [walk/questions.md](walk/questions.md) carries all three
+and the arm.
 
 **The same gate binds the collector's unwind path** (review finding,
 2026-07-27). An epoch abandoned by a panic owes no acquittals since

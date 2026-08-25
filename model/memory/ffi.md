@@ -224,11 +224,14 @@ type's metadata; the runtime needs nothing new for them.
 ## Deferred
 
 - **What roots a wrapper only the C side holds** — a hole, reported 2026-08-24
-  and not closed here. The collector derives roots rather than enumerating
-  them, so an entity nothing in the language holds reads as garbage however
-  many raw pointers the foreign side keeps to it, and the ruling that puts
-  every reachable reference into a declared field of the wrapper says nothing
-  about what holds the wrapper. Node B8 of
+  and restated 2026-08-25 after review. The collector's root list already
+  names an FFI handle and calls such a holder counted
+  ([../gc/rc-walk.md](../gc/rc-walk.md)), which `ll_retain` at the boundary
+  would honour; the ruling that puts every reachable reference into a declared
+  field of the wrapper then leaves the C structure "at most a raw address",
+  and a raw address passes through no barrier. So what is missing is the
+  calling convention — whether a foreign call receives an owned reference or a
+  borrowed one — which this document defers to the interop RFC. Node B8 of
   [../gc/walk/questions.md](../gc/walk/questions.md) carries it, with an idea
   of Edmond's — a small registry of held objects the walk would read as a root
   source — recorded there and undecided.

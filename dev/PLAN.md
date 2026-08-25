@@ -626,14 +626,17 @@ broken links.
         abandoned pool's, indexed by population first.
       Critic 2026-08-24 round 2, over round 1's fixes: 21 findings, five
         survived verification and all were executed. **The one that reaches
-        the design attacks the charged budget itself.** Every one of the three
-        prices is a floor by its own source — the sever arms swept their
-        parents in allocation order, the teardown price is an empty leaf's —
-        so a budget debited in them undercharges with a known sign rather than
-        an open one, and 14.0 ns for a dying child charges an empty leaf where
+        the design attacks the charged budget itself.** Two of the three
+        prices are floors by their own source — the sever's, its arms having
+        swept their parents in allocation order, and the teardown's, an empty
+        leaf's — so a budget debited in them undercharges, and 14.0 ns for a
+        dying child charges an empty leaf where
         the unit may be a recursive teardown of a subgraph. The debit is
         therefore taken per entity the recursion reaches, and what stays open
-        is the size of the floor rather than its direction. Beside it: E4's
+        is the size of the floor. (The round said all three and said the
+        sign was therefore known; the released child at 1.0 ns is the one arm
+        the probe scattered, and 2026-08-25 overturned the direction argument
+        with it.) Beside it: E4's
         lead sentence still carried the three-and-three split round 1 had
         reversed; H1's count is six configurations of 22, `NoDefer` being set
         by two files and not one; and this plan claimed an unblocking the
@@ -643,13 +646,16 @@ broken links.
         one tree does not supply. Two rounds, then the device is dropped.
       2026-08-24, the corpus and the ceiling's mechanism. **The corpus is
         found and identified by reproduction**: `~/laravel-spawn-example`,
-        Laravel ^13.0, and `heap-composition.php` over it returns the four
-        figures A6 and B6 record — 0.32 companions an entity, 17 size
-        classes over 25 pairs at 8 tail blocks, 75.9 % entity share, and
-        723 strings of 2 365 entities, and the `arrays walked` row A6 was
-        owed is taken. **What that does not unblock**, corrected by the
+        Laravel ^13.0, and `heap-composition.php` over it reproduces two
+        recorded figures — 0.32 companions an entity, and 17 size classes over
+        25 pairs at 8 tail blocks — agrees with a third to a rounding, 75.9 %
+        against a recorded 76 %, and drifts by two strings on the fourth, 723
+        against 721. The `arrays walked` row A6 was owed is taken. (A draft
+        called all four "recorded": 2 365 entities is the re-run's own number,
+        A6 having recorded that its total was not derivable from its rows.) **What that does not unblock**, corrected by the
         second Critic round: A6's two remaining quantities wait on a scan
-        nobody has written and on a compiler, not on a corpus; and where
+        nobody has written over a plurality of programs, and on a compiler;
+        and where
         B1, B6 and D6 are corpus-gated they are gated on a **plurality of
         programs**, which naming the one tree behind the existing figures
         does not supply. What is unblocked is re-taking a figure over this
@@ -684,6 +690,74 @@ broken links.
         hand-built. The same mis-naming stood twice more in D6, where rung 3
         was also credited with re-walking a candidate set, which is rung 2's
         action; both repaired. Linkcheck green at 1 725 links.
+      Review 2026-08-25, six lenses over the batch the last four commits
+        wrote plus the node walk above: four Critic passes (the C3 repair, the
+        ceiling's mechanism, the corpus, node B8), one over the completion
+        bound's move, and the consolidation pass `dev/WORKFLOW.md` requires.
+        About forty findings, each checked by hand against its source before
+        execution. **Four of them reverse something the batch asserted.**
+        **The ceiling's charge was the wrong sign.** A floor bounds a count of
+        units, not a length of time: a slice lasts one budget times the ratio
+        of the true price to the charged one, which is the very number D3
+        lists as unmeasured, so "the error is capped at one slice" is circular
+        where the slice is defined by that charge. The rejected count of cells
+        was wrong by a measured factor of five in the safe direction; the
+        charge as written is wrong by an unmeasured factor in the unsafe one.
+        The register now debits a conservative per-unit price, `DECISIONS.md`
+        carries the narrowing as its own entry, and the clock is read twice a
+        slice because the interval between two boundaries is mostly program
+        time. Beside it the same lens found what the ceiling never bounded:
+        the exact test reads every cell of the component, `sever_component`
+        probes a member hash set per displaced child and grows a fresh
+        vector, `Table::sever_entries` writes over the whole slot index and
+        `unguard` runs a death per member — none of them a charged unit, and
+        on the shape D3 calls commonest they outweigh the sever by an order.
+        And the pause granularity is the **entry** on a hash-backed array,
+        not the cell: the entry is holed before the value and the key are
+        pushed, so a stop between the two pushes leaks the key.
+        **B8's premise contradicted the identity it rests on.** `rc-walk.md`
+        names an FFI handle among the counted roots, and `ll_retain` is
+        exported, so a retaining extension is a root already; what ruling 7
+        leaves is a raw address, which passes no barrier, and whether a
+        foreign call may take one is the calling convention `ffi.md` defers to
+        the interop RFC. The node is rewritten over that, `ffi.md`'s deferred
+        entry with it, and two live citations that still filed the hole under
+        the struck G14 now point at B8.
+        **The corpus scan omits two populations.** It classifies array values
+        and not their string keys, where the walk counts a hash entry's key as
+        a counted child, and it reads no state from an object whose properties
+        reflection cannot reach — every closure among them. Both are counted
+        now: 2 407 string keys against 3 523 value slots, and 185 objects of
+        376 with unread state, 176 of them closures. Corrected, the ratio B4
+        consumes rises from 1.59 to 2.04 and the share B1 consumes from 30.6 %
+        to 46.2 %, which widens B4's conclusion rather than breaking it.
+        **And neither recorded column of A6 can be re-taken**: the re-run of
+        2026-08-24 wrote down no bootstrap either, and four plausible ones give
+        373 to 378 objects against its 387 on a tree untouched since
+        2026-07-02. The bootstrap is checked in as
+        `dev/tools/heap-bootstrap-laravel.php` and its column is recorded
+        beside the two that cannot be reproduced.
+        Beside those: the completion bound is now node **D8**, because
+        `rc-walk.md` states it as part of the design five hundred lines below
+        a passage that disposes of the same quantity the other way, and
+        because no arm can enforce it while ruling 2 forbids reaching a
+        thread; C3's constants ration rungs 3 and 4 where rung 2 takes none
+        and its round budget belongs to no node, and `run_epoch` is dead code
+        outside tests, so the ladder has no built floor either; D6 rested a
+        WeakMap fixpoint on a rung that never meets a live map's edges; and
+        `dev/WORKFLOW.md` told its own consolidation pass that `rc-walk.md` is
+        superseded, which would discount the one document every ruling cites.
+        The graph reads thirty-two nodes and twenty edges.
+      **What holds S5.4 open after 2026-08-25:** every node carries an answer
+        or a recorded reason, so the first clause of `done:` is met at 32 of
+        32. What is owed is the second round over this batch, by the rule that
+        a second round finds a defect in the first round's fixes, and one
+        question for Edmond that the consolidation pass raised and this
+        sitting could not settle: whether step 8 of the drain is split on the
+        ceiling's budget. `dev/DECISIONS.md` records it as decided by the
+        strategy, D3 calls it a repair the warrant licenses and nobody
+        executed, and no Sage verdict names a boundary inside step 8 — a
+        stopping place in the drain is his.
       handoff: state at the end of 2026-08-22. **Closed and holding:** A1,
         A5 (the width is not the lever; the prefetch is measured and
         unsettled), A7 (the discriminant is a bit of the retired condemned

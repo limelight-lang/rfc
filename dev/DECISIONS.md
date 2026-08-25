@@ -10,6 +10,40 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-25 — the charged budget debits a conservative price, not the measured one
+
+**Decided:** the ceiling's register is debited with a per-unit **ceiling**
+price rather than with the measured one, and the clock is read twice a slice —
+at its resume and at its yield. This narrows the entry below, which stands as
+the record of the shape.
+
+**Why:** the measured prices are floors, and a floor bounds a count of units
+rather than a length of time: the slice then lasts one budget times the ratio
+of the true price to the charged one, which is the number the same entry lists
+as unmeasured. "The error is capped at one slice" is circular where the slice
+is defined by the charge in error. The rejected bare count of cells was wrong
+by a measured factor of five in the *safe* direction; the charge as first
+written is wrong by an unmeasured factor in the unsafe one. A conservative
+price ends the slice early, which is a bound, and pays in throughput on
+friendly shapes — which is what a latency mechanism spends.
+
+**Why two reads:** between two slice boundaries lies the program code the
+pause exists to permit, so a boundary-to-boundary difference is mostly program
+time and reconciles nothing. Resume-to-yield is the interval that means
+something.
+
+**Rejected:** charging the measured price with the sign argued safe. Two of
+the three figures are floors by their source and the third, the released
+child, is the arm the probe scattered; all three are differences against
+controls that had already paid the memory traffic, so a conservative price has
+to put the miss back and none of the three is it.
+
+**Cost:** the conservative price is unmeasured, so the mechanism owes one
+measurement before it can be built — the true cost of a released child and of
+a teardown under a scattered component. Node D3.
+
+---
+
 ## 2026-08-24 — the batch ceiling is a charged budget between clock reads, not a check
 
 **Decided:** ruling 3's time ceiling is enforced by debiting each mechanical

@@ -110,11 +110,11 @@ flowchart TD
     B5[B5 the epoch-abort watermark<br/>open; returns no memory when it fires]
     B6[B6 skip by block, not by entity<br/>measured; segregate, not count]
     B7[B7 soft segregation by skippability<br/>residue measured, three figures open] --> B6
-    B8[B8 what roots a C-held entity<br/>design; an idea recorded 2026-08-24]
+    B8[B8 what roots a C-held entity<br/>design; the category exists, its mechanism does not] --> D3
 
     C1[C1 background cadence<br/>open; two candidates eliminated] --> B5 & C2 & C3
     C2[C2 the young-free exemption<br/>curve measured; unsound as written]
-    C3[C3 the escalation ladder's constants<br/>measure; the rungs are unbuilt]
+    C3[C3 the escalation ladder's constants<br/>the rungs are unbuilt and no workload starves]
     C4[C4 do the rungs earn their keep<br/>round measured, rate needs the rungs] --> C3
 
     D1[D1 the channel to the mutator<br/>open; one direction, not two] --> D5
@@ -124,6 +124,7 @@ flowchart TD
     D5[D5 collector-side destructor calls<br/>open; nearly unrealisable]
     D6[D6 WeakMap ephemerons<br/>open; the shape is written, the corpus is not]
     D7[D7 how a mutator is activated<br/>answered 2026-08-23: nobody is]
+    D8[D8 the epoch's completion bound<br/>stated in the protocol text, number and arm open]
 
     E1[E1 actors and the epoch protocol<br/>stamp half answered for actors, four items open] --> D1 & E3 & E4
     E2[E2 AArch64 header access<br/>hardware]
@@ -138,22 +139,21 @@ flowchart TD
 ```
 
 **Reading the arrows.** `X --> Y` means X must be answered before Y can be,
-so the roots are the nodes nothing points at. Thirty-one nodes and nineteen
+so the roots are the nodes nothing points at. Thirty-two nodes and twenty
 edges
 after the scope ruling of 2026-08-23, which struck four questions of section A
 — A2, A4, A8 and A9 — one of section B, B2, and the whole of section G.
 
-**Ten nodes carry no edge, for five reasons.** B8 is new and unattached,
-its consumers being ruling 7 and D3's resurrection line rather than a node.
-B3, D2 and D4 are closed and
+**Ten nodes carry no edge, for four reasons.** B3, D2 and D4 are closed and
 block nothing still open, so they are in the graph to be found by a reader
-rather than to be traversed. D3 and E2 wait on a measurement and on a machine
-and answer to no other node. F2 and F3 are records of prior art: F2 is read
-against D2 and D4, which are closed, so it blocks nothing until ruling 10 is
-revisited, and F3 feeds nothing by design. D7 and H1 each keep an open half
-that no node in this graph consumes: D7's checkpoint-free thread, waiting on a
-bound over how long such a stretch runs in real code, and H1's re-derivation,
-which the two model-checker specifications need before either can be reused.
+rather than to be traversed. D3, D8 and E2 wait on a measurement, on a
+workload and on a machine, and answer to no other node. F2 and F3 are records
+of prior art: F2 is read against D2 and D4, which are closed, so it blocks
+nothing until ruling 10 is revisited, and F3 feeds nothing by design. D7 and
+H1 each keep an open half that no node in this graph consumes: D7's
+checkpoint-free thread, waiting on a bound over how long such a stretch runs
+in real code, and H1's re-derivation, which the two model-checker
+specifications need before either can be reused.
 
 **C1 and C2 depend on each other and the graph draws `C1 --> C2` alone.**
 C2's free variable is the interval between walks, which C1 sets; C1's
@@ -321,7 +321,7 @@ instrument that does not carry two populations at the wide end, or huge
 pages, or a machine that is not WSL2. The distance half of this question is
 closed and the miss half waits on that.
 
-### A6. The corpus scan  [three quantities of seven are taken; the corpus is found, and the booted column cannot be re-taken]
+### A6. The corpus scan  [three quantities of seven are taken over a recorded bootstrap; neither recorded column of 2026-08-22 can be re-taken, and the instrument omits two populations]
 
 The root of section A, and one node standing for seven distinct
 measurements rather than for one. They share an instrument and nothing else,
@@ -348,9 +348,18 @@ on a compiler or on a scan nobody has written.
 
 **The three heap-side quantities came off one run**, 2026-08-22, because
 none of them needs a compiler. `../../../dev/tools/heap-composition.php`
-takes them: a reachability walk over a booted application, run here against
-the Laravel 13 skeleton on PHP 8.6, once after boot and once after one
-handled HTTP request.
+takes them: a reachability walk over a booted application, run here on
+PHP 8.6, once after boot and once after one handled HTTP request.
+
+**What it was run against is not a Laravel skeleton**, corrected 2026-08-25
+after two drafts of this node and one of B6 called it one. The tree is
+`~/laravel-spawn-example`: `laravel/framework` `^13.0`, but
+`bootstrap/app.php` returns `Spawn\Laravel\Foundation\AsyncApplication`
+rather than the framework's own container, and the composer file adds an
+async adapter, Inertia, Sanctum, Ziggy and — registered in
+`bootstrap/providers.php` — Telescope. Four extra provider trees are exactly
+what moves an object count, so a reader who takes these figures for a
+skeleton's will not reproduce them from a skeleton.
 
 | | booted | after a request |
 |---|---|---|
@@ -360,11 +369,13 @@ handled HTTP request.
 | counted slots | 3 765 | 3 753 |
 | string share of counted slots | 40.5 % | 43.9 % |
 | counted slots per object | 7.43 | 9.70 |
-| object-to-object edges per object | 1.85 | 2.20 |
+| object-valued slots per object | 1.85 | 2.20 |
 
 Taking entities as objects plus distinct strings plus arrays, that is
 **about 31 % of entities being strings in both runs, and 1.4 to 1.6 counted
-edges per entity.**
+edges per entity.** The last row counts every slot whose value is an object,
+including a cell inside an array, so it is not the object-to-object edge
+count two drafts and the tool's own label called it.
 
 **One correction was written on 2026-08-23 and is withdrawn the same day.**
 It read the `array slots` row as cells inside arrays, called it a double
@@ -378,6 +389,14 @@ the 938 slots pointing at the 507 objects; cells inside arrays are
 once as an entity and once as the edge that reaches it, which is what every
 kind gets, and the withdrawn figures were the correct ones. Kept here because
 the same misreading is available to the next reader of the table.
+
+**The two counters are not disjoint**, which the sentence above invites a
+reader to assume, corrected 2026-08-25. `classify` is called from the array
+branch exactly as from the object branch, so an array-valued cell inside an
+array increments `arraySlots` and `arrayElements` both. They answer different
+questions rather than covering different populations: `arrayElements` counts
+every cell inside an array, and `arraySlots` counts every slot — object
+property or array cell — whose value is an array.
 
 **The entity total cannot be re-derived from the table above**, and that is
 the defect the episode did expose. The tool's denominator is
@@ -406,27 +425,78 @@ So the entity total is `387 + 723 + 1255 = 2 365`, the string share
 `3759 / 2365` = **1.59** — both inside what the node already states, and now
 re-derivable from the rows.
 
-**The booted column does not reproduce, and the reason is a defect of its
-own.** "Booted" names a state the record does not define. The same tree
-scanned with no bootstrappers run gives 44 objects; with the kernel's
-bootstrappers run, 327; the record says 507, which is more than its own
-after-a-request column. Whichever bootstrap produced 507 is not written down,
-so that column can be read but not re-taken. **What is owed now is narrower
-than what was owed before:** the booted bootstrap, or the column's
-retirement.
+**Neither recorded column can be re-taken, and the after-a-request one is in
+the same state as the booted one**, established 2026-08-25 against the tree
+itself. "Booted" names a state the record does not define: the same tree
+scanned with no bootstrappers run gives 44 objects, with the kernel's
+bootstrappers 327, against a recorded 507 that exceeds its own
+after-a-request neighbour. The re-run of 2026-08-24 wrote down no bootstrap
+either, and four plausible ones reach 387 from neither side — through the
+HTTP kernel with `terminate`, GET `/up` gives 376 objects and GET `/` and
+`/restaurants` give 378, `handleRequest` gives 376, and dropping `terminate`
+gives 373, none of them 387. The tree has not moved underneath the record:
+its `composer.lock` and its bootstrap caches are untouched since 2026-07-02.
+So the 2026-08-24 column reproduces its own **ratios** and not its counts,
+which is what identifies the corpus and is all it identifies.
+
+**What was owed is therefore taken rather than narrowed**, and the bootstrap
+is checked in as `../../../dev/tools/heap-bootstrap-laravel.php`: every
+provider registered and booted, one GET of the health route `/up` routed,
+dispatched and terminated. Two runs on 2026-08-25 agree byte for byte.
+
+| | recorded 2026-08-24 | recorded bootstrap, 2026-08-25 |
+|---|---|---|
+| objects, exact | 387 | 376 |
+| distinct strings, values only | 723 | 681 |
+| arrays walked | 1 255 | 1 187 |
+| counted slots, values only | 3 759 | 3 523 |
+| string keys | not counted | **2 407, 1 049 distinct** |
+| objects whose state is unread | not counted | **185, of them 176 closures** |
+
+**The instrument omits two populations, and both were found by review on
+2026-08-25.** The first it can now bound and the second it cannot.
+
+- **A hash entry's string key is a counted child of the array** (B4), and the
+  scan classified values alone: `foreach ($value as $element)`. The key count
+  above is the edges the slot rows omit, and 662 of the 1 049 distinct key
+  contents appear nowhere as a value, so they are string entities the proxy
+  omits as well. Corrected, this bootstrap gives `3523 + 2407 = 5 930`
+  counted edges over `376 + 1343 + 1187 = 2 906` entities — **2.04 counted
+  edges per entity** against 1.57 under the old convention, and a string
+  share of `1343 / 2906` = **46.2 %** against 30.3 %. Both figures rise, and
+  they rise for the same reason: a hash row carries two children and the scan
+  saw one.
+- **Half the objects contribute a row and no edges because their state is
+  unreachable to reflection.** `properties_of` reads
+  `get_mangled_object_vars`, which is empty for a closure — its bound `$this`,
+  its `use` captures and its scope are invisible — and empty for an internal
+  class with no declared properties. That is 185 objects of 376 here, 176 of
+  them closures. Every figure this node states is a floor by that much, with
+  no bound available: what those objects hold is not merely uncounted, it is
+  unreachable, so whatever they reach is missing from the walk as well.
+
+**What that does to the two nodes reading these figures.** B1's leaf share
+rises from about 31 % to 46 %, which raises its skip's ceiling; B4's edge
+ratio rises from 1.59 to 2.04, which widens the margin by which edges outweigh
+rows. The two move together because one correction feeds both, so the choice
+between B1 and B6 does not turn on it — but no figure here is the number
+until an instrument reads a closure.
 
 **What the figures are approximate about**, stated rather than assumed:
-objects and the edges between them are exact, `spl_object_id` giving
-identity; strings and arrays have none in PHP, so distinct string contents
-stand in for string entities and under-count, while an array is counted per
-reaching slot and over-counts a shared one. Over-counting arrays inflates the
-denominator, so **31 % is a floor for the string share**. A closure is an
-object here and 309 of the 507 booted objects are closures, which Limelight
-keeps as its own kind.
+object *identity* is exact, `spl_object_id` giving it; object *coverage* is
+not, by the closure hole above. Strings and arrays have no identity in PHP,
+so distinct string contents stand in for string entities and under-count,
+while an array is counted per reaching slot and over-counts a shared one.
+Over-counting arrays inflates the denominator, so the measured **30.6 % is a
+floor for the string share** against those two errors — a draft rounded it to
+31 % and then called 31 the floor, which asserts a bound the measurement does
+not reach. Against the key strings the direction is the same and the size is
+now known: 46.2 % on the 2026-08-25 bootstrap. Against the closure hole the
+direction is unknown.
 
-**The corpus is not the corpus of record.** These runs are a Laravel 13
-skeleton, while `../gc-horizon.md` open question 3 records WordPress, Monica
-and Sylius as the working choice with Edmond's veto open. One framework, one
+**The corpus is not the corpus of record.** These runs are one Laravel 13
+application, described above, while `../gc-horizon.md` open question 3 records
+WordPress, Monica and Sylius as the working choice with Edmond's veto open. One framework, one
 machine, one request: every figure here is a first bracket from a container
 that no step has agreed to measure.
 
@@ -591,11 +661,17 @@ entry and the count store and skips only the edge trace. The walk is about
 70 % of an epoch.
 
 **The share has a first measurement**, 2026-08-22: about 31 % of entities
-in a booted Laravel container are strings, and the same after a handled
-request (node A6). What the skip returns is the measured 40 ns above, not a
-row's 40-54: against a walk costing a row plus 1.4 to 1.6 edges at 43-47 ns
-each, `0.31 × 40` over `40 + 1.4×43` to `54 + 1.6×47` is **10 to 12 % of the
-walk**. Naming the row range as the numerator instead gives 12 to 16 %, and
+after a handled request are strings (node A6, whose booted column of the same
+day cannot be re-taken). What the skip returns is the measured 40 ns above,
+not a row's 40-54: against a walk costing a row plus 1.4 to 1.6 edges at
+43-47 ns each, `0.31 × 40` over `40 + 1.4×43` to `54 + 1.6×47` is **10 to
+12 % of the walk**.
+
+**Both terms of that arithmetic move once the scan counts hash keys**, and
+they move the same way (A6, 2026-08-25): the share becomes 46.2 % and the
+ratio 2.04, giving `0.46 × 40` over `40 + 2.04×43` to `54 + 2.04×47` — **12
+to 15 %**. The lever grows by half and the bracket barely moves, because the
+correction that adds string entities adds their in-edges beside them. Naming the row range as the numerator instead gives 12 to 16 %, and
 the 40 ns is what was measured. That is one
 framework on one machine and an estimate built from two measurements rather
 than one, so it is a first bracket and not the number. B4's measurement of 2026-08-22
@@ -657,10 +733,18 @@ entity, so the `IN` increments hit one cache line where a real heap
 scatters them; both cell figures are lower bounds.
 
 **And the ratio it needed now has a first value**: 1.4 to 1.6 counted edges
-per entity in a booted Laravel container, node A6. At that ratio edges carry
+per entity after a handled request, node A6. At that ratio edges carry
 53 to 65 % of the walk against the row's 35 to 47, so edges outweigh rows
 across the brackets and stand near parity at the corner where rows are
 dearest and edges cheapest.
+
+**The parity corner closes once the scan counts hash keys.** A6's instrument
+classified array values and not their string keys, where this node's own
+sentence above says a hash row carries two children; corrected on the
+2026-08-25 bootstrap the ratio is 2.04, at which edges carry 62 to 70 % and
+the corner where rows are dearest reads 62 rather than 53. The conclusion
+survives the correction with a wider margin, which is the opposite of what a
+review expected of it.
 
 ### B5. The epoch-abort watermark  [open; the identity half holds, three objections stand, the epoch number is discharged]
 
@@ -766,10 +850,13 @@ Two shapes, and the node used to say the second was where to start.
   **This is the shape that delivers**, and it is the one to price.
 
 **Shape 2's price has a first measurement**, 2026-08-22, taken with
-`../../../dev/tools/heap-composition.php` over a booted Laravel 13 after one
-handled request. Objects there occupy 15 size classes and strings 10, for 25
-pairs of class and kind over 17 distinct classes — so segregation costs **8
-extra tail blocks, half a mebibyte** at the 64 KiB block. A draft called that
+`../../../dev/tools/heap-composition.php` over the Laravel application A6
+describes, after one handled request. Objects there occupy 15 size classes
+and strings 10, for 25 pairs of class and kind over 17 distinct classes — so
+segregation costs **8 extra tail blocks, half a mebibyte** at the 64 KiB
+block. The same scan over A6's recorded bootstrap on 2026-08-25 gives 23
+pairs over 16 classes and 7 tail blocks, 0.4 MiB: the price is stable in
+shape across two bootstraps of one tree while the counts behind it are not. A draft called that
 under two per cent of a ~28 MiB boot heap; the scan prints no heap total and
 no source was named for the 28 MiB, so the denominator is withdrawn and the
 half mebibyte stands on its own. The figure covers two kinds; the other five
@@ -822,8 +909,9 @@ unable to close a cycle is as skippable as a string, so its instances join
 the same groups. The flag itself stays compiler business under the scope
 ruling of 2026-08-23 — the runtime consumes the answer rather than deriving
 it. What the widening changes is the ceiling: B1's leaf skip is worth
-10-12 % of the walk because strings are about 31 % of entities, and that
-bound is a bound on leaf **kinds**, not on skippable entities.
+10-12 % of the walk because strings are about 31 % of entities — 12-15 % at
+the 46 % share A6's corrected scan gives — and that bound is a bound on leaf
+**kinds**, not on skippable entities.
 
 **What would answer it**, and Edmond names the risk himself, that it may only
 cost:
@@ -878,38 +966,83 @@ earns its word — and none of the three is taken.
 by construction, so the walk keeps testing rather than trusting, and the
 question is only whether the test starts paying.
 
-### B8. What roots an entity only the C side holds  [design; an idea recorded 2026-08-24, undecided]
+### B8. What roots an entity only the C side holds  [design; the root category exists and its mechanism does not, and an idea of Edmond's is recorded undecided]
 
-The walk derives roots rather than enumerating them: an entity is a root
-when `RC − IN > 0`, that is when something holds it that the walk did not
-see. An entity **only** a C extension holds has no such holder. Its count is
-zero, nothing points at it from the walked population, and the walk reads it
-as garbage.
+**The design of record already names the root, and the question is what
+stands behind the name.** `../rc-walk.md`'s central identity lists the
+holders that put an entity outside the walked heap — "a stack local, a static
+block, an arena slot, an immortal container, **an FFI handle**. Every one of
+those is *counted* — the store barrier retains on any store regardless of the
+holder's category" — and
+[`../../memory/static-lifetimes.md`](../../memory/static-lifetimes.md#what-may-own-a-borrow)
+repeats the list for what may own a borrow. A first version of this node
+asserted the opposite, that such an entity has no holder and reads as
+garbage, without naming either sentence.
 
-**Ruling 7 does not reach it.** The ruling puts every reference the C side
-can name into a declared field of an FFI wrapper, so the wrapper's *children*
-are safe — the walk finds them through it. What roots the **wrapper** the
-ruling leaves open: a field of a heap object is a root only through the chain
-rule ([`../../memory/static-lifetimes.md`](../../memory/static-lifetimes.md#what-may-own-a-borrow)),
-never on its own, so "the collector traces the wrapper as an ordinary entity"
-names no mechanism that reaches a wrapper nothing in the language holds. The
-consequence is a free under a live C pointer.
+**What the review of 2026-08-25 established is narrower and survives.** The
+category is honoured for a C caller that retains: `ll_retain` is exported
+(`ll-model` `src/refcount.rs`), and a retained wrapper carries `RC` with no
+`IN`, so `garbage_components` reads it as a root exactly as the identity
+says. Ruling 7 then describes a holder that does not retain — "the C
+structure holds at most a raw address of what the wrapper already holds" — and
+a raw address passes through no barrier. So the hole is not in root
+derivation; it is that **nothing in force says whether a foreign call receives
+an owned reference or a borrowed one**, and
+[`../../memory/ffi.md`](../../memory/ffi.md) defers foreign functions and
+per-argument marshalling to the interop RFC. Until that convention exists, an
+uncounted C-side holder is a contract violation rather than a design case,
+and which of the two it is decides whether this node needs a mechanism at
+all.
+
+**The failure it would produce is ARC's, not the walk's.** An entity whose
+count reaches zero is freed on the spot by the release path, so no walk ever
+meets a live entity at zero: an extension holding an uncounted pointer loses
+its referent at the last store that drops the count, with or without a cycle
+collector. The walk is the killer only for a wrapper inside a garbage cycle,
+and there `../rc-walk.md` says the wrapper is not judged at all — an `FFIBox`
+is "skipped totally: conservative, and cycles through FFI wrappers go
+uncollected", which is no row, no out-edge and no in-edge. The design's
+stated failure mode for an FFI wrapper is therefore a leak, and the crate
+diverges from it in the direction B1 records: the census enrols every
+`GcHeap` entity, boxes among them.
+
+**Ruling 7 forces an edit to that skip, and nobody has made it.** If every
+PHP reference the C side can reach lies in a declared field of the wrapper,
+the wrapper has counted managed children and cannot be a leaf: it needs a
+row, a stride over its declared fields, and a teardown arm. The crate says
+the arm is owed — `ll_entity_die` has no `BOX` case, and its comment reads
+"Box gains its arm when the crate can produce one (FFI), and reaching it
+today is a bug" — and `sever_cells` files `BOX` with `STRING | WEAKREF` under
+"the kinds with no counted children". Until that edit lands, ruling 7's
+tracing arm and the kind list contradict each other, and the acyclic flag on
+the box's descriptor is unsound under the ruling.
 
 **An idea, Edmond, 2026-08-24, recorded and not decided:** something like a
 **micro-list of held objects** — a small registry the foreign side adds to and
-the walk reads as a root source. Nothing about its shape is settled: who
-appends, who removes, what a leaked entry costs, whether it is per thread or
-per process, and whether it is the same list node E4's moved objects want.
+the walk reads as a root source. Two implemented precedents answer three of
+the four questions a draft of this node called open. `ll-model`
+`src/static_block.rs` is a thread-local registry of headerless root-bearing
+blocks: appended beside the block it registers, drained in reverse
+initialisation order at thread exit, per thread, and a lost entry costs that
+block's roots for the life of the process. The escapee list is the second
+(E4), and it answers the removal question with the arena reset while naming
+exactly the property that does not carry over to an actor. So what is
+genuinely open is the removal event, and whether the entry carries a count —
+and if it does, it is a retain, and the walk needs no new root source at all.
+
+**Three answers, not two.** The registry; a written refusal naming what a C
+extension must do instead; or the counted hand-out the central identity
+already assumes, `ll_retain` at the call boundary in the shape of a JNI
+global reference. Two more are available in principle and closed in practice:
+`Immortal` pins at the price of never being reclaimed, and `LongLived` is
+marked out of use in the crate, `ll_retain` and `ll_release` returning early
+on it.
 
 **Where it came from.** Node G14 carried half of this before section G was
-struck as compiler business on 2026-08-23; that half is not compiler business,
-and D3's resurrection line rests on it — resurrection is closed on every
-managed channel and open on FFI alone. G14 stays a record; the runtime half
-is here.
-
-**What would answer it:** the registry's shape, or a written refusal — the
-design saying it accepts the hole and naming what a C extension must do
-instead.
+struck as compiler business on 2026-08-23; that half is not compiler
+business, and D3's resurrection line rests on it — resurrection is closed on
+every managed channel and open on FFI alone. G14 stays a record and keeps the
+compiler half, which is the horizon's own root list.
 
 ## C. When the collector runs
 
@@ -1153,46 +1286,88 @@ dying, and the exemption reaches none of them. Nor are the collector's own
 confirmed members ever exempt: they are torn down before the epoch closes and
 every one of them was enrolled, so each reads an older epoch's number.
 
-**The corpus figure for the death half is taken**, node A6, 2026-08-22: 0.31
-companion records per entity in a booted Laravel container, all of them array
-storage and none of them string payload, so entity records are 76 % of what
-the deaths in such a heap would park. The measured tables are a share of that
+**The corpus figure for the death half is taken**, node A6: on the recorded
+bootstrap of 2026-08-25, 682 companion records against 2 244 entities — 0.30
+per entity, all of them array storage and none of them string payload — so
+entity records are 76.7 % of what the deaths in such a heap would park. A
+draft quoted 0.31 and 76 % together as one measurement; they are one figure
+from each of two columns of 2026-08-22, and A6 has since retired the booted
+one. Counting the hash keys the same scan omits raises the entity population
+and with it this bound, to 0.23 companions per entity and 81 % — the
+exemption's ceiling rises when the population it divides is counted whole. The measured tables are a share of that
 76 %, and the growth records sit outside both — unmeasured, and the reason
 the parked list is not a picture of the live heap.
 
-### C3. The escalation ladder's constants  [measure; the rungs they ration are unbuilt and no workload starves]
+### C3. The escalation ladder's constants  [the rungs they ration are unbuilt, no workload starves, and the trigger they count has no cross-epoch identity]
 
 `R`, its doubling, the per-epoch forced-post cap, the stratification
-threshold. `../rc-walk.md` states all four as measurements rather than
-arguments and fixes no number.
+threshold. They are the forced-verdict half of `../rc-walk.md` open
+question 1, whose cadence half is node C1; neither node named the other
+before 2026-08-25, so anyone closing that question from C1 alone closed half
+of it.
 
-**They ration the escalation ladder, and a draft of this node named the
-pressure ladder instead.** The pressure ladder is the mutator's self-help on
-the allocation-failure path, and what it owes is a cadence rather than a
-constant, which is node C1. These four belong to rungs 2 to 4 of the
-collector's escalation: the fixpoint re-walk, the stratification of a
-repeatedly-acquitted garland, and the forced verdict after `R` consecutive
-acquittals of one component. The pressure ladder reaches them at its own
-rung 3, which relaxes the ration under memory pressure, and that overlap is
-where the mis-naming came from.
+**They ration rungs 3 and 4, and `../rc-walk.md` fixes one of the four by
+argument.** The stratification threshold is rung 3's and `R`, its doubling
+and the per-epoch cap are rung 4's. The escalation ladder's own sentence
+names three as measurements — "`R`, the per-epoch cap and the stratification
+threshold are measurements, not arguments" — while open question 1 lists four;
+the difference is the doubling, which rung 4 fixes where it states the ration
+("`R` doubles per forced drop for that component"). What is unmeasured about
+the doubling is therefore whether doubling is the right law, not what its
+value is.
 
-**The crate keeps nothing `R` could count.** An acquittal increments a
-statistic and the component is dropped from the collector's private tables
-(`ll-model` `src/collector.rs`), so no per-component history survives the
-epoch and "the same component `R` epochs running" has neither the hash of the
-member slot set `../rc-walk.md` specifies nor a counter behind it. The
-collector re-runs epochs, which is rung 1; rungs 2 to 4 are build step 5 of
-`../rc-walk.md`, conditioned there on measurement showing starvation, and
-nothing in the crate implements them.
+**Rung 2 takes no constant at all, and that is the gap this node makes
+invisible.** It reads "repeat until two consecutive rounds agree", and its own
+parenthetical says the agreement is not guaranteed: "one touch resets the
+round". So the collector may re-walk the candidate set without bound, each
+round costing a mutator round trip — 6.0 µs against a mutator that
+checkpoints continuously and 131 at thirteen checkpoints an epoch (C4,
+measured 2026-08-24) — and each round extending the epoch, which is the
+multiplicand of parked volume. What is owed is a round budget for rung 2, or
+the rule that sends the collector to rung 4 instead; no node holds it, and a
+reader who takes the four constants for the ladder's whole parameter set will
+not look for it. `R` itself has the same seam: rung 4 fires "after `R`
+consecutive acquittals of the same component" while rung 2 acquits once per
+round, several rounds to an epoch, and nothing says whether a round's
+acquittal advances `R`.
 
-**What would answer it:** a program that starves — one component acquitted
-epoch after epoch by real code rather than by a probe's loop — run against a
-built ladder. Both halves are missing, and the first is the gate C1 and B7
-sit behind: every workload in `ll-model` is hand-built, so a rate taken over
-one is the probe's own loop bound read back. The stratification threshold
-owes a second quantity beside that rate, how often a repeatedly-acquitted
-component has a stratum with no in-edge from the acquitted remainder, which
-C4 names and cannot take here either.
+**The trigger `R` counts is defined over an object with no cross-epoch
+identity.** `../rc-walk.md` tracks it "as a hash of the member slot set", and
+Phase 2 recomputes weakly connected components from a fresh walk every epoch,
+so the hash is stable only while the component's membership is. A garland
+that gains one linked ring per request — a dead cache array is such an
+edge — presents a different member set every epoch, `R` resets to zero every
+epoch, and rung 4 never fires, against its own guarantee that no component
+starves. Rung 3's "on repeat acquittals" needs the same identity and fails on
+the same input. A counter per member rather than a hash per component is the
+shape that survives a growing component; this node records the defect and
+chooses nothing, the trigger being `../rc-walk.md`'s.
+
+**Nothing in the crate counts any of it.** An acquittal increments a statistic
+and the component is dropped from the collector's private tables (`ll-model`
+`src/collector.rs`), so no per-component history survives the epoch. Rungs 2
+to 4 are build step 5 of `../rc-walk.md`, conditioned there on measurement
+showing starvation, and nothing in the crate implements them. Neither does
+anything run the ladder's first rung on its own: `run_epoch` chains the
+phases for the production shape but carries `#[cfg_attr(not(test),
+expect(dead_code))]` and has no caller outside tests, because when an epoch
+runs at all is C1's question. So the ladder has no floor either, and the
+built/unbuilt line falls below rung 1 rather than above it.
+
+**What would answer it: a sweep, not a run.** The constants are the ladder's
+parameters, so an experiment that builds one ladder to measure them contains
+its own unknown; what the node owes is a parameterised ladder swept over `R`
+and the cap, as C2 swept the idle gap and A5 the prefetch distance, against a
+stated objective — forced drains removed per unit of epoch duration is the
+one C4 half-supplies.
+
+**The workload it needs is stronger than C1's and B7's**, and that is the
+likelier reason this node closes than a number is. Those two want a real
+allocation trace; `../rc-walk.md`'s channel analysis says perpetual starvation
+of true garbage requires a weak-reference poller, so a corpus can be
+faithfully real and contain no starving component at all. Then build step 5's
+condition fails, the rungs are never built, and the four constants are never
+needed — which closes this node without measuring anything.
 
 ### C4. Do the fixpoint and stratification rungs earn their keep  [the round's price measured 2026-08-24; the rate needs the rungs built]
 
@@ -1442,8 +1617,9 @@ synchronous collection hands no reference to program code and cannot condemn
 what a pause holds: a guard is a count with no edge and a nulled cell is an
 edge removed with no count removed, so `RC − IN` only rises and
 `garbage_components` reads a rise as a root. **The open channel is FFI, node
-G14:** a wrapper the C side holds carries no counted in-edge, so a foreign
-handle to a member is invisible to every test above. The split does not open
+B8:** a foreign handle taken without a retain carries no counted in-edge, so
+it is invisible to every test above, and whether a foreign call may take one
+is undecided. The split does not open
 that channel — it is open at the already-permitted boundaries identically — it
 changes what a stale foreign read meets, a hollow member rather than a
 populated one.
@@ -1492,54 +1668,132 @@ the same day.
 
 **A clock read is 13.2 ns**, the steadiest figure the probe takes (three runs
 inside 0.6 ns). That is six severed cells, thirteen released children, or one
-whole mechanical teardown. So the ceiling cannot be a check on the mechanical
-path: per cell it would cost six times the work it bounds. It also cannot be a
-bare count of cells, which assumes a mix and is wrong by a factor of five
-between an all-surviving batch at 3.3 ns a cell and an all-dying one at 16.3.
+whole mechanical teardown. So the ceiling cannot be **a clock read** on the
+mechanical path: per cell it would cost six times the work it bounds. A
+register compare per cell is a different thing and is exactly what the first
+candidate above chose; a draft of this paragraph wrote "check" for both and
+so stated and denied the same thing. The ceiling also cannot be a bare count
+of cells, which assumes a mix and is wrong by a factor of five between an
+all-surviving batch at 3.3 ns a cell and an all-dying one at 16.3.
+
+**The 13.2 ns is this box's clocksource and not a constant of the design.**
+`Instant::now` is `clock_gettime(CLOCK_MONOTONIC)`, and 13 ns is a vDSO read
+off a usable TSC. Where the clocksource is HPET, an ACPI timer or a
+hypervisor page, the same call costs on the order of a microsecond — about
+twenty times an empty destructor body — and the choice between a charge and a
+read inverts. The mechanism below is stated for the fast case and owes a
+fallback for the slow one.
 
 **The mechanism is a charged budget between clock reads, and the clock is read
 where the drain yields.**
 
-1. **One read per slice boundary**, which is where the answer matters and the
-   only place the drain stops. At a millisecond budget that is one part in
-   seventy-seven thousand, and it reconciles everything charged since the
-   previous read against the truth. Ruling 3's between-entity check is the
-   same read where a slice happens to end at an entity.
-2. **Between reads, each unit debits its measured price on a register** — 2.3
-   ns for a severed cell, 1.0 for a released child, 14.0 for an entity whose
-   count reaches zero and whose teardown runs no user code. One add, no clock,
-   and measured rather than assumed. **Each price is a floor and the charge
-   therefore undercharges**, with a sign that is known rather than open: the
-   sever arms swept their parents in allocation order, which is friendlier
-   than the scatter a component gives the drain, and the teardown price is an
-   empty leaf's — no destructor, no children, no outside cells. So the debit
-   is charged **per entity the teardown reaches**, inside its recursion,
-   rather than once for the child that started it; a subgraph freed by one
-   drop is many units and not one. What the floors leave is a slice that ends
-   later than the budget says, never earlier, and step 1 is what bounds how
-   much later.
-3. **A destructor gets a read of its own.** It is the only unbounded unit and
-   the only one long enough for 13 ns to disappear into, and it is the one
-   place where a charge cannot be written in advance. A read is not a
-   boundary: where the drain may stop is the two Sage verdicts' business and
-   is unchanged by this, which only says where the budget learns what it
-   spent.
+1. **Two reads per slice, at its resume and at its yield.** A draft said one
+   read per boundary; between two boundary reads lies the program code the
+   pause exists to let run, so that difference is mostly program time — a
+   slice of one charged millisecond that returns after 40 ms of PHP reads
+   41 ms — and neither a reconciliation nor a carried debt can use it. The
+   interval that means anything is resume-to-yield. At a millisecond budget
+   two reads are one part in thirty-eight thousand.
+2. **Between reads, each unit debits a price on a register**, one add and no
+   clock. Ruling 3's between-entity check is the same compare where a slice
+   happens to end at an entity.
+3. **The price charged is a ceiling, not the measured one**, reversed
+   2026-08-25 against the draft this node carried for a day. The draft charged
+   the measured price and argued the error's sign was safe because each price
+   is a floor: a slice then "ends later than the budget says, never earlier".
+   For a bound on *units* that is safe; for a bound on *time* it is the one
+   unsafe direction, since the slice lasts one budget multiplied by the ratio
+   of the true price to the charged one, and that ratio is what this node
+   lists as unmeasured. "The error is capped at one slice" is circular where
+   the slice is defined by the charge in error. A conservative per-unit price
+   ends the slice early, which is a bound, and pays for it in throughput on
+   friendly shapes — which is what a latency mechanism is for. The rejected
+   count of cells was wrong by a factor of five *in the safe direction*; the
+   charge as drafted is wrong by an unmeasured factor in the unsafe one.
+4. **Two of the three measured prices are floors, and the source says so of
+   two.** `ll-model` `dev/BENCHMARKS.md` calls 2.3 ns a floor because the
+   sever arms swept their parents in allocation order, and 13.0 a floor
+   because the teardown is an empty leaf's. The released child at 1.0 ns is
+   the one arm the probe **scattered**, and its direction is not stated
+   there — a draft of this node and one plan entry called all three floors by
+   their own source. Worse for the charge, all three are differences against
+   controls that already paid the memory traffic: the probe's own comment
+   says arm R0 reads each child's flags word, "which is the scattered memory
+   traffic a drop pays before it decides anything", so 1.0 is a release with
+   its miss subtracted out where the drain pays both. A conservative price
+   has to put the miss back.
+5. **A destructor gets a read of its own.** It is the only unbounded unit and
+   the only one long enough for 13 ns to disappear into. A read is not a
+   boundary: where the drain may stop is the two Sage verdicts' business. What
+   the design still owes here is what happens to a destructor's overrun —
+   carried as debt, the next slices yield after one unit each, a million
+   returns to program code for a million-cell component; discarded, nothing is
+   reconciled and step 1 claims something it does not do.
+
+**The charged units are three and the drain performs more, most of it in
+phases this ceiling does not reach.** Before the sever, `drain_confirmed` runs
+`exact_test`, which builds a `HashMap` and calls `trace_entity` over every
+member, so it reads every cell of the component — Ω(cells) and not Ω(members),
+which D4's "N is no longer to be reduced" does not say. `sever_component` then
+builds a `HashSet` over the members and probes it once per displaced child,
+and grows a fresh `displaced` vector per component, which the benchmark entry
+excludes from the per-cell price on purpose and calls a per-component term
+"the ceiling carries separately" — this node's unit list carries no
+per-component term at all. `Table::sever_entries` ends by writing `0xFF` over
+the whole slot index, work proportional to the table rather than to the cells
+this slice did, and `unguard` calls `ll_entity_die` per member, where an
+array's death drives its own work list and frees its storage. On the shape
+this node calls commonest — one array of a million cells — the charged sever
+is 2.3 ms against tens of milliseconds of exact test and hash probes. Ruling
+10 accepts the exact test's pause, so this is no contradiction of the rulings;
+it does mean the ceiling bounds a minority of the drain, and the sentence
+"the ceiling bounds the mutator's pause" is false as stated.
+
+**Where a debit can be acted on is narrower than where one is written.**
+`sever_component` empties every member's cells first and classifies and
+releases the displaced children afterwards, so the in-component releases are a
+second pass, not inline with the emptying — which is the `MemberCells ⊆
+emptied` seam `DrainPause.tla` marks refused, and the external drops are the
+refused `pc = "release"`. Of the three charged units only the severed cell is
+debited where the register's verdict can be acted on today. This node's own
+line above, that an in-component child may be released at any boundary,
+describes a one-pass sever the code does not have.
+
+**The atom on a hash-backed array is the entry, not the cell.** A hash row
+carries two counted children (B4), but `Table::sever_entries` empties the
+entry — `store_element_and_link` then `make_hole` — and pushes the value and
+the key **after** it. A pause taken between the two pushes loses the key's
+owed drop with the entry that held it, and the string leaks silently, one per
+entry a pause lands on. So the granularity the second verdict licenses reads
+as the entry on this path. `Vector::sever_entries` has the opposite shape:
+`head.set_used(0)` runs after the loop, so a paused sever leaves `used`
+naming cells already emptied, which no reader is harmed by and which means the
+cursor cannot be recovered from the storage head.
+
+**The teardown debit's site is the universal release path.** Charging per
+entity the recursion reaches means adding to the register inside
+`ll_release`/`ll_entity_die`, which every mutator store already uses, live
+whether a drain is running or not. That cost is unpriced, and this crate has
+twice refused an instrument of that shape on measured grounds — C1's
+`BlockPrivate.used`, and an atomic bump cursor that cost 14 % on larson. The
+charge also has to know before the drop whether the teardown will run user
+code, to choose between a debit and a clock read, which is a test of the two
+destructor bits at every drop site on the same path.
 
 **Why a count bounds a pause here where ruling 3 said it does not.** The
 ruling refused *a count of entities* on the ground that a destructor is user
 code and per-entity cost has no bound. A cell's mechanical cost does have one,
-and it is measured; the unbounded part is the destructor, which step 3 above
-gives its own read. So the ruling's reason does not carry down to cells, and
-this is an application of the strategy rather than an exception to it.
+and it is measured; the unbounded part is the destructor, which gets its own
+read. So the ruling's reason does not carry down to cells, and this is an
+application of the strategy rather than an exception to it.
 
-**What it leaves open, and it is calibration rather than shape.** The charged
-prices are this box's and each is a floor, so a slice overruns rather than
-underruns and the direction is not in doubt; what is unmeasured is the size —
-the ratio of the true per-unit price under a scattered component to the
-charged one, and what a class with a destructor or with children adds to the
-teardown floor. Between two reads nothing corrects either, so the error is
-capped at one slice by construction. Where the prices are calibrated and how
-often is the constant this node still owes, beside the ceiling's own value.
+**What it leaves open.** The conservative per-unit price, which is the
+mechanism's only bound and is not any of the three figures measured — what it
+needs is the true cost of a released child and a teardown under a scattered
+component, with the miss included rather than subtracted. Beside it: the
+distribution of per-entity sever cost, which decides whether the ceiling ever
+fires inside a sever at all; the destructor overrun's disposal; and the
+fallback where a clock read costs a microsecond.
 
 **The mechanism does not exist in code.** `sever_counted_children` and
 `sever_entries` take a displaced vector and no cursor (`ll-model`
@@ -1566,11 +1820,10 @@ while the epoch is active, so **every thread's parked memory stays parked for
 the length of the pause**, not only this component's. The bounded mutator
 pause is bought with an unbounded epoch — which is the side of the ledger the
 philosophy of 2026-08-18 says to move work to, but it is owed a completion
-bound. `../pure-destructors.md` calls that bound part of the design rather
-than an option on it, in a section its 2026-08-23 banner keeps as a record;
-the requirement survives the amendment, the alternative that section names
-being the same pipeline run entirely on the mutator, but no document in
-force states it and where it belongs is unplaced.
+bound. That bound is stated in `../rc-walk.md` since 2026-08-24, beside the
+gate it follows from, and node D8 carries what is open about it: the number,
+which of the deferral window's three terms it names, and what arm could
+enforce it when ruling 2 forbids reaching a thread.
 
 **The guards stay outstanding across the pause, and the leak is wider than the
 members.** The concurrent walk cannot run — the epoch is held open — but the
@@ -1778,9 +2031,23 @@ cell read.
 
 **And the shape the source names is cheaper than the one that draft
 rejected.** `../../weak-references.md` asks that the map's key-to-value
-edges be treated as conditional on key liveness — a rule over edges already
-recorded, which is the same material rung 3 of the escalation ladder works
-over.
+edges be treated as conditional on key liveness — a rule over edges rather
+than over a new traversal, which is the kind of arithmetic rung 3 of the
+escalation ladder does.
+
+**The material is not the same material, though**, corrected 2026-08-25.
+Rung 3 condenses a *condemned candidate component* into strata, and this
+node's own diagnosis below says the leaking configuration never becomes a
+candidate: every count in a live map says every entry is live. So rung 3
+never meets these edges. Worse, the recorded edge set carries no pairing: the
+walk records one entry per counted child of the map, and the rule is
+quantified over key-value pairs, which live in the map's own storage. So the
+shape needs either a per-entry structure recorded in Phase 1 — new material,
+which is what "edges already recorded" denies — or a Phase 2 read of the live
+map's table, which spends the property that phase is built on, that it
+touches no mutator memory. `ll-model` has no `WeakMap` (`src/weak.rs` says
+the subscriber list gains its tagged form "when `WeakMap` lands"), so none of
+this can be checked against code.
 
 **Expressing it took two attempts, and the first one leaks worse than the
 bug.** The draft said: drop those edges from `IN`, re-add the ones whose key
@@ -1807,8 +2074,13 @@ a side table keyed on objects a container already holds.
 to run inside the marking phase: subtract the map-to-value edges from `RC`
 and `IN`, compute roots and mark from them, restore the value edge of every
 key the mark reached, and re-mark until no further key is reached. That is
-the fixpoint over reachability the paragraph above asks for, and rung 2 of
-the escalation ladder already re-walks a candidate set to one.
+the fixpoint over reachability the paragraph above asks for. Rung 2 of the
+escalation ladder re-walks a candidate set to a fixpoint of its own, but the
+two are opposites and neither is built: rung 2 iterates against a live mutator
+and is non-monotone by its own text, where this one is collector-private and
+monotone, and rung 2 is build step 5, taken only if measurement shows
+starvation (C3). A WeakMap repair resting on it ships when a workload starves,
+which is unrelated to whether any program holds a value naming its key.
 
 **Neither home the node offered can carry it.** The drain's weak pass runs
 only after the exact test passes, on a component already condemned
@@ -1874,6 +2146,58 @@ D1's hand-back direction, where a grown queue comes from — was written before
 Edmond restated ruling 5, and D1 closed the hand-back the same day: the
 mutator frees what it confirms and nothing returns to the collector. The open
 half above waits on a measurement rather than on another node.
+
+### D8. The epoch's completion bound  [stated in the protocol text; the number, the interval and the arm are all open]
+
+**The requirement, and where it is stated.** While a posted confirmation is
+unacknowledged the epoch stays open, and while it stays open no thread
+returns freed memory to its allocator, so one slow component holds every
+thread's memory. `../rc-walk.md` carries it beside the gate it follows from —
+the epoch ends only after every posted confirmation is acknowledged — having
+been moved there on 2026-08-24 from
+[`../pure-destructors.md`](../pure-destructors.md), whose section on it is a
+record since the mutator became the freeing path. It is **not** ruling 3's
+ceiling, which bounds one batch and says nothing about how many batches a
+component takes; D3 carries that.
+
+**The interval it names is one term of three, and the term that fires first
+is not it.** `Epoch::open` raises the deferral bit before it requests the
+handshake (`ll-model` `src/collector.rs`), so parking is on from the instant
+the epoch opens, before anything is posted — which is B5's first firing
+point, and a mutator in a long syscall stalls there with `confirmed` at zero
+and a bound on verdict outstandingness vacuously satisfied. At the other end,
+memory returns only when each owning thread reaches a checkpoint and
+`flush_due` fires, which D7's checkpoint-free thread need never do. So the
+quantity is the whole deferral window — the pre-ack stall, the outstanding
+verdict, and the post-close flush latency — and this node's requirement names
+the middle term alone.
+
+**The same document disposes of the same quantity the other way**, five
+hundred lines earlier and not withdrawn: parked volume is "bounded only by
+churn rate × epoch duration, not by the live heap", and that passage
+continues "Deliberately still without a mutator-side fallback: no fairness
+mechanism is worth a per-operation cost, and the memory returns at the
+thread's first death or poll", naming B5's watermark and C2's exemption as
+the two collector-side mechanisms instead. One document, one cost, two
+dispositions.
+
+**And the bound has no arm.** Ruling 2 forbids stopping a thread from
+outside, ruling 4 pushes nothing toward one, and D7 answers that nobody is
+woken. Trace a second thread short of memory while the first holds an
+outstanding verdict and is parked in a syscall: the pressure ladder's first
+rung flushes nothing, since `flush` returns early while the epoch is active;
+the second drains a queue whose message belongs to the parked thread; the
+third signals a collector that cannot end the epoch; the fourth runs the
+synchronous collection, whose own frees park; the fifth fails the allocation.
+So a completion bound cannot be a deadline anyone enforces. What is left for
+it to be is a budget the collector spends — refusing to open the next epoch,
+or refusing to post — and that is a choice nobody has made.
+
+**What would answer it:** the number, which needs a workload and is the gate
+C1 sits behind; the interval, which is a choice among the three terms above;
+and the arm, which the rulings above have already narrowed to something the
+collector does to itself. The requirement is unbuilt, and `../rc-walk.md`
+marks what lags code in place, which this paragraph is owed.
 
 ## E. Threads, actors and the machine
 
@@ -2725,8 +3049,8 @@ section indexes that document whole rather than a selection of it.
 
 - **Question 3**, the corpus names, settled 2026-08-18 with Edmond's veto
   open: WordPress, Monica and Sylius, each with its vendor tree. A6's three
-  taken quantities came off a Laravel 13 skeleton instead, which no step has
-  agreed to; A6 records the divergence.
+  taken quantities came off one Laravel 13 application instead, which no step
+  has agreed to; A6 records the divergence and what that tree is.
 - **Question 4**, the hybrid's granularity, ruled by Edmond 2026-08-18: the
   class bit is the default, always-provable Swift-style elision is lawful per
   site in both regimes, fallible per-site deviation stays behind the

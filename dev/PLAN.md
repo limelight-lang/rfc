@@ -349,7 +349,7 @@ broken links.
       handoff: nine nodes A-I plus the economics gate Z. A is the root — does
         a deferred regime exist outside actor-private memory — and it bounds
         every node below.
-- [ ] S5.4 Resolve the graph node by node, root first
+- [x] S5.4 Resolve the graph node by node, root first
       done: every node in `model/gc/walk/questions.md` carries either an
         answer with its argument, or a recorded reason for staying open;
         nodes whose answer changes another document are folded into it
@@ -748,16 +748,82 @@ broken links.
         `dev/WORKFLOW.md` told its own consolidation pass that `rc-walk.md` is
         superseded, which would discount the one document every ruling cites.
         The graph reads thirty-two nodes and twenty edges.
-      **What holds S5.4 open after 2026-08-25:** every node carries an answer
-        or a recorded reason, so the first clause of `done:` is met at 32 of
-        32. What is owed is the second round over this batch, by the rule that
-        a second round finds a defect in the first round's fixes, and one
-        question for Edmond that the consolidation pass raised and this
-        sitting could not settle: whether step 8 of the drain is split on the
-        ceiling's budget. `dev/DECISIONS.md` records it as decided by the
-        strategy, D3 calls it a repair the warrant licenses and nobody
-        executed, and no Sage verdict names a boundary inside step 8 — a
-        stopping place in the drain is his.
+      Critic 2026-08-25 round 2, three lenses over the day's own repairs: the
+        corrected ceiling, the corrected scan, and the four nodes. Twenty-odd
+        findings, all checked by hand, and **the heaviest overturns the repair
+        rather than the draft under it.** A conservative per-unit price does
+        not bound the pause either. A severed cell's unit contains a
+        `displaced.push` whose regrowth the probe reserves outside the timer,
+        so a vector doubling lands hundreds of microseconds on one cell that
+        no price can carry; the safety factor is paid in slices, each
+        returning to program code, which multiplies the span in which every
+        thread's checkpoint takes the cold branch and nothing flushes; and the
+        two clock reads have no consumer that does not relax the price back to
+        the measured one. **So the ceiling's shape is open again**, with the
+        standing candidate named — a clock read every K units, which the
+        earlier rejection only ever refuted at K = 1 — and with what any shape
+        must settle first: the slice's outer boundary against a pickup that
+        drains every queued message in one loop, and a boundary inside the
+        release pass. `dev/DECISIONS.md` carries the withdrawal as its own
+        entry. By the rule this stage taught, nothing is written in its place:
+        two shapes were argued and both broke.
+        Beside it the same lens corrected the node against itself. The
+        uncharged phases are carried by two `std::collections` hash tables
+        over pointer keys, and replacing them with a sorted member slice or a
+        component-id byte is a larger latency win than the ceiling delivers;
+        `DrainPause.tla` does not refuse the release seam, its
+        `refused_boundaries` run opening it and exhausting clean, so the
+        refusal is the verdict's and rests on `unguard` running once; the
+        pause window on a hash entry starts at the hole, not at the first
+        push, so it loses the value as well as the key; and the objection that
+        a per-entity debit is an unpriced add on the hot path is withdrawn —
+        both refusals it cited were refusals of *atomicity*, and the crate's
+        own isolation arm measures the plain add as noise.
+        **The scan grew a second correction and lost a claim.** A closure's
+        state is readable after all — `getClosureThis` and
+        `getClosureUsedVariables` — so "unreachable, with no bound available"
+        was a property of the instrument and not of the heap; the scan reads
+        it now, which leaves 18 objects unread rather than 185 and moves the
+        recorded column to 381 objects, 3 806 value slots and 2 439 string
+        keys. Corrected, the ratio is 2.13 and the string share 45.9 %. The
+        key count is per reaching slot while the distinct key contents are
+        deduped heap-wide, so **the ratio is a ceiling and the share a floor**,
+        and B1's product of the two carries both errors rather than cancelling
+        them; B1's own bracket was 12-14 % and not 12-15, and B4's 63-71 and
+        not 62-70. `arraySlots` and `arraysWalked` are one number whose
+        difference is exactly what the depth cutoff dropped, so both are
+        printed and their equality is the truncation check.
+        And in the four nodes: the graph has nine edgeless nodes rather than
+        ten, D3 having gained B8's edge; C3 priced a rung 2 round with C4's
+        drain column where a round posts nothing and pays a condemn ack, 0.1 µs
+        against 6; `R` counts epochs by the trigger rule and rung 4's own
+        sentence says acquittals, which is a contradiction to amend rather
+        than a gap to measure; C3's growing garland is a starving workload with
+        no weak subscriber, which its closing paragraph had argued cannot
+        exist; B8 named an acyclic flag the box does not carry and called a
+        leak unsound; D8 asked for a code-lag mark already in place.
+        Two rounds, then the device is dropped.
+      **Closed 2026-08-25.** All thirty-two nodes carry an answer with its
+        argument or a recorded reason for staying open, and every answer that
+        changed another document was folded into it — the completion bound
+        into `rc-walk.md`, the C-held root into `ffi.md`, the weak table's
+        residence into `weak-references.md` and `runtime/actors.md`, the
+        ceiling's shape into `dev/DECISIONS.md`, and the corpus instrument
+        into `dev/tools/`. Two Critic rounds ran over the last batch and the
+        second overturned the first's repair, which is recorded above rather
+        than repaired a third time.
+        **What the step does not settle, and what it leaves as nodes rather
+        than as debt:** the ceiling's mechanism (D3), the epoch's completion
+        bound (D8), the C-held root (B8), the ladder's constants (C3), the
+        weak table's residence and the owner ruling (E1, E3), the channel
+        (D1), the cadence (C1), the exemption's soundness (C2), the WeakMap
+        fixpoint (D6), the checker's re-derivation (H1), and the corpus's
+        remaining quantities (A6). Each says what would answer it.
+        **One question for Edmond, and it is a stopping place in the drain
+        rather than a step's debt:** whether step 8 is split on the ceiling's
+        budget. `dev/DECISIONS.md` recorded it as decided by the strategy, D3
+        calls it a repair the warrant licenses and nobody executed, and no
+        Sage verdict names a boundary inside step 8.
       handoff: state at the end of 2026-08-22. **Closed and holding:** A1,
         A5 (the width is not the lever; the prefetch is measured and
         unsettled), A7 (the discriminant is a bit of the retired condemned

@@ -88,6 +88,14 @@ const STRING_PREFIX = 24;
  */
 const MAX_SMALL = 8192;
 
+/**
+ * The entity slot an out-of-line string keeps: header, length, padding, hash
+ * and the pointer to the payload (`ll-model` `src/string.rs`, `placement`).
+ * Past [`MAX_SMALL`] this is what lands in a size class, the bytes going to a
+ * record of their own.
+ */
+const OUT_OF_LINE_SLOT = 32;
+
 /** The size class a request of `$bytes` lands in, or null past the last. */
 function size_class(int $bytes): ?int
 {
@@ -148,10 +156,10 @@ final class Tally
     public int $unreadable = 0;
 
     /**
-     * Closures met. A closure's bound `$this`, its `use` captures and its
-     * scope are unreachable to reflection over properties, so each one is
-     * a floor of one row and zero edges; Limelight keeps closures as their
-     * own entity kind and they hold what this walk cannot see.
+     * Closures met, all of them walked through [`closure_state`]. Limelight
+     * keeps a closure as its own entity kind, and the size class recorded for
+     * one here is an object's of the same slot count, which is an
+     * approximation rather than that kind's layout.
      */
     public int $closures = 0;
 
@@ -195,12 +203,67 @@ final class Tally
  */
 function properties_of(object $object): array
 {
+    if ($object instanceof Closure) {
+        return closure_state($object);
+    }
+
     try {
         return (array) (new ReflectionObject($object))->getProperties()
             ? get_mangled_object_vars($object)
             : [];
     } catch (Throwable) {
         return [];
+    }
+}
+
+/**
+ * The state a closure holds: its `use` captures and its bound `$this`.
+ *
+ * A closure has no property table, so `get_mangled_object_vars` returns
+ * nothing for one and reflection over properties reads none of this. Half the
+ * objects of a booted framework container are closures, and their captures
+ * routinely hold arrays and strings reachable through nothing else, so
+ * without this the scan reports them as leaves and loses whatever they hold.
+ *
+ * The scope class is a class rather than a value, so it is not a counted slot
+ * and is not returned.
+ *
+ * @return array<string, mixed>
+ */
+function closure_state(Closure $closure): array
+{
+    try {
+        $reflection = new ReflectionFunction($closure);
+    } catch (Throwable) {
+        return [];
+    }
+
+    $state = $reflection->getClosureUsedVariables();
+    $bound = $reflection->getClosureThis();
+    if ($bound !== null) {
+        $state['this'] = $bound;
+    }
+
+    return $state;
+}
+
+/**
+ * Give every string key its size class, once per distinct content.
+ *
+ * `classify` records a class for the strings it meets in slots, and a key is
+ * not a slot it is called on, so without this pass the string half of
+ * `classesByKind` covers value strings alone — while the key strings count
+ * as entities everywhere else. Run after the walk and before anything reads
+ * the histogram.
+ */
+function fold_key_strings(Tally $tally): void
+{
+    foreach ($tally->keyStrings as $key => $_) {
+        if (isset($tally->strings[$key])) {
+            continue;
+        }
+
+        note_string_layout($tally, STRING_PREFIX + strlen((string) $key));
     }
 }
 
@@ -292,6 +355,27 @@ function record_class(Tally $tally, string $kind, int $bytes): void
     $tally->classesByKind[$kind][$class] = ($tally->classesByKind[$kind][$class] ?? 0) + 1;
 }
 
+/**
+ * Record the entity slot a string of `$bytes` takes, and count the payload it
+ * parks if there is one.
+ *
+ * A string past [`MAX_SMALL`] keeps a fixed slot and moves its bytes to a
+ * record beside it, so it is the slot and not the whole string that picks the
+ * size class — a draft recorded neither, `record_class` returning early on a
+ * request past the last class.
+ */
+function note_string_layout(Tally $tally, int $bytes): void
+{
+    if ($bytes > MAX_SMALL) {
+        $tally->outOfLineStrings++;
+        record_class($tally, 'string', OUT_OF_LINE_SLOT);
+
+        return;
+    }
+
+    record_class($tally, 'string', $bytes);
+}
+
 /** Count one occupied slot by what it holds. */
 function classify(mixed $slot, Tally $tally): void
 {
@@ -304,11 +388,7 @@ function classify(mixed $slot, Tally $tally): void
         $tally->stringSlots++;
         if (!isset($tally->strings[$slot])) {
             $tally->strings[$slot] = true;
-            $bytes = STRING_PREFIX + strlen($slot);
-            record_class($tally, 'string', $bytes);
-            if ($bytes > MAX_SMALL) {
-                $tally->outOfLineStrings++;
-            }
+            note_string_layout($tally, STRING_PREFIX + strlen($slot));
         }
     } elseif (in_array($type, SCALAR_TYPES, true)) {
         $tally->scalarSlots++;
@@ -332,6 +412,7 @@ $roots = is_array($roots) ? $roots : [$roots];
 
 $tally = new Tally();
 walk($roots, $tally, $maxDepth);
+fold_key_strings($tally);
 
 $objects = count($tally->objects);
 $strings = count($tally->strings);
@@ -400,9 +481,10 @@ printf(
     $newKeyStrings
 );
 // A row with no edges is a floor, not a leaf: what the object holds may be
-// unreachable to reflection rather than absent.
+// unreadable rather than absent. A closure's state is read through
+// `closure_state`, so it is counted here as walked rather than as missing.
 printf(
-    "  state not read           %d objects, of them %d closures\n",
+    "  state not read           %d objects; closures walked %d\n",
     $tally->unreadable,
     $tally->closures
 );

@@ -434,8 +434,10 @@ after-a-request neighbour. The re-run of 2026-08-24 wrote down no bootstrap
 either, and four plausible ones reach 387 from neither side — through the
 HTTP kernel with `terminate`, GET `/up` gives 376 objects and GET `/` and
 `/restaurants` give 378, `handleRequest` gives 376, and dropping `terminate`
-gives 373, none of them 387. The tree has not moved underneath the record:
-its `composer.lock` and its bootstrap caches are untouched since 2026-07-02.
+gives 373, none of them 387. Neither the tree nor the instrument moved
+underneath the record: the tree's `composer.lock` and bootstrap caches are
+untouched since 2026-07-02, the tool's last commit before this sitting is of
+2026-08-22, and those four runs were taken before this sitting changed it.
 So the 2026-08-24 column reproduces its own **ratios** and not its counts,
 which is what identifies the corpus and is all it identifies.
 
@@ -446,41 +448,57 @@ dispatched and terminated. Two runs on 2026-08-25 agree byte for byte.
 
 | | recorded 2026-08-24 | recorded bootstrap, 2026-08-25 |
 |---|---|---|
-| objects, exact | 387 | 376 |
-| distinct strings, values only | 723 | 681 |
-| arrays walked | 1 255 | 1 187 |
-| counted slots, values only | 3 759 | 3 523 |
-| string keys | not counted | **2 407, 1 049 distinct** |
-| objects whose state is unread | not counted | **185, of them 176 closures** |
+| objects, exact | 387 | 381 |
+| distinct strings, values only | 723 | 703 |
+| array slots | 1 255 | 1 207 |
+| arrays walked | 1 255 | 1 207 |
+| counted slots, values only | 3 759 | 3 806 |
+| string keys | not counted | **2 439, 1 050 distinct** |
+| closures walked | not walked | **179** |
+| objects with no readable state | not counted | **18** |
 
-**The instrument omits two populations, and both were found by review on
-2026-08-25.** The first it can now bound and the second it cannot.
+**The last two rows are the review's own finding**, and the two counters
+above them close it. The scan classified array **values** alone —
+`foreach ($value as $element)` — where a hash entry's string key is a counted
+child of the array beside the value (B4, and `ll-model` `src/walk.rs`, which
+takes the key word as a child above `KEY_SENTINEL_LIMIT` while a vector's
+key is its position). And `properties_of` read
+`get_mangled_object_vars`, which is empty for a closure, so half the objects
+of a booted container contributed a row and no edges. A closure's state is
+readable — `ReflectionFunction::getClosureThis` and
+`getClosureUsedVariables` — and the scan reads it since 2026-08-25, which is
+what left 18 objects unread rather than 185.
 
-- **A hash entry's string key is a counted child of the array** (B4), and the
-  scan classified values alone: `foreach ($value as $element)`. The key count
-  above is the edges the slot rows omit, and 662 of the 1 049 distinct key
-  contents appear nowhere as a value, so they are string entities the proxy
-  omits as well. Corrected, this bootstrap gives `3523 + 2407 = 5 930`
-  counted edges over `376 + 1343 + 1187 = 2 906` entities — **2.04 counted
-  edges per entity** against 1.57 under the old convention, and a string
-  share of `1343 / 2906` = **46.2 %** against 30.3 %. Both figures rise, and
-  they rise for the same reason: a hash row carries two children and the scan
-  saw one.
-- **Half the objects contribute a row and no edges because their state is
-  unreachable to reflection.** `properties_of` reads
-  `get_mangled_object_vars`, which is empty for a closure — its bound `$this`,
-  its `use` captures and its scope are invisible — and empty for an internal
-  class with no declared properties. That is 185 objects of 376 here, 176 of
-  them closures. Every figure this node states is a floor by that much, with
-  no bound available: what those objects hold is not merely uncounted, it is
-  unreachable, so whatever they reach is missing from the walk as well.
+**The first two rows are one number, and the table prints both on purpose.**
+`arraySlots` counts the array-valued slots and `arraysWalked` counts the
+arrays popped from those slots, so their difference is exactly the arrays the
+depth cutoff dropped. Equal rows are the check that `HEAP_MAX_DEPTH` did not
+bite; a draft of this table printed one of them and lost the check.
 
-**What that does to the two nodes reading these figures.** B1's leaf share
-rises from about 31 % to 46 %, which raises its skip's ceiling; B4's edge
-ratio rises from 1.59 to 2.04, which widens the margin by which edges outweigh
-rows. The two move together because one correction feeds both, so the choice
-between B1 and B6 does not turn on it — but no figure here is the number
-until an instrument reads a closure.
+**Corrected, this bootstrap gives 2.13 counted edges per entity and a string
+share of 45.9 %** — `3806 + 2439 = 6 245` edges over
+`381 + 1349 + 1207 = 2 937` entities, where 646 of the 1 050 distinct key
+contents appear nowhere as a value and are string entities the proxy omitted
+with them. Under the old convention the same run reads 1.66 and 30.7 %, both
+inside the brackets the recorded columns state.
+
+**Which way each corrected figure is wrong is not the same for the two.** The
+key count is per reaching slot, so a shared array's keys are counted once per
+holder, while the distinct key contents are deduped across the whole heap. So
+**2.13 is a ceiling and 45.9 % a floor** under any array sharing, and B1's
+product of the two carries both errors rather than cancelling them. Closing
+that needs a distinct-array count, which an instrument without array identity
+cannot produce.
+
+**Three limits that stay**, none of them closed by this pass. The 2 439 key
+edges are priced at B4's 43-47 ns, which was measured on vector cells, and a
+table's key cell is a different read at a different stride — no arm has timed
+it. An object's size class here follows the count of *initialised*
+properties times 16 bytes, where `ll-model` sizes an object from its class's
+declared slots at per-kind widths, so B6's histogram is an approximation in
+both directions, and a closure lands in it as an object of its capture count
+rather than as the entity kind Limelight gives it. And the scan's copy of the
+size-class table is a hand copy of `src/memory/heap.rs` that nothing checks.
 
 **What the figures are approximate about**, stated rather than assumed:
 object *identity* is exact, `spl_object_id` giving it; object *coverage* is
@@ -667,11 +685,13 @@ not a row's 40-54: against a walk costing a row plus 1.4 to 1.6 edges at
 43-47 ns each, `0.31 × 40` over `40 + 1.4×43` to `54 + 1.6×47` is **10 to
 12 % of the walk**.
 
-**Both terms of that arithmetic move once the scan counts hash keys**, and
-they move the same way (A6, 2026-08-25): the share becomes 46.2 % and the
-ratio 2.04, giving `0.46 × 40` over `40 + 2.04×43` to `54 + 2.04×47` — **12
-to 15 %**. The lever grows by half and the bracket barely moves, because the
-correction that adds string entities adds their in-edges beside them. Naming the row range as the numerator instead gives 12 to 16 %, and
+**Both terms of that arithmetic move once the scan counts hash keys and reads
+closures** (A6, 2026-08-25): the share becomes 45.9 % and the ratio 2.13,
+giving `0.459 × 40` over `40 + 2.13×43` to `54 + 2.13×47` — **12 to 14 %**.
+The lever grows by half and the bracket barely moves, because the correction
+that adds string entities adds their in-edges beside them. It does not
+tighten the bracket, though: the share is a floor and the ratio a ceiling
+under array sharing (A6), so the product carries both errors. Naming the row range as the numerator instead gives 12 to 16 %, and
 the 40 ns is what was measured. That is one
 framework on one machine and an estimate built from two measurements rather
 than one, so it is a first bracket and not the number. B4's measurement of 2026-08-22
@@ -741,10 +761,13 @@ dearest and edges cheapest.
 **The parity corner closes once the scan counts hash keys.** A6's instrument
 classified array values and not their string keys, where this node's own
 sentence above says a hash row carries two children; corrected on the
-2026-08-25 bootstrap the ratio is 2.04, at which edges carry 62 to 70 % and
-the corner where rows are dearest reads 62 rather than 53. The conclusion
-survives the correction with a wider margin, which is the opposite of what a
-review expected of it.
+2026-08-25 bootstrap the ratio is 2.13, at which edges carry 63 to 71 % and
+the corner where rows are dearest reads 63 rather than 53. Two things that
+margin is not. The added edges are table key cells and the 43-47 ns is a
+vector cell's read, so they are priced by extrapolation rather than by
+measurement — a sixth arm of string-keyed entries in the same probe would
+close that. And the corrected ratio is a ceiling under array sharing (A6),
+so the margin is an upper one.
 
 ### B5. The epoch-abort watermark  [open; the identity half holds, three objections stand, the epoch number is discharged]
 
@@ -856,7 +879,12 @@ and strings 10, for 25 pairs of class and kind over 17 distinct classes — so
 segregation costs **8 extra tail blocks, half a mebibyte** at the 64 KiB
 block. The same scan over A6's recorded bootstrap on 2026-08-25 gives 23
 pairs over 16 classes and 7 tail blocks, 0.4 MiB: the price is stable in
-shape across two bootstraps of one tree while the counts behind it are not. A draft called that
+shape across two bootstraps of one tree while the counts behind it are not.
+**Both figures are approximations of the layout rather than readings of it**,
+which A6 records: the object half sizes an object by its initialised
+properties where `ll-model` sizes it from the class's declared slots at
+per-kind widths, and a closure lands in that histogram as an object of its
+capture count. A draft called that
 under two per cent of a ~28 MiB boot heap; the scan prints no heap total and
 no source was named for the 28 MiB, so the denominator is withdrawn and the
 half mebibyte stands on its own. The figure covers two kinds; the other five
@@ -1287,14 +1315,17 @@ confirmed members ever exempt: they are torn down before the epoch closes and
 every one of them was enrolled, so each reads an older epoch's number.
 
 **The corpus figure for the death half is taken**, node A6: on the recorded
-bootstrap of 2026-08-25, 682 companion records against 2 244 entities — 0.30
+bootstrap of 2026-08-25, 699 companion records against 2 291 entities — 0.31
 per entity, all of them array storage and none of them string payload — so
-entity records are 76.7 % of what the deaths in such a heap would park. A
+entity records are 76.6 % of what the deaths in such a heap would park. A
 draft quoted 0.31 and 76 % together as one measurement; they are one figure
 from each of two columns of 2026-08-22, and A6 has since retired the booted
 one. Counting the hash keys the same scan omits raises the entity population
-and with it this bound, to 0.23 companions per entity and 81 % — the
-exemption's ceiling rises when the population it divides is counted whole. The measured tables are a share of that
+and with it this bound, to 0.24 companions per entity and 81 % — the
+exemption's ceiling rises when the population it divides is counted whole.
+The string-payload half of that sentence is a claim about value strings: no
+key string was length-tested for the out-of-line layout until 2026-08-25, and
+none reaches it on this corpus. The measured tables are a share of that
 76 %, and the growth records sit outside both — unmeasured, and the reason
 the parked list is not a picture of the live heap.
 
@@ -1326,10 +1357,13 @@ measured 2026-08-24) — and each round extending the epoch, which is the
 multiplicand of parked volume. What is owed is a round budget for rung 2, or
 the rule that sends the collector to rung 4 instead; no node holds it, and a
 reader who takes the four constants for the ladder's whole parameter set will
-not look for it. `R` itself has the same seam: rung 4 fires "after `R`
-consecutive acquittals of the same component" while rung 2 acquits once per
-round, several rounds to an epoch, and nothing says whether a round's
-acquittal advances `R`.
+not look for it. `R` itself carries a contradiction rather than a gap:
+rung 4 fires "after `R` consecutive acquittals of the same component" while
+the trigger rule below counts "same component `R` **epochs** running", and
+rung 2 acquits once per round with several rounds to an epoch. The design
+does decide — `R` counts epochs — so what is defective is rung 4's own
+sentence, and it is repaired by amending one of the two rather than by
+measuring anything.
 
 **The trigger `R` counts is defined over an object with no cross-epoch
 identity.** `../rc-walk.md` tracks it "as a hash of the member slot set", and
@@ -1677,123 +1711,137 @@ of cells, which assumes a mix and is wrong by a factor of five between an
 all-surviving batch at 3.3 ns a cell and an all-dying one at 16.3.
 
 **The 13.2 ns is this box's clocksource and not a constant of the design.**
-`Instant::now` is `clock_gettime(CLOCK_MONOTONIC)`, and 13 ns is a vDSO read
-off a usable TSC. Where the clocksource is HPET, an ACPI timer or a
-hypervisor page, the same call costs on the order of a microsecond — about
-twenty times an empty destructor body — and the choice between a charge and a
-read inverts. The mechanism below is stated for the fast case and owes a
-fallback for the slow one.
+`Instant::now` is `clock_gettime(CLOCK_MONOTONIC)`, and 13 ns is a vDSO read;
+this box's `current_clocksource` reads `tsc`. Where the clocksource is HPET or
+the ACPI timer the same call leaves the vDSO and costs about a microsecond. A
+hypervisor is not that case — Linux gives the Hyper-V TSC reference page and
+KVM's pvclock vDSO modes of their own — which matters here because the
+reference box is WSL2 and its own reading is a fast one either way.
 
-**The mechanism is a charged budget between clock reads, and the clock is read
-where the drain yields.**
+**The shape is open, and two rounds are why.** A charged budget was written
+on 2026-08-24 and refuted on 2026-08-25 for debiting a floor, which bounds a
+count of units and not a length of time. The repair — debit a conservative
+per-unit ceiling — was refuted the same day by the second round, for three
+reasons that no per-unit price answers:
 
-1. **Two reads per slice, at its resume and at its yield.** A draft said one
-   read per boundary; between two boundary reads lies the program code the
-   pause exists to let run, so that difference is mostly program time — a
-   slice of one charged millisecond that returns after 40 ms of PHP reads
-   41 ms — and neither a reconciliation nor a carried debt can use it. The
-   interval that means anything is resume-to-yield. At a millisecond budget
-   two reads are one part in thirty-eight thousand.
-2. **Between reads, each unit debits a price on a register**, one add and no
-   clock. Ruling 3's between-entity check is the same compare where a slice
-   happens to end at an entity.
-3. **The price charged is a ceiling, not the measured one**, reversed
-   2026-08-25 against the draft this node carried for a day. The draft charged
-   the measured price and argued the error's sign was safe because each price
-   is a floor: a slice then "ends later than the budget says, never earlier".
-   For a bound on *units* that is safe; for a bound on *time* it is the one
-   unsafe direction, since the slice lasts one budget multiplied by the ratio
-   of the true price to the charged one, and that ratio is what this node
-   lists as unmeasured. "The error is capped at one slice" is circular where
-   the slice is defined by the charge in error. A conservative per-unit price
-   ends the slice early, which is a bound, and pays for it in throughput on
-   friendly shapes — which is what a latency mechanism is for. The rejected
-   count of cells was wrong by a factor of five *in the safe direction*; the
-   charge as drafted is wrong by an unmeasured factor in the unsafe one.
-4. **Two of the three measured prices are floors, and the source says so of
-   two.** `ll-model` `dev/BENCHMARKS.md` calls 2.3 ns a floor because the
-   sever arms swept their parents in allocation order, and 13.0 a floor
-   because the teardown is an empty leaf's. The released child at 1.0 ns is
-   the one arm the probe **scattered**, and its direction is not stated
-   there — a draft of this node and one plan entry called all three floors by
-   their own source. Worse for the charge, all three are differences against
-   controls that already paid the memory traffic: the probe's own comment
-   says arm R0 reads each child's flags word, "which is the scattered memory
-   traffic a drop pays before it decides anything", so 1.0 is a release with
-   its miss subtracted out where the drain pays both. A conservative price
-   has to put the miss back.
-5. **A destructor gets a read of its own.** It is the only unbounded unit and
-   the only one long enough for 13 ns to disappear into. A read is not a
-   boundary: where the drain may stop is the two Sage verdicts' business. What
-   the design still owes here is what happens to a destructor's overrun —
-   carried as debt, the next slices yield after one unit each, a million
-   returns to program code for a million-cell component; discarded, nothing is
-   reconciled and step 1 claims something it does not do.
+- **The tail lives inside a charged unit.** A severed cell is an empty plus a
+  `displaced.push`, and `sever_component` starts that vector at `Vec::new()`;
+  the probe reserves its capacity outside the timer on purpose, so no measured
+  price contains the regrowth. At half a million cells the doubling allocates
+  8 MB and copies 4, which is hundreds of microseconds charged to one cell.
+  The benchmark entry calls the regrowth a per-component term the ceiling
+  carries separately; it is not additive, it is a spike landing on one unit,
+  and reserving `displaced` to the component's cell count is what removes it.
+- **The conservative factor is paid in the epoch's span, not in throughput.**
+  A price 15 times the measured one does not make the drain 15 times dearer;
+  it makes it 15 times more slices, each returning to program code, and while
+  `OUTSTANDING_VERDICTS` is non-zero every thread's checkpoint takes the cold
+  branch and no thread flushes parked memory. The mechanism that bounds one
+  thread's pause multiplies, by its own safety factor, a window in which every
+  other thread pays. That is D8's quantity, and it is the currency this
+  ceiling actually spends.
+- **The two reads have no consumer.** Carry the unspent remainder as credit
+  and a conservative price relaxes back to the measured one within a few
+  slices; recalibrate toward `elapsed / units` and the same collapse follows
+  downward, or the price inflates for ever if it may only rise. A read that
+  feeds neither is observability, which is a fair thing to want and not a
+  mechanism.
 
-**The charged units are three and the drain performs more, most of it in
-phases this ceiling does not reach.** Before the sever, `drain_confirmed` runs
-`exact_test`, which builds a `HashMap` and calls `trace_entity` over every
-member, so it reads every cell of the component — Ω(cells) and not Ω(members),
-which D4's "N is no longer to be reduced" does not say. `sever_component` then
-builds a `HashSet` over the members and probes it once per displaced child,
-and grows a fresh `displaced` vector per component, which the benchmark entry
-excludes from the per-cell price on purpose and calls a per-component term
-"the ceiling carries separately" — this node's unit list carries no
-per-component term at all. `Table::sever_entries` ends by writing `0xFF` over
-the whole slot index, work proportional to the table rather than to the cells
-this slice did, and `unguard` calls `ll_entity_die` per member, where an
-array's death drives its own work list and frees its storage. On the shape
-this node calls commonest — one array of a million cells — the charged sever
-is 2.3 ms against tens of milliseconds of exact test and hash probes. Ruling
-10 accepts the exact test's pause, so this is no contradiction of the rulings;
-it does mean the ceiling bounds a minority of the drain, and the sentence
-"the ceiling bounds the mutator's pause" is false as stated.
+**The standing candidate is a clock read every K units**, and the rejection
+above only ever refuted `K = 1`. At `K = 512` on the cheapest unit the read
+costs `13.2 / (512 × 2.3)` — about one per cent — and the overrun is at most
+K units of whatever the shape actually costs, which is self-limiting where a
+mispriced charge is not: a dear component overruns by 512 dear units rather
+than by an unmeasured ratio. It needs no price table, no calibration and no
+per-kind test, and K scales with a measured clock read, so the slow-clocksource
+case is the same lever rather than a fallback. What it costs against the
+charged budget is that one per cent.
+
+**What any shape has to settle first, and none of the three does.** The slice
+has no outer boundary written anywhere: `checkpoint_attend` pops and drains
+**every** queued message in one loop (`ll-model` `src/epoch.rs`), so a budget
+that resets per message gives fifty confirmed components fifty budgets and a
+fiftyfold pause, while one that never resets ends every later slice after a
+single unit. And a yield out of `drain_confirmed` returns into that loop,
+which then does `fetch_sub` on a half-drained message — `DW_early_sub.cfg`,
+the checked kill of drain exclusivity — so a slice boundary is not a return
+from the drain but a restructuring of the pickup that distinguishes drained
+from paused.
+
+**One objection against the debit itself does not hold.** A draft called the
+per-entity charge an unpriced add on the universal release path and cited two
+refusals of the same shape. Both refused *atomicity*: the 14 % on larson was
+isolated to one `bump += 1` turned into a relaxed atomic store, the plain add
+measuring within noise in the same table, and C1 refuses `BlockPrivate.used`
+because a collector reads it. This register is thread-local and read by the
+thread that writes it. Nor does the teardown charge need a destructor-bit test
+at every drop site: a drop that does not reach zero runs no teardown, and the
+death branch already loads the flags word.
+
+**Whatever the mechanism, it bounds a minority of the drain, and two hash
+tables carry the rest.** Before any unit, `drain_confirmed` runs `exact_test`,
+which builds a `HashMap` and calls `trace_entity` over every member, so it
+reads every cell of the component — Ω(cells) and not Ω(members), which D4's
+"N is no longer to be reduced" does not say. `sever_component` then builds a
+`HashSet` over the members and probes it once per displaced child. Both are
+`std::collections` over pointer keys, so both pay SipHash: on one array of a
+million cells that is tens of milliseconds each, against a sever the measured
+price puts at 2.3 ms. Beside them sit smaller terms — `Table::sever_entries`
+writes `0xFF` over the whole slot index, `unguard` runs a death per member,
+the `displaced` vector regrows — none of which the unit list names. Ruling 10
+accepts the exact test's pause, so none of this contradicts the rulings; it
+does mean the sentence "the ceiling bounds the mutator's pause" is false as
+stated. **And it names a larger latency win than the ceiling delivers:**
+replacing those two hash tables with a sorted member slice or a component-id
+byte on the header takes tens of milliseconds off the same pause, and no node
+holds that.
 
 **Where a debit can be acted on is narrower than where one is written.**
 `sever_component` empties every member's cells first and classifies and
 releases the displaced children afterwards, so the in-component releases are a
-second pass, not inline with the emptying — which is the `MemberCells ⊆
-emptied` seam `DrainPause.tla` marks refused, and the external drops are the
-refused `pc = "release"`. Of the three charged units only the severed cell is
-debited where the register's verdict can be acted on today. This node's own
+second pass, not inline with the emptying — which is the seam the second
+Sage verdict refuses, on the ground that `unguard` runs once, and the external
+drops sit in the refused release stretch beside it. `DrainPause.tla` says
+nothing against either: its `refused_boundaries` configuration opens both and
+must exhaust clean, and its header says so. Of the three charged units only
+the severed cell is debited where a verdict can be acted on today. This node's own
 line above, that an in-component child may be released at any boundary,
 describes a one-pass sever the code does not have.
 
-**The atom on a hash-backed array is the entry, not the cell.** A hash row
-carries two counted children (B4), but `Table::sever_entries` empties the
-entry — `store_element_and_link` then `make_hole` — and pushes the value and
-the key **after** it. A pause taken between the two pushes loses the key's
-owed drop with the entry that held it, and the string leaks silently, one per
-entry a pause lands on. So the granularity the second verdict licenses reads
-as the entry on this path. `Vector::sever_entries` has the opposite shape:
+**The atom on a hash-backed array is the entry, not the cell, and the window
+starts at the hole.** A hash row carries two counted children (B4), but
+`Table::sever_entries` empties the entry — `store_element_and_link` then
+`make_hole` — and pushes the value and the key **after** it. A pause between
+the hole and the first push loses the value's owed drop, which is an entity
+and may be a whole subgraph; between the two pushes it loses the key's, one
+string per entry a pause lands on. So the atom encloses the hole and both
+pushes, and a repair that only pairs the two pushes still leaks the wider
+window. Beside that, a pause inside the loop leaves `self.live` and
+`self.holes` stale and the slot index unwritten, so the invariant that
+method's own comment asserts does not hold at a licensed boundary; nothing is
+known to read it there, and a design that moves the atom to the entry owes
+that argument in writing. `Vector::sever_entries` has the opposite shape:
 `head.set_used(0)` runs after the loop, so a paused sever leaves `used`
 naming cells already emptied, which no reader is harmed by and which means the
 cursor cannot be recovered from the storage head.
 
-**The teardown debit's site is the universal release path.** Charging per
-entity the recursion reaches means adding to the register inside
-`ll_release`/`ll_entity_die`, which every mutator store already uses, live
-whether a drain is running or not. That cost is unpriced, and this crate has
-twice refused an instrument of that shape on measured grounds — C1's
-`BlockPrivate.used`, and an atomic bump cursor that cost 14 % on larson. The
-charge also has to know before the drop whether the teardown will run user
-code, to choose between a debit and a clock read, which is a test of the two
-destructor bits at every drop site on the same path.
+**Why a count of cells is admissible where ruling 3 refused a count of
+entities.** The ruling refused *a count of entities* on the ground that a
+destructor is user code and per-entity cost has no bound. A cell's mechanical
+cost is bounded below the destructor, so the ruling's reason does not carry
+down to cells — which licenses a per-cell mechanism without saying that a
+charge is one.
 
-**Why a count bounds a pause here where ruling 3 said it does not.** The
-ruling refused *a count of entities* on the ground that a destructor is user
-code and per-entity cost has no bound. A cell's mechanical cost does have one,
-and it is measured; the unbounded part is the destructor, which gets its own
-read. So the ruling's reason does not carry down to cells, and this is an
-application of the strategy rather than an exception to it.
-
-**What it leaves open.** The conservative per-unit price, which is the
-mechanism's only bound and is not any of the three figures measured — what it
-needs is the true cost of a released child and a teardown under a scattered
-component, with the miss included rather than subtracted. Beside it: the
-distribution of per-entity sever cost, which decides whether the ceiling ever
-fires inside a sever at all; the destructor overrun's disposal; and the
-fallback where a clock read costs a microsecond.
+**What this node owes, after two shapes broke.** The mechanism, which is a
+choice between reading the clock every K units and charging a price, and the
+value of K or of the price with it; the slice's outer boundary and the
+budget's reset against the pickup loop; a boundary inside the release pass, or
+the admission that the pause it leaves is unbounded on the commonest shape;
+the destructor overrun's disposal; and the distribution of per-entity sever
+cost, which decides whether the ceiling ever fires inside a sever at all.
+**The rule this stage taught applies here:** both shapes were written by
+argument and both broke under review, so what is written now is what would
+answer the node rather than a third shape.
 
 **The mechanism does not exist in code.** `sever_counted_children` and
 `sever_entries` take a displaced vector and no cursor (`ll-model`
@@ -1891,7 +1939,9 @@ component and each call may run a full teardown (`ll-model` `src/walk.rs`,
 every cell is external, so the whole release cost lands there and the split
 sever buys nothing. The warrant already licenses the repair, a boundary
 inside step 8: a child there has a parked count and no in-edge, which is the
-second clause, and `DP_refused_boundaries` checks exactly that seam. Second,
+second clause, and `DP_refused_boundaries` opens that seam and exhausts
+clean — which says the warrant covers it, the verdict's refusal resting on
+`unguard` running once rather than on a hazard the model can see. Second,
 `MID_DRAIN` held across the pause is not a policy today's code can express —
 the flag is set at pickup and cleared unconditionally on the way out of
 `checkpoint_attend` (`src/epoch.rs`), and a pause returns through that
@@ -2186,7 +2236,10 @@ outside, ruling 4 pushes nothing toward one, and D7 answers that nobody is
 woken. Trace a second thread short of memory while the first holds an
 outstanding verdict and is parked in a syscall: the pressure ladder's first
 rung flushes nothing, since `flush` returns early while the epoch is active;
-the second drains a queue whose message belongs to the parked thread; the
+the second drains a queue whose message belongs to the parked thread — under
+Phase 4's routing to the owning mutator, which is the design's answer where
+D1's constraint 4 records the crate as having none, so on today's unrouted
+queue a second thread could pop it, end the epoch and free rung 1; the
 third signals a collector that cannot end the epoch; the fourth runs the
 synchronous collection, whose own frees park; the fifth fails the allocation.
 So a completion bound cannot be a deadline anyone enforces. What is left for
@@ -2196,8 +2249,10 @@ or refusing to post — and that is a choice nobody has made.
 **What would answer it:** the number, which needs a workload and is the gate
 C1 sits behind; the interval, which is a choice among the three terms above;
 and the arm, which the rulings above have already narrowed to something the
-collector does to itself. The requirement is unbuilt, and `../rc-walk.md`
-marks what lags code in place, which this paragraph is owed.
+collector does to itself. The requirement is unbuilt and its own
+sentence in `../rc-walk.md` carries the "code lag" mark; what that document's
+status block still enumerates as design ahead of code is the forced verdict
+and the pressure ladder, and this belongs in that list beside them.
 
 ## E. Threads, actors and the machine
 

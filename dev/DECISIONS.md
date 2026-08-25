@@ -10,6 +10,36 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-25 (second) — the charged budget is withdrawn; the ceiling's shape is open
+
+**Decided:** the batch ceiling has no chosen mechanism. The entry below and
+the one under it are both records: a charge debited at the measured price
+bounds a count of units rather than a length of time, and a charge debited at
+a conservative price does not bound the pause either.
+
+**Why the conservative price fails too:** a severed cell's unit contains a
+`displaced.push`, whose regrowth the probe reserves outside the timer, so a
+vector doubling lands hundreds of microseconds on one cell no price can carry;
+the safety factor is paid in slices, each returning to program code, which
+multiplies the span in which every other thread's checkpoint takes the cold
+branch and no thread flushes parked memory; and the two clock reads have no
+consumer that does not relax the price back to the measured one.
+
+**The standing candidate:** read the clock every K units rather than per unit
+or never. At K = 512 on the cheapest unit the read is about one per cent, the
+overrun is at most K units of whatever the shape really costs, and no price
+table or calibration is needed. The earlier rejection was of K = 1.
+
+**What has to be settled before any shape:** the slice's outer boundary and
+the budget's reset against a pickup that drains every queued message in one
+loop, and a boundary inside the release pass, which is where the commonest
+shape's cost lands.
+
+**Cost:** ruling 3 stands and its enforcement does not exist. Node D3 carries
+what would answer it; nothing is built either way.
+
+---
+
 ## 2026-08-25 — the charged budget debits a conservative price, not the measured one
 
 **Decided:** the ceiling's register is debited with a per-unit **ceiling**

@@ -452,7 +452,9 @@ classification, entirely collector-side:
 is full: every epoch reads every slot of every snapshotted entity block — the
 address arithmetic, one relaxed header load, the three tests above, and the
 four bytes of `slot_rows` the snapshot allocates per slot whether or not
-anything is enrolled. Its price follows the heap's slot count and not what
+anything is enrolled. A young slot is not read-only either: the stamp is
+written before the category is tested, so every entity met young takes a byte
+store whatever its category, while only a `GcHeap` one can ever gain a row. Its price follows the heap's slot count and not what
 changed since the last epoch. The **graph** is what the ages narrow: a new
 entity is stamped and skipped with its children unread, so `rc[]` and
 `edges[]` are paid for the mature walkable population alone. Nothing follows

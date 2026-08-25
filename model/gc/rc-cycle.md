@@ -100,12 +100,19 @@ The expensive half of concurrency is already built and is not re-derived
 here. A collector that judges concurrently cannot be trusted, so the owner
 re-verifies: the handshake, the Phase 4 exact test against current fields
 on the owning thread, the deferred-free parking that keeps a slot from
-being recycled under an identifier in flight, and eager death. Ruling 5 is
-narrowed rather than standing whole (2026-08-25, ninth `dev/DECISIONS.md`
-entry): both sides may free, but the collector itself runs only a
-destructor proven pure or tears down an entity that has none — an impure
-destructor still goes to the owning thread, and what the collector's own
-free re-verifies is an open seam recorded at `cycle/questions.md` Y5.
+being recycled under an identifier in flight, and eager death.
+
+**Ruling 5 stands whole: the collector judges and only the mutator frees.**
+The ninth entry of 2026-08-25 had narrowed it to let the collector free an
+entity whose destructor is proven pure or absent, and Edmond withdrew that
+permission the same day (twenty-third entry), because neither hole under it
+could be closed. The exact test is sound only because the owning thread holds
+the entity while it reads its current fields, and a collector on another
+thread has no such warrant; and the weak table is per thread, so a collector
+cannot null the weak cells naming a dying entity before user code runs, which
+this design is bound to do. Where judge and owner coincide — the in-line
+collection of `cycle/questions.md` Y14 — the free is on the owning thread by
+construction, and that is the only shape in which a collection frees anything.
 
 **The pressure ladder survives with one condition added.** A mutator that
 cannot serve an allocation runs the collection itself before failing, which

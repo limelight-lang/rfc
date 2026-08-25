@@ -106,8 +106,9 @@ the load-bearing one — the papers' own safety mechanism against freeing an
 entity that gained a reference mid-collection is the snooped set, and it
 dies with the barrier, so the exact test is what stands between a white
 verdict and a mutator that has just loaded a member into a counted local.
-How that test squares with the collector-side free the ninth entry permits
-is an open seam recorded at Y5. What else dies with the barrier: the
+That test is also why the collector-side free was withdrawn on 2026-08-25:
+its warrant is the owning thread's hold, which a collector on another thread
+cannot have (Y5). What else dies with the barrier: the
 known-live filter — its three signals are the dirty word, the root set and
 the snooped set, all absent here — and the live-stack pre-pass it feeds.
 
@@ -265,38 +266,42 @@ traces from the candidate set alone, and the maturation of Y9 with the
 enrolment gates of Y10 and Y11 bound even that. Phase 1's census and full
 edge build have no successor.
 
-**Release is two-sided, with an asymmetric right to destruct.** Both the
-mutator and the collector may free, but the collector itself may only run a
-destructor proven pure ([`../pure-destructors.md`](../pure-destructors.md) —
-the purity ladder returns here after leaving Y10) or tear down an entity
-that has no destructor. An impure destructor runs on the owning thread.
-That narrows `rc-walk`'s ruling 5 — the collector judged and only the
-mutator freed — and it is what the surviving machinery is for: the
+**Only the mutator frees, and that is `rc-walk`'s ruling 5 unnarrowed.** The
+collector judges; every free and every destructor happens on the owning
+thread. The machinery that survives is what makes the judgement usable: the
 handshake, the Phase 4 exact test against current fields, the deferred-free
-parking that keeps a slot from being recycled under an identifier in
-flight, and eager death.
+parking that keeps a slot from being recycled under an identifier in flight,
+and eager death.
 
-**Open seam, found by the Critic round of 2026-08-25:** the exact test's
-warrant is that the owning thread holds the entity, so nothing races the
-read of its current fields. A collector-side free has no such warrant — the
-collector cannot read a component's counts at one instant without the
-snapshot Y1 refused — so what check licenses the collector's own free of a
-destructor-free entity is undesigned. The ruling names who may call the
-destructor; it does not yet say what the freeing side re-verifies.
+**The two-sided form was permitted for one day and withdrawn.** The ninth
+entry of 2026-08-25 let the collector free an entity whose destructor is
+proven pure or absent, an impure one still going to the owner. Two holes
+opened under it the same day and neither could be closed, so Edmond withdrew
+the permission (twenty-third entry) in the words "if you cannot guarantee it,
+cancel it".
 
-**A second half of the same seam, found 2026-08-25: the collector cannot null
-a weak cell.** `rc-walk` binds every design here to null every weak cell
-naming a confirmed member **before** any user code runs
-([`../rc-walk.md`](../rc-walk.md#what-this-design-does-not-solve)), and the
-mechanism that discharges it is a **per-thread** weak table: the dying entity
-finds its subscribers through the owning thread's row, and the nulling runs in
-that thread's drain, so the collector thread never touches the table. A
-collector-side free of an entity owned by another thread has no access to the
-row that names its subscribers, and a weak load is the one channel that can
-hand a destructor a pointer the counted world cannot account for. The in-line
-collection of Y14 does not meet this, being on the owning thread by
-construction; the background collector does, and it is the same free the
-paragraph above leaves unlicensed.
+*The first hole is the exact test's warrant.* It is sound because the owning
+thread holds the entity, so nothing races the read of its current fields. A
+collector on another thread has no such warrant, and cannot get one: reading a
+component's counts at a single instant needs the snapshot Y1 refused.
+
+*The second is the weak cell.* `rc-walk` binds every design here to null every
+weak cell naming a confirmed member **before** any user code runs
+([`../rc-walk.md`](../rc-walk.md#what-this-design-does-not-solve)), because a
+weak load is the one channel that can hand a destructor a pointer the counted
+world cannot account for. The mechanism that discharges it is a **per-thread**
+weak table: the dying entity finds its subscribers through the owning thread's
+row. A collector has no access to another thread's row.
+
+**What the withdrawal costs is nothing, in this repository or in the crate.**
+`ll-model` never had a collector-side free to remove: `collector.rs` writes one
+thing into an entity, the epoch stamp, and its terminal act per confirmed
+component is to post it; every teardown path lives behind `drain_confirmed`,
+reached only from a mutator's checkpoint. The withdrawal restores the contract
+the code already keeps. What it does change is where the design's centre of
+gravity sits — the in-line collection of Y14, where judge and owner are one
+thread, is the only shape in which a collection frees anything, so it stops
+being an emergency measure and becomes the ordinary form.
 
 ## Y6. The candidate set is edge-triggered, and a refusal is permanent  [answered 2026-08-25: the buffer grows]
 
@@ -490,9 +495,14 @@ Y3's — a class property read from a bit the factory stamps into the
 header, so the test is already in the word the release path loads — and
 `CANDIDATE_KINDS` is the same gate at entity-kind granularity.
 
-**Where purity does hold** is not here but in Y5: the collector may itself
-run only a destructor proven pure. The purity ladder of
-[`../pure-destructors.md`](../pure-destructors.md) keeps that one customer.
+**Where purity holds is not here, and the customer this node named for it was
+the wrong one.** It said Y5 — the collector running only a destructor proven
+pure — and that permission was withdrawn on 2026-08-25. The purity ladder of
+[`../pure-destructors.md`](../pure-destructors.md) does not lapse with it: its
+own scope line says it changes nothing in the collector's protocol and only
+says which steps of the **drain** a component may skip, and since the drain is
+now entirely the owning thread's, every skip it licenses is a saving on the
+mutator's side.
 
 **What remains:** nothing at this node; the gate's cost is the one bit in
 the loaded word, and the compiler's removal of the whole test is Y11 — as

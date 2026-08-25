@@ -10,6 +10,29 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-25 (twenty-third) — the collector-side free is withdrawn; only the mutator frees
+
+**Ruled by Edmond**, in the words "if you cannot guarantee it, cancel it": the
+ninth entry of this day is withdrawn and `rc-walk`'s ruling 5 stands whole —
+the collector judges, and every free and every destructor happens on the
+owning thread. **Why neither hole could be closed.** The Phase 4 exact test is
+sound because the owning thread holds the entity while it reads its current
+fields; a collector on another thread has no such warrant and cannot get one,
+since reading a component's counts at a single instant needs the snapshot Y1
+refused. And the weak table is per thread, so a collector cannot null the weak
+cells naming a dying entity before user code runs, which `rc-walk.md` binds
+every design here to do. **Cost: none, in either repository.** `ll-model` never
+had a collector-side free — `collector.rs` writes only the epoch stamp and
+posts its verdict, and every teardown path is reached from a mutator's
+checkpoint — so the withdrawal restores the contract the code already keeps.
+The purity ladder does not lapse with it either: its scope is which steps of
+the drain a component may skip, and the drain is now wholly the mutator's.
+**What it changes is the design's centre of gravity:** Y14's in-line
+collection, where judge and owner are one thread, becomes the only shape in
+which a collection frees anything.
+
+---
+
 ## 2026-08-25 (twenty-second) — the cycle colour leaves the header, and the three bits it frees fund the acyclic gate and the ownership mark
 
 **Noticed by Edmond** reading the layout of the nineteenth entry: the colour is

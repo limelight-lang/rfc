@@ -20,7 +20,7 @@ flowchart TD
     Y4[Y4 what replaces trial deletion<br/>answered: a shadow count] --> Y5 & Y7
     Y9[Y9 candidate maturation<br/>answered: age in the epoch stamp] --> Y2 & Y7
     Y10[Y10 what the enrolment test excludes<br/>answered: proven acyclicity only] --> Y7
-    Y11[Y11 two release operations, the compiler choosing<br/>answered: acyclic, or deathless at the site] --> Y6 & Y10
+    Y11[Y11 two release operations, the compiler choosing<br/>answered: acyclic, owned, or deathless at the site] --> Y6 & Y10
     Y3 --> Y10
     Y5[Y5 what survives from rc-walk<br/>answered: the ownership handshake]
     Y6[Y6 the candidate set is edge-triggered<br/>answered: the buffer grows] --> Y7 & Y12
@@ -325,7 +325,9 @@ run only a destructor proven pure. The purity ladder of
 [`../pure-destructors.md`](../pure-destructors.md) keeps that one customer.
 
 **What remains:** nothing at this node; the gate's cost is the one bit in
-the loaded word, and the compiler's removal of the whole test is Y11.
+the loaded word, and the compiler's removal of the whole test is Y11 — as
+is the object-level exclusion of 2026-08-25, a proven-owned entity never
+entering the roots at all (fourteenth `dev/DECISIONS.md` entry).
 
 ## Y11. Two release operations, and the compiler choosing between them  [answered 2026-08-25: acyclic, or deathless at the site]
 
@@ -362,6 +364,16 @@ examples of the second kind: the entity is a parameter, or was read out of
 another entity that is itself held. Bare "someone still holds it after the
 decrement" does not qualify — the holder may lie in the same ring, and then
 this decrement was the cycle's last external release.
+
+**Raised to an object-level rule, 2026-08-25** (fourteenth
+`dev/DECISIONS.md` entry): an entity whose ownership is proven never enters
+the candidate set at all — every release site of an owned entity takes the
+plain form, the enrolling obligation riding the owning edge's own release.
+And by Edmond's addendum the same proof elides more than the test: at the
+proven sites the counting pair itself can go, which is `../gc-horizon.md`'s
+count-elision bargain made available to `rc-cycle`. How the release path
+knows the entity is owned is open — the compiler's site-by-site proof, or
+an ownership mark in the header once Y7's freed bits are laid out.
 
 **What remains:** the two signatures written down, and the default without
 a proof — the enrolling form everywhere, which is what the crate does

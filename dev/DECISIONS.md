@@ -10,6 +10,21 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-25 (fourteenth) — a proven-owned entity never enters the roots
+
+**Decided by Edmond:** an entity whose ownership is proven never enters the
+candidate set — no decrement of it enrols while the ownership holds. **Why
+it is sound:** the owning edge's own release is the enrolling one, so
+enrolment is deferred to the owner, not lost — Y11's covering claim raised
+from a single release site to a standing property of the entity. **And it is one more elidable `−1`**, Edmond's addendum: the same ownership
+proof that skips enrolment licenses eliding the counting pair itself at the
+proven sites — the bargain `gc-horizon.md`'s count elisions struck, now
+available to `rc-cycle`. **Cost:** how the release path knows is open — the
+compiler's plain form at every site it proves, or an ownership mark in the
+header once Y7's freed bits are laid out; node Y11 carries the contract.
+
+---
+
 ## 2026-08-25 (thirteenth) — root-queue growth under OOM draws on the reserved area, and the mode holds until the roots are walked
 
 **Decided by Edmond**, closing the boundary the tenth entry left unpriced:

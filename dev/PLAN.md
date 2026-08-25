@@ -116,3 +116,66 @@ broken links.
         bits — epoch, maturation age, stamp-against-claim mark — with the
         one-store discipline argued for each field the collector reads
       tier: T2 · role: —
+- [x] S6.6 Answer Y14: the collection the mutator runs itself under memory
+      pressure, while no collector runs on another thread
+      done: Y14 carries the trigger, the exclusion token and what holds it,
+        the clean point the collection fires at against the arm/fire rule of
+        `../model/gc/strategies.md`, where its own working memory comes from,
+        and what it may not do on the allocating thread
+      tier: T2 · role: Critic
+      handoff: **the in-line collection is the synchronous form on the thread's
+        own roots**, and that choice is what dissolves the hazards — no
+        deferral window opens, so what it frees is recyclable at once; no
+        handshake, the judge being the owner; no thread crossed, as the ladder
+        requires. It narrows the tenth ruling rather than reversing it: the
+        writer still never drains at a failed enrolment, which is mid-mutation
+        and where the arm/fire rule forbids collecting. **The Critic round ran
+        and its verification did not** — the session limit killed the verify
+        pass, so the load-bearing findings were checked by hand against the
+        code (the deferral window's only opener, `retire_empty`'s block return,
+        the teardown gate) and the rest stand unverified. **One finding is
+        Edmond's and blocks S6.5:** `CRC` has no address. Y4 orders a second
+        count field, the eleventh ruling forbids the header growing, and the
+        candidate index frees bits 16-31 of which the epoch byte holds 16-23 —
+        eight bits, against a `u32` count. The off-heap side table of Y4 is
+        recorded there as not chosen.
+
+## S7 — retire `rc-walk` and the GC horizon  [blocked on S6 and on the build]
+
+Ordered by Edmond 2026-08-25: when `rc-cycle` is finished, the old collector
+and the horizon algorithm leave the repository and the crate — not under a
+banner, not as records. **This reverses the document half of the twelfth
+ruling of 2026-08-25**, which deleted code and kept documents as the record;
+the reversal gets its own `DECISIONS.md` entry before the first file goes.
+
+Nothing here starts before `rc-cycle` is in force. Each step is a checklist
+rather than one commit, and `dev/tools/linkcheck.php` reports zero broken
+links at the end of each.
+
+- [ ] S7.1 Delete the `rc-walk` code from `ll-model`
+      done: `src/walk.rs` and `src/walk/`, `src/collector.rs` and
+        `src/collector/`, `src/epoch.rs`, the `rc-walk` Cargo feature with the
+        24 files gated on it and the 13 carrying `not(feature = "rc-walk")`
+        guards, and `dev/RC_WALK_CRITICAL_REVIEW.md` are gone; what `rc-cycle`
+        inherits — the deferred-free parking, the handshake, the exact test —
+        has moved rather than died, and the crate builds and tests green
+        without the feature
+      tier: T2 · role: Code Reviewer
+- [ ] S7.2 Delete the `rc-walk` documents
+      done: `model/gc/rc-walk.md`, `rc-walk-proof.md`, `rc-walk-model.md`,
+        `rc-walk-states.md`, `rc-walk-danger-cases.md`, `rc-walk-review.md`,
+        `model/gc/walk/`, `model/gc/retained-block-walk.md`,
+        `dev/TASK-rc-walk-proof.md` and `dev/tools/rc-walk/` are gone, every
+        inbound link is repointed or its paragraph went with it, and the
+        verification debt of `model/gc/cycle/questions.md` names where the TLC
+        battery's obligation now lives — it does not lapse with the battery
+      tier: T2 · role: —
+- [ ] S7.3 Delete the GC horizon documents
+      done: `model/gc/gc-horizon.md`, `gc-horizon-states.md`,
+        `gc-horizon-cases/`, `gc-horizon-v2/` and
+        `model/gc/walk/compiler-proofs.md` are gone; the arguments that
+        outlive them are moved first — the chain rule already sits in
+        `model/memory/static-lifetimes.md`, and the count-elision bargain
+        cited by Y11 and by the fourteenth ruling moves into `rc-cycle`'s own
+        documents
+      tier: T2 · role: —

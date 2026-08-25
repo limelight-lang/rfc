@@ -95,6 +95,14 @@ destructor proven pure or tears down an entity that has none — an impure
 destructor still goes to the owning thread, and what the collector's own
 free re-verifies is an open seam recorded at `cycle/questions.md` Y5.
 
+**The pressure ladder survives with one condition added.** A mutator that
+cannot serve an allocation runs the collection itself before failing, which
+`rc-walk` already licensed as its fourth rung and `runtime/exceptions.md`
+requires before memory-exhausted may be raised. Here it runs as the synchronous
+form over the thread's own roots, and only while no collector runs on another
+thread: the shadow count is one collector's scratch, so a second collection
+would read the first's decrements. Node `cycle/questions.md` Y14 carries it.
+
 ## What replaces the walk
 
 The census and the full edge build of Phase 1. Everything that made them

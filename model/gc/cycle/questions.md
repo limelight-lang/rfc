@@ -26,8 +26,12 @@ flowchart TD
     Y6[Y6 the candidate set is edge-triggered<br/>answered: the buffer grows] --> Y7 & Y12
     Y7[Y7 what the header must carry<br/>design: it must not grow]
     Y8[Y8 what becomes of rc-walk and its code<br/>answered: unneeded code is deleted]
-    Y12[Y12 the root queue<br/>design] --> Y7
-    Y13[Y13 traversal aggression<br/>design]
+    Y12[Y12 the root queue<br/>design] --> Y7 & Y14
+    Y13[Y13 traversal aggression<br/>design] --> Y14
+    Y4 --> Y14
+    Y5 --> Y14
+    Y6 --> Y14
+    Y14[Y14 the collection a mutator runs itself<br/>answered: the synchronous form, on its own roots]
 ```
 
 ## Y1. What the mutator pays per store, and whether the view needs enumerated roots  [answered 2026-08-25: the sliding view is refused]
@@ -437,6 +441,131 @@ not traverse everything at once; this is not yet clear."
 not lost; it interacts with Y9's trigger lever (when a collection runs) and
 with maturation (which candidates it traces), and none of the three is the
 same dial.
+
+## Y14. The collection a mutator runs itself under memory pressure  [answered 2026-08-25: the synchronous form, on its own roots, while no collector runs elsewhere]
+
+Edmond, 2026-08-25: under memory pressure the collector may start directly on
+the mutator's thread, provided no collector is running on another thread.
+
+**The rung it replaces already exists and is about to be deleted.**
+[`../rc-walk.md`](../rc-walk.md#when-the-collector-runs-the-pressure-ladder)
+sends a mutator that cannot serve an allocation down a ladder of self-help, and
+its fourth rung runs `walk::collect_cycles` on the allocating thread before
+honest failure. Y5 deletes that form with the census, and
+[`../rc-cycle.md`](../rc-cycle.md) does not keep the ladder, so without this
+node the allocation-failure path has nothing to call. `runtime/exceptions.md`
+makes it worse than an omission: allocation failure is an ordinary catchable
+`Throwable` only because "a coarser reclamation pass and a GC cycle" run first,
+so "an exception here means the collector has already run and lost"
+([`../../../runtime/exceptions.md`](../../../runtime/exceptions.md#allocation-failure-is-an-ordinary-exception)).
+A runtime with no in-line collection raises memory-exhausted on a promise it
+did not keep.
+
+**What runs is the synchronous form, not the concurrent one on a borrowed
+thread**, and every hazard of the in-line idea dissolves at that choice. The
+synchronous collection opens no deferral window, so the memory it frees is
+recyclable at once rather than parked until an epoch closes; in `ll-model` the
+window has exactly one opener, the concurrent protocol (`src/collector.rs:206`
+and `:535`), and `walk::collect_cycles` is not it. It runs no handshake and
+posts no verdict, because the thread it judges on is the thread that owns what
+it judges, which is the same warrant the Phase 4 exact test already runs on.
+And it never crosses threads, which the ladder requires in terms: "the thread
+feeling the pressure is the thread that needs the memory, its parked list and
+its verdicts are thread-local, and no other mutator is paused, signalled, or
+waited on". The scope is therefore this thread's own root queue and the
+entities in its own heap partition. There is no general heap — every block
+belongs to a thread's heap
+([`../../../runtime/actors.md`](../../../runtime/actors.md#open-questions)) —
+so that scope is closed rather than truncated.
+
+**Why the exclusion is soundness and not courtesy.** Trial deletion runs on the
+shadow count `CRC` (Y4): one scratch field, and the scratch of one collector.
+A background collection reads every thread's entities, so two collections at
+once each decrement what the other captured and each conclude from the other's
+evidence. `rc-walk` had no such field, its counts being real and its
+condemnation collector-private, which is why its ladder could let rung 4 run
+during an open epoch and needed no rule. `rc-cycle` cannot: one collection
+exists in the heap at a time, and whose thread runs it is then a question of
+scheduling.
+
+**A thread that finds the token taken does not wait for it.** It takes the rest
+of the ladder — flush its own parked memory, drain the verdicts it already owes,
+signal pressure — and then fails honestly. Waiting is what must not happen: the
+running collection may be waiting for this thread's handshake acknowledgement,
+which rides this thread's next checkpoint, so a thread parked on the token
+deadlocks against a collection parked on its acknowledgement.
+
+**Where it fires, and where it must not.** The arm/fire rule of
+[`../strategies.md`](../strategies.md#triggering-arm-vs-fire) already names an
+allocation slow path as a legal fire point, beside a statement boundary and
+request end, and the rule is a correctness requirement: a store lowers the old
+value's count before it overwrites the pointer, and a collection in that window
+walks the stale edge, subtracts one reference twice and frees a live object.
+That settles the neighbouring case the ruling's own words reach. A **failed
+enrolment** is also a memory shortage, and it happens inside `ll_release`,
+mid-mutation, so it arms and never fires; the queue draws on the reserve there,
+as the thirteenth ruling has it, and the collection runs at the next clean
+point. The tenth ruling's refusal of YRC's stripe drain therefore narrows
+rather than reverses: the writer never collects at the enrolment, and what he
+may do at an allocation is what principle 4 already licenses — "a thread short
+of memory may spend its own time collecting".
+
+**One hazard rc-walk could not have survived here, and rc-cycle does.** The
+allocation that fails may be a factory's, with the entity's header not yet
+published, and a collection that enumerated slots would read it. This one
+traces from the candidate roots alone (Y5), and a half-built entity is in no
+root queue and is reachable from nothing, so no read of it exists to be wrong.
+
+**It runs destructors, and the gates are what make that safe.** Deferring them
+to a later safepoint defers the free with them — the drain severs and frees
+after the destructor, so a deferred destructor is a deferred reclamation, and
+reclamation is what the collection was called for. The gates the crate already
+enforces stand instead: `TEARDOWN_DEPTH` makes every fire point inside a
+teardown collect nothing, and `WALK_ACTIVE` makes a nested collection a no-op
+and refuses epoch pickup while it runs. What is missing is the entry gate, and
+the crate names its absence where the gate belongs: "The entry gate belongs to
+the pressure ladder ... unbuilt" (`ll-model` `src/walk.rs:724`). The gate reads
+the token, `TEARDOWN_DEPTH` and the collecting flag; a closed gate sends the
+allocation to the next rung rather than to a collection.
+
+**Its working memory must be sized before it is needed.** `runtime/exceptions.md`
+splits the reserve in three and gives the third to the collector: "The
+collector's working room. Not blocks at all — the collector's own vectors — and
+therefore bounded separately, not from here." The crate does the opposite today.
+`deferred_free::park` allocates its `Vec` lazily and grows it with an ordinary
+`push` (`src/memory/deferred_free.rs:77-123`), the collector phases take `Vec`
+and `HashMap` with no fallible path, and the release profile is built
+`panic = "abort"` (`Cargo.toml:137`); finding 4 of `ll-model`
+`dev/RC_WALK_CRITICAL_REVIEW.md` records it as "dangerous precisely when
+collection is triggered by memory pressure: freeing an object can require more
+memory". A collection that takes its mark stack from the allocator that just
+refused it aborts the process, so the in-line form is admissible only over a
+pre-sized working set.
+
+**What it can actually serve.** A freed slot returns to its block's free list
+and the next allocation of that size class takes it, so a slot request is served
+at once. A request for a whole block is served only when the collection empties
+one: `Heap::retire_empty` hands a wholly empty block back to the global pool,
+keeping at most one per size class in reserve (`ll-model`
+`src/memory/heap.rs:1019-1043`). Garbage scattered one slot per block therefore
+relieves slot pressure and not block pressure, and no measurement of how often
+a collection empties a block exists.
+
+**Two rules the partial case needs.** The collection stops when its root set is
+exhausted or its bound is reached, never at the first served allocation — a
+collection amortised over one allocation is paid in full and spent on nothing,
+and the wall arrives again on the next call. And a root popped from the queue
+but not walked stays enrolled, by Y6: dropping it is the permanent miss that
+node exists to forbid, and the already-enrolled bit must not be cleared for it.
+
+**What would answer the rest:** where the token lives, given that the collector
+already keeps epoch state; the size of the collector's working reserve, which
+belongs with the reserved critical memory area of
+[`../../../BACKLOG.md`](../../../BACKLOG.md); how the queue is read when its
+writer and its reader are one thread, since the collect stage's own releases
+enrol while the drain runs, which wants a buffer swap rather than a cursor and
+is Y12's to settle; and the bound on how much one in-line collection traces,
+which is Y13's dial at a second setting and is unmeasured.
 
 ## Verification debt
 

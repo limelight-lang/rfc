@@ -10,6 +10,46 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-25 (sixteenth) — the `rc-walk` documents and the GC horizon are deleted too, not kept as records
+
+**Decided by Edmond:** when `rc-cycle` is finished, `rc-walk`'s documents leave
+the repository with its code, and the GC horizon documents go with them. **What
+it reverses:** the twelfth entry of the same day, which deleted code and kept
+documents — "the capture-count precedent holds for documents, which stay the
+record, and not for code". That reading is withdrawn for these two bodies of
+text. **Why the horizon goes at all:** its proof logic left this repository's
+scope on 2026-08-23 and it has been a bannered record since, so nothing in force
+cites it as an obligation. **Cost:** three things outlive their documents and
+move first — the chain rule, already in `model/memory/static-lifetimes.md`; the
+count-elision bargain that Y11 and the fourteenth entry both cite; and the TLC
+battery's verification debt, which does not lapse with `dev/tools/rc-walk/`.
+Stage S7 of `dev/PLAN.md` carries the work and starts only after the build.
+
+---
+
+## 2026-08-25 (fifteenth) — a mutator short of memory runs the collection itself, while no collector runs elsewhere
+
+**Decided by Edmond:** under memory pressure the collection starts on the
+mutator's own thread, and only while no collector is running on another thread.
+**What runs is the synchronous form on this thread's own roots**, which is what
+makes it safe: it opens no deferral window, so what it frees is recyclable at
+once rather than parked; it needs no handshake, the judging thread being the
+owner; and it crosses no threads, as `rc-walk`'s ladder already requires.
+**Why the condition is soundness rather than policy:** trial deletion runs on
+the shadow count `CRC`, the scratch of one collector, so two concurrent
+collections read each other's decrements — `rc-walk`, whose counts are real,
+needed no such rule. **Rejected:** a mutator that waits for the token, since the
+running collection may be waiting for that same thread's handshake
+acknowledgement; and firing at a failed enrolment, which happens inside
+`ll_release` mid-mutation, where the arm/fire rule forbids collecting on
+correctness grounds. **This narrows the tenth entry rather than reversing it:**
+the writer still never drains at the enrolment. **Cost:** the collector's
+working memory must be sized in advance and drawn from the reserve, because the
+free path allocates today (`ll-model` finding 4,
+`dev/RC_WALK_CRITICAL_REVIEW.md`) in a `panic = "abort"` profile. Node Y14.
+
+---
+
 ## 2026-08-25 (fourteenth) — a proven-owned entity never enters the roots
 
 **Decided by Edmond:** an entity whose ownership is proven never enters the

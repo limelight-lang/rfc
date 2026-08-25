@@ -26,7 +26,7 @@ flowchart TD
     Y6[Y6 the candidate set is edge-triggered<br/>answered: the buffer grows] --> Y7 & Y12
     Y7[Y7 what the header must carry<br/>design: it must not grow]
     Y8[Y8 what becomes of rc-walk and its code<br/>answered: unneeded code is deleted]
-    Y12[Y12 the root queue<br/>design] --> Y7 & Y14
+    Y12[Y12 the root queue<br/>contract written; the candidate fails it] --> Y7 & Y14
     Y13[Y13 traversal aggression<br/>design] --> Y14
     Y4 --> Y14
     Y5 --> Y14
@@ -383,7 +383,7 @@ an ownership mark in the header once Y7's freed bits are laid out.
 a proof — the enrolling form everywhere, which is what the crate does
 today.
 
-## Y12. The root queue: written by the mutator, read behind it by the collector  [design]
+## Y12. The root queue: written by the mutator, read behind it by the collector  [contract written 2026-08-25; the named candidate does not meet it]
 
 Filed by Edmond on the map, 2026-08-25. Candidates come from the release
 path itself, so the enrolment write lands on the hottest path in the
@@ -391,20 +391,41 @@ system, while the collector reads the queue in the background without
 stopping the writer. The node is the algorithm with both properties, under
 Y6's rule: no root is ever dropped, so the buffer grows on overflow.
 
-**The named candidate is already built:** the double-buffered SPSC handoff
-queue of the `spsc-refactor` tree, `Zend/zend_spsc_queue.{c,h}`. Its top
-comment claims a writer that pays a `fetch_add` and no CAS, a reader that
-pays two CAS per batch taking one buffer while the writer fills the other,
-and a full buffer that doubles — but the struct comment in the same header
-describes a mutex-based handoff with a resize fallback, and the
-specification the file points to, `spsc-handoff-queue.md`, is absent from
-the tree, so the figures are the comment's claim and S6.4 verifies them
-against the code, not against a document. One writer and one reader per
-queue fits enrolment — the owning thread writes, the collector reads — at
-one queue per thread. Edmond also recalled, unsure, that the algorithm was
-in `true-async-server`; its `src/core/thread_queue.cc` wraps the moodycamel
-queues, and their SPSC fails when full instead of growing, so that tree
-holds a different queue.
+**The named candidate was read first-hand on 2026-08-25, and it is not the
+queue its own header advertises.** `Zend/zend_spsc_queue.{c,h}` of the
+`spsc-refactor` tree is a pair of ring buffers with a hint-based handoff.
+Against the top comment's four claims: "0 CAS on the fast path" holds, and
+the rest do not. No `fetch_add` is executed anywhere, the definition at
+`zend_ring_buffer.h:81` having no call site; the reader executes no CAS on
+any path and there is no batch operation in the API at all, the whole reader
+surface being `zend_spsc_queue_pop` and `..._pop_zval` on one item
+(`zend_spsc_queue.h:154-155`); and the first overflow allocates a second
+buffer at the **same** capacity, `zend_spsc_queue.c:265` passing
+`current_buffer->capacity` under a comment that says "doubled capacity", so
+doubling begins only on the later `realloc` path. The struct comment is the
+accurate of the two blocks and still understates the lock: the writer takes
+the handoff mutex unconditionally on every overflow, that being the first
+statement of `zend_spsc_queue_resize`. The specification the file points to,
+`spsc-handoff-queue.md`, is absent from the tree, which holds no design
+document at all.
+
+**Three of its properties refuse the enrolment contract, and each is
+load-bearing.** Growth **drops the root** when the allocation fails: `push`
+returns `false` and the item is lost (`zend_spsc_queue.c:322-324`), which is
+exactly Y6's permanent miss and exactly what the thirteenth ruling forbids.
+Growth **runs on the mutator's own thread** inside the mutex, calls the
+general allocator and may `memcpy` the whole buffer, so a non-final decrement
+occasionally pays a futex, a `malloc` and an `O(n)` copy. And the read side
+**admits one reader only**: it frees a ring buffer while a pointer to it is
+held unlocked, and owns `tail` with plain loads and stores, so a second
+reader crashes — five runs of one producer against two consumers died five
+times, on double-free and on segmentation fault, with none completing. That
+last one is not academic: Y14 puts the mutator itself on the read side of its
+own queue.
+
+Edmond also recalled, unsure, that the algorithm was in `true-async-server`;
+its `src/core/thread_queue.cc` wraps the moodycamel queues, and their SPSC
+fails when full instead of growing, so that tree holds a different queue.
 
 **Rejected the same day: YRC's striped queues.** 64 process-wide stripes of
 256 fixed slots each; on overflow the writer drains the stripe itself,
@@ -422,11 +443,42 @@ candidate roots. The reserved area has no write-up of its own yet; that
 entry is its first written trace, and the area's size, residence and other
 customers belong to the memory documents.
 
-**What would answer it:** the queue's contract written for enrolment — who
-owns each queue's read side, where the already-enrolled bit of Y9 is
-tested relative to the queue write, what the collector's batch takes, and
-the reserve-mode entry and exit above — against `zend_spsc_queue.{c,h}`
-read first-hand.
+**The contract, written 2026-08-25 against that reading.** Six clauses, and
+the first three are what the candidate would have to be given.
+
+1. **One queue per thread, owned by the thread that writes it.** A mutator
+   enrols only into its own queue, so the write is uncontended by
+   construction and needs no read-modify-write. Nothing else may write it.
+2. **The read side has two claimants, and the collection token excludes
+   them.** The collector reads the queue behind the writer; the owner reads
+   it when it collects in line (Y14). Both are readers of the same queue and
+   only one may exist at a time, which the token already guarantees, because
+   holding it is what makes a thread the collector. The queue therefore stays
+   single-reader without becoming single-*claimant*, and the candidate's
+   fatal second-reader case never arises.
+3. **The enrolment write never allocates, never locks and never copies.**
+   Growth is the expensive half and it lands on a non-final decrement, so the
+   overflow path is a pointer swap into a buffer somebody else allocated: the
+   reader, or the thread at a checkpoint. Which of the two, and how the spare
+   is replenished after it is consumed, is the one part of this contract
+   still open.
+4. **The already-enrolled bit is set before the queue write and cleared after
+   the root is walked.** Setting it after the write lets a second decrement
+   enrol the same entity twice in the window; clearing it before the walk
+   lets the entity re-enrol while the reader still holds its entry. The bit
+   is the entity's claim and the queue entry is its evidence, so the bit
+   outlives the entry.
+5. **A root the reader popped and did not walk stays enrolled**, its bit
+   uncleared and its entry re-queued. A partial collection is legal (Y14) and
+   a dropped root is not (Y6).
+6. **Growth that cannot allocate draws on the reserve.** The thirteenth
+   ruling: the enrolment does not drop, the runtime enters reserve mode, and
+   it leaves reserve mode only after every queued root has been walked.
+
+**What is still open:** who allocates the spare buffer of clause 3 and when;
+and the reserved critical area itself, which
+[`../../../BACKLOG.md`](../../../BACKLOG.md) carries and which the thirteenth
+ruling is still the only written trace of.
 
 ## Y13. Traversal aggression, and what the class flag feeds  [design]
 

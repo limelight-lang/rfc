@@ -10,6 +10,26 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-25 (seventeenth) — the named SPSC queue does not meet the enrolment contract, and the tenth entry's premise falls with it
+
+**Found by reading `Zend/zend_spsc_queue.{c,h}` first-hand**, which the tenth
+entry named as "already built" on the strength of its own top comment. The
+comment is wrong on three of four claims: no `fetch_add` is executed anywhere,
+the reader performs no CAS and has no batch operation at all, and the first
+overflow allocates a second buffer at the same capacity rather than doubling.
+**Three properties refuse the contract outright:** growth drops the root when
+its allocation fails, which is Y6's permanent miss; growth runs on the
+mutator's own thread inside a mutex and may `memcpy` the whole buffer, landing
+a futex and a `malloc` inside a non-final decrement; and the read side admits
+one reader only, crashing in five runs out of five with two, which is precisely
+the case Y14 creates when the mutator drains its own queue. **What survives:**
+the shape — one queue per thread, one writer, one reader at a time — and the
+contract now written at Y12 says what such a queue owes. **Cost:** the
+enrolment queue is written rather than adopted, and clause 3 leaves open who
+allocates the spare buffer that keeps the overflow path off the allocator.
+
+---
+
 ## 2026-08-25 (sixteenth) — the `rc-walk` documents and the GC horizon are deleted too, not kept as records
 
 **Decided by Edmond:** when `rc-cycle` is finished, `rc-walk`'s documents leave

@@ -100,7 +100,7 @@ broken links.
       done: the rule is written against `SlotKind` and the share of a real
         corpus's classes it demotes is measured with the recorded bootstrap
       tier: T2 · role: Critic
-- [ ] S6.4 Write the root queue's contract (Y12) against
+- [x] S6.4 Write the root queue's contract (Y12) against
       `zend_spsc_queue.{c,h}` in the `spsc-refactor` tree, read first-hand —
       the specification the header points to does not exist, so the header's
       CAS and growth figures are verified against the code
@@ -111,6 +111,17 @@ broken links.
         (growth under OOM draws on the reserved critical area; normal mode
         resumes only after all roots are walked)
       tier: T2 · role: —
+      handoff: read first-hand, and **the named candidate does not meet the
+        contract**. Its top comment is wrong on three claims of four (no
+        `fetch_add` anywhere, no CAS and no batch on the reader, the first
+        overflow allocates at the same capacity), and three properties refuse
+        enrolment outright: growth drops the root on allocation failure,
+        growth runs on the mutator's thread inside a mutex and may copy the
+        whole buffer, and a second reader crashes it — the case Y14 creates.
+        Y12 now carries a six-clause contract instead; clause 3, who
+        pre-allocates the spare buffer so the overflow path never calls the
+        allocator, is the one part left open. Seventeenth `DECISIONS.md`
+        entry.
 - [ ] S6.5 Lay out the header under the no-growth rule (Y7)
       done: Y7 carries the split between the epoch byte and the freed index
         bits — epoch, maturation age, stamp-against-claim mark — with the

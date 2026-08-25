@@ -135,11 +135,21 @@ broken links.
         pre-allocates the spare buffer so the overflow path never calls the
         allocator, is the one part left open. Seventeenth `DECISIONS.md`
         entry.
-- [ ] S6.5 Lay out the header under the no-growth rule (Y7)
+- [x] S6.5 Lay out the header under the no-growth rule (Y7)
       done: Y7 carries the split between the epoch byte and the freed index
         bits — epoch, maturation age, stamp-against-claim mark — with the
         one-store discipline argued for each field the collector reads
       tier: T2 · role: —
+      handoff: **bytes 6 and 7, one aligned two-byte atomic store**: epoch 2,
+        age 2, stamp-against-claim 1, index 11. Edmond's two-bit epoch is what
+        made it fit. The eleven bits are an index into the collector's side
+        arrays rather than a count, because `CRC` is a full `u32` — so the
+        shadow counts leave the heap, mark and scan write nothing into it, and
+        an aborted collection costs zero heap writes. Bit 15 stays the
+        string's: it is the top bit of byte 5 and would widen the store. Open
+        with it: the slice is bounded at 2047 entities, so a larger component
+        needs the paper's overflow table, and Y13's dial now has a unit.
+        Nineteenth `DECISIONS.md` entry.
 - [x] S6.6 Answer Y14: the collection the mutator runs itself under memory
       pressure, while no collector runs on another thread
       done: Y14 carries the trigger, the exclusion token and what holds it,

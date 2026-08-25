@@ -10,6 +10,28 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-25 (nineteenth) — the epoch tag is two bits, and the shadow count leaves the heap
+
+**Decided by Edmond:** two bits are enough for the epoch. That closes Y7's
+layout, because sixteen bits — header bytes 6 and 7, flags 16-31, one aligned
+two-byte atomic store — then divide as epoch 2, maturation age 2 (YRC's promote
+bound of three fits exactly), stamp-against-claim 1, and eleven left over.
+**What the eleven carry is an index, not a count:** `CRC` is a full `u32` and
+cannot share sixteen bits with three other fields, so the shadow counts move
+into the collector's side arrays and the header carries only the index into
+them. **Why that is better than a field and not merely smaller:** mark and scan
+then write nothing into the heap, so Y4's reason for a shadow — never leaving a
+count torn where a destructor could see it — is met by construction, and an
+aborted collection costs zero heap writes. It is not a hash, either: the index
+rides in the word the tracer already loaded. **Rejected:** growing the header,
+which the eleventh ruling forbids and which would tax every entity for a field
+only candidates use. **Cost:** eleven bits bound a collection slice at 2047
+entities, a component larger than the slice needs the paper's overflow table,
+and a two-bit tag wraps — the collector clears a non-current stamp on first
+contact, which it is touching the entity to trace anyway. Node Y7.
+
+---
+
 ## 2026-08-25 (eighteenth) — the class filter needs a declared type per slot, and the form available today demotes nothing
 
 **Measured, and it refutes Y3's premise.** The demotion rule Edmond named — a

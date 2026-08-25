@@ -24,7 +24,7 @@ flowchart TD
     Y3 --> Y10
     Y5[Y5 what survives from rc-walk<br/>answered: the ownership handshake]
     Y6[Y6 the candidate set is edge-triggered<br/>answered: the buffer grows] --> Y7 & Y12
-    Y7[Y7 what the header must carry<br/>design: it must not grow]
+    Y7[Y7 what the header must carry<br/>answered: bytes 6-7; the shadow count leaves the heap]
     Y8[Y8 what becomes of rc-walk and its code<br/>answered: unneeded code is deleted]
     Y12[Y12 the root queue<br/>contract written; the candidate fails it] --> Y7 & Y14
     Y13[Y13 traversal aggression<br/>design] --> Y14
@@ -283,11 +283,12 @@ failure.
 candidate on a full buffer was proposed on the map and refused by Edmond —
 a dropped enrolment is exactly the permanent miss this node records — and
 the full-walk fallback goes with it. The buffer grows instead. Growth is
-therefore a property the queue must supply natively, and the queue is node
-Y12's; the double-buffered SPSC queue named there doubles its buffer on
-overflow.
+therefore a property the queue must supply natively, and which queue supplies
+it is node Y12's, where the named SPSC candidate was read first-hand on
+2026-08-25 and rejected: it drops the root when its growth allocation fails,
+which is this node's permanent miss.
 
-## Y7. What the header must carry  [design; ruled 2026-08-25: the header does not grow]
+## Y7. What the header must carry  [answered 2026-08-25: bytes 6-7, one two-byte store, and the shadow count leaves the heap]
 
 Under `rc-trace`'s shape the cycle collector owns **twenty of the flags
 word's thirty-two bits**: two for the colour, one for buffered, seventeen
@@ -304,11 +305,60 @@ word. And the seventeen-bit candidate index is not needed at all: a
 buffered entity is found through its entry in the root queue (Y12), which
 frees the bits that made unique ownership `rc-walk`-only.
 
-**What would answer it:** the layout of what the freed bits and the epoch
-byte must now carry between them — the epoch, the maturation age (Y9), and
-the mark that tells a stamp from a claim — under the same one-store
-discipline the epoch byte lives by today. The layout is this repository's
-to design; Edmond ruled the constraint and left the split open.
+**The layout, written 2026-08-25, and what unlocked it was Edmond's two-bit
+epoch.** The collector's field is header **bytes 6 and 7**, flags bits 16-31,
+written as one aligned two-byte atomic store, which keeps the one-store
+discipline the single-byte epoch stamp lives by today. Sixteen bits, split
+four ways:
+
+| bits | field | width |
+|---|---|---|
+| 16-17 | epoch tag | 2 |
+| 18-19 | maturation age (Y9) | 2 |
+| 20 | stamp against claim | 1 |
+| 21-31 | collection index | 11 |
+
+Two bits of age is the exact room YRC's promote bound needs, that bound being
+three. Bit 15 stays the string's out-of-line flag and is **not** taken: it is
+the top bit of byte 5, so claiming it would widen the collector's store past
+the aligned two-byte unit, and a string never enters the candidate set anyway.
+
+**And that is where `CRC` goes: out of the heap.** The shadow count Y4 orders
+is a full `u32` and sixteen bits cannot hold it beside three other fields, so
+the eleven-bit field is not the count but an **index into the collector's side
+arrays**, where the captured count and the working count sit at full width.
+The consequence is larger than the arithmetic. Mark and scan then write
+nothing into the heap at all, so Y4's reason for the shadow — never leaving a
+count torn where a destructor could observe it — is met by construction rather
+than managed, and an aborted collection costs zero heap writes, which is the
+property YRC is built around. The usual objection to an off-heap verdict does
+not apply either, because this is no hash: the index rides in the word the
+tracer has already loaded, so a lookup is one indexed load.
+
+**What the index costs is a bound on the slice, and the bound is wanted.**
+Eleven bits address 2047 entities per collection slice, with zero meaning "not
+indexed". A component's verdict needs all its members in one slice, so a
+component larger than the slice would never be judged; the remedy is the
+paper's own, a narrow field with an overflow table for the entities that
+exceed it. What the width otherwise buys is a number for Y13, whose dial has
+so far been an intention — "we will not traverse everything at once" — and now
+has a unit.
+
+**The two-bit epoch wraps, and one rule covers it.** Four values means a
+maturation stamp four epochs old reads as current. The collector clears a
+stamp whose tag is not the current one at the moment it first touches the
+entity, which it is doing anyway in order to trace it, so a stale tag is
+retired on contact and never survives to wrap. The collection index has the
+shorter life of the two and is cleared by the collection that set it; a
+partial collection (Y14) clears the index of every entity it abandons.
+
+**What this releases.** `rc-trace`'s seventeen-bit candidate index at bits
+15-31 goes, as the eleventh ruling has it, and `rc-walk`'s condemned byte at
+24-31 was already retired. Between them they are exactly the two claims that
+forced strategy selection to be a build-time feature, since "the two
+collectors claim the same top half of the header flags word" (`ll-model`
+`Cargo.toml`). With one collector claiming bytes 6-7 and nothing else, that
+exclusivity has no subject left.
 
 ## Y8. What becomes of `rc-walk`, its registry row and its code  [answered 2026-08-25: unneeded code is deleted]
 

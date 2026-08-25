@@ -15,7 +15,7 @@ the closed graph of [`../walk/questions.md`](../walk/questions.md) used:
 ```mermaid
 flowchart TD
     Y1[Y1 what the mutator pays per store<br/>answered: the sliding view is refused] --> Y4 & Y5 & Y9
-    Y2[Y2 may __destruct wait for the collection<br/>narrowed; only maturation is left] --> Y9
+    Y2[Y2 how much later may a destructor run<br/>permitted; the bound is open] --> Y9
     Y3[Y3 the class filter and its direction<br/>design] --> Y7
     Y4[Y4 what replaces trial deletion<br/>answered: a shadow count] --> Y5 & Y7
     Y9[Y9 candidate maturation over rotating buffers<br/>design] --> Y2 & Y7
@@ -35,17 +35,18 @@ on one constraint — the mutator does no per-operation work for the
 collector, no write barrier, no snapshot queue, no root publication
 ([`../rc-walk.md`](../rc-walk.md)) — and the paper was read against it.
 
-**All three of this runtime's constraints are broken by load-bearing parts
-of that algorithm.** The write barrier **is** the snapshot mechanism:
+**Two of this runtime's three constraints are broken by load-bearing parts
+of that algorithm; the third objection fell with the ruling of Y2.** The write barrier **is** the snapshot mechanism:
 `Read-Sliding-View` has no other source of old values, so there is no
 barrier-free form of the algorithm to take. Stacks are scanned twice over —
 the fourth handshake suspends each thread and marks what its state reaches,
 and §4.2 differences the root set between consecutive collections, which is
-how root-caused cycles enter the candidate set at all. And the counting
-discipline is deferred: no reference count is maintained per store, they are
-reconstructed at a collection from logged slot histories, so **no instant
-exists at which "the last reference was dropped" is observable** to the
-mutator, which is the `__destruct` promise.
+how root-caused cycles enter the candidate set at all. Its counting discipline is
+deferred: no reference count is maintained per store, they are reconstructed
+at a collection from logged slot histories, so no instant exists at which the
+last reference was dropped. **That third objection was withdrawn the same
+day**, Edmond having ruled that a destructor may run later than the count
+reaching zero (Y2); the refusal stands on the first two.
 
 **The barrier's own price, for the record**, since it decides nothing here
 but bounds any future proposal of the same shape: the fast path is a load, a
@@ -76,26 +77,33 @@ with the barrier is the known-live filter — its three signals are the dirty
 word, the root set and the snooped set, all forbidden here — and the
 live-stack pre-pass that the filter feeds.
 
-## Y2. May a destructor wait for the collection?  [narrowed 2026-08-25; no weakening is needed]
+## Y2. How much later may a destructor run?  [Edmond ruled the permission 2026-08-25; the bound is open]
 
-The survey of 2026-08-25 found every concurrent design deferring a
-destructor to collection time for cycle-capable types — Nim's YRC keeps
-prompt reclamation only for types annotated `.acyclic`, `scheme-rs` defers
-for **all** objects, CIRC defers every destructor to an epoch grace period —
-and the question was whether PHP's `__destruct` may weaken that far.
+**Ruled: it may run later than the count reaching zero.** PHP promises no
+instant here (`../../../dev/DECISIONS.md`, 2026-08-25), so a design may defer
+a destructor to a collection, a checkpoint or a batch. `rc-walk` runs it on
+the spot as its own choice.
 
-**It need not, and the reason separates two things the survey ran
-together.** Every one of those designs defers because its **counting** is
-deferred or coalesced: where a count is reconstructed at a collection, no
-instant exists at which the last reference was dropped. `rc-cycle` keeps
-counts real and per-store, so an entity whose count reaches zero dies then
-and there, destructor included. What still waits for the collector is
-genuine cyclic garbage — and it waits under every design, today's included,
-because a cycle member's count never reaches zero by construction.
+**What that overturns**, written the same day and wrong: this node closed with
+"no weakening is needed", on the argument that real counts keep prompt
+destruction and only cyclic garbage waits. The argument is sound and the
+conclusion no longer matters, because nothing was owed. Deferred and coalesced
+counting are **not** disqualified by destructor timing, which returns Levanoni
+and Petrank's sliding views and Nim's YRC to the field on this axis — the
+refusal in Y1 loses this leg and stands on the other two.
 
-**What is left of this node** is narrower and is still Edmond's: whether the
-`k` collections of maturation (Y9) are an acceptable *additional* delay for
-cyclic garbage's destructors, on top of the wait a cycle already has.
+**What is open, and none of it is written anywhere:** how much later. Whether
+the destructor must run before the request ends, or before the arena reset
+that would free the memory regardless. Whether the order of two destructors
+is kept. Whether a program can observe the delay at all — through a weak
+reference, a file lock, a database handle. Every one of those is a bound on
+the permission rather than a challenge to it.
+
+**What would answer it:** Edmond's statement of the bound, and then a check of
+it against the two places the runtime already leans on prompt teardown —
+`../weak-references.md`'s eager `WeakMap` cleanup, which refuses lazy expunge
+because a destructor would be "held hostage" by whether anyone touches the
+map again, and the arena's own reset order.
 
 ## Y3. The class filter, and which way its default runs  [design]
 

@@ -10,6 +10,34 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-25 (sixth) — `__destruct` may run later than the count reaching zero
+
+**Ruled by Edmond**, and he has ruled it before: PHP's destructor is **not**
+promised at the instant the refcount reaches zero. It may run later. No
+document in this repository carried the ruling, which is why it kept being
+re-derived from `rc-walk.md`'s own text; it is written here so it stops.
+
+**What it permits.** A design may defer a destructor past the last release —
+to a collection, to a checkpoint, to a batch — without breaking a promise this
+language makes. Deferred or coalesced reference counting is therefore **not**
+disqualified by destructor timing, and neither is a collector that reclaims at
+trace time.
+
+**What it does not say.** It states no bound, and none is written anywhere:
+how much later, whether within the request, whether before the arena reset
+that would free the memory anyway, whether ordering between two destructors
+is kept. Those are open and are node Y2's.
+
+**What it costs the day's work.** The refusal of Levanoni and Petrank's
+sliding views rested on three legs and loses one: the barrier is still the
+snapshot, and the algorithm still suspends threads and scans their stacks, but
+"its counts are reconstructed at a collection, so no instant exists at which
+the last reference was dropped" is no longer an objection. The same removes
+the objection to Nim's YRC, whose deferred decrements are what make its
+verdict free.
+
+---
+
 ## 2026-08-25 (fifth) — the design of record is `rc-cycle`; `rc-walk` and the rest become records
 
 **Decided by Edmond:** the next collector is on-the-fly cycle collection over

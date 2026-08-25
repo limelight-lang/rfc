@@ -23,8 +23,12 @@ reclaimed without it.
 
 - Request-scoped entities die wholesale at arena reset ([arena-reset.md](../memory/arena-reset.md)).
   The collector never sees them.
-- Everything that outlived the request dies the moment its refcount reaches
-  zero — immediately, deterministically, with `__destruct` on the spot.
+- Everything that outlived the request dies when its refcount reaches zero.
+  This design tears it down on the spot, `__destruct` included — **as its own
+  choice, not as a promise the language makes.** Edmond ruled on 2026-08-25
+  that PHP's destructor may run later than the count reaching zero
+  ([`../../dev/DECISIONS.md`](../../dev/DECISIONS.md)), so a successor is free
+  to defer it.
 
 What neither path takes is an island of entities holding each other in a
 ring: the counts never reach zero and the arena is long gone. Finding those
@@ -637,7 +641,9 @@ carries no duties (Phase 3).
 2026-07-27; replaces "a condemned entity never dies on the ordinary
 path", decided 2026-07-26 against finding F5,
 [rc-walk-proof.md](rc-walk-proof.md)). A release reaching zero
-mid-epoch tears down immediately, condemned or not — `__destruct` on
+mid-epoch tears down immediately, condemned or not — which is this
+design's choice and not an obligation, the destructor being allowed to
+run later (`../../dev/DECISIONS.md`, 2026-08-25) — `__destruct` on
 the owning thread at the natural point, then weak notification, sever,
 free (the canonical dispose order: during its own destructor the
 object is still alive and `get()` must still produce it) — with the

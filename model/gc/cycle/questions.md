@@ -390,29 +390,50 @@ collectors claim the same top half of the header flags word" (`ll-model`
 `Cargo.toml`). With one collector claiming bytes 6-7 and nothing else, that
 exclusivity has no subject left.
 
-**Two bits other nodes ask for, and only one of them has a home.** The layout
-above is the *collector's* field, written by the collector; both of these are
-the mutator's, read or written on the release path, so neither can live in it.
+**The mutator's own byte frees three bits, and they were the missing funding.**
+Edmond, reading the layout on 2026-08-25: the colour is not needed any more.
+It is not, and the reason generalises. The **cycle colour, bits 4-5**, is
+Bacon–Rajan's black/grey/white, and `rc-trace` keeps it in the header because
+its trial deletion runs there; once mark and scan compute in the side arrays,
+the colour is per-collection state exactly like the working count, and it moves
+with it. Beside it, **bit 3** is already dead: the GC-state field was declared
+two bits wide for the CAS handoff of
+[`../heap-design.md`](../heap-design.md), a device for a concurrent *marking*
+collector, and the only value any code writes is `ARENA_RESET_MARK` at bit 2,
+which is the arena reset's and stays. Bit 2 keeps its customer; bits 3, 4 and 5
+have none.
+
+Those three sit in **byte 4, the mutator's**, which is precisely where a test
+on the release path wants to be, and it is what the two nodes below were short
+of.
 
 The **already-enrolled** bit of Y9 is bit 6, the buffered bit, which
 `rc-trace`'s candidate machinery vacates when its buffer is replaced by the
 queue: same position, same meaning, same writer. Y9 asks for it by atomic
 test-and-set, and today the crate sets it with a plain whole-word
 read-modify-write on the mutator's own half; whether the test-and-set has to
-be atomic is the multi-mutator question that `rc-walk.md` records as open, not
-a layout question.
+be atomic is the multi-mutator question that `rc-walk.md` records as open,
+not a layout question.
 
-The **acyclic gate** of Y10 has no home, and that sentence is unfunded as
-written. Y10 says the gate is "a class property read from a bit the factory
-stamps into the header, so the test is already in the word the release path
-loads", but bits 0 to 14 all have live customers, bit 15 is the string's, and
-16 to 31 are now the collector's. Two shapes remain and neither is free:
-read the property from the class descriptor, which costs the release path a
-dereference into a second cache line where today it reads only the header; or
-keep the gate at entity-kind granularity, `CANDIDATE_KINDS`, which is in the
-loaded word already and is coarser than Y3's rule by exactly the amount Y3 is
-trying to win. The choice waits on Y3's declared-target field, since until the
-descriptor can decide acyclicity there is nothing to stamp.
+The **acyclic gate** of Y10 takes bit 4. Y10 asks for "a class property read
+from a bit the factory stamps into the header, so the test is already in the
+word the release path loads", and until the colour was freed there was nowhere
+to put it: bits 0 to 2 have live customers, bit 15 is the string's, and 16 to
+31 are the collector's. The two fallbacks it would otherwise have needed — a
+dereference into the class descriptor's cache line on the release path, or
+staying at `CANDIDATE_KINDS`' entity-kind granularity and forfeiting exactly
+what Y3 is trying to win — are both off the table. The factory stamps the bit
+once, from the class's own answer, which is why it waits on Y3's
+declared-target field rather than on this layout.
+
+The **ownership mark** of the fourteenth ruling takes bit 5. That ruling made a
+proven-owned entity skip the candidate set entirely and left open "how the
+release path knows the entity is owned — the compiler's plain form at every
+site it proves, or an ownership mark in the header once Y7's freed bits are
+laid out". These are those bits, and the mark is now affordable: one bit in the
+word the release path already holds, tested beside the acyclic gate.
+
+**Bit 3 stays free and is recorded as free**, with no customer invented for it.
 
 ## Y8. What becomes of `rc-walk`, its registry row and its code  [answered 2026-08-25: unneeded code is deleted]
 
@@ -478,6 +499,12 @@ the loaded word, and the compiler's removal of the whole test is Y11 — as
 is the object-level exclusion of 2026-08-25, a proven-owned entity never
 entering the roots at all (fourteenth `dev/DECISIONS.md` entry).
 
+**The bit has an address since 2026-08-25: bit 4**, freed when the cycle colour
+left the header for the collector's side arrays (Y7). Until then this
+node spent a bit the layout did not have, every position in the mutator's half
+having a live customer. The factory stamps it from the class's own answer, so
+what it still waits on is Y3's declared-target field rather than the layout.
+
 ## Y11. Two release operations, and the compiler choosing between them  [answered 2026-08-25: acyclic, or deathless at the site]
 
 Edmond, 2026-08-25, and it is the sharpest of the three: the compiler emits
@@ -520,9 +547,14 @@ the candidate set at all — every release site of an owned entity takes the
 plain form, the enrolling obligation riding the owning edge's own release.
 And by Edmond's addendum the same proof elides more than the test: at the
 proven sites the counting pair itself can go, which is `../gc-horizon.md`'s
-count-elision bargain made available to `rc-cycle`. How the release path
-knows the entity is owned is open — the compiler's site-by-site proof, or
-an ownership mark in the header once Y7's freed bits are laid out.
+count-elision bargain made available to `rc-cycle`. **How the release path
+knows is answered since 2026-08-25: bit 5 of the header**, one of the three the
+cycle colour and the dead half of the GC-state field left behind when Y7 was
+laid out. The mark is tested beside the acyclic gate at bit 4, in the word the
+release path already holds, so an owned entity costs the same test as an
+acyclic one. The compiler's site-by-site proof stays the stronger form — it
+removes the test rather than answering it — and the mark is what serves the
+sites the compiler could not prove.
 
 **What remains:** the two signatures written down, and the default without
 a proof — the enrolling form everywhere, which is what the crate does

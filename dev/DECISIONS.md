@@ -10,6 +10,28 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-25 (twenty-second) — the cycle colour leaves the header, and the three bits it frees fund the acyclic gate and the ownership mark
+
+**Noticed by Edmond** reading the layout of the nineteenth entry: the colour is
+not needed any more. It is not, and the reason is the same one that moved the
+shadow count — once mark and scan compute in the collector's side arrays, the
+colour is per-collection state like the working count and belongs beside it.
+That frees bits 4-5. **Bit 3 was already dead:** the GC-state field was
+declared two bits wide for the CAS handoff of `model/gc/heap-design.md`, a
+device for a concurrent marking collector, and the only value any code writes
+is `ARENA_RESET_MARK` at bit 2, which is the arena reset's and stays.
+**What the three fund**, and both were recorded as unfunded the same morning:
+Y10's acyclic gate takes bit 4, and the ownership mark the fourteenth ruling
+left open — "an ownership mark in the header once Y7's freed bits are laid out"
+— takes bit 5. Both sit in byte 4, the mutator's own, which is where a test on
+the release path has to be; an owned entity now costs the same test as an
+acyclic one. **Rejected** with them: reading the acyclic property through the
+class descriptor, which costs the release path a second cache line, and staying
+at `CANDIDATE_KINDS`' entity-kind granularity, which forfeits what Y3 is for.
+**Cost:** none; bit 3 is recorded free with no customer invented for it.
+
+---
+
 ## 2026-08-25 (twenty-first) — the critical reserve is the allocator's own block, 500 KB a thread, reached through a second door
 
 **Decided by Edmond**, closing the item the thirteenth entry opened and the

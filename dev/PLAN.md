@@ -1114,12 +1114,25 @@ broken links.
         barrier and `rc-walk` was built on the constraint that the mutator
         does no per-operation work for the collector. Node Y1 holds it and a
         reader was on the paper when the stage opened.
-- [ ] S6.1 Answer Y1: what the mutator pays per store, and whether a sliding
+- [x] S6.1 Answer Y1: what the mutator pays per store, and whether a sliding
       view needs enumerated roots
       done: the paper is read and the node carries what the barrier executes
         in the common case, whether a thread must publish its local roots,
         and what either answer costs against `rc-walk`'s constraint
       tier: T2 · role: Critic
+      handoff: **the sliding view is refused, on the paper's own reading.**
+        All three constraints break on load-bearing parts: the write barrier
+        *is* the snapshot, the fourth handshake suspends each thread and scans
+        its stack while §4.2 differences the root set between collections, and
+        the counts are reconstructed at a collection rather than maintained,
+        so no instant exists at which the last reference was dropped. What
+        `rc-cycle` takes instead is the candidate economy — the shadow count
+        (Y4), maturation over rotating buffers (Y9, new), the acyclic-class
+        filter, and one linear pass over all candidates — with the counts left
+        alone. **Y2 narrows with it:** every design the survey found defers
+        destructors because its *counting* is deferred; real counts keep prompt
+        destruction for everything whose count reaches zero, and only cyclic
+        garbage waits, as it does today. The Critic round is owed.
 - [ ] S6.2 Put Y2 to Edmond: may a destructor wait for the collection?
       done: his ruling is recorded in `dev/DECISIONS.md` and folded wherever a
         document in force states the `__destruct` promise

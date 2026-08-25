@@ -14,55 +14,85 @@ the closed graph of [`../walk/questions.md`](../walk/questions.md) used:
 
 ```mermaid
 flowchart TD
-    Y1[Y1 what the mutator pays per store<br/>read; the paper is being read] --> Y4 & Y5
-    Y2[Y2 may __destruct wait for the collection<br/>Edmond] --> Y3 & Y5
+    Y1[Y1 what the mutator pays per store<br/>answered: the sliding view is refused] --> Y4 & Y5 & Y9
+    Y2[Y2 may __destruct wait for the collection<br/>narrowed; only maturation is left] --> Y9
     Y3[Y3 the class filter and its direction<br/>design] --> Y7
-    Y4[Y4 what replaces trial deletion<br/>read] --> Y5
+    Y4[Y4 what replaces trial deletion<br/>answered: a shadow count] --> Y5 & Y7
+    Y9[Y9 candidate maturation over rotating buffers<br/>design] --> Y2 & Y7
     Y5[Y5 what survives from rc-walk<br/>design]
     Y6[Y6 the candidate set is edge-triggered<br/>design] --> Y7
     Y7[Y7 what the header must carry<br/>design]
     Y8[Y8 what becomes of rc-walk and its code<br/>design]
 ```
 
-## Y1. What the mutator pays per store, and whether the view needs enumerated roots  [read]
+## Y1. What the mutator pays per store, and whether the view needs enumerated roots  [answered 2026-08-25: the sliding view is refused]
 
-The load-bearing node: `rc-walk` was built on one constraint — the mutator
-does no per-operation work for the collector, no write barrier, no snapshot
-queue, no root publication ([`../rc-walk.md`](../rc-walk.md)) — and sliding
-views are a write barrier. What is not yet known is the shape of it: the
-coalescing form logs an object's state **once per epoch** rather than once
-per store, which is the shape node A5 of the closed graph asked for and
-priced as bounded by the checkpoint cadence.
+The load-bearing node, and it closed the day it opened. `rc-walk` was built
+on one constraint — the mutator does no per-operation work for the
+collector, no write barrier, no snapshot queue, no root publication
+([`../rc-walk.md`](../rc-walk.md)) — and the paper was read against it.
 
-**What would answer it:** the paper, "Efficient On-the-Fly Cycle Collection",
-Paz, Petrank, Bacon, Kolodner and Rajan — what the barrier executes in the
-common case, and whether a sliding view needs a thread to publish its local
-roots at a safe point. If it does, `rc-cycle` inherits the debt that keeps
-[`../satb.md`](../satb.md) unbuilt: the per-frame spill of every live
-reference, which this runtime has no mechanism for.
+**All three of this runtime's constraints are broken by load-bearing parts
+of that algorithm.** The write barrier **is** the snapshot mechanism:
+`Read-Sliding-View` has no other source of old values, so there is no
+barrier-free form of the algorithm to take. Stacks are scanned twice over —
+the fourth handshake suspends each thread and marks what its state reaches,
+and §4.2 differences the root set between consecutive collections, which is
+how root-caused cycles enter the candidate set at all. And the counting
+discipline is deferred: no reference count is maintained per store, they are
+reconstructed at a collection from logged slot histories, so **no instant
+exists at which "the last reference was dropped" is observable** to the
+mutator, which is the `__destruct` promise.
 
-**What it blocks:** everything downstream. A barrier that needs roots is a
-different design from one that does not.
+**The barrier's own price, for the record**, since it decides nothing here
+but bounds any future proposal of the same shape: the fast path is a load, a
+test and a not-taken branch on a per-object `LogPointer`, with the slow path
+— copy every non-null reference field into a thread-local buffer — taken
+"less than once in a hundred" for javac and "less than once in a thousand"
+for the rest of the measured set. Beside it sits an unconditional snoop test
+on every store, paid whether or not a collection runs, and a fence on a
+weakly ordered machine when the dirty word and the slot fall in different
+coherence granules.
 
-## Y2. May a destructor wait for the collection?  [Edmond]
+**One inference the reading yields and the paper does not state:** this
+runtime's constraint (a) *removes* the need for the root workaround. Because
+a stack reference here is counted like any other, dropping a root is a real
+decrement and is seen; the blanket young-object candidacy and the root
+differencing exist only to compensate for deferred counting. What that costs
+is the candidate set's size — without coalescing it is Bacon–Rajan's plain
+set rather than the paper's `o₀`-only one — and node Y9 is what buys that
+back.
 
-**Every concurrent design surveyed pays in this coin**, and the survey of
-2026-08-25 found no exception. Nim's YRC defers a destructor to collection
-time for every cycle-capable type and keeps prompt reclamation only for
-types annotated `.acyclic`; `scheme-rs` defers for **all** objects, its own
-documentation conceding that collection happens "at a fixed cadence … as
-opposed to when the type is Dropped"; Samsara keeps the prompt path for the
-acyclic case and defers the rest; CIRC defers every destructor to an epoch
-grace period.
+**What survives separation from the barrier**, and it is the whole of what
+`rc-cycle` takes: the acyclic-class filter and its extension to the
+traversal; the `CRC` shadow count (Y4); candidate maturation over rotating
+buffers (Y9); running mark, scan and collect over all candidates at once,
+which is what makes it linear rather than quadratic; and the collect stage's
+discipline of marking members released before tearing them down. What dies
+with the barrier is the known-live filter — its three signals are the dirty
+word, the root set and the snooped set, all forbidden here — and the
+live-stack pre-pass that the filter feeds.
 
-So the question is exact: may PHP's `__destruct` weaken to **prompt for a
-class proven acyclic, collection-time for the rest**? `rc-walk` promises
-prompt for everything and pays a census for it.
+## Y2. May a destructor wait for the collection?  [narrowed 2026-08-25; no weakening is needed]
 
-**What it blocks:** if the answer is no weakening at all, four of the five
-implementations collapse to "algorithm reusable, timing not", and the only
-surviving shape is Bacon–Rajan's own — deterministic release, buffered
-candidates, collection on the owning thread.
+The survey of 2026-08-25 found every concurrent design deferring a
+destructor to collection time for cycle-capable types — Nim's YRC keeps
+prompt reclamation only for types annotated `.acyclic`, `scheme-rs` defers
+for **all** objects, CIRC defers every destructor to an epoch grace period —
+and the question was whether PHP's `__destruct` may weaken that far.
+
+**It need not, and the reason separates two things the survey ran
+together.** Every one of those designs defers because its **counting** is
+deferred or coalesced: where a count is reconstructed at a collection, no
+instant exists at which the last reference was dropped. `rc-cycle` keeps
+counts real and per-store, so an entity whose count reaches zero dies then
+and there, destructor included. What still waits for the collector is
+genuine cyclic garbage — and it waits under every design, today's included,
+because a cycle member's count never reaches zero by construction.
+
+**What is left of this node** is narrower and is still Edmond's: whether the
+`k` collections of maturation (Y9) are an acceptable *additional* delay for
+cyclic garbage's destructors, on top of the wait a cycle already has.
 
 ## Y3. The class filter, and which way its default runs  [design]
 
@@ -85,29 +115,36 @@ compiler ruled out of scope on 2026-08-23 nor a run's history.
 the share of a real corpus's classes it demotes — which the corpus scan
 already reports classes for.
 
-## Y4. What replaces trial deletion's mutation of live counts  [read]
+## Y4. What replaces trial deletion's mutation of live counts  [answered 2026-08-25: a shadow count]
 
 Bacon–Rajan's trial deletion decrements the object's own count during
-`markGray`/`scan` and restores it in `scanBlack`. Concurrently that is a
-write race against the mutator on the very word it owns, and the surveyed
-implementations answer it three ways: the paper's own two-epoch Σ/Δ
-confirmation, which `scheme-rs` implements faithfully; a side table with
-the decision computed entirely off-heap and the heap touched only at commit,
-which is Nim's YRC — Tarjan's SCC into a side table, deadness as array work
-over the condensation, and a commit-time recheck of each member's count
-against its captured value; and Samsara's smaller version of the same, an
-external adjacency list with a per-object dirty bit and a count recheck at
-commit.
+`markGray`/`scan` and restores it in `scanBlack`. Beside a running mutator
+that is a write race on the word the mutator owns, and beside a **destructor**
+it is worse: user code could observe a count in a torn state.
 
-**Why the third shape matters here:** an aborted collection costs no heap
-write at all, and the deferred decrement queue is itself the snapshot. This
-project already owns the re-verification half — the Phase 4 exact test on
-the owning thread — so what it needs from this node is which of the three
-it re-derives.
+**The answer is the paper's `CRC`, a second count field.** Mark sets
+`obj.CRC := RC` on first reach and decrements the shadow thereafter; mark,
+scan and collect operate solely on it, "leaving the reference count field
+unmodified — thus, they do not need to be restored". The real count is
+touched in exactly one place, the collect stage, and only for the non-white
+children of a cycle actually reclaimed. The paper carries the shadow for its
+own reason — its live set is not fixed during the algorithm — and notes that
+a true snapshot would make it unnecessary; here it is load-bearing for a
+different reason, and a better one: it is what lets trial deletion run at all
+without disturbing the counts prompt destruction depends on.
 
-**What would answer it:** the paper for the Σ/Δ form; `lib/system/yrc.nim`
-in Nim's devel branch for the side-table form, which ships with Lean 4 and
-TLA+ proof artefacts and is in no released tag.
+**What it costs:** a second count field per entity, which the paper packs
+with the colour and buffered bits into one 32-bit word plus an overflow hash
+table. What that costs *here* is node Y7's business, and it is the same
+header the candidate index already crowds.
+
+**The alternative shape, recorded and not chosen:** Nim's YRC computes the
+verdict entirely off-heap — Tarjan into a side table, deadness as array work
+over the condensation — and touches the heap only at commit, where it
+rechecks each member's count against the captured value. An aborted
+collection then costs zero heap writes. It is worth reading before Y7 is
+written, since a side table and a shadow field are two answers to one
+question.
 
 ## Y5. What survives from `rc-walk`  [design]
 
@@ -158,6 +195,26 @@ regime: refused, kept as a record, its documents bannered.
 
 **What would answer it:** when the registry's default moves, and on what
 evidence — which is Y1's answer and a measurement, not a preference.
+
+## Y9. Candidate maturation over rotating buffers  [design]
+
+Without coalescing, the candidate set is Bacon–Rajan's plain one — every
+entity that saw a decrement to a non-zero value — which is larger than the
+paper's, and Y1 records why. The paper buys the size back a second way, and
+that way survives the barrier's loss: `k + 1` rotating buffers, an entity
+removed from the older buffers when it is re-buffered, and **only candidates
+that have stayed candidates across the last `k` collections without dying
+are traced**. Measured there at 40–80 % of the candidates that had already
+survived Bacon–Rajan's own filters.
+
+It needs two facts this runtime already has: whether the entity was
+released, and whether it was re-added. What it costs is `k` collections of
+delay before a cyclic component is traced, which is node Y2's remaining
+half.
+
+**What would answer it:** the value of `k`, which is a measurement on a real
+workload, and the buffers' residence — the same question Y7 asks of the
+header.
 
 ## Prior art, as of 2026-08-25
 

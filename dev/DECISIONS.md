@@ -10,6 +10,35 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-25 (twenty-fourth) — the header carries a hash displacement, not an index, and the slice bound goes with it
+
+**Decided by Edmond**, after the index of the nineteenth entry was measured
+against a real closure and failed: the side table is open-addressed and **keyed
+by the entity's address**, and the header carries only the displacement from
+the home bucket. The home bucket is `hash(ptr) mod size`, computed from a
+pointer the tracer already holds with no memory access; the displacement makes
+the lookup one probe with no probe loop; the row's key confirms the landing.
+**Why the index failed:** eleven bits address 2047 entities, a component's
+verdict needs all its members in one slice, and the subgraph reachable from a
+*median* candidate root was measured at the entire object population — 381 of
+381 on booted Laravel — so the slice had to hold the heap rather than a cycle.
+**Why the displacement does not:** a displacement measures the hash's quality,
+not the heap's size; six bits is two orders of magnitude of slack at a sane
+load factor, and overflowing it is the signal to grow the table. **What leaves
+with the index:** the collection tag, whose question the row's key answers
+better — it also catches bits invalidated by a rehash — and the
+stamp-against-claim mark, which existed only because tag and stamp shared bits.
+Six bits come back free. **What cannot leave:** the epoch and the maturation
+age, which live between collections and are read before any table exists.
+**Rejected:** per-block side arrays addressed by pointer arithmetic — no header
+bits at all, but the array is allocated per block and a sparsely touched block
+of the smallest size class costs up to 32 KB for one entity. **Cost:** growing
+the table invalidates every stored displacement and needs an O(n) rewrite pass,
+amortised nothing; and the address is the key, so the heap must stay
+non-moving, which it is.
+
+---
+
 ## 2026-08-25 (twenty-third) — the collector-side free is withdrawn; only the mutator frees
 
 **Ruled by Edmond**, in the words "if you cannot guarantee it, cancel it": the

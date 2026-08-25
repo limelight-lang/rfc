@@ -24,7 +24,7 @@ flowchart TD
     Y3 --> Y10
     Y5[Y5 what survives from rc-walk<br/>answered: the ownership handshake]
     Y6[Y6 the candidate set is edge-triggered<br/>answered: the buffer grows] --> Y7 & Y12
-    Y7[Y7 what the header must carry<br/>answered: bytes 6-7; the shadow count leaves the heap]
+    Y7[Y7 what the header must carry<br/>answered: bytes 6-7; a hash displacement, not an index]
     Y8[Y8 what becomes of rc-walk and its code<br/>answered: unneeded code is deleted]
     Y12[Y12 the root queue<br/>contract written; the candidate fails it] --> Y7 & Y14
     Y13[Y13 traversal aggression<br/>design] --> Y14
@@ -323,7 +323,7 @@ it is node Y12's, where the named SPSC candidate was read first-hand on
 2026-08-25 and rejected: it drops the root when its growth allocation fails,
 which is this node's permanent miss.
 
-## Y7. What the header must carry  [answered 2026-08-25: bytes 6-7, one two-byte store, and the shadow count leaves the heap]
+## Y7. What the header must carry  [answered 2026-08-25: bytes 6-7, one two-byte store, and a hash displacement rather than an index]
 
 Under `rc-trace`'s shape the cycle collector owns **twenty of the flags
 word's thirty-two bits**: two for the colour, one for buffered, seventeen
@@ -348,10 +348,10 @@ four ways:
 
 | bits | field | width |
 |---|---|---|
-| 16-17 | epoch tag | 2 |
+| 16-17 | epoch | 2 |
 | 18-19 | maturation age (Y9) | 2 |
-| 20 | stamp against claim | 1 |
-| 21-31 | collection index | 11 |
+| 20-25 | hash displacement | 6 |
+| 26-31 | free | 6 |
 
 Two bits of age is the exact room YRC's promote bound needs, that bound being
 three. Bit 15 stays the string's out-of-line flag and is **not** taken: it is
@@ -359,33 +359,64 @@ the top bit of byte 5, so claiming it would widen the collector's store past
 the aligned two-byte unit, and a string never enters the candidate set anyway.
 
 **And that is where `CRC` goes: out of the heap.** The shadow count Y4 orders
-is a full `u32` and sixteen bits cannot hold it beside three other fields, so
-the eleven-bit field is not the count but an **index into the collector's side
-arrays**, where the captured count and the working count sit at full width.
-The consequence is larger than the arithmetic. Mark and scan then write
-nothing into the heap at all, so Y4's reason for the shadow — never leaving a
-count torn where a destructor could observe it — is met by construction rather
-than managed, and an aborted collection costs zero heap writes, which is the
-property YRC is built around. The usual objection to an off-heap verdict does
-not apply either, because this is no hash: the index rides in the word the
-tracer has already loaded, so a lookup is one indexed load.
+is a full `u32` and sixteen bits cannot hold it beside the maturation fields,
+so the count sits in the collector's side table at full width and the header
+carries only the way back to it. Mark and scan then never write a count into
+the heap, so Y4's reason for the shadow — never leaving a count torn where a
+destructor could observe it — is met by construction rather than managed.
 
-**What the index costs is a bound on the slice, and the bound is wanted.**
-Eleven bits address 2047 entities per collection slice, with zero meaning "not
-indexed". A component's verdict needs all its members in one slice, so a
-component larger than the slice would never be judged; the remedy is the
-paper's own, a narrow field with an overflow table for the entities that
-exceed it. What the width otherwise buys is a number for Y13, whose dial has
-so far been an intention — "we will not traverse everything at once" — and now
-has a unit.
+**The way back is a hash displacement, not an index, and that is Edmond's,
+2026-08-25.** An index bounds the collection at whatever the field addresses;
+a displacement does not, and the difference is where the entity's *address*
+enters. The side table is open-addressed and keyed by the entity pointer. Its
+home bucket is `hash(ptr) mod size`, a multiply and a shift with no memory
+access, computed from a pointer the tracer already holds. The header's six
+bits carry how far the entry sits from that home bucket, so a lookup is
+`table[h + d]` — **one probe, always, no probe loop**. The row's key confirms
+the landing, and the row holds the captured count and the working count.
+
+**Six bits is not a compromise, it is surplus.** A displacement is small by
+nature: at a load factor of 0.7 with a sound hash, probe distances run in
+single digits, and Robin Hood addressing bounds them tightly. Sixty-three is
+already two orders of magnitude of slack, and a displacement that would exceed
+it is the signal to grow the table rather than an error. What the field
+measures is the quality of the hash, not the size of the heap, which is why
+the slice bound of the index form disappears rather than widening.
+
+**The tag left the header with the index, and the key does its work better.**
+The collection tag existed to answer "are these bits mine?". The row's stored
+pointer answers it more completely, catching the case a tag cannot — bits that
+are formally this collection's but stale because the table was rehashed. A
+stale displacement lands on a wrong or empty row, the key mismatches, and the
+lookup falls back to an honest probe from the home bucket. The stamp-against-
+claim mark leaves with the tag, having existed only to say which of two
+readings the shared bits carried; with the tag gone the fields no longer share.
+What that costs is one wasted row read at an entity's first touch in a
+collection, on a line the probe would have brought in anyway.
+
+**What cannot leave is the maturation stamp**, and the boundary is worth
+stating because it is not obvious. The epoch and age live **between**
+collections, and the side table is one collection's working set, drawn from the
+reserve and discarded at its end. The age is read at the start of a later
+collection, before any table exists for that entity, and it is what decides not
+to descend. Moving it off-heap would need a structure that outlives every
+collection and covers every mature entity, which is a resident per-entity cost
+— the thing the whole layout exists to avoid.
 
 **The two-bit epoch wraps, and one rule covers it.** Four values means a
-maturation stamp four epochs old reads as current. The collector clears a
-stamp whose tag is not the current one at the moment it first touches the
-entity, which it is doing anyway in order to trace it, so a stale tag is
-retired on contact and never survives to wrap. The collection index has the
-shorter life of the two and is cleared by the collection that set it; a
-partial collection (Y14) clears the index of every entity it abandons.
+maturation stamp four epochs old reads as current. The collector clears a stamp
+whose epoch is not the current one at the moment it first touches the entity,
+which it is doing anyway in order to trace it, so a stale stamp is retired on
+contact and never survives to wrap.
+
+**One cost the displacement brings that the index did not:** growing the table
+moves every home bucket, so every stored displacement is invalidated at once.
+The repair is a pass over the table rewriting each member's six bits, which is
+possible because the table holds the pointers, and it is O(n) per doubling —
+amortised, nothing. And one precondition the design already meets: the address
+is the key, so entities must not move. The GC heap is non-moving, and arena
+promotion is a boundary event rather than heap compaction
+([`../../memory/arena-reset.md`](../../memory/arena-reset.md)).
 
 **What this releases.** `rc-trace`'s seventeen-bit candidate index at bits
 15-31 goes, as the eleventh ruling has it, and `rc-walk`'s condemned byte at
@@ -465,7 +496,26 @@ stamps each proven-live component with the current epoch and an age, the
 minimum over the component's members plus one; a later claim reads the age
 back, and a member whose stamp is current and whose age has reached the
 promote bound has its edge pruned for the rest of the epoch instead of
-being traced again. Ageing whole components rather than cells is what keeps
+being traced again.
+
+**What "pruned" means was read exactly on 2026-08-25, and it is stronger than
+this node first said.** It is not that the member is traced more cheaply the
+second time: the traversal **does not descend into it at all**. YRC's
+`claimCell` has a third outcome beside "my index" and "another collection's
+cell" — it returns −2 for a cell whose stamp is the current epoch and whose age
+has reached `YrcPromoteAge`, with the instruction "treat as an opaque live
+external, don't descend". That is the only mechanism in this design that bounds
+the closure, and it is load-bearing: measured on the corpus of 2026-08-25, the
+subgraph reachable from a *median* candidate root is the entire object
+population, 381 of 381, because a service container connects everything to
+everything. Without the prune a single root costs a whole-heap traversal, which
+is the cost `rc-cycle` exists to remove. With it, the mature live core stops
+being descended after the first collection of an epoch, and what remains to
+trace is what changed and its immature neighbours.
+
+**The first collection of an epoch is therefore the expensive one**, and
+nothing in the design bounds it. Whether that matters is a measurement nobody
+has taken: how often an epoch turns over against how long a process runs. Ageing whole components rather than cells is what keeps
 a component's members from maturing apart (`yrc.nim`, read 2026-08-25:
 promote age 3, epoch advanced every 64 collections).
 

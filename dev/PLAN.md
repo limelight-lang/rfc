@@ -1,6 +1,6 @@
 # PLAN
 
-Updated: 2026-08-25 · Active: S6
+Updated: 2026-08-25 · Active: S7 (blocked on the build)
 
 Destination, as amended 2026-08-23: the collector design of record is
 readable here as a question graph — thirty questions about the collector and
@@ -39,7 +39,7 @@ the steps below).
   keeps them with a revision pointer; the split is revisited if the corpus
   veto is exercised.
 
-## S6 — `rc-cycle`: on-the-fly cycle collection from a mutator-fed candidate set  [in progress]
+## S6 — `rc-cycle`: on-the-fly cycle collection from a mutator-fed candidate set  [done 2026-08-25]
 
 Goal, set by Edmond 2026-08-25: the collector's cost stops following the size
 of the heap and starts following the size of what changed. The candidate set

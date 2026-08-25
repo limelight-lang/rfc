@@ -64,13 +64,25 @@ every slot of every entity block read, and the graph of the whole mature
 population built, whether or not anything changed. `rc-cycle` pays instead
 for naming the candidates at the decrement that creates them.
 
-Two measured figures bound it. The candidate machinery of `rc-trace` costs
-about **0.4 ns** on a retain-and-release pair that does not reach zero
-(`ll-model` `dev/BENCHMARKS.md`, 2026-08-16, an upper bound — the retain
-differs between the builds too). Against it, a walked entity costs about
-**140 ns** an epoch, a row plus its edges, paid whether or not it changed.
-The crossover is around 360 non-final decrements per live entity per epoch,
-which no ordinary program approaches.
+Two figures bound it, and both were restated on 2026-08-25 after the source
+was read again. **The candidate machinery of `rc-trace` costs at most 0.4 ns**
+on a retain-and-release pair that does not reach zero, and 0.4 is the
+instrument's floor rather than a measurement: `ll-model` `dev/BENCHMARKS.md`
+(2026-08-16) says "a difference under ≈ 0.4 ns between ll-shaped arms is
+unresolved on this instrument", so the true cost lies somewhere in nought to
+0.4 and no probe separates it. **A walked entity costs 32–41 ns an epoch as a
+singleton and 72–108 ns in a chain**, a row plus its edges, paid whether or
+not it changed (same file, the epoch probe: three runs, 100 000 entities,
+resolution roughly ±15 %).
+
+**The crossover is therefore a lower bound, not a point.** Dividing the walk's
+cost by the candidate cost's *upper* bound gives the smallest crossover the
+evidence permits: **at least 80 non-final decrements per live entity per epoch
+for the singleton shape and at least 180 for the chain**, and higher by however
+much the candidate cost sits below the instrument's floor. No ordinary program
+approaches either. *(Until 2026-08-25 this passage read "about 140 ns an
+epoch" and "around 360", citing `dev/BENCHMARKS.md`; that file carries no 140
+and never did. The corrected figures are its own.)*
 
 **And the counts stay real, which keeps destruction prompt** — the
 design's choice, not a promise the language makes (`dev/DECISIONS.md`,

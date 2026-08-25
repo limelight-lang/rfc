@@ -10,6 +10,27 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-25 (twentieth) — the crossover figure was wrong at both ends, and the corrected one is a lower bound
+
+**Found by re-reading the source both figures cite.** The fifth entry and
+`model/gc/rc-cycle.md` put a walked entity at "about 140 ns an epoch" and the
+crossover at "around 360 non-final decrements per live entity per epoch",
+citing `ll-model` `dev/BENCHMARKS.md` of 2026-08-16. That file contains no 140
+and never did: its epoch probe reports 32–41 ns per entity for singletons and
+72–108 ns for the chain. The 0.4 ns at the other end is real but mislabelled —
+it is the instrument's floor, "a difference under ≈ 0.4 ns between ll-shaped
+arms is unresolved on this instrument", so it bounds the candidate cost from
+above and measures nothing. **Corrected:** dividing the measured walk cost by
+that upper bound gives the smallest crossover the evidence permits — at least
+80 decrements per live entity per epoch for the singleton shape, at least 180
+for the chain — and the true crossover is higher by however far the candidate
+cost sits below the floor. **What survives:** the argument, since no ordinary
+program approaches 80 either. **Cost:** none to the design; the entry exists
+because a number was carried for four months that its cited source does not
+hold, and the fifth entry stands unedited with this one superseding it.
+
+---
+
 ## 2026-08-25 (nineteenth) — the epoch tag is two bits, and the shadow count leaves the heap
 
 **Decided by Edmond:** two bits are enough for the epoch. That closes Y7's

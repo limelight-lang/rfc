@@ -116,9 +116,19 @@ the snooped set, all absent here — and the live-stack pre-pass it feeds.
 **Ruled by Edmond: the destructor runs as soon as the death is established,
 and the call is decoupled from the memory.** A count that reaches zero
 destructs on the spot, as today; a cyclic component destructs at the
-collection that confirms it dead. Neither call frees the block — the arena
-holds it until its reset — so memory never hurries the call and never
-delays it.
+collection that confirms it dead.
+
+**The clause about memory that stood here was wrong for the population the
+collector reclaims, and is corrected 2026-08-25.** It read "neither call frees
+the block — the arena holds it until its reset — so memory never hurries the
+call and never delays it", which is true of a request-arena object and false of
+a `GcHeap` one, and only `GcHeap` entities are collected. A freed `GcHeap` slot
+returns to its block's free list and the next allocation of that size class
+takes it ([`../heap-design.md`](../heap-design.md)), and a block that empties
+goes back to the global pool. What the ruling actually decouples is the
+destructor **call** from the reclamation: the call happens when death is
+established, and whether the memory returns then, later or at a reset is a
+separate question with a different answer per category.
 
 **The permission it narrows** stands as ruled the same day
 (`../../../dev/DECISIONS.md`, sixth entry): PHP promises no instant, so
@@ -230,16 +240,22 @@ without disturbing the counts prompt destruction depends on.
 
 **What it costs:** a second count field per entity, which the paper packs
 with the colour and buffered bits into one 32-bit word plus an overflow hash
-table. What that costs *here* is node Y7's business, and it is the same
-header the candidate index already crowds.
+table.
 
-**The alternative shape, recorded and not chosen:** Nim's YRC computes the
-verdict entirely off-heap — Tarjan into a side table, deadness as array work
-over the condensation — and touches the heap only at commit, where it
-rechecks each member's count against the captured value. An aborted
-collection then costs zero heap writes. It is worth reading before Y7 is
-written, since a side table and a shadow field are two answers to one
-question.
+**Where that field lives was settled by Y7 on 2026-08-25, and it is not the
+header.** A full `u32` cannot share sixteen bits with the epoch, the age and
+the stamp mark, so the count moved into the collector's side arrays and the
+header carries an eleven-bit index into them. The shadow therefore keeps its
+role here — mark and scan never disturb the real count — and gains a stronger
+one: they write nothing into the heap at all, so an aborted collection costs
+zero heap writes.
+
+**Which makes the alternative shape the chosen one after all.** Nim's YRC
+computes the verdict entirely off-heap — Tarjan into a side table, deadness as
+array work over the condensation — and touches the heap only at commit, where
+it rechecks each member's count against the captured value. This design takes
+that residence with one difference: the pointer-to-index map is the header's
+own field rather than a hash, so a lookup is an indexed load.
 
 ## Y5. What survives from `rc-walk`  [answered 2026-08-25: the ownership handshake]
 
@@ -267,6 +283,20 @@ collector cannot read a component's counts at one instant without the
 snapshot Y1 refused — so what check licenses the collector's own free of a
 destructor-free entity is undesigned. The ruling names who may call the
 destructor; it does not yet say what the freeing side re-verifies.
+
+**A second half of the same seam, found 2026-08-25: the collector cannot null
+a weak cell.** `rc-walk` binds every design here to null every weak cell
+naming a confirmed member **before** any user code runs
+([`../rc-walk.md`](../rc-walk.md#what-this-design-does-not-solve)), and the
+mechanism that discharges it is a **per-thread** weak table: the dying entity
+finds its subscribers through the owning thread's row, and the nulling runs in
+that thread's drain, so the collector thread never touches the table. A
+collector-side free of an entity owned by another thread has no access to the
+row that names its subscribers, and a weak load is the one channel that can
+hand a destructor a pointer the counted world cannot account for. The in-line
+collection of Y14 does not meet this, being on the owning thread by
+construction; the background collector does, and it is the same free the
+paragraph above leaves unlicensed.
 
 ## Y6. The candidate set is edge-triggered, and a refusal is permanent  [answered 2026-08-25: the buffer grows]
 
@@ -359,6 +389,30 @@ forced strategy selection to be a build-time feature, since "the two
 collectors claim the same top half of the header flags word" (`ll-model`
 `Cargo.toml`). With one collector claiming bytes 6-7 and nothing else, that
 exclusivity has no subject left.
+
+**Two bits other nodes ask for, and only one of them has a home.** The layout
+above is the *collector's* field, written by the collector; both of these are
+the mutator's, read or written on the release path, so neither can live in it.
+
+The **already-enrolled** bit of Y9 is bit 6, the buffered bit, which
+`rc-trace`'s candidate machinery vacates when its buffer is replaced by the
+queue: same position, same meaning, same writer. Y9 asks for it by atomic
+test-and-set, and today the crate sets it with a plain whole-word
+read-modify-write on the mutator's own half; whether the test-and-set has to
+be atomic is the multi-mutator question that `rc-walk.md` records as open, not
+a layout question.
+
+The **acyclic gate** of Y10 has no home, and that sentence is unfunded as
+written. Y10 says the gate is "a class property read from a bit the factory
+stamps into the header, so the test is already in the word the release path
+loads", but bits 0 to 14 all have live customers, bit 15 is the string's, and
+16 to 31 are now the collector's. Two shapes remain and neither is free:
+read the property from the class descriptor, which costs the release path a
+dereference into a second cache line where today it reads only the header; or
+keep the gate at entity-kind granularity, `CANDIDATE_KINDS`, which is in the
+loaded word already and is coarser than Y3's rule by exactly the amount Y3 is
+trying to win. The choice waits on Y3's declared-target field, since until the
+descriptor can decide acyclicity there is nothing to stamp.
 
 ## Y8. What becomes of `rc-walk`, its registry row and its code  [answered 2026-08-25: unneeded code is deleted]
 
@@ -565,6 +619,16 @@ the first three are what the candidate would have to be given.
 6. **Growth that cannot allocate draws on the reserve.** The thirteenth
    ruling: the enrolment does not drop, the runtime enters reserve mode, and
    it leaves reserve mode only after every queued root has been walked.
+7. **A root that dies before it is read is left in the queue and refused at
+   the read**, never removed at the death. `rc-trace` removes it, through the
+   header index and a swap-remove (`ll-model` `gc.rs`, `forget_candidate`),
+   and that index is exactly what Y7 takes away; there is no successor and
+   none is wanted, because the read side belongs to whoever holds the
+   collection token and a dying mutator may not hold it. The reader applies
+   `rc-walk`'s corpse rule instead: it reads the refcount word first, and an
+   entry whose entity reads zero is dropped unexamined. What this costs is a
+   stale entry occupying queue space until it is read, which the growth rule
+   already pays for.
 
 **What is still open:** who allocates the spare buffer of clause 3 and when;
 and the reserved critical area itself, which

@@ -824,6 +824,20 @@ broken links.
         budget. `dev/DECISIONS.md` recorded it as decided by the strategy, D3
         calls it a repair the warrant licenses and nobody executed, and no
         Sage verdict names a boundary inside step 8.
+      2026-08-25, after the close: **Edmond ruled the boundary inside step 8
+        permitted.** The drain may return to program code between two drops of
+        the external children, as it may between two severed cells, which is
+        what the commonest shape needed — an array of objects puts its whole
+        release cost there, so a split sever alone bounded the cheap half.
+        `dev/DECISIONS.md` carries the ruling, D3 the consequence, and the
+        cursor gains a sixth field. The seam between the last severed cell and
+        `unguard` stays refused. `DrainPause.tla` was re-run over it: the
+        release seam moves into the permitted set, `DP_sound` exhausts clean at
+        48 distinct states where it read 45, and `DP_refused_boundaries` — now
+        opening the one refused seam alone — exhausts at the same 48, so it is
+        no evidence about that seam and says only that the model cannot
+        separate the two. The kills still kill: `NoOwnedFreed` at 22 states,
+        `NoOwedDrop` at 27.
       handoff: state at the end of 2026-08-22. **Closed and holding:** A1,
         A5 (the width is not the lever; the prefetch is measured and
         unsettled), A7 (the discriminant is a bit of the retired condemned

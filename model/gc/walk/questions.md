@@ -1618,7 +1618,8 @@ the next begins. That pair is the only granularity there is: pause between
 emptying the cell and recording the child and the child has neither a cell nor
 a count. Steps 6 to 8 still admit no boundary *between* them — `unguard` runs
 once, after the last cell of the last member, and the external children drop
-after it.
+after it. (Edmond ruled a boundary **inside** step 8 on 2026-08-25, between
+two external drops; the seams *between* the three steps are untouched by it.)
 
 The first ground of the earlier verdict falls, and Edmond's reading of it was
 right: hollow members forbid nothing, because the exact test excluded every
@@ -1634,9 +1635,11 @@ refusing to admit an unbounded unit at all, which is what ruling 8 does for
 destructors — stays available as policy and is Edmond's to adopt, no longer
 forced by structure.
 
-**Resumption carries five things**, none of them specified: the member vector,
-the member set, a tag saying the sever has begun, a cursor of member index
-plus position inside that member's storage, and the displaced-so-far vector.
+**Resumption carries six things**, none of them specified: the member vector,
+the member set, a tag saying which of the two interruptible stretches is in
+progress, a cursor of member index plus position inside that member's storage,
+the displaced-so-far vector, and — since the ruling of 2026-08-25 — an index
+into the external children of step 8.
 An in-component child may be released at any boundary — it stops at its guard
 — while an external child is held unreleased until after `unguard`, exactly as
 the unsplit drain holds it.
@@ -1897,14 +1900,20 @@ of it.
 **One instance is checked, 2026-08-23, and it is an instance rather than the
 warrant.** `../../../dev/tools/rc-walk/DrainPause.tla` carries the component
 `m1 ↔ m2`, a child a program root also holds, a child a second garbage cycle
-also holds, and four configurations. `DP_sound` exhausts clean at 45 states
-and `DP_refused_boundaries`, which also opens the two seams the verdict
-refuses, at 48 — the three extra being what a collection started
-inside the release reaches: it reaps the child whose parked count has already
-been dropped, which no permitted boundary allows. The clean runs are not vacuous: 22 of the 45 states
-and 25 of the 48 have the collection already done, having condemned and freed
-the second cycle, so what exhausts clean is a run in which the collector
-works and leaves the paused component alone. Two configurations violate, and each removes one of
+also holds, and four configurations. **Re-run 2026-08-25 over the ruling
+that made the release seam permitted**, which moved that seam from the
+refused set into the sound run: `DP_sound` now exhausts clean at 48 distinct
+states, up from 45, and the three it gained are what a collection started
+inside the release reaches. `DP_refused_boundaries`, which opens the one seam
+still refused — after the last cell, before `unguard` — exhausts clean at the
+same 48. **That makes it no evidence about that seam**: the two neighbour
+each other once every cell is emptied, so a collection at the refused one
+reaches states the sound run reaches anyway, and what the run says is that
+this model cannot separate them. The clean runs are not vacuous: the 48
+states are the set the earlier refused run enumerated, of which 25 have the
+collection already done, having condemned and freed the second cycle, so what
+exhausts clean is a run in which the collector works and leaves the paused
+component alone. Two configurations violate, and each removes one of
 the four clauses. `DP_guard_dropped` holds no guard across the pause and
 loses the members themselves (`NoOwnedFreed`). `DP_double_drop` drops an
 external child's count as the cell is emptied and keeps the displaced entry
@@ -1941,7 +1950,12 @@ sever buys nothing. The warrant already licenses the repair, a boundary
 inside step 8: a child there has a parked count and no in-edge, which is the
 second clause, and `DP_refused_boundaries` opens that seam and exhausts
 clean — which says the warrant covers it, the verdict's refusal resting on
-`unguard` running once rather than on a hazard the model can see. Second,
+`unguard` running once rather than on a hazard the model can see. **Edmond
+ruled it permitted on 2026-08-25** (`../../../dev/DECISIONS.md`): the drain
+may return to program code between two external drops, as it may between two
+severed cells. So the cursor gains an index into the external children, and
+the seam that stays refused is the one between the last severed cell and
+`unguard`. Second,
 `MID_DRAIN` held across the pause is not a policy today's code can express —
 the flag is set at pickup and cleared unconditionally on the way out of
 `checkpoint_attend` (`src/epoch.rs`), and a pause returns through that

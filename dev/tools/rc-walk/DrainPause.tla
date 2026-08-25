@@ -39,11 +39,15 @@
 (*                     hazard: `ref_store` is the composition of the      *)
 (*                     publish and the drop (`src/memory/barrier.rs`),    *)
 (*                     and a split sever written over it drops there.     *)
-(* "refused_boundaries" opens the two seams the second verdict refuses —  *)
-(* between the last cell and `unguard`, and anywhere inside the release   *)
-(* of the external children. Neither hazard objects to them:              *)
-(* the refusal rests on `unguard` running once, not on what a collection  *)
-(* started there would find.                                              *)
+(* "refused_boundaries" opens the one seam still refused, between the     *)
+(* last cell and `unguard`. It exhausts at the same distinct-state count  *)
+(* as "none" since 2026-08-25, when Edmond ruled the release seam         *)
+(* permitted: the two neighbour each other once every cell is emptied, so *)
+(* a collection at the refused seam reaches states the sound run reaches  *)
+(* anyway. The configuration is therefore no evidence about that seam --  *)
+(* it says the model cannot separate the two, not that the seam is safe   *)
+(* -- and it is kept until the model gains a state that tells `unguard`   *)
+(* running once from running twice.                                       *)
 (*                                                                        *)
 (* Four abstractions, each stated because each bounds the result:         *)
 (*                                                                        *)
@@ -210,21 +214,22 @@ ReleaseDone ==
     /\ pc' = "done"
     /\ UNCHANGED <<rc, indeg, emptied, dropped, freed, syncFreed>>
 
-\* Where the drain may stop, per the two verdicts: after the prologue,
-\* and between two cells of the sever. The seam between the last cell and
-\* `unguard` is not one of them.
+\* Where the drain may stop: after the prologue and between two cells of
+\* the sever, per the two Sage verdicts, and inside the release of the
+\* external children, ruled by Edmond 2026-08-25 (`dev/DECISIONS.md`) —
+\* including a displaced vector drained halfway.
 AtPermittedBoundary ==
     \/ pc = "post_prologue"
     \/ /\ pc = "severing"
        /\ ~(MemberCells \subseteq emptied)
-
-\* The seams the second verdict refuses: after the last cell before
-\* `unguard`, and anywhere inside the release of the external children —
-\* including a displaced vector drained halfway.
-AtRefusedBoundary ==
-    \/ /\ pc = "severing"
-       /\ MemberCells \subseteq emptied
     \/ pc = "release"
+
+\* The seam still refused: after the last cell, before `unguard`. The
+\* refusal rests on `unguard` running once rather than on a hazard this
+\* model can see, which is why the run that opens it also exhausts clean.
+AtRefusedBoundary ==
+    /\ pc = "severing"
+    /\ MemberCells \subseteq emptied
 
 MayCollect ==
     \/ AtPermittedBoundary

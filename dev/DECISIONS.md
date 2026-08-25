@@ -10,6 +10,33 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-25 (third) — the drain may stop inside step 8, between two external drops
+
+**Decided by Edmond:** the release of a confirmed component's external
+children admits a boundary. The mutator may return to program code between
+two `drop_ref` calls of step 8, as it may between two cells of the sever.
+
+**Why it was asked:** the ceiling as chosen bounded step 6 and left step 8
+whole, and on the commonest shape — an array of objects — every cell is
+external, so the whole release cost lands in step 8 and a split sever bounds
+the cheap half alone.
+
+**What licenses it:** the warrant's second clause. A child reached in step 8
+has lost its in-edge and its count is held by the displaced vector, so the
+synchronous collection reads `RC − IN` as risen and treats it as a root;
+`DrainPause.tla`'s configuration that opens this seam exhausts clean. The
+earlier refusal rested on `unguard` running once, which is a property of
+step 7 and not of step 8.
+
+**Cost:** the resumption cursor gains an index into the external children
+beside the sever's, and the epoch stays open across the pause — every
+thread's parked memory with it, which is node D8's quantity.
+
+**Unchanged:** the seam between the last severed cell and `unguard` stays
+refused, and steps 6 and 7 still admit no boundary between them.
+
+---
+
 ## 2026-08-25 (second) — the charged budget is withdrawn; the ceiling's shape is open
 
 **Decided:** the batch ceiling has no chosen mechanism. The entry below and

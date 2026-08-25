@@ -1090,12 +1090,15 @@ oracle is buildable today are marked in the README index; the rest say so in
 section 8. Broken into steps when S3 closes.
 
 
-## S6 — `rc-cycle`: on-the-fly cycle collection over a sliding view  [in progress]
+## S6 — `rc-cycle`: on-the-fly cycle collection from a mutator-fed candidate set  [in progress]
 
 Goal, set by Edmond 2026-08-25: the collector's cost stops following the size
 of the heap and starts following the size of what changed. The candidate set
-comes from the mutator, the view from a coalescing log rather than from a
-census, and the classes that cannot hold a cycle leave the set by proof. The
+comes from the mutator, and the classes that cannot hold a cycle leave the
+set by proof. The stage opened under the words "over a sliding view", with
+the view from a coalescing log; S6.1 refused the sliding view the same day,
+and the view is the candidate set alone — the words are amended here so the
+goal does not contradict the step that closed under it. The
 design of record is [`../model/gc/rc-cycle.md`](../model/gc/rc-cycle.md) and
 the work is built on its graph,
 [`../model/gc/cycle/questions.md`](../model/gc/cycle/questions.md), node by
@@ -1133,11 +1136,33 @@ broken links.
         destructors because its *counting* is deferred; real counts keep prompt
         destruction for everything whose count reaches zero, and only cyclic
         garbage waits, as it does today. The Critic round is owed.
-- [ ] S6.2 Put Y2 to Edmond: may a destructor wait for the collection?
+- [x] S6.2 Put Y2 to Edmond: may a destructor wait for the collection?
       done: his ruling is recorded in `dev/DECISIONS.md` and folded wherever a
         document in force states the `__destruct` promise
       tier: T2 · role: —
+      handoff: ruled on the map (seventh entry): the destructor runs when
+        death is established — zero count immediately, a cycle at its
+        confirming collection — and the arena reset's own destructor pass is
+        the backstop, so no document in force stated a promise that needed
+        weakening. The same map round answered Y3, Y5, Y6, Y8, Y9, Y10 and
+        Y11 (entries eight to twelve) and filed Y12 (root queue) and Y13
+        (traversal aggression); all folded into `cycle/questions.md`.
 - [ ] S6.3 Write the class filter of Y3 against the class descriptor
       done: the rule is written against `SlotKind` and the share of a real
         corpus's classes it demotes is measured with the recorded bootstrap
       tier: T2 · role: Critic
+- [ ] S6.4 Write the root queue's contract (Y12) against
+      `zend_spsc_queue.{c,h}` in the `spsc-refactor` tree, read first-hand —
+      the specification the header points to does not exist, so the header's
+      CAS and growth figures are verified against the code
+      done: Y12 carries the enrolment queue's contract — queue-per-thread
+        ownership, the read side, the already-enrolled bit's position
+        relative to the queue write, the growth rule of Y6, and the OOM
+        boundary put to Edmond (growth allocation failing where
+        `runtime/exceptions.md` licenses dropping the root)
+      tier: T2 · role: —
+- [ ] S6.5 Lay out the header under the no-growth rule (Y7)
+      done: Y7 carries the split between the epoch byte and the freed index
+        bits — epoch, maturation age, stamp-against-claim mark — with the
+        one-store discipline argued for each field the collector reads
+      tier: T2 · role: —

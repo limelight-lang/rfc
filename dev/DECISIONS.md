@@ -10,6 +10,92 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-25 (twelfth) — `rc-walk` code is deleted as `rc-cycle` replaces it
+
+**Decided by Edmond** (map round): everything `rc-cycle` makes unneeded is
+deleted from `ll-model`, not kept under a banner. The capture-count precedent
+— refused, kept as a record — holds for documents only; they stay the record.
+**Rejected:** the fifth entry's reading that nothing is deleted, argued on the
+day the design was named, before any replacement existed. **Cost:** each
+deletion waits for its replacement to land, so the pieces go one by one.
+
+---
+
+## 2026-08-25 (eleventh) — maturation is an age in the epoch stamp; the header does not grow
+
+**Decided by Edmond** (map round): candidate maturation is carried as an age
+inside a collection-epoch stamp in the entity header, YRC's device, not as
+Levanoni–Petrank's carousel of `k + 1` rotating buffers; and the header gains
+no second word and no extra byte — the stamp is first tried in `rc-walk`'s
+existing epoch byte, and the seventeen-bit candidate index is dropped because
+a buffered entity is found through its root-queue entry. **Why:** the age
+rides a write the commit makes anyway, and the freed index bits are what made
+unique ownership `rc-walk`-only. **Cost:** the bit layout under the one-store
+discipline is open, node Y7.
+
+---
+
+## 2026-08-25 (tenth) — enrolment never drops a root; the queue is the grown SPSC, not YRC's stripes
+
+**Decided by Edmond** (map round): a full candidate buffer never discards the
+enrolment — the buffer grows. The queue candidate is the double-buffered SPSC
+handoff queue already built in the `spsc-refactor` tree
+(`Zend/zend_spsc_queue.{c,h}`); its header claims a `fetch_add`-only writer,
+a two-CAS-per-batch reader and a doubling buffer, figures S6.4 verifies
+against the code — the header's own pointer to a specification is dead.
+**Rejected:** dropping the root on overflow — a dropped enrolment is a cycle
+no later collection finds (Y6); and YRC's striped queues — fixed 256-slot
+stripes whose writer drains them himself on overflow. **Cost:** one queue per
+thread and the read-side ownership are undesigned, node Y12; and the ruling
+priced the full buffer, not the growth allocation failing under OOM, where
+`runtime/exceptions.md` licenses dropping the root — that boundary is
+Edmond's, not yet asked.
+
+---
+
+## 2026-08-25 (ninth) — the collector frees, but runs only pure destructors
+
+**Decided by Edmond** (map round): under `rc-cycle` both the mutator and the
+collector may free; the collector itself may run only a destructor proven
+pure, or tear down an entity with no destructor, and an impure destructor
+runs on the owning thread. The full-heap walk leaves the design with the
+same ruling: the collection traces from the candidate set alone. **Why:**
+this keeps user code off the collector thread while letting the common case
+— no destructor, or a pure one — die where it is judged. **Cost:** narrows
+`rc-walk`'s ruling 5 (the collector judges, only the mutator frees), whose
+handshake machinery survives for exactly the impure remainder.
+
+---
+
+## 2026-08-25 (eighth) — the enrolment gate is proven acyclicity; purity has no bearing
+
+**Decided by Edmond** (map round): a decrement that does not reach zero
+enrols the entity unless it is provably acyclic — the only exclusion. His
+earlier "pure object" clause is withdrawn: a pure destructor says nothing
+about the references the entity holds. The compiler's plain (non-enrolling)
+release is licensed at exactly two kinds of site: the entity is provably
+acyclic, or it provably cannot die there — held by a reference whose own
+later release will be the enrolling one. A runtime that proves a class
+cyclic may stamp it with a flag; the flag only strengthens suspicion and
+feeds traversal aggression (Y13), never demotes. **Rejected:** "someone
+still holds it after the decrement" as a licence — the holder may lie in
+the same ring.
+
+---
+
+## 2026-08-25 (seventh) — the destructor runs when death is established
+
+**Decided by Edmond** (map round), closing the sixth entry's open bound: the
+destructor is called as soon as the death is known — at a zero count
+immediately, as today; for a cyclic component, at the collection that
+confirms it dead. The call is decoupled from the memory: the arena holds the
+block until its reset either way, and cyclic garbage no collection reached
+is caught by the reset's own destructor pass (`model/memory/arena-reset.md`,
+step 1). **Cost:** none new — the pass already exists. The order of two
+collection-time destructors is not promised anywhere.
+
+---
+
 ## 2026-08-25 (sixth) — `__destruct` may run later than the count reaching zero
 
 **Ruled by Edmond**, and he has ruled it before: PHP's destructor is **not**

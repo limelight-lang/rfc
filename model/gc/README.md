@@ -7,7 +7,7 @@ Covers GC algorithms, collection strategies, interaction with the Memory Manager
 - [strategies.md](strategies.md) — pluggable build-time GC strategies: the contract (store barrier slot, safepoints), the registry, the `rc-walk` default
 - [satb.md](satb.md) — concurrent SATB marking, the `rc-satb` strategy: designed and deliberately unbuilt since 2026-08-03, `rc-walk` having overtaken it on pauses; the banner carries why it is kept and what would make it worth building
 - [heap-design.md](heap-design.md) — cross-strategy decisions: non-moving, block/line heap, CAS handoff and deferred free for the concurrent strategy
-- [rc-cycle.md](rc-cycle.md) — **the design of record since 2026-08-25**: on-the-fly cycle collection over a sliding view, the candidate set from the mutator, the class filter; nothing built and the premise unverified
+- [rc-cycle.md](rc-cycle.md) — **the design of record since 2026-08-25**: on-the-fly cycle collection from a mutator-fed candidate set, with the class filter; nothing built, the sliding view refused in node Y1
 - [rc-walk.md](rc-walk.md) — the `rc-walk` barrier-free concurrent cycle collector: derived roots, the epoch byte, the Phase 4 exact test; the text in force for the strategy the crate runs
 - [drain-window.md](drain-window.md) — the drain-exclusivity invariant: what the collector may touch while a mutator drains a confirmed component
 - [gc-horizon.md](gc-horizon.md) — the compiler-side rule that decides which locals carry a count and where the uncounted ones pay: the ownership lattice, the eight horizon kinds, promotion

@@ -1,6 +1,6 @@
 # PLAN
 
-Updated: 2026-08-24 · Active: S5
+Updated: 2026-08-25 · Active: S4
 
 Destination, as amended 2026-08-23: the collector design of record is
 readable here as a question graph — thirty questions about the collector and
@@ -300,7 +300,7 @@ marked Final.
         region snippet and its three conditions; node G2 of
         `walk/questions.md` follows. Linkcheck green.
 
-## S5 — The second design, refused; the counted walk is the design of record  [in progress]
+## S5 — The second design, refused; the counted walk is the design of record  [done]
 
 Goal, as amended 2026-08-22: the capture-count regime is refused with its
 reasons recorded, the counted walk is the design of record with its open
@@ -309,6 +309,8 @@ rather than against which text is newer. The stage keeps its number and its
 closed steps; steps S5.4 onward were re-aimed the day the regime fell.
 Done when: every step below is closed and `dev/tools/linkcheck.php` reports zero
 broken links.
+**Closed 2026-08-25** with S5.4, the last open step; S5.4a and S5.7 were
+dropped with their subjects. Linkcheck green at 1 725 links.
 
 - [x] S5.1 Write the top level into `model/gc/gc-horizon-v2/`
       done: the folder carries a README marking it the current design and a

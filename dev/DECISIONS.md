@@ -10,6 +10,34 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-25 (fourth) — the drain's resumption is a flat state machine, not a fiber
+
+**Decided by Edmond:** where the paused drain's state lives is the coroutine
+shape without a separate stack — a heap frame across the suspension, an
+ordinary return to suspend, which is the cursor generated rather than written
+by hand. The real-stack form is refused for this path.
+
+**Why:** suspension from arbitrary depth is the freedom the two Sage verdicts
+and the step-8 ruling spent three sittings narrowing, and a fiber makes every
+point representable again. Its four prices are unpaid beside that: a parked
+stack per outstanding drain inside the window whose defect is retained
+memory; a pinning to the thread that the drain's race-freedom forces, which
+node E1 has not settled; a destructor free to suspend on its own I/O and hold
+the epoch open with the guards on; and a context switch Miri cannot execute,
+on the most invariant-dense path in the system.
+
+**What it buys:** `sever_cells` walks an entity's cells through a callback
+that no hand-written cursor can re-enter, and a state machine can.
+
+**Cost:** in Rust a stackless coroutine colours every frame of the chain, so
+the five sever helpers are rewritten either way; what changes is that the six
+cursor fields stop being written by hand. And the shape decides nothing about
+*when* to suspend — the ceiling's mechanism, the slice's outer boundary
+against the pickup loop, and the ack that must not fire on a suspended drain
+all stay open (node D3).
+
+---
+
 ## 2026-08-25 (third) — the drain may stop inside step 8, between two external drops
 
 **Decided by Edmond:** the release of a confirmed component's external

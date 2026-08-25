@@ -1641,9 +1641,10 @@ progress, a cursor of member index plus position inside that member's storage,
 the displaced-so-far vector, and — since the ruling of 2026-08-25 — an index
 into the external children of step 8.
 
-**Edmond's idea, 2026-08-25, recorded and undecided: carry that state on a
-coroutine's own stack rather than in a cursor.** The drain suspends where it
-stands and the machine remembers the rest.
+**Ruled 2026-08-25: that state is carried by a flat state machine**
+(`../../../dev/DECISIONS.md`). Edmond asked whether a coroutine could hold it
+instead of a cursor, and the answer is the coroutine shape that has no stack
+of its own.
 [`../../../runtime/exceptions.md`](../../../runtime/exceptions.md) already
 splits the shape in two and this node inherits the split. A **flat state
 machine** — `llvm.coro`, C++20, Swift async — has no separate stack: live
@@ -1654,7 +1655,7 @@ through a callback that no hand-written cursor can re-enter; against it, a
 stackless coroutine in Rust colours every frame of the chain, so the same five
 sever helpers are rewritten either way. A **real stack** — fibers, which
 `../../../runtime/actors.md` already depends on — suspends from any depth and
-needs no rewrite, at four prices. A parked stack per outstanding drain is
+needs no rewrite; it is refused here, at four prices. A parked stack per outstanding drain is
 retained memory inside the window whose whole defect is retained memory. The
 drain's race-freedom is thread-bound — the exact test is race-free because it
 runs on the owning thread, the weak table is per thread, `MID_DRAIN` and
@@ -1666,8 +1667,8 @@ hazard the cursor does not have, since there the same destructor blocks a
 thread visibly. And a hand-rolled context switch is not something Miri
 executes, which costs this path its verifier.
 
-**What the idea does not reach**, and it is the half two rounds broke: when to
-suspend. The cursor's fields are not the price of the mechanism, they are the
+**What the ruling does not reach**, and it is the half two rounds broke: when
+to suspend. The cursor's fields are not the price of the mechanism, they are the
 enumeration of which suspended states are legal, and the two Sage verdicts
 plus the ruling of 2026-08-25 are that enumeration. A coroutine makes every
 point representable, so the boundaries have to be stated somewhere else or

@@ -1,6 +1,10 @@
 # The question graph
 
-Every open question of the design of record, as a node with what would
+> **Closed 2026-08-25**, with stage S5. The design of record is `rc-cycle`
+> and its graph is [`../cycle/questions.md`](../cycle/questions.md). This
+> one is read for what it settled, not worked from.
+
+Every open question of the design of record until 2026-08-25, as a node with what would
 answer it and what it blocks. The graph covers the collector, the barrier,
 the proof side inherited from [`../gc-horizon.md`](../gc-horizon.md), and the
 verification debt. A node carries a mark for what blocks it:

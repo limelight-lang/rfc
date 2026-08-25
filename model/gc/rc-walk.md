@@ -1,5 +1,11 @@
 # rc-walk — a barrier-free concurrent cycle collector
 
+> **Superseded as the design of record on 2026-08-25** by
+> [rc-cycle.md](rc-cycle.md), and **still the text in force for the
+> strategy the crate runs**: `rc-cycle` is not a line of code, so nothing
+> moves until it exists. New questions are asked of `rc-cycle`; this
+> document is amended only where the code it describes changes.
+>
 > **Status: design, partially built.** Build steps 1–4 and the
 > batched-checkpoint split are product code in `ll-model` (the
 > `rc-walk` cargo feature, the default build since 2026-07-27); of the

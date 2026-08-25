@@ -7,12 +7,14 @@ Covers GC algorithms, collection strategies, interaction with the Memory Manager
 - [strategies.md](strategies.md) — pluggable build-time GC strategies: the contract (store barrier slot, safepoints), the registry, the `rc-walk` default
 - [satb.md](satb.md) — concurrent SATB marking, the `rc-satb` strategy: designed and deliberately unbuilt since 2026-08-03, `rc-walk` having overtaken it on pauses; the banner carries why it is kept and what would make it worth building
 - [heap-design.md](heap-design.md) — cross-strategy decisions: non-moving, block/line heap, CAS handoff and deferred free for the concurrent strategy
-- [rc-walk.md](rc-walk.md) — the `rc-walk` barrier-free concurrent cycle collector: derived roots, the epoch byte, the Phase 4 exact test
+- [rc-cycle.md](rc-cycle.md) — **the design of record since 2026-08-25**: on-the-fly cycle collection over a sliding view, the candidate set from the mutator, the class filter; nothing built and the premise unverified
+- [rc-walk.md](rc-walk.md) — the `rc-walk` barrier-free concurrent cycle collector: derived roots, the epoch byte, the Phase 4 exact test; the text in force for the strategy the crate runs
 - [drain-window.md](drain-window.md) — the drain-exclusivity invariant: what the collector may touch while a mutator drains a confirmed component
 - [gc-horizon.md](gc-horizon.md) — the compiler-side rule that decides which locals carry a count and where the uncounted ones pay: the ownership lattice, the eight horizon kinds, promotion
 - [gc-horizon-states.md](gc-horizon-states.md) — its state set: what the runtime must not change, the axes the lattice reads and creates, the product and the identities that collapse it
 - [gc-horizon-cases/](gc-horizon-cases/README.md) — **a record since 2026-08-23**: sixteen cases instantiating the horizon algorithm on one entity kind or one proof-ending event each, with the coverage table over the repository's own cases. Compiler business, and no collector document defers to it
-- [walk/](walk/README.md) — the design of record from 2026-08-22: the counted heap edge stays the write barrier and the walk stays the cycle collector, with the open questions as a graph
+- [cycle/](cycle/README.md) — the design of record since 2026-08-25, with the open questions as a graph the work is built on
+- [walk/](walk/README.md) — the design of record from 2026-08-22 to 2026-08-25, closed: the counted heap edge stays the write barrier and the walk stays the cycle collector, with its graph as the record of a finished stage
 - [gc-horizon-v2/](gc-horizon-v2/README.md) — the capture-count regime, considered and refused 2026-08-22: the horizon pays by publishing to the collector rather than by a count; kept for nodes M and N, which record why it fails
 - [pure-destructors.md](pure-destructors.md) — the purity ladder P0/P1/P2/NR, the transitive closure, and the hand-off drain it makes sound
 - [retained-block-walk.md](retained-block-walk.md) — proposal: keep the reset's survivor list as an object index so retained former-arena blocks can be walked, retiring the "cycles among promoted survivors" limit

@@ -1,6 +1,6 @@
 # PLAN
 
-Updated: 2026-08-25 · Active: S4
+Updated: 2026-08-25 · Active: S6
 
 Destination, as amended 2026-08-23: the collector design of record is
 readable here as a question graph — thirty questions about the collector and
@@ -1066,7 +1066,17 @@ dropped with their subjects. Linkcheck green at 1 725 links.
         only where a live document carries it, which is `walk/questions.md`.
 
 
-## S4 — Code from the cases
+## S4 — Code from the cases  [dropped 2026-08-25]
+
+**Dropped with its subject**, as S5.7 was. The stage was written to turn the
+case book's oracles into tests, and Edmond ruled the compiler's proof logic
+outside these documents on 2026-08-23: `model/gc/gc-horizon-cases/` became a
+record, and two of its three verification instruments needed a compiler that
+does not exist. Nothing of it was executed. What survives of the work it
+would have carried is the model-checker debt, which node H1 of the closed
+graph holds, and it is re-aimed at `rc-cycle` rather than at the cases.
+
+The text below is the stage as it stood.
 
 Named, not broken into steps. The design is closed pending Phase D and its two
 verification instruments — the shadow-count lowering and the differential
@@ -1078,3 +1088,43 @@ release horizon. So the re-derivation of the checker specs is a precondition of 
 model-checker scenario, not an admissible instrument beside them. The cases whose
 oracle is buildable today are marked in the README index; the rest say so in
 section 8. Broken into steps when S3 closes.
+
+
+## S6 — `rc-cycle`: on-the-fly cycle collection over a sliding view  [in progress]
+
+Goal, set by Edmond 2026-08-25: the collector's cost stops following the size
+of the heap and starts following the size of what changed. The candidate set
+comes from the mutator, the view from a coalescing log rather than from a
+census, and the classes that cannot hold a cycle leave the set by proof. The
+design of record is [`../model/gc/rc-cycle.md`](../model/gc/rc-cycle.md) and
+the work is built on its graph,
+[`../model/gc/cycle/questions.md`](../model/gc/cycle/questions.md), node by
+node, as S5 was built on the walk's.
+Done when: every node of that graph carries an answer with its argument or a
+recorded reason for staying open, and `dev/tools/linkcheck.php` reports zero
+broken links.
+
+- [x] S6.0 Name the design, banner what it supersedes, and seed the graph
+      done: `model/gc/rc-cycle.md` and `model/gc/cycle/` exist, the registry
+        and the `model/gc/` index carry `rc-cycle`, `rc-walk.md` and `walk/`
+        are bannered as the text in force and a closed record rather than as
+        work, and the graph holds the eight nodes the day's reading produced
+      tier: T2 · role: —
+      handoff: the premise is **not** verified — sliding views are a write
+        barrier and `rc-walk` was built on the constraint that the mutator
+        does no per-operation work for the collector. Node Y1 holds it and a
+        reader was on the paper when the stage opened.
+- [ ] S6.1 Answer Y1: what the mutator pays per store, and whether a sliding
+      view needs enumerated roots
+      done: the paper is read and the node carries what the barrier executes
+        in the common case, whether a thread must publish its local roots,
+        and what either answer costs against `rc-walk`'s constraint
+      tier: T2 · role: Critic
+- [ ] S6.2 Put Y2 to Edmond: may a destructor wait for the collection?
+      done: his ruling is recorded in `dev/DECISIONS.md` and folded wherever a
+        document in force states the `__destruct` promise
+      tier: T2 · role: —
+- [ ] S6.3 Write the class filter of Y3 against the class descriptor
+      done: the rule is written against `SlotKind` and the share of a real
+        corpus's classes it demotes is measured with the recorded bootstrap
+      tier: T2 · role: Critic

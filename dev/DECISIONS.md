@@ -10,6 +10,44 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-25 (fifth) — the design of record is `rc-cycle`; `rc-walk` and the rest become records
+
+**Decided by Edmond:** the next collector is on-the-fly cycle collection over
+a **sliding view** — Bacon–Rajan's candidate set from the mutator, Levanoni
+and Petrank's coalescing log in place of the heap census, and a per-class
+filter over which classes may hold a cycle. He named it `rc-cycle`. Work is
+built on its question graph, `model/gc/cycle/questions.md`, as stage S5 was
+built on the walk's.
+
+**Why:** the walk's cost is the heap's and its yield is the cycle's. Every
+epoch reads every slot of every entity block and builds the graph of the
+whole mature population, whether or not anything changed, and a collector
+exists only for cycles. The candidate set the mutator can name is measured at
+about **0.4 ns** on a retain-and-release pair that does not reach zero
+(`ll-model` `dev/BENCHMARKS.md`, 2026-08-16, an upper bound), against about
+**140 ns** an entity an epoch for a row and its edges — a crossover near 360
+non-final decrements per live entity per epoch, which no ordinary program
+approaches.
+
+**What "superseded" does not mean.** `rc-walk` is the built default and
+`rc-cycle` is not a line of code, so nothing is deleted and no code moves.
+`rc-walk.md` stays the text in force for the strategy the crate runs and is
+bannered; `walk/` is closed as the record of a finished stage; the registry
+gains a row rather than losing four.
+
+**The premise is unverified and the first node says so.** Sliding views are a
+write barrier, and `rc-walk` was built on the constraint that the mutator does
+no per-operation work for the collector. That is a change of constraint, not
+an improvement inside it, and node Y1 holds it.
+
+**Cost, already visible:** every concurrent design surveyed on 2026-08-25 —
+Nim's YRC, `scheme-rs`, Samsara, CIRC — defers a destructor to collection
+time for cycle-capable types, keeping prompt release only where a class is
+proven acyclic. Whether PHP's `__destruct` may weaken that far is node Y2 and
+is Edmond's.
+
+---
+
 ## 2026-08-25 (fourth) — the drain's resumption is a flat state machine, not a fiber
 
 **Decided by Edmond:** where the paused drain's state lives is the coroutine

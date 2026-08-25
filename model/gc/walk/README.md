@@ -1,6 +1,14 @@
 # The walk, second version
 
-The garbage collection design of record from 2026-08-22. It keeps the
+> **Closed 2026-08-25.** The design of record is
+> [`../cycle/README.md`](../cycle/README.md) — Edmond chose an on-the-fly
+> cycle collector over a sliding view, and the work is built on its graph
+> now. What stands here is the record of a stage that finished: every one
+> of its thirty-two nodes carries an answer with its argument or a recorded
+> reason for staying open, and the answers `rc-cycle` inherits are named in
+> node Y5 there rather than re-derived.
+
+The garbage collection design of record from 2026-08-22 to 2026-08-25. It keeps the
 counted heap edge of [`../rc-walk.md`](../rc-walk.md) and it retires the
 capture-count regime of [`../gc-horizon-v2/`](../gc-horizon-v2/README.md).
 It carried the compiler proofs of [`../gc-horizon.md`](../gc-horizon.md)

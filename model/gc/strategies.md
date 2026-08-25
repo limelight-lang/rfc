@@ -181,6 +181,7 @@ event with no live stack, outside any strategy
 | `rc-trace` | ARC + arenas + stop-the-thread cycle tracing | collected | small, bounded by live general heap | web workloads; the first implementation |
 | `rc-walk` **(default)** | ARC + arenas + barrier-free concurrent cycle walking, derived roots | collected | none on the mutator; the walk runs off-thread | the shipping strategy, see [rc-walk.md](rc-walk.md) |
 | `rc-satb` | ARC + arenas + concurrent SATB marking | collected | near-zero: two all-thread safepoints per epoch | designed, deliberately unbuilt — see [satb.md](satb.md) |
+| `rc-cycle` | ARC + arenas + on-the-fly cycle collection over a sliding view | collected | a write barrier, shape and price unmeasured | **the design of record since 2026-08-25**, nothing built — see [rc-cycle.md](rc-cycle.md) |
 
 `nogc` is what the echo compiler ships today; `rc` is approximately
 elephc's model; `rc-trace` is the Zend architecture done right

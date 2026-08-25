@@ -1640,6 +1640,40 @@ the member set, a tag saying which of the two interruptible stretches is in
 progress, a cursor of member index plus position inside that member's storage,
 the displaced-so-far vector, and — since the ruling of 2026-08-25 — an index
 into the external children of step 8.
+
+**Edmond's idea, 2026-08-25, recorded and undecided: carry that state on a
+coroutine's own stack rather than in a cursor.** The drain suspends where it
+stands and the machine remembers the rest.
+[`../../../runtime/exceptions.md`](../../../runtime/exceptions.md) already
+splits the shape in two and this node inherits the split. A **flat state
+machine** — `llvm.coro`, C++20, Swift async — has no separate stack: live
+state across a suspension goes to a heap frame and suspending is an ordinary
+return, which is the cursor above, generated instead of written. It earns its
+keep at one place in particular, `sever_cells`, which walks an entity's cells
+through a callback that no hand-written cursor can re-enter; against it, a
+stackless coroutine in Rust colours every frame of the chain, so the same five
+sever helpers are rewritten either way. A **real stack** — fibers, which
+`../../../runtime/actors.md` already depends on — suspends from any depth and
+needs no rewrite, at four prices. A parked stack per outstanding drain is
+retained memory inside the window whose whole defect is retained memory. The
+drain's race-freedom is thread-bound — the exact test is race-free because it
+runs on the owning thread, the weak table is per thread, `MID_DRAIN` and
+`TEARDOWN_DEPTH` are thread-locals and the park list is flushed by its own
+thread — so the fiber has to be pinned, which is E1's unsettled cost. A
+destructor runs on that stack and can suspend for its own reasons rather than
+the budget's, and an epoch held open by a destructor waiting on I/O is a
+hazard the cursor does not have, since there the same destructor blocks a
+thread visibly. And a hand-rolled context switch is not something Miri
+executes, which costs this path its verifier.
+
+**What the idea does not reach**, and it is the half two rounds broke: when to
+suspend. The cursor's fields are not the price of the mechanism, they are the
+enumeration of which suspended states are legal, and the two Sage verdicts
+plus the ruling of 2026-08-25 are that enumeration. A coroutine makes every
+point representable, so the boundaries have to be stated somewhere else or
+they stop being stated at all. Beside that it leaves the ceiling's shape, the
+slice's outer boundary against the pickup loop, and the ack: a suspension must
+not let that loop reach its `fetch_sub`, which is `DW_early_sub.cfg`.
 An in-component child may be released at any boundary — it stops at its guard
 — while an external child is held unreleased until after `unguard`, exactly as
 the unsplit drain holds it.

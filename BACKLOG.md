@@ -45,19 +45,13 @@ into proper RFCs when picked up.
 
 ## Model — remaining documents
 
-- **The reserved critical memory area** — the runtime keeps a reserve for
-  must-not-fail allocations, and by 2026-08-25 three separate paths draw on
-  it: the root queue's growth under OOM, after which normal mode resumes only
-  once every queued root is walked (`dev/DECISIONS.md`, thirteenth entry); the
-  mutator that finds the collection token taken and continues instead of
-  waiting; and the in-line collection's own working memory, which cannot come
-  from the allocator that has just refused it (fifteenth entry, node Y14).
-  Unwritten: its size, residence, refill discipline, the API a draw goes
-  through, and how three customers are bounded against one another. Only
-  `runtime/exceptions.md` names a related split — an exception reserve, a
-  per-thread log reserve, and the collector's working room "bounded
-  separately" — and it gives none of them a figure. Belongs beside
-  [model/memory/arenas.md](model/memory/arenas.md).
+- ~~**The reserved critical memory area**~~ — written 2026-08-25 as
+  [model/memory/critical-reserve.md](model/memory/critical-reserve.md): a block
+  the allocator takes from the OS and holds, 500 KB per mutator thread, reached
+  through a second door, with the enrolment queue's growth, the mutator that
+  cannot collect and a collection's working memory as its three customers.
+  What stays open there is the figure: only the collector's share is derivable
+  today, from Y7's slice bound, and the other two wait on a workload.
 - **The movable array** — a `#[Moved]` class may hold an array field
   (payloads without arrays are not PHP payloads), but an array does not
   declare its element types, so the class graph cannot close over them:

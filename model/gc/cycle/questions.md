@@ -745,9 +745,11 @@ and `HashMap` with no fallible path, and the release profile is built
 `panic = "abort"` (`Cargo.toml:137`); finding 4 of `ll-model`
 `dev/RC_WALK_CRITICAL_REVIEW.md` records it as "dangerous precisely when
 collection is triggered by memory pressure: freeing an object can require more
-memory". A collection that takes its mark stack from the allocator that just
-refused it aborts the process, so the in-line form is admissible only over a
-pre-sized working set.
+memory". The answer is not to stop asking the allocator but to ask it
+differently: it holds a block taken from the operating system for exactly this,
+and the in-line collection draws its mark stack and its shadow arrays through
+that door ([`../../memory/critical-reserve.md`](../../memory/critical-reserve.md)).
+What is inadmissible is the ordinary path, which has already refused.
 
 **What it can actually serve.** A freed slot returns to its block's free list
 and the next allocation of that size class takes it, so a slot request is served

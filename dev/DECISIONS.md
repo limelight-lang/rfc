@@ -10,6 +10,28 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-25 (twenty-first) — the critical reserve is the allocator's own block, 500 KB a thread, reached through a second door
+
+**Decided by Edmond**, closing the item the thirteenth entry opened and the
+BACKLOG carried unwritten: the memory manager takes a block from the operating
+system at thread start and holds it, and work that must not fail is served from
+it. **It belongs to the allocator rather than beside it** — the same allocator
+has two doors, the ordinary one that refuses when it has nothing and the
+critical one that serves from the held block — which is what makes "ask the
+allocator after it refused" coherent instead of contradictory. **Per thread,
+not process-global**, because two of its three customers are per-thread and
+concurrent (the enrolment queue's growth, the mutator that finds the collection
+token taken) while the third is exclusive by construction, one collection
+existing at a time, so the collecting thread's own zone funds it and a second
+residence buys nothing. **Rejected:** a process-global zone beside the
+allocator, and a per-thread copy of the collector's working room, which would
+be one live copy and N − 1 idle. **Cost:** 500 KB is a starting figure and not
+a measurement; only the collector's share is derivable, at about 32 KB from
+Y7's slice bound, and the queue's share is a rate against a duration nobody has
+measured. `model/memory/critical-reserve.md`.
+
+---
+
 ## 2026-08-25 (twentieth) — the crossover figure was wrong at both ends, and the corrected one is a lower bound
 
 **Found by re-reading the source both figures cite.** The fifth entry and

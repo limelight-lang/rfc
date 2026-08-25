@@ -96,10 +96,23 @@ broken links.
         weakening. The same map round answered Y3, Y5, Y6, Y8, Y9, Y10 and
         Y11 (entries eight to twelve) and filed Y12 (root queue) and Y13
         (traversal aggression); all folded into `cycle/questions.md`.
-- [ ] S6.3 Write the class filter of Y3 against the class descriptor
+- [x] S6.3 Write the class filter of Y3 against the class descriptor
       done: the rule is written against `SlotKind` and the share of a real
         corpus's classes it demotes is measured with the recorded bootstrap
       tier: T2 · role: Critic
+      handoff: closed by measurement against its own premise. **The rule cannot
+        be written against `SlotKind`** — its `Pointer` variant covers a
+        declared class type, a `string` and an `array` in one code, and
+        `PropSlot` carries no target; `model/classes.md` makes the same
+        collapse, so the gap is this repository's. **The evaluable form demotes
+        nothing:** 0 of 114 classes with live instances and 0 of 381 objects on
+        booted Laravel plus one request, 94 of 5680 statically with two thirds
+        of that test tooling. Measured 2026-08-25 with a separate script — the
+        recorded instrument classifies a slot by the runtime type of the value
+        in it and cannot answer this — cross-checked against it on the walk,
+        381 objects in 114 classes both ways. What S6.3 turned out to owe is a
+        declared target per pointer slot in `classes.md`. Eighteenth
+        `DECISIONS.md` entry.
 - [x] S6.4 Write the root queue's contract (Y12) against
       `zend_spsc_queue.{c,h}` in the `spsc-refactor` tree, read first-hand —
       the specification the header points to does not exist, so the header's

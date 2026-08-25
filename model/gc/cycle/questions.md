@@ -16,7 +16,7 @@ the closed graph of [`../walk/questions.md`](../walk/questions.md) used:
 flowchart TD
     Y1[Y1 what the mutator pays per store<br/>answered: the sliding view is refused] --> Y4 & Y5 & Y9
     Y2[Y2 how much later may a destructor run<br/>answered: when death is established] --> Y9
-    Y3[Y3 the class filter and its direction<br/>answered: demotion by proof, a flag only promotes] --> Y7 & Y13
+    Y3[Y3 the class filter and its direction<br/>answered: the descriptor cannot express it yet] --> Y7 & Y13
     Y4[Y4 what replaces trial deletion<br/>answered: a shadow count] --> Y5 & Y7
     Y9[Y9 candidate maturation<br/>answered: age in the epoch stamp] --> Y2 & Y7
     Y10[Y10 what the enrolment test excludes<br/>answered: proven acyclicity only] --> Y7
@@ -141,7 +141,7 @@ The `WeakMap` eager cleanup of `../weak-references.md` keys on count-zero
 deaths and is untouched. The order of two collection-time destructors was
 not ruled, and no document promises one.
 
-## Y3. The class filter, and which way its default runs  [answered 2026-08-25: demotion by proof, a flag only promotes]
+## Y3. The class filter, and which way its default runs  [answered 2026-08-25: demotion by proof; the descriptor cannot express it yet, and the evaluable form demotes nothing]
 
 Edmond's own, 2026-08-25: classes that have held cyclic references are
 suspect, and only they enter the candidate set.
@@ -151,12 +151,45 @@ is a fact about a run, and the next request refutes it; a class demoted on
 that evidence loses its cycles for ever, because enrolment is edge-triggered
 (Y6). So a class is **suspect by default** and leaves the set only by proof.
 
-**The proof is available today, with no compiler.** A class whose declared
-slots cannot hold a reference to a kind that can close a ring cannot be a
-cycle member, and the crate already carries the slot kinds it needs to
-decide that (`ll-model` `src/class.rs`, `SlotKind`). That is finer than
-`CANDIDATE_KINDS`, which decides per entity kind, and it needs neither the
-compiler ruled out of scope on 2026-08-23 nor a run's history.
+**The proof was claimed available today and is not, which the reading of
+2026-08-25 settled.** The claim was that a class whose declared slots cannot
+hold a reference to a ring-closing kind cannot be a cycle member, and that
+`ll-model` `src/class.rs` already carries the slot kinds to decide it. It does
+not. `SlotKind` is the machine representation, and its `Pointer` variant covers
+"a declared class type, `string` or `array`" in one code (`src/class.rs:73-78`);
+`PropSlot` carries name, offset, kind, declaration index and init bit, and no
+target type (`:135-145`); `ClassBuilder::prop_pointer` takes a name and nothing
+else. A string cannot close a ring and an array can, so the predicate the rule
+needs has no input. The gap is the design's and not the crate's: this
+repository's own slot table collapses the three the same way
+([`../../classes.md`](../../classes.md), the slot-kinds table), and its
+enumeration of `prop_layout` lists offset, slot kind, hook flags, declaration
+index and init bit — no declared type — even though `../../values.md` says the
+type lives there.
+
+**What is evaluable today demotes nothing, and that is measured.** The only
+predicate the descriptor supports is all-or-nothing: the class holds no counted
+reference at all, `ptr_run_count == 0 && box_run_count == 0`, and even that
+needs two exclusions, because a `CLASS_TEMPLATE` class has empty runs with its
+counted children behind the shape pointer, and a `CLASS_OUTSIDE_CELLS` class
+owns counted cells outside its body. On the corpus, booted Laravel plus one
+request (2026-08-25, `/home/edmond/laravel-spawn-example` through
+`dev/tools/heap-bootstrap-laravel.php`, 381 objects in 114 classes by the
+recorded instrument): **no class with a live instance has all-scalar declared
+properties — 0 of 114 classes and 0 of 381 objects.** Eight classes have no
+declared property at all, 188 instances, and 179 of those are `Closure` and 2
+are `WeakMap`, whose state lives outside the property table and which are
+therefore the case an empty table proves nothing about; excluding `Closure`
+leaves 7 classes and 9 instances. Statically over the vendor classmap the
+all-scalar share is 94 of 5680 classes, two thirds of it test tooling, and the
+application's own code contributes none of 49.
+
+**So the filter is worth having only in the form the ruling names**, and that
+form needs the class descriptor to gain a declared target per pointer slot: at
+minimum a three-way tag separating class, string and array, and for the class
+case a pointer or link-time id so the target's own slots can be examined. That
+is what S6.3 turned out to owe, and it is a change to `classes.md` before it is
+a change to `src/class.rs`.
 
 **Edmond confirmed the direction on the map and added the other half:** the
 runtime proves cyclicity, not just the compiler acyclicity. A collection
@@ -165,9 +198,17 @@ with a flag. The flag runs one way — it strengthens suspicion and never
 demotes a class out of the set — and what it feeds is not enrolment but the
 traversal's aggression, node Y13.
 
-**What remains, and it is S6.3 unchanged:** the demotion rule written
-against `SlotKind`, and the share of a real corpus's classes it demotes —
-which the corpus scan already reports classes for.
+**What remains:** the declared-target field above, written into
+[`../../classes.md`](../../classes.md) before it reaches `src/class.rs`. Two
+smaller corrections came with the measurement. The recorded corpus instrument
+cannot report this share, since `dev/tools/heap-composition.php` classifies a
+slot by the runtime type of the value in it and reports only a class count and
+a top five by instance, so the figures above were taken with a separate script
+and cross-checked against the instrument on the walk, where both give 381
+objects in 114 classes. And Y10's sentence that the gate is "a class property
+read from a bit the factory stamps into the header" describes nothing that
+exists: no acyclic flag is defined on the class or in the header word, and
+`src/walk.rs:754` records the skip as compiler-owed and untaken.
 
 ## Y4. What replaces trial deletion's mutation of live counts  [answered 2026-08-25: a shadow count]
 

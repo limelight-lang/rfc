@@ -10,6 +10,28 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-25 (eighteenth) — the class filter needs a declared type per slot, and the form available today demotes nothing
+
+**Measured, and it refutes Y3's premise.** The demotion rule Edmond named — a
+class whose declared slots cannot hold a ring-closing kind leaves the candidate
+set — cannot be evaluated against `SlotKind`: its `Pointer` variant covers a
+declared class type, a `string` and an `array` in one code, and `PropSlot`
+carries no target. The gap is this repository's, not the crate's: `classes.md`
+collapses the three the same way and its `prop_layout` enumeration carries no
+declared type either. **What is evaluable demotes nothing:** the only predicate
+the descriptor supports is "holds no counted reference at all", and on booted
+Laravel plus one request no class with a live instance passes it — 0 of 114
+classes, 0 of 381 objects; statically 94 of 5680, two thirds test tooling, and
+the application's own code none of 49. **Decided:** the filter is worth having
+only in the form the ruling names, so `classes.md` gains a declared target per
+pointer slot — a class/string/array tag, and for the class case a link-time id
+— before `src/class.rs` does. **Cost:** the descriptor grows, and S6.3 turns
+out to owe a change to the class design rather than a rule against the existing
+one. The corpus instrument cannot report this share either; the figures come
+from a separate script cross-checked against it on the walk.
+
+---
+
 ## 2026-08-25 (seventeenth) — the named SPSC queue does not meet the enrolment contract, and the tenth entry's premise falls with it
 
 **Found by reading `Zend/zend_spsc_queue.{c,h}` first-hand**, which the tenth

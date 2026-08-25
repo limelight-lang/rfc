@@ -19,6 +19,12 @@ verification debt. A node carries a mark for what blocks it:
 
 The rulings below bound the graph and are not nodes.
 
+**The rule stage S5 taught**, cited by name twice in the nodes below and
+stated here so the citations resolve inside the record: every closure
+written by argument broke under review, and every closure written by
+measurement held. Close by measurement where an instrument exists; where
+none does, write what would answer the node and stop.
+
 ## Rulings of 2026-08-22
 
 Edmond, in the session that refused the capture-count regime.

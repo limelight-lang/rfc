@@ -447,6 +447,30 @@ classification, entirely collector-side:
    that maps to a walked slot as a compact id to a flat `edges[]` array
    with per-source offsets.
 
+**Two ages, and they are a filter on the trace rather than a nursery**
+(Edmond, 2026-08-25, correcting a coarser statement of his own). The census
+is full: every epoch reads every slot of every snapshotted entity block — the
+address arithmetic, one relaxed header load, the three tests above, and the
+four bytes of `slot_rows` the snapshot allocates per slot whether or not
+anything is enrolled. Its price follows the heap's slot count and not what
+changed since the last epoch. The **graph** is what the ages narrow: a new
+entity is stamped and skipped with its children unread, so `rc[]` and
+`edges[]` are paid for the mature walkable population alone. Nothing follows
+from that which a generational collector would give — no age has a space of
+its own, the allocator dividing entity blocks by kind and size class only, and
+no age is collected independently of the rest.
+
+**Five costs follow from that shape**, and each is an open question of
+[walk/questions.md](walk/questions.md) rather than a defect of this section.
+The census is paid in full on every run, which is what B1's leaf skip and B6's
+and B7's block skip are for. Epochs run too close together re-read a heap that
+barely moved, which is C1's cadence and the back-off `confirmed` supplies. A
+freeing batch cut too fine holds the epoch open longer, which is ruling 3's
+ceiling (D3) against the completion bound (D8). While the epoch is open every
+thread's freed memory is parked rather than reused, which is D8 again and, for
+the share of it that can be exempted, C2. And a large component is still
+verified in one indivisible stretch, which is D4 under ruling 10.
+
 The carve-to-first-store window is **closed by two rules**, not
 screened (decided 2026-07-26, replacing the first draft's "screened
 like every other stale read"):

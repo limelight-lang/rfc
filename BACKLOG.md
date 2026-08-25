@@ -45,6 +45,13 @@ into proper RFCs when picked up.
 
 ## Model — remaining documents
 
+- **The reserved critical memory area** — the runtime keeps a reserve for
+  must-not-fail allocations; the root queue's growth under OOM draws on it
+  and normal mode resumes only after every queued root is walked
+  (`dev/DECISIONS.md`, thirteenth entry of 2026-08-25 — the area's first
+  written trace). Unwritten: its size, residence, refill discipline, and
+  what else may draw on it. Belongs beside
+  [model/memory/arenas.md](model/memory/arenas.md).
 - **The movable array** — a `#[Moved]` class may hold an array field
   (payloads without arrays are not PHP payloads), but an array does not
   declare its element types, so the class graph cannot close over them:

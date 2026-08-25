@@ -395,18 +395,22 @@ holds a different queue.
 becoming the collector on its own hot path, and the stripe never grows.
 Both properties fail the rule above.
 
-**A boundary the growth rule has not drawn:** growth is an allocation, and
-[`../../../runtime/exceptions.md`](../../../runtime/exceptions.md) rules —
-in force and implemented — that buffering a candidate root is refusable
-work under allocation failure, the root dropped as a known leak. The tenth
-`dev/DECISIONS.md` entry ruled the full-buffer case; whether "never drops a
-root" extends to the growth allocation failing under memory exhaustion is
-a price that ruling did not name, and it is Edmond's, not yet asked.
+**The OOM boundary is ruled** (2026-08-25, thirteenth `dev/DECISIONS.md`
+entry): a failed growth allocation draws on the runtime's **reserved
+critical memory area**, and the runtime stays out of normal mode until
+every queued root has been walked — the walk is what makes the reserve's
+use bounded. The root is never dropped, which overrides the
+drop-as-known-leak licence of
+[`../../../runtime/exceptions.md`](../../../runtime/exceptions.md) for
+candidate roots. The reserved area has no write-up of its own yet; that
+entry is its first written trace, and the area's size, residence and other
+customers belong to the memory documents.
 
 **What would answer it:** the queue's contract written for enrolment — who
 owns each queue's read side, where the already-enrolled bit of Y9 is
 tested relative to the queue write, what the collector's batch takes, and
-the OOM boundary above — against `zend_spsc_queue.{c,h}` read first-hand.
+the reserve-mode entry and exit above — against `zend_spsc_queue.{c,h}`
+read first-hand.
 
 ## Y13. Traversal aggression, and what the class flag feeds  [design]
 
@@ -421,6 +425,19 @@ not traverse everything at once; this is not yet clear."
 not lost; it interacts with Y9's trigger lever (when a collection runs) and
 with maturation (which candidates it traces), and none of the three is the
 same dial.
+
+## Verification debt
+
+Inherited from the dropped stage S4, whose tombstone re-aimed the
+model-checker debt **at `rc-cycle` rather than at the cases**: the TLC
+battery under `dev/tools/rc-walk/` proves the walk's drain
+(`DrainPause.tla` and its kin, results in
+[`../rc-walk-proof.md`](../rc-walk-proof.md)), and nothing yet models this
+design's collection — the shadow count against a running mutator, the
+edge-triggered enrolment, the collector-side free of Y5's open seam.
+Whether the specs are re-derived for `rc-cycle` or retired with the walk's
+code (twelfth ruling of 2026-08-25) is a placement Edmond has not made;
+the debt itself does not lapse with the walk.
 
 ## Prior art, as of 2026-08-25
 

@@ -10,6 +10,20 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-25 (thirteenth) — root-queue growth under OOM draws on the reserved area, and the mode holds until the roots are walked
+
+**Decided by Edmond**, closing the boundary the tenth entry left unpriced:
+when the root queue's growth allocation fails, the enrolment does not drop —
+it draws on a **reserved critical memory area** the runtime keeps for exactly
+such must-not-fail work, and the runtime does not return to normal mode until
+every queued root has been walked, which is what refills the reserve's
+headroom. This overrides `runtime/exceptions.md`'s drop-as-known-leak licence
+for candidate roots. **Cost:** the reserved area itself is recorded nowhere —
+this entry is its first written trace; its size, residence and other
+customers are an open item for the memory documents.
+
+---
+
 ## 2026-08-25 (twelfth) — `rc-walk` code is deleted as `rc-cycle` replaces it
 
 **Decided by Edmond** (map round): everything `rc-cycle` makes unneeded is

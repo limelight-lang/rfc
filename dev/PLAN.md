@@ -624,8 +624,23 @@ broken links.
         recorded as premise probes that pass rather than as kills; and B6
         missed a second dimension over the same per-class lists, the
         abandoned pool's, indexed by population first.
-        **Round 2 is owed**, by the rule that a second round finds a defect
-        in the first round's fixes.
+      Critic 2026-08-24 round 2, over round 1's fixes: 21 findings, five
+        survived verification and all were executed. **The one that reaches
+        the design attacks the charged budget itself.** Every one of the three
+        prices is a floor by its own source — the sever arms swept their
+        parents in allocation order, the teardown price is an empty leaf's —
+        so a budget debited in them undercharges with a known sign rather than
+        an open one, and 14.0 ns for a dying child charges an empty leaf where
+        the unit may be a recursive teardown of a subgraph. The debit is
+        therefore taken per entity the recursion reaches, and what stays open
+        is the size of the floor rather than its direction. Beside it: E4's
+        lead sentence still carried the three-and-three split round 1 had
+        reversed; H1's count is six configurations of 22, `NoDefer` being set
+        by two files and not one; and this plan claimed an unblocking the
+        corpus does not give — A6's two remaining quantities wait on a scan
+        nobody has written and on a compiler, and where B1, B6 and D6 are
+        corpus-gated they are gated on a plurality of programs, which naming
+        one tree does not supply. Two rounds, then the device is dropped.
       2026-08-24, the corpus and the ceiling's mechanism. **The corpus is
         found and identified by reproduction**: `~/laravel-spawn-example`,
         Laravel ^13.0, and `heap-composition.php` over it returns the four
@@ -648,6 +663,27 @@ broken links.
         budget on a register between clock reads, the clock read once per
         slice boundary and once after every destructor, recorded in
         `dev/DECISIONS.md`.
+      2026-08-25, the walk over all 31 nodes this step's `done:` asks for.
+        Thirty of them carry an answer with its argument or a recorded reason
+        for staying open; **C3 was the one that carried neither** — six lines
+        saying the four constants are unmeasured, which restates the node's
+        status rather than giving a reason. It is rewritten with the reason
+        and with two defects the reading exposed. The constants ration the
+        **escalation** ladder and the node called it the pressure ladder,
+        which is the mutator's self-help path and owes a cadence rather than
+        these numbers; the overlap that invited the mis-naming is the pressure
+        ladder's own rung 3, which relaxes the ration under pressure. And
+        nothing in `ll-model` keeps the quantity `R` counts: an acquittal
+        increments a statistic and the component is dropped from the
+        collector's private tables, so the per-component history the trigger
+        needs has neither a hash nor a counter, and rungs 2 to 4 are build
+        step 5 of `rc-walk.md`, conditioned there on measurement showing
+        starvation. What would answer the node is a program that starves run
+        against a built ladder, and both halves are missing — the first behind
+        the gate C1 and B7 already name, every workload in `ll-model` being
+        hand-built. The same mis-naming stood twice more in D6, where rung 3
+        was also credited with re-walking a candidate set, which is rung 2's
+        action; both repaired. Linkcheck green at 1 725 links.
       handoff: state at the end of 2026-08-22. **Closed and holding:** A1,
         A5 (the width is not the lever; the prefetch is measured and
         unsettled), A7 (the discriminant is a bit of the retired condemned

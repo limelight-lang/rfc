@@ -114,7 +114,7 @@ flowchart TD
 
     C1[C1 background cadence<br/>open; two candidates eliminated] --> B5 & C2 & C3
     C2[C2 the young-free exemption<br/>curve measured; unsound as written]
-    C3[C3 the pressure ladder's constants<br/>measure]
+    C3[C3 the escalation ladder's constants<br/>measure; the rungs are unbuilt]
     C4[C4 do the rungs earn their keep<br/>round measured, rate needs the rungs] --> C3
 
     D1[D1 the channel to the mutator<br/>open; one direction, not two] --> D5
@@ -1160,11 +1160,39 @@ the deaths in such a heap would park. The measured tables are a share of that
 76 %, and the growth records sit outside both — unmeasured, and the reason
 the parked list is not a picture of the live heap.
 
-### C3. The pressure ladder's constants  [measure]
+### C3. The escalation ladder's constants  [measure; the rungs they ration are unbuilt and no workload starves]
 
 `R`, its doubling, the per-epoch forced-post cap, the stratification
-threshold. All are measurements nobody has taken, and `../rc-walk.md` says
-so.
+threshold. `../rc-walk.md` states all four as measurements rather than
+arguments and fixes no number.
+
+**They ration the escalation ladder, and a draft of this node named the
+pressure ladder instead.** The pressure ladder is the mutator's self-help on
+the allocation-failure path, and what it owes is a cadence rather than a
+constant, which is node C1. These four belong to rungs 2 to 4 of the
+collector's escalation: the fixpoint re-walk, the stratification of a
+repeatedly-acquitted garland, and the forced verdict after `R` consecutive
+acquittals of one component. The pressure ladder reaches them at its own
+rung 3, which relaxes the ration under memory pressure, and that overlap is
+where the mis-naming came from.
+
+**The crate keeps nothing `R` could count.** An acquittal increments a
+statistic and the component is dropped from the collector's private tables
+(`ll-model` `src/collector.rs`), so no per-component history survives the
+epoch and "the same component `R` epochs running" has neither the hash of the
+member slot set `../rc-walk.md` specifies nor a counter behind it. The
+collector re-runs epochs, which is rung 1; rungs 2 to 4 are build step 5 of
+`../rc-walk.md`, conditioned there on measurement showing starvation, and
+nothing in the crate implements them.
+
+**What would answer it:** a program that starves — one component acquitted
+epoch after epoch by real code rather than by a probe's loop — run against a
+built ladder. Both halves are missing, and the first is the gate C1 and B7
+sit behind: every workload in `ll-model` is hand-built, so a rate taken over
+one is the probe's own loop bound read back. The stratification threshold
+owes a second quantity beside that rate, how often a repeatedly-acquitted
+component has a stratum with no in-edge from the acquitted remainder, which
+C4 names and cannot take here either.
 
 ### C4. Do the fixpoint and stratification rungs earn their keep  [the round's price measured 2026-08-24; the rate needs the rungs built]
 
@@ -1751,7 +1779,7 @@ cell read.
 **And the shape the source names is cheaper than the one that draft
 rejected.** `../../weak-references.md` asks that the map's key-to-value
 edges be treated as conditional on key liveness — a rule over edges already
-recorded, which is the same material rung 3 of the pressure ladder works
+recorded, which is the same material rung 3 of the escalation ladder works
 over.
 
 **Expressing it took two attempts, and the first one leaks worse than the
@@ -1779,8 +1807,8 @@ a side table keyed on objects a container already holds.
 to run inside the marking phase: subtract the map-to-value edges from `RC`
 and `IN`, compute roots and mark from them, restore the value edge of every
 key the mark reached, and re-mark until no further key is reached. That is
-the fixpoint over reachability the paragraph above asks for, and rung 3
-already re-walks a candidate set.
+the fixpoint over reachability the paragraph above asks for, and rung 2 of
+the escalation ladder already re-walks a candidate set to one.
 
 **Neither home the node offered can carry it.** The drain's weak pass runs
 only after the exact test passes, on a component already condemned

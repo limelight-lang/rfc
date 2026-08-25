@@ -19,6 +19,9 @@ flowchart TD
     Y3[Y3 the class filter and its direction<br/>design] --> Y7
     Y4[Y4 what replaces trial deletion<br/>answered: a shadow count] --> Y5 & Y7
     Y9[Y9 candidate maturation over rotating buffers<br/>design] --> Y2 & Y7
+    Y10[Y10 what the enrolment test excludes<br/>design] --> Y7
+    Y11[Y11 two release operations, the compiler choosing<br/>design] --> Y6 & Y10
+    Y3 --> Y10
     Y5[Y5 what survives from rc-walk<br/>design]
     Y6[Y6 the candidate set is edge-triggered<br/>design] --> Y7
     Y7[Y7 what the header must carry<br/>design]
@@ -212,9 +215,75 @@ released, and whether it was re-added. What it costs is `k` collections of
 delay before a cyclic component is traced, which is node Y2's remaining
 half.
 
+**Edmond proposed the same thing independently the same day** — "suspicions
+should accumulate, and this is worth borrowing from other algorithms" — which
+is this node, and the paper is the borrowing. His phrasing carries a second
+sense worth separating: accumulation as a **trigger**, collecting only once
+enough suspects have gathered, which is `rc-trace`'s threshold of ten
+thousand candidates and Nim ORC's `rootsThreshold`. That one decides *when* a
+collection runs and belongs with the cadence; maturation decides *which*
+candidates it traces. Both are wanted and they are not the same lever.
+
 **What would answer it:** the value of `k`, which is a measurement on a real
 workload, and the buffers' residence — the same question Y7 asks of the
 header.
+
+## Y10. What the enrolment test excludes at the decrement  [design]
+
+Edmond, 2026-08-25: a decrement that does not reach zero enrols the entity
+as a suspect **unless** it is a pure object, or an object whose freedom from
+cycles is proven. Two gates rather than one, and they sit at the hottest
+place in the system, so what each costs to test is the node.
+
+**The acyclic gate is Y3's**, and it is a class property read from a bit the
+factory stamps into the header, so the test is already in the word the
+release path loads.
+
+**"Pure" carries two readings here and they are different gates.** In this
+repository the word is the purity ladder's — a destructor that runs no user
+code ([`../pure-destructors.md`](../pure-destructors.md)) — and by that
+reading the gate is unsound for this purpose: destructor purity says nothing
+about whether the entity can hold a counted reference, and a P0 class with an
+object field closes rings like any other. The reading that *is* sound is
+"holds no counted slot", which for the entity kinds is what
+`CANDIDATE_KINDS` already tests and for a class is Y3's filter one level
+finer. A third reading — frozen, unable to acquire a new reference — would be
+sound too and has no mechanism here.
+
+**What would answer it:** which reading Edmond means, and then the gate
+written against the header word the release path holds. The cost is one mask
+and one branch if both gates live in that word, and a second load if either
+does not.
+
+## Y11. Two release operations, and the compiler choosing between them  [design]
+
+Edmond, 2026-08-25, and it is the sharpest of the three: the compiler emits
+**two** decrements — a plain one, and one that also enrols a suspect — and
+uses the plain one wherever it can prove the entity is held. His example is
+the horizon's own shape: a reference extracted from a container that is
+itself held cannot orphan a cycle by being dropped, so no suspicion arises.
+
+**Why it matters more than the gates of Y10.** Those gates make the test
+cheap; this removes the test. The candidate branch disappears entirely at
+every site the proof discharges, so the mutator pays only where the compiler
+could not prove anything — which is the same bargain the count elisions of
+`../gc-horizon.md` struck, applied to enrolment rather than to the count
+itself.
+
+**What this repository owes, and what it does not.** The compiler's proof
+logic is outside these documents since the scope ruling of 2026-08-23; what
+is ours is the **contract**: two entry points on the release path, what each
+guarantees, and the obligation the cheap one places on its caller. The
+obligation has to be stated as a covering claim rather than as a hint,
+because a wrong use of the cheap operation is not a lost optimisation — it is
+a cycle no later collection can find (Y6), the enrolment being edge-triggered.
+That asymmetry is what makes this node a contract question and not a
+performance one.
+
+**What would answer it:** the two signatures, the covering claim the cheap
+one asserts, and what a build without the compiler's proof does — presumably
+emit the enrolling form everywhere, which is the safe default and is what the
+crate does today.
 
 ## Prior art, as of 2026-08-25
 

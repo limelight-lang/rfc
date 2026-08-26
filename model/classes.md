@@ -21,23 +21,51 @@ Value representation for scalars, strings, and arrays is covered separately. Mem
 
 ### Flags layout
 
+Re-laid on 2026-08-26, when the two old collectors were deleted and
+`rc-cycle` became the only design ([DECISIONS](../dev/DECISIONS.md), "the flags
+word is re-laid for one collector"). The order is chosen so that three
+predicates are mask tests and the enrolment gate is one.
+
 | Bits | Meaning |
 |------|---------|
-| 0–1 | Memory category: `00` GC heap, `01` request arena, `10` long-lived, `11` immortal |
-| 2–3 | GC state: `LIVE` / `SCANNING` / `DEAD` / `OWNED`, the CAS handoff field (see [heap-design.md](gc/heap-design.md)). `OWNED` marks a category-`00` heap object captured by an arena/actor: both handoff CAS's start from `LIVE`, so an `OWNED` object fails both and the collector skips it (owner handles its lifetime; re-armed to `LIVE` on escape to shared). Idle for arena-category entities — no strategy ever sees them — so arena reset borrows these two bits (and the color bits below) as the transient mark for its escaped-subgraph trace, cleared when a survivor is promoted ([arena-reset.md](memory/arena-reset.md)) |
-| 4–5 | Cycle collector color |
-| 6 | Cycle collector buffered bit |
-| 7 | Has weak references (side table exists) |
-| 8 | **`DESTRUCTOR_PENDING`** — this instance owes a `__destruct`: set only when the user constructor has returned successfully, **and** only for a class that has a destructor. What every teardown path dispatches on, not just the arena's ([object-lifecycle.md](../runtime/object-lifecycle.md)) |
-| 9 | **`DESTRUCTOR_RAN`** — `__destruct` has already run (exactly-once guard) |
-| 10 | Copy-on-write: counted in every memory category |
+| 0–1 | Memory category: `00` GC heap, `01` request arena, `10` long-lived, `11` immortal. Position 0 is the category's because more sites read its **value** than the kind's, and a mask test is position-free |
+| 2–5 | **Entity kind**, four bits. `0` object, `1` lazy object (Ghost/Proxy, uninitialized until first touch), `2` array, `3` ReferenceBox (a PHP `&` reference: `RcHeader \| Value`), `4` string, `5` string with its bytes outside the body, `6` `FFIBox` (built-in class wrapping a C struct), `7` `WeakRef` (built-in `WeakReference` class). Codes 8–15 are free, and **0–3 are reserved for kinds that can close a ring**, so that adding one is not silently refused by a mask. Selects the free routine at teardown, and for a bare non-object pointer the per-tag descriptor (below) |
+| 6 | Copy-on-write: counted in every memory category |
+| 7 | Arena reset mark: the transient mark of the reset's escaped-subgraph trace, cleared when a survivor is promoted ([arena-reset.md](memory/arena-reset.md)). It is safe here because a reset never runs against a collection on the same entity — an arena entity is never a candidate |
+| 8 | Acyclic gate: this instance's class is proven unable to hold a reference to a ring-closing kind, so it never enters the candidate set ([rc-cycle.md](gc/rc-cycle.md)) |
+| 9 | Ownership mark: this entity's owner is proven, so no trace need consider it |
+| 10 | Enrolled: a queue entry names this entity. Cleared by the owner at death and at no other point |
 | 11 | Live escapee: `refcount` currently holds the escape hold-count |
-| 12–14 | **Entity kind**: object, string, array, ReferenceBox (a PHP `&` reference: `RcHeader \| Value`), `FFIBox` (built-in class wrapping a C struct), `WeakRef` (built-in `WeakReference` class), and lazy object (Ghost/Proxy, uninitialized until first touch); the eighth code is reserved (a plain closure is an object). Which code names which kind is the encoding's own business — normative in `EntityKind` (`ll-model/src/refcount.rs`), and a consumer takes the assignment from the runtime's exported ABI, never by transcription. Selects the free routine at teardown, and for a bare non-object pointer the per-tag descriptor (below) |
-| 15–31 | Position in the cycle collector's candidate buffer, as `index + 1`; zero means "position unknown" and costs a linear scan |
+| 12 | Has weak references (side table exists) |
+| 13 | **`DESTRUCTOR_PENDING`** — this instance owes a `__destruct`: set only when the user constructor has returned successfully, **and** only for a class that has a destructor. What every teardown path dispatches on, not just the arena's ([object-lifecycle.md](../runtime/object-lifecycle.md)) |
+| 14 | **`DESTRUCTOR_RAN`** — `__destruct` has already run (exactly-once guard) |
+| 15 | Free |
+| 16–17 | Epoch, the collector's own |
+| 18–19 | Maturation age |
+| 20–23 | Collector reserve |
+| 24–31 | Free |
+
+**Which code names which kind is still the encoding's own business** —
+normative in `EntityKind` (`ll-model/src/refcount.rs`), and a consumer takes
+the assignment from the runtime's exported ABI, never by transcription. What
+this table fixes is the *shape*: four bits at 2–5, and the low four codes held
+for ring-closing kinds.
+
+The three predicates the order buys, over the whole flags word:
+
+| Question | Test |
+|---|---|
+| closes a cycle | `flags & 0b110000 == 0` |
+| carries a class at `+8` | `flags & 0b111000 == 0` |
+| is a string, either layout | `flags & 0b111000 == 0b010000` |
+
+and the enrolment gate is `flags & 0x733 == 0` over five conditions at once:
+category zero, kind below four, class not acyclic, ownership not proven, not
+already enrolled.
 
 ### Entity kind and non-object teardown
 
-**Decision**: the kind field (bits 12–14) is what makes a **bare heap
+**Decision**: the kind field (bits 2–5) is what makes a **bare heap
 pointer self-describing** for freeing. An object frees through
 `obj->class->dispose`, reachable from its `class` at +8; a string, array
 or ReferenceBox has no `class`, so its free routine is selected by the
@@ -50,12 +78,12 @@ This is why an entity's kind lives on the **entity**, not on each list
 slot that references it: the release-at-reset list, the cycle-candidate
 buffer and every teardown path hold bare pointers, and would otherwise
 each need an extra word per entry to say what they point at. The kind
-bit costs ~3 bits once per entity, in a word that is read at free time
+bit costs four bits once per entity, in a word that is read at free time
 anyway; a per-entry tag would cost 8 bytes per *reference*, of which
-there are far more than entities. (The candidate buffer never even needs
-the switch: it admits exactly the kinds that hold counted slots a cycle
-can close through — Object, ArrayBox, ReferenceBox, Lazy — and how that
-membership is tested is the implementation's, `ll-model/src/refcount.rs`.)
+there are far more than entities. The candidate set never needs the switch
+at all: it admits exactly the kinds that hold counted slots a cycle can close
+through — Object, Lazy, Array, ReferenceBox — which is why those four hold
+codes 0–3 and the question is a mask test.
 
 Whether `+8` holds a class pointer is itself a function of the kind —
 object and lazy carry one, every other kind does not — so no

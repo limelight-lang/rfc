@@ -457,6 +457,17 @@ collectors claim the same top half of the header flags word" (`ll-model`
 `Cargo.toml`). With one collector claiming bytes 6-7 and nothing else, that
 exclusivity has no subject left.
 
+> **Superseded on 2026-08-26 by the re-lay of the whole word**
+> ([`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md), "the flags word is
+> re-laid for one collector"; the table is
+> [`../../classes.md`](../../classes.md), "Flags layout"). The bit-by-bit
+> accounting below reasoned about the old positions, which is why it reads as
+> a search for room: the kind field is now four bits at 2-5, the acyclic gate
+> is **bit 8** rather than 4, the enrolled bit is **bit 10** rather than 6, and
+> the ownership mark of Y12 has bit 9. The reasoning is kept because what it
+> settles is not the positions but which bits have customers at all, and that
+> answer survived the move.
+
 **The mutator's own byte frees three bits, and they were the missing funding.**
 Edmond, reading the layout on 2026-08-25: the colour is not needed any more.
 It is not, and the reason generalises. The **cycle colour, bits 4-5**, is

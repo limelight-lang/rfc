@@ -116,18 +116,22 @@ Offset 0 of every heap entity. Normative: [classes.md](classes.md)
 └─────────────────────┴─────────────────────┘
 
 flags:  0-1    memory category (heap / arena / long-lived / immortal)
-        2-3    GC state (CAS handoff; bit 2 doubles as arena-reset mark)
-        4-5    cycle-collector color
-        6      buffered (in the candidate buffer)
-        7      HAS_WEAK_REFERENCES
-        8-9    destructor pending / ran
-        10     COW
+        2-5    entity kind — what a bare pointer points at; codes 0-3
+               are the ring-closing kinds, which is what makes
+               "closes a cycle" the mask test `flags & 0b110000 == 0`
+        6      COW
+        7      arena-reset mark
+        8      acyclic gate
+        9      ownership mark
+        10     enrolled
         11     IS_ESCAPEE
-        12-14  entity kind — what a bare pointer points at
-        15-31  strategy-owned: rc-trace — candidate index (15-31);
-               rc-walk — epoch byte (16-23); bits 15, 24-31 unused
-               (the condemned byte, 24-31, retired by the eager-death
-               amendment 2026-07-27 — condemnation is collector-private)
+        12     HAS_WEAK_REFERENCES
+        13-14  destructor pending / ran
+        15     free
+        16-17  epoch          ┐
+        18-19  maturation age │ the collector's
+        20-23  reserve        ┘
+        24-31  free
 ```
 
 Load-bearing invariants:
@@ -135,11 +139,12 @@ Load-bearing invariants:
 - **Publication is one 8-byte store, last.** While an entity is being
   built its slot reads refcount 0 ("not constructed"); the header
   store publishes it.
-- Under `rc-walk` all header accesses are relaxed atomics. Recorded
-  trap: a narrow store followed by a wide load kills store-forwarding
-  (~3× measured, `ll-model/dev/BENCHMARKS.md`) — narrow stores demand
-  narrow loads.
-- **COW** (bit 10): the write barrier is
+- **All header accesses are relaxed atomics**, because a collector thread
+  reads a published header while its owner mutates it. Recorded trap: a
+  narrow store followed by a wide load kills store-forwarding (~3×
+  measured, `ll-model/dev/BENCHMARKS.md`) — narrow stores demand narrow
+  loads.
+- **COW** (bit 6): the write barrier is
   `flags & COW && refcount > 1 → separate()`; a COW entity's refcount
   is maintained in **every** memory category — it answers "is this
   buffer shared?", not merely "when to free"
@@ -252,7 +257,7 @@ the kind Lazy → Object. Normative: [classes.md](classes.md) "Lazy objects".
 Type is answered at two levels, deliberately redundant:
 
 ```
-value level — tag, one load,            entity level — kind, bits 12-14,
+value level — tag, one load,            entity level — kind, bits 2-5,
 no dereference                          for bare pointers
 
 mixed $s │ ptr │ String │ RC │ ───┐

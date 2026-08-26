@@ -11,12 +11,15 @@ Companion to [classes.md](classes.md): how the class and object model maps to co
 // (object, string, array, closure, reference)
 typedef struct RcHeader {
     _Atomic uint32_t refcount;
-    _Atomic uint32_t flags;      // bits: [0-1] memory category, [2-3] GC state,
-                                 //       [4-5] cycle color, [6] buffered,
-                                 //       [7] has-weak, [8] DESTRUCTOR_PENDING,
-                                 //       [9] DESTRUCTOR_RAN, [10] COW,
-                                 //       [11] live escapee, [12-14] entity kind,
-                                 //       [15-31] candidate index.
+    _Atomic uint32_t flags;      // bits: [0-1] memory category,
+                                 //       [2-5] entity kind, [6] COW,
+                                 //       [7] arena reset mark, [8] acyclic,
+                                 //       [9] owned, [10] enrolled,
+                                 //       [11] live escapee, [12] has-weak,
+                                 //       [13] DESTRUCTOR_PENDING,
+                                 //       [14] DESTRUCTOR_RAN, [15] free,
+                                 //       [16-17] epoch, [18-19] age,
+                                 //       [20-23] collector reserve.
                                  // Authoritative table: classes.md "Flags layout"
 } RcHeader;
 

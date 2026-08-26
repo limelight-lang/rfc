@@ -90,7 +90,7 @@ Subscriber:
 
 A row lists exactly the parties that need the death of *that* object
 delivered immediately: the canonical cell (zero or one), and every map
-currently holding the object as a key. Header flag bit 7
+currently holding the object as a key. Header flag bit 12
 (`HAS_WEAK_REFERENCES`, [classes.md](classes.md) "Flags layout") is
 the cheap gate: it is set iff the row exists iff the row is non-empty.
 Teardown paths already load the flags word, so objects with no weak
@@ -124,7 +124,7 @@ longer thread exit's business.
 ### Operations
 
 - **`create(obj)`** — flag clear: allocate the entity (`refcount` 1,
-  `target = obj`), insert a row `[CanonicalRef]`, set bit 7. Flag set:
+  `target = obj`), insert a row `[CanonicalRef]`, set bit 12. Flag set:
   return the row's `CanonicalRef` retained. Edge: the row exists but
   holds no `CanonicalRef` (a map registered the object, or the
   canonical instance died while map entries remained) — allocate a
@@ -132,12 +132,12 @@ longer thread exit's business.
   an arena-resident target onto the arena's weak list** (below); the
   list may accumulate duplicates and stale entries (row died and was
   re-created before reset), which the reset walk tolerates by testing
-  bit 7 before each notify.
+  bit 12 before each notify.
 - **`get(weakref)`** — read `target`; null → null; else retain and
   return.
 - **`WeakRef` teardown** (its own refcount reached zero, kind-5 arm of
   the entity death switch): if `target` is non-null, remove own entry
-  from the target's row; an emptied row is deleted and bit 7 cleared,
+  from the target's row; an emptied row is deleted and bit 12 cleared,
   so the target dies down the cheap path. If `target` is already null
   the row died first; nothing to do.
 - **Map subscribe / unsubscribe** (future): adding an object as a key
@@ -154,7 +154,7 @@ longer thread exit's business.
    (the entity itself lives on, owned by its holders); `Map`: delete
    the map's row for this key. The displaced value's release runs
    **per the calling site's rule below**, never inside the walk.
-3. Delete the row, clear bit 7.
+3. Delete the row, clear bit 12.
 
 The walk itself severs rows and runs no user code; the one thing it
 can *trigger* — a displaced map value's release, which may cascade
@@ -194,7 +194,7 @@ committed, its cell reads null before any user code can run.**
     deliberate divergence from PHP** — the price of the teardown's
     safety argument, which holds only in the counted world.
   - *A destructor can re-create weak state* on a condemned member
-    (`WeakReference::create($this)`, a map insert): bit 7 was cleared,
+    (`WeakReference::create($this)`, a map insert): bit 12 was cleared,
     so nothing stops it. The safety net is the free itself — the
     sever-and-free path frees members through the ordinary dispose,
     whose bit-7 test delivers a second, final notification. That
@@ -205,7 +205,7 @@ committed, its cell reads null before any user code can run.**
 - **Arena reset** — arena objects die with the pages, skipping
   teardown, so reset walks the arena's weak list (populated by row
   creation, above): for each entry **whose category still reads
-  request-arena** and which still carries bit 7, notify. The category
+  request-arena** and which still carries bit 12, notify. The category
   test is load-bearing (found in build, 2026-07-27): an escapee
   promoted in place had its category rewritten and is *alive* — its
   cell must keep resolving, so the walk skips it and its row survives
@@ -222,7 +222,7 @@ committed, its cell reads null before any user code can run.**
 
 Two smaller pins the sites imply:
 
-- **Every entity kind honours bit 7 at death.** A `FFIBox` or a
+- **Every entity kind honours bit 12 at death.** A `FFIBox` or a
   lazy object is a legal `WeakReference` target, so the
   weak-notify test lives in the generic entity death switch, not in
   the object arm alone.

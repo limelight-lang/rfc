@@ -165,6 +165,76 @@ and not already enrolled are all "these bits are zero", so the whole gate is one
 outlives an arena reset and the corpse rule reads the count of the slot's next
 occupant.
 
+## Cycle teardown
+
+**The order below is binding.** It holds in the in-line form and in the
+accelerated one, and no later rewrite of the commit stage may reorder it. It is
+written here because it cannot be re-derived from the counts: every step but
+the first exists to close a window that the exact test does not see, and each
+window was found by a defect rather than by reasoning. The text is transcribed
+from `rc-walk`'s commit stage — `collect_cycles` and `drain_confirmed` in
+`ll-model`'s `walk.rs` — before that code is deleted.
+
+The teardown runs on the owning thread, on a component the owner has confirmed.
+
+1. **The exact test, per component, opening with the corpse rule.** A member
+   that reads count zero died ordinarily since it was proposed — its teardown
+   is complete and its slot parked — and the component is dropped whole before
+   any field is traced or any guard written. A dropped component carries no
+   duties: acquittal leaves nothing to clean.
+
+2. **Guard every member of every confirmed component**, `+1` each, before any
+   user code runs. A release from inside any destructor then stops at a guard
+   instead of at zero, so no member starts an ordinary death inside the
+   teardown. The guard is needed on a single thread; it has nothing to do with
+   concurrency.
+
+3. **Null every weak cell naming any confirmed member — all members of all
+   confirmed components, before the first destructor.** A weak load is the one
+   channel that can hand a destructor a reference the counts do not account
+   for. Per-member nulling interleaved with per-member teardown is what this
+   forbids: in a condemned ring A↔B, `B::__destruct` would load the cell naming
+   A, receive a strong reference, and A's slot would be freed under it. CPython
+   closes the same window in PEP 442, and Zend nulls at the top of
+   `zend_object_std_dtor` for the same reason
+   ([`../weak-references.md`](../weak-references.md), "Cycle death").
+
+4. **Run each pending `__destruct` exactly once.** User code may store,
+   release, allocate or resurrect; a store retains normally. The kind gate here
+   covers objects today and widens to `Lazy` when the compiler starts producing
+   it — a lazy entity carries a class pointer, and its destructor would
+   otherwise never run.
+
+5. **Re-verify with the guard discounted** (`RC − 1 = IN`), and only when a
+   destructor ran **anywhere** — one flag for the whole commit, not one per
+   component, so the skip owes nothing to any reasoning about what a destructor
+   in one component can reach in another. Without the discount the guards
+   themselves acquit every component and nothing is ever freed. A component
+   that fails the re-verify is abandoned: the guards come off through the
+   counted release, and the survivors carry true counts with their destructors
+   behind them.
+
+   This step is what the shortlist framing does not remove. Garbage is monotone
+   only while no reference to the component exists outside it, and step 4 hands
+   user code `$this` — a reference the teardown itself created.
+
+6. **Sever, un-guard, then drop the deferred external children.** Severing
+   nulls every member's slots and collects the displaced children;
+   in-component children are released immediately and stop at their guards,
+   external ones are held back until after the members are freed. Between the
+   sever and the free no user code runs at all, which makes the property
+   structural instead of proof-dependent. The external children then die
+   ordinarily, destructors and all; the members were GC-heap holders, so the
+   barrier's drop settles an arena escapee's hold count exactly as member
+   teardown would have.
+
+**Two consequences, accepted rather than engineered away.** A component
+acquitted at step 5 keeps its nulled cells: nulling is irrevocable, and a
+resurrected object's weak references stay null, which is where this design
+diverges from PHP's. And a weak cell that a destructor creates on a condemned
+member during step 4 is not covered by step 3; it is cleared by the free-time
+notification on the header's weak bit, at step 6.
+
 ## Concurrency
 
 One collection at a time in the process — the `amSolo` rule — because the

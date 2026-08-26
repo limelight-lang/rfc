@@ -174,25 +174,25 @@ committed, its cell reads null before any user code can run.**
   either way. Zend nulls at the top of `zend_object_std_dtor` for the
   same reason. Displaced map values release inline right after the
   row is severed — this site is already a cascade of releases.
-- **Cycle death** — the drain notifies every confirmed member
+- **Cycle death** — the teardown notifies every confirmed member
   **after the exact test passes and before any user code runs**, the
-  binding obligation of [gc/rc-walk.md](gc/rc-walk.md) (2026-07-26;
-  the after-the-exact-test half became load-bearing 2026-07-28, when
-  the forced verdict made it possible to post a *live* component — a
+  binding obligation of [gc/rc-cycle.md](gc/rc-cycle.md), "Cycle
+  teardown", step 3 (ruled 2026-07-26 for `rc-walk`; the
+  after-the-exact-test half became load-bearing 2026-07-28, when the
+  forced verdict made it possible to post a *live* component — a
   dropped message must leave its cells untouched. CPython's PEP 442
-  is the same move). Displaced map values go onto the drain's existing
-  deferred-drop queue (the one already deferring severed external
-  children), never inline. The same ordering applies to `rc-trace`'s
-  cycle teardown when it gains destructor support. Two consequences
-  are accepted, not accidental:
-  - *Nulling is irrevocable.* The drain's re-verify can acquit a
+  is the same move). Displaced map values go onto the teardown's
+  existing deferred-drop queue (the one already deferring severed
+  external children), never inline. Two consequences are accepted,
+  not accidental:
+  - *Nulling is irrevocable.* The teardown's re-verify can acquit a
     member its destructor resurrected — that object lives on with its
     cell nulled, its map entries gone, and the queued value drops
     still executing. CPython behaves identically (weakrefs to a cyclic
     isolate are cleared even if a finalizer resurrects it); Zend does
     not (it notifies only at actual free), so this is a **known,
-    deliberate divergence from PHP** — the price of the drain's safety
-    argument, which holds only in the counted world.
+    deliberate divergence from PHP** — the price of the teardown's
+    safety argument, which holds only in the counted world.
   - *A destructor can re-create weak state* on a condemned member
     (`WeakReference::create($this)`, a map insert): bit 7 was cleared,
     so nothing stops it. The safety net is the free itself — the
@@ -201,7 +201,7 @@ committed, its cell reads null before any user code can run.**
     free-time clear is **load-bearing, part of this design**, and its
     displaced map values also go onto the deferred queue — the
     sever-to-free window must stay free of user code
-    ([gc/rc-walk.md](gc/rc-walk.md), Phase 4).
+    ([gc/rc-cycle.md](gc/rc-cycle.md), "Cycle teardown", step 6).
 - **Arena reset** — arena objects die with the pages, skipping
   teardown, so reset walks the arena's weak list (populated by row
   creation, above): for each entry **whose category still reads

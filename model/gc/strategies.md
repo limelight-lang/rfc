@@ -118,12 +118,12 @@ references needs that map, and it must then pay for one — the compiler
 spilling every live reference into a per-frame list before each poll,
 which is Fil-C's arrangement and the real cost, the poll itself being
 the cheap half. `rc-satb` owes that mechanism and does not have it
-([satb.md](satb.md)). `rc-walk` owes nothing: a frame's reference is
+([satb.md](satb.md)). `rc-cycle` owes nothing: a frame's reference is
 counted like any other, so it appears in the refcount and never among
 the heap-internal edges, and the frame is a root by arithmetic
-([rc-walk.md](rc-walk.md)). The choice is paid once either way — count
-the locals and never read the stack, or skip the counts and be able to
-read it.
+([rc-cycle.md](rc-cycle.md)). The choice is paid once either way —
+count the locals and never read the stack, or skip the counts and be
+able to read it.
 
 The poll has a second duty that is not about tracing at all: it refills
 the block reserve the store barrier's log growth draws on
@@ -155,12 +155,14 @@ Strategies consume, not define, the object model:
   ValueBox runs — for tracing object children ([classes.md](../classes.md))
 - the three-phase teardown (`__destruct` with resurrection check →
   drop → memory release). A strategy that proves an object garbage may
-  free it directly instead of entering teardown — today's `rc-trace`
-  does, and the missing `__destruct` for cyclic garbage is a known gap
-  (BACKLOG). What such a strategy still owes is the bookkeeping teardown
-  would have done: above all, dropping the escape hold-count of every
-  request-arena entity the dead holder referenced, since arena entities
-  are invisible to the trace and nothing else will
+  free it directly instead of entering teardown. `rc-cycle` does not:
+  its commit stage runs the destructors in a fixed order
+  ([rc-cycle.md](rc-cycle.md), "Cycle teardown"), which is what closes
+  the missing-`__destruct`-for-cyclic-garbage gap earlier strategies
+  left open. A strategy that does free directly still owes the
+  bookkeeping teardown would have done: above all, dropping the escape
+  hold-count of every request-arena entity the dead holder referenced,
+  since arena entities are invisible to the trace and nothing else will
 
 ## Constraint: non-moving only
 
@@ -178,54 +180,55 @@ event with no live stack, outside any strategy
 |---|---|---|---|---|
 | `nogc` | bump allocation, never frees | leaks | none | benchmarks baseline; short scripts |
 | `rc` | ARC + arenas | **leaks cycles** | none | short CLI where cycles don't accumulate |
-| `rc-trace` | ARC + arenas + stop-the-thread cycle tracing | collected | small, bounded by live general heap | web workloads; the first implementation |
-| `rc-walk` **(default)** | ARC + arenas + barrier-free concurrent cycle walking, derived roots | collected | none on the mutator; the walk runs off-thread | the shipping strategy, see [rc-walk.md](rc-walk.md) |
 | `rc-satb` | ARC + arenas + concurrent SATB marking | collected | near-zero: two all-thread safepoints per epoch | designed, deliberately unbuilt — see [satb.md](satb.md) |
-| `rc-cycle` | ARC + arenas + on-the-fly cycle collection from a mutator-fed candidate set | collected | enrolment on the release path, price bounded at ~0.4 ns a pair | **the design of record since 2026-08-25**, nothing built — see [rc-cycle.md](rc-cycle.md) |
+| `rc-cycle` **(in force)** | ARC + arenas + on-the-fly cycle collection from a mutator-fed candidate set | collected | enrolment on the release path, price bounded at ~0.4 ns a pair | the design of record since 2026-08-25, being built — see [rc-cycle.md](rc-cycle.md) |
 
 `nogc` is what the echo compiler ships today; `rc` is approximately
-elephc's model; `rc-trace` is the Zend architecture done right
+elephc's model; `rc-cycle` is the Zend architecture done right
 (RC + cycle collection, plus arenas and compiler ARC elimination).
+
+Two rows left this table on 2026-08-26 and are not replaced by
+tombstones: `rc-trace`, the stop-the-thread tracer that was the first
+implementation, and `rc-walk`, the barrier-free concurrent walk that was
+the default build from 2026-07-27. Both were deleted from the tree and
+from this repository by Edmond's ruling of the same day, on the ground
+that a superseded mechanism left in place is read as the design in
+force. The code and the documents are on the branch
+`archive/pre-rc-cycle`, and the reasoning is in
+[`../../dev/DECISIONS.md`](../../dev/DECISIONS.md).
 
 ---
 
-## `rc-trace`
+## `rc-cycle`
 
-`rc-walk` is the default build since 2026-07-27 (`ll-model`
-`Cargo.toml`, `dev/DECISIONS.md`); `rc-trace` sits behind
-`--no-default-features` as the single-threaded sibling both share a
-workload with. Points 1 and 2 below are common to both, and point 3 is
-where they part.
+The strategy in force since 2026-08-26 and the only one being built.
+Points 1 and 2 belong to the whole ARC-plus-arenas family and held for
+its predecessors too; point 3 is where this strategy differs from them.
 
 1. **ARC is the primary reclamation path.** Refcount hits zero →
    immediate, deterministic teardown. Compiler pairing elimination,
    immortal flags, arena scoping per
    [arc-optimizations.md](../memory/arc-optimizations.md).
 2. **Arenas absorb the bulk.** Request-scoped objects carry no
-   refcounts and die in O(1) at arena reset; the tracer never sees
+   refcounts and die in O(1) at arena reset; the collector never sees
    them.
 3. **Cycle collection finds islands only, and enumerates no roots —
-   ever.** (Superseded 2026-07-26: an earlier draft of this item had the
-   marker trace "from the complete root set — stacks + globals"; that is
-   renounced. The collector runs off the mutator's thread and no such
-   set is ever built.) Every external hold — a stack local, a static, an
-   arena slot, an FFI handle — is already *counted*, so "referenced from
-   outside" is **computed**, `RC − IN > 0` over the walked heap, never
-   scanned ([rc-walk.md](rc-walk.md), "The central identity"). Two
-   mechanisms implement the stage in the crate today, and neither
-   enumerates anything: candidate-buffer trial deletion (`gc.rs`,
-   Bacon–Rajan as Zend does it — suspects come from non-zero decrements,
-   *armed* by buffer fill, *fired* only at a clean point, see
-   [Triggering](#triggering-arm-vs-fire)), and the whole-heap
-   synchronous walk (`walk::collect_cycles`, rc-walk build step 2 —
-   computed roots over the entity blocks, the shape the concurrent
-   collector grows from). Cost is proportional to the *walked live
-   heap*, which arenas keep small.
+   ever.** Every external hold — a stack local, a static, an arena slot,
+   an FFI handle — is already *counted*, so "referenced from outside" is
+   **computed**, `RC − IN > 0` over what the trace reached, never
+   scanned. What the trace reaches is not the heap: the candidates come
+   from the mutator, which enrols an entity at a decrement that does not
+   reach zero, and the descent stops at a mature member, at a child
+   outside the GC heap, and at a budget ([rc-cycle.md](rc-cycle.md)).
+   Trial deletion runs on shadow rows off the heap, so an abandoned
+   trace writes nothing into any entity.
 
-Because the mutator is parked while marking runs, `rc-trace` needs
-**no store-barrier hook, no snapshot, no mark-phase coordination**:
-the graph cannot change under the marker. That simplicity is why it is
-first.
+The collector proposes and the owning thread judges. A collection run
+in-line on the owning thread is exact by construction and needs no
+handshake; a collector thread is an accelerator that narrows the owner's
+list, and every *reduction* of state — clearing an enrolment bit,
+dropping a queue entry, returning a slot — is the owner's, on an exact
+reading.
 
 ### Triggering: arm vs fire
 
@@ -246,12 +249,17 @@ window opens mid-teardown (a child release during phase 2) and mid-reset.
 
 So the trigger splits in two, and only the runtime half is fixed:
 
-- **Arm (runtime mechanics).** A non-zero decrement buffers a candidate
-  root; crossing the threshold sets a *pending* flag. It runs from
-  inside `ll_release`, i.e. mid-mutation, so it **never runs the
-  collector** — it only records that one is due. The candidate buffer
-  itself is always maintained (the collector needs it to know what to
-  trace), even when no automatic trigger is configured.
+- **Arm (runtime mechanics).** A decrement that does not reach zero
+  enrols the entity in its thread's root queue; a signal that a
+  collection is due sets a *pending* flag. Both run from inside
+  `ll_release`, i.e. mid-mutation, so neither **ever runs the
+  collector** — they only record that one is due. The root queue itself
+  is always maintained, even when no automatic trigger is configured:
+  the collector needs it to know what to trace, and the enrolment is
+  the design's whole per-operation cost. The runtime keeps one signal of
+  its own and no threshold: an enrolment that cannot grow the queue, or
+  that draws on the reserve, arms the flag
+  ([rc-cycle.md](rc-cycle.md), `cycle/questions.md` Y12).
 - **Fire (compiler policy).** The collector runs only at a **clean
   point** the compiler chooses: an explicit `ll_gc_collect_cycles`, or a
   `ll_gc_maybe_collect` poll injected at a safepoint (§2) — a statement
@@ -273,10 +281,17 @@ signal enabled the runtime never fires on its own — collection is then
 purely explicit — which is a legitimate configuration (its cost is
 retained cycles, the caller's call to make).
 
-The runtime therefore exposes only mechanism: `buffer_candidate`
-(arm), `collect_cycles` / `ll_gc_collect_cycles` (fire now),
-`ll_gc_maybe_collect` (fire if armed), and the reentrancy guard. No
+The runtime therefore exposes only mechanism: enrolment on the release
+path (arm), `ll_gc_collect_cycles` (fire now), `ll_gc_maybe_collect`
+(fire if armed), the reentrancy guard, and the GC-heap allocation slow
+path, which collects in-line on a refusal rather than reporting one. No
 triggering policy lives in the model.
+
+The allocation slow path is the one fire point the runtime owns
+outright, because it is the point at which not collecting is a failure
+rather than a delay: `runtime/exceptions.md` promises a *catchable*
+memory-exhausted, and that promise holds only because a collection ran
+first ([rc-cycle.md](rc-cycle.md), `cycle/questions.md` Y14).
 
 ## `rc-satb`
 
@@ -285,13 +300,18 @@ the mutator, and correctness during marking is maintained by an SATB
 deletion barrier in the store slot. Design: [satb.md](satb.md).
 
 This section was headed "the flagship against pauses" until 2026-08-03,
-which the registry above already contradicted: `rc-walk` pauses the
-mutator not at all, while this design takes two all-thread safepoints
-per epoch and pays a barrier on every overwriting store. `rc-satb` is
-designed and deliberately unbuilt; satb.md's banner carries the reasons
-it is kept anyway and the triggers that would make it worth building.
+and the registry contradicted the heading even then: this design takes
+two all-thread safepoints per epoch and pays a barrier on every
+overwriting store, while the concurrent walk it was compared against
+paused the mutator not at all. `rc-cycle` charges less again — an
+enrolment on the release path and no barrier — so the heading has no
+claim left. `rc-satb` is designed and deliberately unbuilt; satb.md's
+banner carries the reasons it is kept anyway and the triggers that would
+make it worth building.
 
-The GC/mutator coordination machinery in
-[heap-design.md](heap-design.md) (the lock-free CAS handoff and the
-deferred-free bit) belongs to this strategy: those races only exist
-when the mutator runs during a collection cycle.
+The GC/mutator coordination machinery that `heap-design.md` carried —
+the lock-free CAS handoff and the deferred-free bit — belonged to this
+strategy: those races exist only when the mutator runs during a
+collection cycle. It was written for a GC-state field that no strategy
+in force has, and it goes with that field; `rc-cycle` parks a freed slot
+instead ([rc-cycle.md](rc-cycle.md), "Death while enrolled").

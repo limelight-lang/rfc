@@ -29,7 +29,7 @@ predicates are mask tests and the enrolment gate is one.
 | Bits | Meaning |
 |------|---------|
 | 0–1 | Memory category: `00` GC heap, `01` request arena, `10` long-lived, `11` immortal. Position 0 is the category's because more sites read its **value** than the kind's, and a mask test is position-free |
-| 2–5 | **Entity kind**, four bits. `0` object, `1` lazy object (Ghost/Proxy, uninitialized until first touch), `2` array, `3` ReferenceBox (a PHP `&` reference: `RcHeader \| Value`), `4` string, `5` string with its bytes outside the body, `6` `FFIBox` (built-in class wrapping a C struct), `7` `WeakRef` (built-in `WeakReference` class). Codes 8–15 are free, and **0–3 are reserved for kinds that can close a ring**, so that adding one is not silently refused by a mask. Selects the free routine at teardown, and for a bare non-object pointer the per-tag descriptor (below) |
+| 2–5 | **Entity kind**, four bits. `0` object, `1` lazy object (Ghost/Proxy, uninitialized until first touch), `2` array, `3` ReferenceBox (a PHP `&` reference: `RcHeader \| Value`), `8` string, `9` string with its bytes outside the body, `10` `FFIBox` (built-in class wrapping a C struct), `11` `WeakRef` (built-in `WeakReference` class). **Codes 0–7 are held for kinds that can close a ring** and 4–7 of them are free, so adding such a kind is a code assignment rather than a renumbering; codes 12–15 are free for kinds that cannot. Selects the free routine at teardown, and for a bare non-object pointer the per-tag descriptor (below) |
 | 6 | Copy-on-write: counted in every memory category |
 | 7 | Arena reset mark: the transient mark of the reset's escaped-subgraph trace, cleared when a survivor is promoted ([arena-reset.md](memory/arena-reset.md)). It is safe here because a reset never runs against a collection on the same entity — an arena entity is never a candidate |
 | 8 | Acyclic gate: this instance's class is proven unable to hold a reference to a ring-closing kind, so it never enters the candidate set ([rc-cycle.md](gc/rc-cycle.md)) |
@@ -48,20 +48,30 @@ predicates are mask tests and the enrolment gate is one.
 **Which code names which kind is still the encoding's own business** —
 normative in `EntityKind` (`ll-model/src/refcount.rs`), and a consumer takes
 the assignment from the runtime's exported ABI, never by transcription. What
-this table fixes is the *shape*: four bits at 2–5, and the low four codes held
-for ring-closing kinds.
+this table fixes is the *shape*: four bits at 2–5, and the low eight codes
+held for ring-closing kinds, of which four stand free.
 
 The three predicates the order buys, over the whole flags word:
 
 | Question | Test |
 |---|---|
-| closes a cycle | `flags & 0b110000 == 0` |
+| closes a cycle | `flags & 0b100000 == 0` |
 | carries a class at `+8` | `flags & 0b111000 == 0` |
-| is a string, either layout | `flags & 0b111000 == 0b010000` |
+| is a string, either layout | `flags & 0b111000 == 0b100000` |
 
-and the enrolment gate is `flags & 0x733 == 0` over five conditions at once:
-category zero, kind below four, class not acyclic, ownership not proven, not
+and the enrolment gate is `flags & 0x723 == 0` over five conditions at once:
+category zero, kind below eight, class not acyclic, ownership not proven, not
 already enrolled.
+
+**The reserve is four free codes, not a boundary drawn round the kinds that
+exist.** An earlier form of this table held codes 0–3 while four ring-closing
+kinds filled them exactly, so the fifth would have taken code 8 and the mask
+would have refused it permanently with nothing red — the failure
+[Y6](gc/cycle/questions.md) names. The bound is enforced in the crate as a
+`const` assertion that a kind's classification and its code agree, so a kind
+filed on the wrong side of eight fails the build
+([DECISIONS](../dev/DECISIONS.md), "the ring-closing reserve is widened to
+codes 0–7").
 
 ### Entity kind and non-object teardown
 
@@ -152,14 +162,12 @@ load flags anyway and need to know an instance is untouched — `clone`,
 which must materialize before copying rather than duplicate the shim
 pointer, and reflection's initialization state.
 
-One kind code remains reserved; the candidate index now spans 17 bits (131071
-positions, ample against the ~10k buffer arm threshold) — the two bits
-freed by removing the old class-pointer flag and the arena-reset mark
-return here.
+Eight kind codes stand free — 4–7 for a kind that can close a ring, 12–15
+for one that cannot.
 
 ### The Proxy family: FFIBox, WeakRef, Ghost, and movable handles are one pattern
 
-Kinds 4–6 are not three unrelated built-ins but three instances of one
+Kinds 1, 10 and 11 are not three unrelated built-ins but three instances of one
 shape, the **Proxy**: an indirection standing in for a target that
 intercepts every access to it, paying one dereference to attach an effect
 the target and its callers never see. This is the Gang-of-Four *Proxy*

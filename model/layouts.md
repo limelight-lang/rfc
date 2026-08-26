@@ -116,9 +116,9 @@ Offset 0 of every heap entity. Normative: [classes.md](classes.md)
 └─────────────────────┴─────────────────────┘
 
 flags:  0-1    memory category (heap / arena / long-lived / immortal)
-        2-5    entity kind — what a bare pointer points at; codes 0-3
-               are the ring-closing kinds, which is what makes
-               "closes a cycle" the mask test `flags & 0b110000 == 0`
+        2-5    entity kind — what a bare pointer points at; codes 0-7
+               are held for the ring-closing kinds, which is what makes
+               "closes a cycle" the mask test `flags & 0b100000 == 0`
         6      COW
         7      arena-reset mark
         8      acyclic gate

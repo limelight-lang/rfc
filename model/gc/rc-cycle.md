@@ -177,9 +177,9 @@ and `used` falls at the return rather than at the parking — otherwise a block
 empties with a corpse inside it and goes back to the pool.
 
 **Enrolment requires the GC-heap category**, which the release path gets for
-free: category zero, kind below four, class not acyclic, ownership not proven
+free: category zero, kind below eight, class not acyclic, ownership not proven
 and not already enrolled are all "these bits are zero", so the whole gate is one
-`flags & 0x733 == 0`. Without the category clause an arena entity in the queue
+`flags & 0x723 == 0`. Without the category clause an arena entity in the queue
 outlives an arena reset and the corpse rule reads the count of the slot's next
 occupant.
 

@@ -10,6 +10,30 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-26 — the ring-closing reserve is widened to codes 0–7
+
+**Decided:** entity kinds are `Object 0, Lazy 1, Array 2, Reference 3, String 8,
+StringDynamic 9, Box 10, WeakRef 11`. Codes 0–7 are held for kinds that can
+close a ring and 4–7 of them stand free; 12–15 are free for kinds that cannot.
+"Closes a cycle" becomes `flags & 0b100000 == 0`, "is a string" becomes
+`flags & 0b111000 == 0b100000`, and the enrolment gate becomes
+`flags & 0x723 == 0`.
+**Why:** the assignment ruled earlier the same day held codes 0–3 for
+ring-closing kinds and gave all four of them away, so the reserve reserved
+nothing: a fifth such kind — a closure entity, and 179 of the corpus's 381
+objects are closures — would have taken code 8 and been refused by the mask
+permanently, with no test and no build failure, which is the miss
+[Y6](../model/gc/cycle/questions.md) exists to prevent. The ring test also
+narrows from two bits to one.
+**Rejected:** moving Array and Reference to 4–5 to leave room inside the
+class-word prefix 0–1. An entity carrying a class word at +8 tears down through
+`dispose` and traces through `traced_runs`, so a new one of those needs no kind
+of its own — it is an Object.
+**Cost:** the code assignment recorded on the same day is superseded and the
+crate's `EntityKind` is renumbered a second time before any of it shipped.
+Nothing in [lowering.md](../model/lowering.md) moves — its C mirror names bit
+positions and no kind codes — and no consumer exists to transcribe the codes.
+
 ## 2026-08-26 — the collector proposes a shortlist, and every reduction of state belongs to the owner's exact reading
 
 **Decided:** the trace produces suspects, not verdicts; the exact judgement on

@@ -347,10 +347,18 @@ which is this node's permanent miss.
 > kind code and `STRING_OUT_OF_LINE` disappears), COW 6, arena reset mark 7,
 > acyclic gate 8, ownership mark 9, enrolled 10, escapee 11, weak 12, destructor
 > pending 13, destructor ran 14, free 15, epoch 16–17, age 18–19, collector
-> reserve 20–23, byte 3 free. The kinds are renumbered `Object 0, Lazy 1,
-> Array 2, Reference 3, String 4, StringDynamic 5, Box 6, WeakRef 7` so that
-> "closes a cycle", "carries a class at +8" and "is a string" are mask tests,
-> and the enrolment gate becomes one `flags & 0x733 == 0`.
+> reserve 20–23, byte 3 free. The kinds are renumbered so that "closes a
+> cycle", "carries a class at +8" and "is a string" are mask tests.
+>
+> **The code assignment named here was superseded the same day.** It read
+> `Object 0, Lazy 1, Array 2, Reference 3, String 4, StringDynamic 5, Box 6,
+> WeakRef 7` with a gate of `flags & 0x733 == 0`, which held codes 0–3 for
+> ring-closing kinds and assigned all four of them, so a fifth such kind would
+> have taken code 8 and been refused by the mask forever — this question's own
+> failure. In force: `Object 0, Lazy 1, Array 2, Reference 3, String 8,
+> StringDynamic 9, Box 10, WeakRef 11`, codes 4–7 held free for ring-closing
+> kinds and 12–15 free for the rest, gate `flags & 0x723 == 0`
+> ([classes.md](../../classes.md), "Flags layout").
 >
 > The text below is kept as the record of how the displacement was reasoned
 > to, and of the two claims — `rc-trace`'s candidate index and `rc-walk`'s

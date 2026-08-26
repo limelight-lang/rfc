@@ -10,6 +10,129 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-26 — the collector proposes a shortlist, and every reduction of state belongs to the owner's exact reading
+
+**Decided:** the trace produces suspects, not verdicts; the exact judgement on
+the owning thread decides, and clearing an enrolment bit, dropping a queue entry
+or returning a slot may happen only there.
+**Why:** garbage is monotone — a ring whose every referrer is inside itself
+cannot be reached from outside — so the mutator cannot overturn "garbage"; only
+a wrong trace can, and the one source of error is local references whose pairs
+the compiler elided, which the counts do not see and the owner's stack does.
+**Rejected:** letting a dirty pass acquit. Ring A↔B with an external X→B: the
+trace reads `RC(B)=2`, subtracts the internal edge, acquits; X then releases B
+without re-enrolment, the ring dies whole, and a cleared bit means no decrement
+ever comes again.
+**Cost:** none in the in-line form; in the accelerated form the owner pays for a
+noisy list, which makes trace precision a cost rather than a correctness
+property.
+
+## 2026-08-26 — a collection run in-line on the owner is the exact form, and a collector thread is an accelerator
+
+**Decided:** run from the mutator, the algorithm's judgement is valid outright —
+no verdict list, no handshake, no second phase. A mutator that cannot allocate
+while a collector thread holds the claim waits rather than preempting.
+**Why:** the owning thread sees its own stack and changes the counts it reads,
+so the snapshot is consistent by construction. Waiting is safe because the claim
+covers the trace alone; the exact judgements are the owners' own, at their own
+checkpoints.
+**Rejected:** preemption by an abort flag — cheap, since mark and scan write
+nothing to the heap, but Edmond ruled for waiting.
+**Cost:** the trace's duration bounds the stall of a thread under memory
+pressure. Coroutines yielding inside a destructor are out of scope by the same
+day's ruling — recorded, not designed.
+
+## 2026-08-26 — the shadow count is found by arithmetic from the address, and leaves the header entirely
+
+**Decided:** one row per slot in a per-block array, block by mask and slot by
+`(off - LINE_SIZE) * recip >> 32`; the collector's triple sits in the free tail
+of the block's header line, past the 192 bytes `HeapBlockHeader` occupies.
+**Why:** measured 2.6 ns a lookup against 10.4 for a pointer-keyed hash with a
+displacement hint in the entity header, and 717 MiB against 2.0–4.0 GiB on a
+12 GiB heap — the hash's upper figure being its doubling when 94 M rows land
+just past load 0.7.
+**Rejected:** the hash and its six header bits; and the eleven-bit index of Y4,
+which bounded the collection at 2047.
+**Cost:** the formula does not cover every GC-heap population — see the next
+entry.
+
+## 2026-08-26 — the trace dispatches on the block's kind, and the retained-block index outlives rc-walk
+
+**Decided:** ordinary entity block by arithmetic; retained blocks by binary
+search over the occupancy index; a large entity's row in its own block header;
+arena blocks never entered, their occupants read as external live references.
+**Why:** retained blocks are former arena blocks filled by a bump allocator —
+mixed sizes, no stride, nothing to divide by. The dispatch is free: the trace
+holds the block header before it can reach any row.
+**Rejected:** not tracing retained blocks at all, which would reinstate the
+limit `rc-walk` removed in August — a ring living wholly among promoted
+survivors would never be collected.
+**Cost:** `memory/retained.rs` is excluded from the deletion of `rc-walk`, and
+the retained path does not have the arithmetic path's measured cost.
+
+## 2026-08-26 — the shadow rows are not zeroed greedily; the met flag moves to a group bitmap
+
+**Decided:** one bit per group of eight slots is zeroed instead of the rows, and
+a group's rows are initialised at its first touch. The row becomes two bits of
+colour and thirty of working count, saturating as "conservatively live".
+**Why:** a zero row means "not met", so a per-slot array would arrive zeroed for
+every slot of a touched block. Measured for the 717 MiB case: 41–76 ms to zero
+mapped memory, 178–196 ms from fresh — asked for on the path where an
+allocation has already failed. The bitmap costs 1.4 ms, and untouched pages are
+never materialised.
+**Rejected:** the chunked form as the cure. On a full trace it writes more than
+the flat array — 762 MiB against 717 — since every chunk is zeroed too; it stays
+the alternative for a traced density below 29 %.
+**Cost:** one load of the bitmap word before the row can be trusted.
+
+## 2026-08-26 — the flags word is re-laid for one collector, and the entity kinds are renumbered
+
+**Decided:** category 0–1, kind **2–5**, COW 6, arena mark 7, acyclic 8, owned 9,
+enrolled 10, escapee 11, weak 12, pending 13, ran 14, free 15, epoch 16–17, age
+18–19, collector reserve 20–23, byte 3 free. Kinds become `Object 0, Lazy 1,
+Array 2, Reference 3, String 4, StringDynamic 5, Box 6, WeakRef 7`, and
+`STRING_OUT_OF_LINE` becomes kind code 5, meaning **bytes outside the body,
+whatever the reason**.
+**Why:** with one collector the word has no truce to keep. The order makes three
+predicates mask tests — closes a cycle, carries a class at +8, is a string — and
+folds the enrolment gate into one `flags & 0x733 == 0` over five conditions.
+**Rejected:** kind at bits 0–3. The category's value is read by more surviving
+sites than the kind's, and a mask test is position-free, so position 0 goes to
+the category.
+**Cost:** this reopens the renumbering refused on 2026-08-07 and confirmed on
+2026-08-13. It rides along because the field is being rebuilt anyway; the
+candidate gate alone would still not justify it.
+
+## 2026-08-26 — an entity that dies while enrolled parks its slot, and the owner un-parks it
+
+**Decided:** death runs in full at once — weak cells, destructor, children — and
+only the slot is withheld while a queue entry names it. A dirty reader may mark
+the entry a corpse; clearing the bit and returning the slot are the owner's.
+Two parkings: one between collections, one inside a collection; `used` falls at
+the return, not at the parking.
+**Why:** the candidate index that allowed a queue entry to be withdrawn dies
+with `rc-trace`. `ll_release` publishes the zero before the death path begins,
+so a reader acting on it could hand a slot back out under a running destructor;
+and a slot reused inside a collection would inherit the dead occupant's row.
+**Rejected:** keeping an index in the header so entries can be withdrawn —
+seventeen bits, permanently.
+**Cost:** parked memory bounded by the queue's length until the next collection,
+which memory pressure itself triggers.
+
+## 2026-08-26 — both old collectors are deleted whole rather than bannered, and the old state is a branch
+
+**Decided:** `rc-walk`, `rc-trace` and the GC horizon leave the working tree in
+code and in documents before `rc-cycle` is written; `archive/pre-rc-cycle`
+carries the old state in both repositories.
+**Why:** Edmond's reason is a reader's, not a tidiness one — a superseded
+mechanism left in the tree is read as the design in force, by a person or by an
+agent.
+**Rejected:** keeping `rc-trace` alive until `rc-cycle` passes its tests, which
+would have kept a working collector and a live contract to compare against.
+**Cost:** the crate has no cycle collector for the duration, and the tests of
+both mechanisms go with them — each one classified rather than swept.
+
+
 ## 2026-08-25 (twenty-fourth) — the header carries a hash displacement, not an index, and the slice bound goes with it
 
 **Decided by Edmond**, after the index of the nineteenth entry was measured

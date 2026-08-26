@@ -221,7 +221,17 @@ read from a bit the factory stamps into the header" describes nothing that
 exists: no acyclic flag is defined on the class or in the header word, and
 `src/walk.rs:754` records the skip as compiler-owed and untaken.
 
-## Y4. What replaces trial deletion's mutation of live counts  [answered 2026-08-25: a shadow count]
+## Y4. What replaces trial deletion's mutation of live counts  [answered 2026-08-25: a shadow count; residence re-decided 2026-08-26]
+
+> **Amended 2026-08-26.** The shadow count stands and its reason is unchanged.
+> Its **residence** does not: the two passages below that put an eleven-bit
+> index in the header, and that call the lookup an indexed load, describe a
+> shape Y7 replaced with a hash displacement on 2026-08-25 and that
+> 2026-08-26 replaced in turn. The row is now found by arithmetic from the
+> entity's address — no index, no hash, no field in the header — and the row
+> carries no captured count, because the commit stage judges again rather than
+> comparing. See [`../rc-cycle.md`](../rc-cycle.md), "Where the shadow count
+> lives", and Y7 below.
 
 Bacon–Rajan's trial deletion decrements the object's own count during
 `markGray`/`scan` and restores it in `scanBlack`. Beside a running mutator
@@ -323,7 +333,28 @@ it is node Y12's, where the named SPSC candidate was read first-hand on
 2026-08-25 and rejected: it drops the root when its growth allocation fails,
 which is this node's permanent miss.
 
-## Y7. What the header must carry  [answered 2026-08-25: bytes 6-7, one two-byte store, and a hash displacement rather than an index]
+## Y7. What the header must carry  [re-answered 2026-08-26: the maturation stamp and nothing else]
+
+> **Amended 2026-08-26, and the amendment is the answer in force.** The
+> collector's way back to a row leaves the header entirely: the row is computed
+> from the address, so the six bits of hash displacement below are not needed
+> and bits 20–31 stay free. What the header keeps from the collector is the
+> maturation stamp — epoch and age, four bits — because it lives *between*
+> collections, where no row exists.
+>
+> With both old collectors deleted the whole word is re-laid: category 0–1,
+> entity kind **2–5** (four bits, so the string's out-of-line layout becomes a
+> kind code and `STRING_OUT_OF_LINE` disappears), COW 6, arena reset mark 7,
+> acyclic gate 8, ownership mark 9, enrolled 10, escapee 11, weak 12, destructor
+> pending 13, destructor ran 14, free 15, epoch 16–17, age 18–19, collector
+> reserve 20–23, byte 3 free. The kinds are renumbered `Object 0, Lazy 1,
+> Array 2, Reference 3, String 4, StringDynamic 5, Box 6, WeakRef 7` so that
+> "closes a cycle", "carries a class at +8" and "is a string" are mask tests,
+> and the enrolment gate becomes one `flags & 0x733 == 0`.
+>
+> The text below is kept as the record of how the displacement was reasoned
+> to, and of the two claims — `rc-trace`'s candidate index and `rc-walk`'s
+> condemned byte — whose removal freed the word.
 
 Under `rc-trace`'s shape the cycle collector owns **twenty of the flags
 word's thirty-two bits**: two for the colour, one for buffered, seventeen
@@ -727,7 +758,15 @@ and the reserved critical area itself, which
 [`../../../BACKLOG.md`](../../../BACKLOG.md) carries and which the thirteenth
 ruling is still the only written trace of.
 
-## Y13. Traversal aggression, and what the class flag feeds  [design]
+## Y13. Traversal aggression, and what the class flag feeds  [design; licensed 2026-08-26]
+
+> **Amended 2026-08-26.** This node asked how far a trace may be cut without
+> breaking the collection. The answer is that it may be cut arbitrarily: the
+> collector produces a shortlist and the owner judges, so a pruned, budgeted or
+> abandoned trace costs recall and never correctness
+> ([`../rc-cycle.md`](../rc-cycle.md), "Who judges"). What stays open is the
+> policy — how much to cut, and the density of a real traced set, which also
+> decides whether the chunked row form is ever taken.
 
 Edmond on the map, 2026-08-25: the collection will not trace every
 candidate at once — some measure of aggression decides how much is traced
@@ -741,7 +780,17 @@ not lost; it interacts with Y9's trigger lever (when a collection runs) and
 with maturation (which candidates it traces), and none of the three is the
 same dial.
 
-## Y14. The collection a mutator runs itself under memory pressure  [answered 2026-08-25: the synchronous form, on its own roots, while no collector runs elsewhere]
+## Y14. The collection a mutator runs itself under memory pressure  [answered 2026-08-25; strengthened 2026-08-26: it is the exact form]
+
+> **Amended 2026-08-26.** The in-line collection is not merely admissible, it
+> is the **standard**: run on the owning thread it sees that thread's stack and
+> its own counts, so its judgement is exact and needs no second phase, no
+> verdict list and no handshake. A collector thread is an accelerator that
+> narrows the owner's list. A mutator that cannot allocate while a collector
+> thread holds the claim waits rather than preempting (Edmond, 2026-08-26);
+> waiting is safe because the claim covers the trace alone. Coroutines yielding
+> inside a destructor would reintroduce interleaving on one thread and are
+> **out of scope** by Edmond's ruling of the same day — recorded, not designed.
 
 Edmond, 2026-08-25: under memory pressure the collector may start directly on
 the mutator's thread, provided no collector is running on another thread.

@@ -7,11 +7,11 @@ each class of destructor lets the runtime skip. It owns the purity
 ladder (P0, P1, P2, NR), the transitive closure that turns a body-level
 tier into a class-level verdict, the hand-off drain that the closure
 makes sound, and the trust class the resulting bit belongs to. The
-collector's protocol is [rc-walk.md](rc-walk.md); this document changes
+collector's protocol is rc-walk.md; this document changes
 none of it, and only says which of its steps a component may skip.
 
 Two other designs read the verdict as an instrument.
-[gc-horizon.md](gc-horizon.md) uses it twice — for the release horizon
+gc-horizon.md uses it twice — for the release horizon
 and for the checkpoint condition — and the drop-point policy of
 [static-lifetimes.md](../memory/static-lifetimes.md#drop-point-policy)
 already splits on destructor presence, which is the P0 row of the ladder
@@ -56,7 +56,7 @@ Three parts, in decreasing certainty.
    today's whole drain already runs — on the mutator, at its own
    checkpoint, so no external stop and no collision with the principle
    that forbids stopping the mutator from outside
-   ([rc-walk.md](rc-walk.md#when-the-collector-runs-the-pressure-ladder))
+   (rc-walk.md)
    — and everything after it can move to the collector once the residual
    duties are resolved and the tail bound is chosen: after the exact
    test, the guards and the weak nulling, no mutator action can reach an
@@ -110,7 +110,7 @@ unconditionally to completion. The compiler obligation is a closed-world
 closure over the field-type graph — the same discipline, and the same
 failure modes (a subclass opening the set, `mixed`, an array of unknown
 element class), as the acyclic flag
-([rc-walk.md](rc-walk.md#the-compilers-acyclic-flag)); any edge the
+(rc-walk.md); any edge the
 analysis cannot close makes the class impure.
 
 A consequence for the hand-off: the external children of a pure
@@ -134,7 +134,7 @@ scalars; P2 writes only nulls; NR forbids by proof the escape of any
 address reachable through `$this` — a member's address included, which
 is why the obligation is wider than escape analysis of the receiver
 alone. Weak cells are nulled before any destructor runs
-([rc-walk.md](rc-walk.md#what-this-design-does-not-solve), the weak
+(rc-walk.md, the weak
 obligation of 2026-07-26), closing the one non-store channel.
 
 A P2 destructor's own-slot stores preserve the exact test's equality
@@ -309,7 +309,7 @@ deferred memory is unbounded in epoch duration
 deadline on the collector's tail, a per-checkpoint slice budget in the
 fallback — is part of this design rather than an option on it; the
 number is the tail-bound question below. **The requirement moved to
-[gc/rc-walk.md](rc-walk.md), "Deferred physical release, and when an epoch
+gc/rc-walk.md, "Deferred physical release, and when an epoch
 ends", on 2026-08-24**: it survives this section's amendment, since it binds
 whoever does the work, and this section is a record.
 
@@ -335,7 +335,7 @@ impure.
 ## Composition
 
 **With unique ownership**
-([rc-walk.md](rc-walk.md#unique-ownership-one-owning-slot-and-no-count)):
+(rc-walk.md):
 a unique entity of a P0 class dies at its owning slot's overwrite with
 no teardown protocol left but its children's releases; add "no counted
 fields" and the overwrite is literally a plain store plus a parked free
@@ -355,11 +355,11 @@ and parked while an epoch is open — and it shrinks the census and the
 per-epoch metadata.
 
 **With the birth count**
-([rc-walk.md](rc-walk.md#the-birth-count-a-known-in-degree-is-written-at-allocation)):
+(rc-walk.md):
 mechanically orthogonal, birth-side against death-side, no shared state;
 they share the compiler-proof delivery channel and the Phase D gate.
 
-**With GC horizon** ([gc-horizon.md](gc-horizon.md)): the transitive
+**With GC horizon** (gc-horizon.md): the transitive
 verdict is that design's instrument in two places — the release horizon
 reads it per released class, and the checkpoint condition reads it over
 the condemned set's downward closure. Because the closure is what both
@@ -419,7 +419,7 @@ this runtime already honours and must keep for everything impure.
 3. **What bounds an open tail?** The deadline on the collector's tail —
    and in the sliced fallback the per-checkpoint budget — against the
    parked-memory currency of epoch duration; which rung of the pressure
-   ladder ([rc-walk.md](rc-walk.md#when-the-collector-runs-the-pressure-ladder))
+   ladder (rc-walk.md)
    forces completion.
 4. **The weak-table redesign.** A per-entity weak cell reachable by
    address would make nulling one atomic store from any thread. Under

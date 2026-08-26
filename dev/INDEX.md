@@ -22,11 +22,10 @@ No product code lives here — this is the specification, see
   verifies every cross-reference and anchor resolves; run it after moving a
   document or rewording a heading. `heap-composition.php` walks a booted
   application's object graph and reports what a Limelight heap of it would
-  hold — the heap-side half of the corpus question, node A6 of
-  [../model/gc/walk/questions.md](../model/gc/walk/questions.md)
-- **rc-walk model checker** → [tools/rc-walk/](tools/rc-walk/README.md) —
-  TLA+/TLC scenario battery for the collector; results in
-  [../model/gc/rc-walk-proof.md](../model/gc/rc-walk-proof.md)
+  hold — the heap-side half of the corpus question. The node that asked it
+  went with the walk's question graph on 2026-08-26; what the instrument is
+  owed now is the verification debt of
+  [../model/gc/cycle/questions.md](../model/gc/cycle/questions.md)
 
 ## Active initiative
 

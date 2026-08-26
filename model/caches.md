@@ -138,7 +138,7 @@ returned to the global chain when the thread dies. Blocks are fungible, so
 replacement one. The same is true of the heap's one retained empty block per size
 class.
 
-**The rc-walk component history** ([gc/rc-walk.md](gc/rc-walk.md)) — the only
+**The rc-walk component history** (gc/rc-walk.md) — the only
 designed memo here with a stated invalidation event *and* a stated false-hit
 cost: a spurious match costs one early forced drain and nothing else. It is the
 model the rest of this document holds its caches to.

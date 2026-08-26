@@ -90,7 +90,7 @@ barrier's micro-operations ([strategies.md](../gc/strategies.md)):
 `store_ptr` / `store_box` publish the new reference and `drop` releases
 the displaced one, each composing the category barrier with the ARC
 operations and, in the `rc-satb` build, the SATB deletion barrier
-([satb.md](../gc/satb.md)). One door, split by slot width and by
+(satb.md). One door, split by slot width and by
 new-vs-old, not a second door.
 
 ### The dangerous direction: longer-lived ← shorter-lived

@@ -86,7 +86,7 @@ Each operation is still composed at build time from up to three layers:
 |---|---|---|
 | Category barrier (cross-arena check, escape count + release log) | arenas, strategy-independent | in the full form; gone where `owner_cat` makes it impossible ([arenas.md](../memory/arenas.md)) |
 | RC operations (`retain(new)` in `store`, `release(old)` in `drop`) | ARC | in every RC-based strategy, after compiler pairing elimination |
-| Strategy hook (e.g. SATB deletion barrier) | active strategy | only if the strategy defines one |
+| Strategy hook | active strategy | only if the strategy defines one; `rc-cycle` defines none — it enrols on the release path instead |
 
 The slot is still the *only* door through which any strategy observes
 reference mutation; splitting the write from the release does not add a
@@ -117,8 +117,7 @@ hold references. Only a strategy that declines to *count* stack
 references needs that map, and it must then pay for one — the compiler
 spilling every live reference into a per-frame list before each poll,
 which is Fil-C's arrangement and the real cost, the poll itself being
-the cheap half. `rc-satb` owes that mechanism and does not have it
-([satb.md](satb.md)). `rc-cycle` owes nothing: a frame's reference is
+the cheap half. `rc-cycle` owes nothing: a frame's reference is
 counted like any other, so it appears in the refcount and never among
 the heap-internal edges, and the frame is a root by arithmetic
 ([rc-cycle.md](rc-cycle.md)). The choice is paid once either way —
@@ -180,7 +179,6 @@ event with no live stack, outside any strategy
 |---|---|---|---|---|
 | `nogc` | bump allocation, never frees | leaks | none | benchmarks baseline; short scripts |
 | `rc` | ARC + arenas | **leaks cycles** | none | short CLI where cycles don't accumulate |
-| `rc-satb` | ARC + arenas + concurrent SATB marking | collected | near-zero: two all-thread safepoints per epoch | designed, deliberately unbuilt — see [satb.md](satb.md) |
 | `rc-cycle` **(in force)** | ARC + arenas + on-the-fly cycle collection from a mutator-fed candidate set | collected | enrolment on the release path, price bounded at ~0.4 ns a pair | the design of record since 2026-08-25, being built — see [rc-cycle.md](rc-cycle.md) |
 
 `nogc` is what the echo compiler ships today; `rc` is approximately
@@ -293,25 +291,11 @@ rather than a delay: `runtime/exceptions.md` promises a *catchable*
 memory-exhausted, and that promise holds only because a collection ran
 first ([rc-cycle.md](rc-cycle.md), `cycle/questions.md` Y14).
 
-## `rc-satb`
+## What the GC/mutator coordination machinery went with
 
-Same composition, one substitution: marking runs **concurrently** with
-the mutator, and correctness during marking is maintained by an SATB
-deletion barrier in the store slot. Design: [satb.md](satb.md).
-
-This section was headed "the flagship against pauses" until 2026-08-03,
-and the registry contradicted the heading even then: this design takes
-two all-thread safepoints per epoch and pays a barrier on every
-overwriting store, while the concurrent walk it was compared against
-paused the mutator not at all. `rc-cycle` charges less again — an
-enrolment on the release path and no barrier — so the heading has no
-claim left. `rc-satb` is designed and deliberately unbuilt; satb.md's
-banner carries the reasons it is kept anyway and the triggers that would
-make it worth building.
-
-The GC/mutator coordination machinery that `heap-design.md` carried —
-the lock-free CAS handoff and the deferred-free bit — belonged to this
-strategy: those races exist only when the mutator runs during a
-collection cycle. It was written for a GC-state field that no strategy
-in force has, and it goes with that field; `rc-cycle` parks a freed slot
-instead ([rc-cycle.md](rc-cycle.md), "Death while enrolled").
+`heap-design.md` carried a lock-free CAS handoff and a deferred-free bit
+whose races exist only when the mutator runs during a collection cycle. They
+were written for a GC-state field in the header that no strategy in force
+has, and they go with that field. `rc-cycle` parks a freed slot instead, on
+two windows of different widths ([rc-cycle.md](rc-cycle.md), "Death while
+enrolled").

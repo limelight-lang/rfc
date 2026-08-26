@@ -15,7 +15,7 @@ pluggable garbage collection instead of a one-size-fits-all VM heap.
 |---|---|---|
 | Memory categories | Every object lives in a category: request arena, long-lived, immortal, or GC heap. Most objects die with their arena in O(1) and are invisible to the GC | [arenas](model/memory/arenas.md), [arena-reset](model/memory/arena-reset.md) |
 | Static lifetimes | The compiler tracks ownership and moves, Rust-style but with a runtime fallback instead of compile errors. Proven objects get zero refcounting and a scheduled destructor call | [static-lifetimes](model/memory/static-lifetimes.md) |
-| Pluggable GC | The collector is a build-time strategy behind a fixed contract. Default `rc-trace`: ARC + arenas + stop-the-thread cycle tracing. Flagship against pauses: concurrent SATB marking | [strategies](model/gc/strategies.md), [satb](model/gc/satb.md), [heap-design](model/gc/heap-design.md) |
+| Pluggable GC | The collector is a build-time strategy behind a fixed contract. One strategy is in force, `rc-cycle`: ARC + arenas + on-the-fly cycle collection from a mutator-fed candidate set | [strategies](model/gc/strategies.md), [rc-cycle](model/gc/rc-cycle.md), [heap-design](model/gc/heap-design.md) |
 | Actors | `#[Actor]` classes own their arenas and execute serially; queues are the only door between actors. Collection runs per actor at message boundaries; each actor may bind its own GC | [actors](runtime/actors.md) |
 | Object model | C++-grade dispatch for PHP: inline-trailing vtables, COM-style itables, fat interface references, inline caches that never invalidate | [classes](model/classes.md), [lowering](model/lowering.md), [caches](model/caches.md) |
 | Exceptions | Three channels — table-driven unwinding, an error-return channel, and a non-catchable bailout for fatals — with the **compiler** choosing, not the programmer. The return channel is also the portability floor: it needs no host support, which is what makes the embedded/WASM/JVM modes possible. Design has known open defects, listed in the document | [exceptions](runtime/exceptions.md) |
@@ -33,8 +33,7 @@ pluggable garbage collection instead of a one-size-fits-all VM heap.
 - [lowering.md](model/lowering.md) — the C structures and LLVM IR behind the model
 - [caches.md](model/caches.md) — every cache site, why none carries a replacement policy, and what each does when it fills
 - [model/memory/](model/memory/README.md) — arenas, arena reset, static lifetimes, ARC optimizations
-- [model/gc/](model/gc/README.md) — GC strategies, SATB, heap design, research survey
-- [model/gc/gc-horizon.md](model/gc/gc-horizon.md) — GC horizon: where an uncounted borrow pays, with its [state set](model/gc/gc-horizon-states.md) and its [case book](model/gc/gc-horizon-cases/README.md)
+- [model/gc/](model/gc/README.md) — the strategy contract, `rc-cycle` and its question graph, heap design, research survey; the index also says what was deleted on 2026-08-26 and where it is
 
 ### `runtime/` — execution substrate
 

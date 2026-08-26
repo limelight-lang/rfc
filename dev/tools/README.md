@@ -43,10 +43,10 @@ dependency beyond the PHP already required to work on this project.
 Walks a booted application's object graph and reports what a Limelight heap
 of it would hold: entities by kind, counted slots by what they hold, and the
 counted edges per entity. It answers the heap-side half of the corpus
-question — node A6 of
-[../../model/gc/walk/questions.md](../../model/gc/walk/questions.md), with
-node B1 wanting the share of entities that cannot sit on a cycle and node B4
-the edge-to-entity ratio.
+question. The nodes that asked it — A6, with B1 wanting the share of entities
+that cannot sit on a cycle and B4 the edge-to-entity ratio — were the walk's,
+and went with its question graph on 2026-08-26; `rc-cycle` asks the same three
+of the same instrument.
 
 ```
 HEAP_CHDIR=/path/to/app php heap-composition.php bootstrap.php label

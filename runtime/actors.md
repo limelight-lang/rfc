@@ -92,7 +92,7 @@ thread to disagree with; and the frees the park list defers are bound to the
 heap that issued the block, which is a thread's
 (`ll-model` `src/memory/deferred_free.rs`). What is left of the question is the
 weak table's residence, which is node E1
-([../model/gc/walk/questions.md](../model/gc/walk/questions.md#e1-actors-and-the-epoch-protocol--the-stamp-half-answered-for-actors-2026-08-24-four-items-open)),
+(../model/gc/walk/questions.md),
 and whether two epochs are ever in flight at once, which E1 handed to node E3
 on 2026-08-24.
 Entry from code this runtime did not call arrives with no context, and what
@@ -239,13 +239,13 @@ publish it, since no other thread knows the object exists.
 
 This delivers the Erlang pause story through the existing `rc-trace`
 machinery, and shrinks the role of concurrent SATB
-([../model/gc/satb.md](../model/gc/satb.md)) to what remains truly
+(../model/gc/satb.md) to what remains truly
 shared: the general heap outside any actor.
 
 ## The Global Collector Speaks Mailbox
 
 The concurrent general-heap collector (`rc-satb`,
-[satb.md](../model/gc/satb.md)) never inspects a running actor. What it
+satb.md) never inspects a running actor. What it
 needs from one is small — the actor's roots into the general heap, and,
 for mark termination, the actor's SATB buffer — and both travel the
 same road as everything else: **a system message in the mailbox**

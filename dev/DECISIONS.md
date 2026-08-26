@@ -824,7 +824,7 @@ single-mutator invariant.
 
 **Open, with owners:** which of the six structures are actor state, and the
 epoch duty and re-entry slot a foreign crossing would need — node E1
-([../model/gc/walk/questions.md](../model/gc/walk/questions.md#e1-actors-and-the-epoch-protocol--the-stamp-half-answered-for-actors-2026-08-24-four-items-open));
+(../model/gc/walk/questions.md);
 the message owner field and pickup routing — node D1; the entry shim for a
 callback on a thread this runtime did not create, and a C-callable writer for
 the mount word, which does not exist today (`ll-model`
@@ -918,7 +918,7 @@ one.
 entity teardown, the epoch checkpoint — reach the owner. They carry no
 context today and do not read the extension vector, so neither half of this
 decision reaches them
-([model/gc/walk/questions.md](../model/gc/walk/questions.md#e1-actors-and-the-epoch-protocol--the-stamp-half-answered-for-actors-2026-08-24-four-items-open)).
+(model/gc/walk/questions.md).
 
 ## 2026-08-22 — copy-on-write outranks the unique-ownership proof
 
@@ -1020,7 +1020,7 @@ hold.
 **Why:** the design was normative nowhere. Its text sat in a code
 repository beside three reading aids, while the sections it contradicts
 — [static-lifetimes.md](../model/memory/static-lifetimes.md), "What may
-own a borrow", and [rc-walk.md](../model/gc/rc-walk.md), "Uncounted
+own a borrow", and rc-walk.md, "Uncounted
 borrows" — sat here saying a heap field never covers a borrow. Both now
 carry the chain rule: a field covers a borrow on a counted path from a
 root, with the borrow counting as a use of that root. DC5's mitigation
@@ -1706,7 +1706,7 @@ an edge target.
   needs a closed class set: a field typed `T` reaches every subclass of
   `T`, so anything registered later (`eval`, late autoload, an
   FFI-installed descriptor) is cyclic by default.
-- Written up in [rc-walk.md](../model/gc/rc-walk.md), "The compiler's
+- Written up in rc-walk.md, "The compiler's
   acyclic flag".
 
 ### 2026-07-24 — A `#[Region]` is an allocator class: it may supply its own alloc, free, and GC traversal
@@ -1859,7 +1859,7 @@ left open.
   counterexample traces must be translated by hand into the adversarial
   harness tests `rc-walk-model.md` §11 describes.
 - State-space accounting that informed this:
-  [rc-walk-states.md](../model/gc/rc-walk-states.md).
+  rc-walk-states.md.
 
 ### 2026-07-26 — rc-walk: resolutions from the scenario-replay findings
 

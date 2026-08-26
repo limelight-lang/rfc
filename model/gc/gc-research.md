@@ -6,7 +6,7 @@
 > ([strategies.md](strategies.md)); the default is `rc-walk`
 > (ARC + arenas + barrier-free concurrent cycle walking, 2026-07-27),
 > with `rc-trace` behind `--no-default-features` and concurrent SATB
-> as the low-latency strategy ([satb.md](satb.md)); MMTK is no longer
+> as the low-latency strategy (satb.md); MMTK is no longer
 > offered as a backend (2026-08-03, the registry row removed); LLVM
 > statepoints are ruled out by the non-moving decision
 > ([heap-design.md](heap-design.md)), cheap poll safepoints suffice. The Phase 1→2→3 ladder maps onto the strategy
@@ -351,7 +351,7 @@ is the category barrier under another name
 half does not apply — the heap is non-moving. What does apply is the
 corollary that only the allocating thread can publish an object, which bounds
 who can create a cross-regime edge
-([gc-horizon-v2/prior-art.md](gc-horizon-v2/prior-art.md)).
+(gc-horizon-v2/prior-art.md).
 
 ### Concurrent Deferred Partial Tracing (PLDI 2026)
 

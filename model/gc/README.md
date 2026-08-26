@@ -4,25 +4,39 @@ Garbage Collector — automatic reclamation of memory no longer reachable by the
 
 Covers GC algorithms, collection strategies, interaction with the Memory Manager, and the impact on object layout and lifetime.
 
-- [strategies.md](strategies.md) — pluggable build-time GC strategies: the contract (store barrier slot, safepoints), the registry, the `rc-walk` default
-- [satb.md](satb.md) — concurrent SATB marking, the `rc-satb` strategy: designed and deliberately unbuilt since 2026-08-03, `rc-walk` having overtaken it on pauses; the banner carries why it is kept and what would make it worth building
-- [heap-design.md](heap-design.md) — cross-strategy decisions: non-moving, block/line heap, CAS handoff and deferred free for the concurrent strategy
-- [rc-cycle.md](rc-cycle.md) — **the design of record since 2026-08-25**: on-the-fly cycle collection from a mutator-fed candidate set, with the class filter; nothing built, the sliding view refused in node Y1
-- [rc-walk.md](rc-walk.md) — the `rc-walk` barrier-free concurrent cycle collector: derived roots, the epoch byte, the Phase 4 exact test; the text in force for the strategy the crate runs
-- [drain-window.md](drain-window.md) — the drain-exclusivity invariant: what the collector may touch while a mutator drains a confirmed component
-- [gc-horizon.md](gc-horizon.md) — the compiler-side rule that decides which locals carry a count and where the uncounted ones pay: the ownership lattice, the eight horizon kinds, promotion
-- [gc-horizon-states.md](gc-horizon-states.md) — its state set: what the runtime must not change, the axes the lattice reads and creates, the product and the identities that collapse it
-- [gc-horizon-cases/](gc-horizon-cases/README.md) — **a record since 2026-08-23**: sixteen cases instantiating the horizon algorithm on one entity kind or one proof-ending event each, with the coverage table over the repository's own cases. Compiler business, and no collector document defers to it
-- [cycle/](cycle/README.md) — the design of record since 2026-08-25, with the open questions as a graph the work is built on
-- [walk/](walk/README.md) — the design of record from 2026-08-22 to 2026-08-25, closed: the counted heap edge stays the write barrier and the walk stays the cycle collector, with its graph as the record of a finished stage
-- [gc-horizon-v2/](gc-horizon-v2/README.md) — the capture-count regime, considered and refused 2026-08-22: the horizon pays by publishing to the collector rather than by a count; kept for nodes M and N, which record why it fails
+- [rc-cycle.md](rc-cycle.md) — **the design of record since 2026-08-25, and the only cycle collector**: on-the-fly collection from a mutator-fed candidate set, the shadow rows the trace decrements, the teardown's binding order, and the class filter; nothing built
+- [cycle/](cycle/README.md) — its open questions as a graph, which the work is built on
+- [strategies.md](strategies.md) — the contract every strategy plugs into: the store barrier as micro-operations, the safepoint duties, the non-moving constraint, the registry, and the arm/fire rule
+- [heap-design.md](heap-design.md) — cross-strategy decisions: non-moving, the block/line heap
 - [pure-destructors.md](pure-destructors.md) — the purity ladder P0/P1/P2/NR, the transitive closure, and the hand-off drain it makes sound
-- [retained-block-walk.md](retained-block-walk.md) — proposal: keep the reset's survivor list as an object index so retained former-arena blocks can be walked, retiring the "cycles among promoted survivors" limit
-- [domains.md](domains.md) — proposal: `rc-walk` with more than one mutator — one writer per refcount, `#[Moved]` and the frozen handover, `~=`, each domain collecting itself, and the cases
+- [domains.md](domains.md) — proposal: more than one mutator — one writer per refcount, `#[Moved]` and the frozen handover, `~=`, each domain collecting itself, and the cases
 - [domains-rejected.md](domains-rejected.md) — every shape and mechanism tried for the above and dropped, with the reason that killed it, and the prior art consulted
-- [rc-walk-model.md](rc-walk-model.md) — its formal model: actor alphabets, state vector, invariants, theorems, the optimality bound, and the comparison with Java and Go
-- [rc-walk-review.md](rc-walk-review.md) — the design review that produced the current shape: findings, what changed, the remaining agenda
-- [rc-walk-states.md](rc-walk-states.md) — state-space accounting for the model checker: factor cardinalities, the raw product, structural collapses, the feasibility bracket
-- [rc-walk-proof.md](rc-walk-proof.md) — proof by scenario replay: ordinary and adversarial interleavings played action by action, findings F1–F6 against the design documents
-- [rc-walk-danger-cases.md](rc-walk-danger-cases.md) — danger cases DC0–DC5 distilled from the replay: concrete kill traces, the seeds for the adversarial test harness
 - [gc-research.md](gc-research.md) — research survey (ARC, Zend, Bacon-Rajan, Immix, LXR); §7 superseded by strategies.md
+
+## What was deleted on 2026-08-26, and where it is
+
+Edmond ruled that only the new algorithm remains, and that a superseded
+mechanism left in the tree is read as the design in force. Three collectors
+and one compiler-side algorithm left this directory, with their code in
+`ll-model`:
+
+- **`rc-walk`** — the barrier-free concurrent cycle collector with derived
+  roots, the epoch byte and the Phase 4 exact test; the default build from
+  2026-07-27. Its design, formal model, state-space accounting, scenario-replay
+  proof, danger cases, review, question graph, drain-exclusivity invariant and
+  retained-block proposal all went with it.
+- **`rc-trace`** — the stop-the-thread candidate-buffer tracer, the first
+  implementation; described in `strategies.md`, which stays.
+- **`rc-satb`** — concurrent SATB marking, designed 2026-08-03 and never built.
+- **The GC horizon** — the compiler-side rule deciding which locals carry a
+  count, with its state set, its sixteen-case book and the refused
+  capture-count regime. Ruled compiler business on 2026-08-23 and a record
+  since; the count-elision bargain it struck is restated in
+  [cycle/questions.md](cycle/questions.md), Y11.
+
+**All of it is on the branch `archive/pre-rc-cycle`**, in this repository and
+in `ll-model`, on `origin` as well as locally, at the commit before the first
+deletion. Citations of these documents elsewhere in the repository were left as
+prose and stripped of their links: the sentences are still true, and this is
+where the text they name now lives. Nothing is copied back without a
+`dev/DECISIONS.md` entry.

@@ -74,7 +74,7 @@ the stored object's transitive closure inside the barrier, where the escape
 count defers the closure to arena death, per block. The barrier here
 therefore does less per store and more at reset, which makes 2% a ceiling
 for it rather than an estimate. Discussion of the fit is in
-[../gc/gc-horizon-v2/prior-art.md](../gc/gc-horizon-v2/prior-art.md).
+../gc/gc-horizon-v2/prior-art.md.
 
 ### Slot category resolution
 

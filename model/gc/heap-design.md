@@ -4,7 +4,7 @@
 > [strategies.md](strategies.md). This document owns the decisions that
 > hold across strategies (non-moving, block/line heap structure) and
 > the coordination machinery used by the concurrent strategy
-> ([satb.md](satb.md)).
+> (satb.md).
 
 ## Object Movement: Non-Moving
 
@@ -75,7 +75,7 @@ Block-scanning enumeration is the standard modern arrangement (MMTk and the coll
 ## GC / Mutator Coordination: Lock-Free CAS Handoff
 
 **Scope**: this machinery belongs to the **concurrent strategy**
-(`rc-satb`, [satb.md](satb.md)); it exists only when the mutator runs
+(`rc-satb`, satb.md); it exists only when the mutator runs
 during a collection cycle. Under the default `rc-trace` the mutator is
 parked at a safepoint while marking runs, and none of these races occur.
 
@@ -84,7 +84,7 @@ parked at a safepoint while marking runs, and none of these races occur.
 scanning). It does **not** maintain the tri-color invariant of
 concurrent marking: a mutator can hide a live object from the marker
 without ever touching a state field. That correctness problem is owned
-by the SATB deletion barrier ([satb.md](satb.md)). The two mechanisms
+by the SATB deletion barrier (satb.md). The two mechanisms
 are complementary, not alternatives.
 
 **Decision**: GC and mutator coordinate ownership of objects via a single atomic CAS on the object's state field. Neither side waits for the other.

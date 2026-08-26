@@ -111,7 +111,7 @@ marker reading the slot could otherwise catch a torn pair and trace a
 non-pointer as a pointer. It is set and cleared only by `store_box` on the
 `rc-satb` strategy and read only by that strategy's marker; every other
 build leaves the bit permanently clear. The mechanism is in
-[satb.md](gc/satb.md), "Torn 16-byte ValueBox reads".
+satb.md, "Torn 16-byte ValueBox reads".
 
 All pointer payloads point to entities that begin with the common
 `RcHeader` (refcount + flags at offset 0, see [classes.md](classes.md)).

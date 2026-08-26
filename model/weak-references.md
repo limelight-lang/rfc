@@ -6,7 +6,7 @@ How `WeakReference` and `WeakMap` are represented and how the runtime
 delivers death notification: the weak cell, the per-thread weak table
 with its subscriber rows, and the three places an object's death must
 clear its weak state. The cycle-collector obligation this machinery
-discharges is stated in [gc/rc-walk.md](gc/rc-walk.md), "What this
+discharges is stated in gc/rc-walk.md, "What this
 design does not solve"; the arena interaction in
 [../runtime/object-lifecycle.md](../runtime/object-lifecycle.md),
 "Arena reset and destructors".
@@ -100,7 +100,7 @@ state pay one masked test and nothing else.
 runs where the target lives, and every notification site below runs on
 the owning thread — including the rc-walk drain, which executes in the
 mutator's checkpoint, never on the collector thread
-([gc/rc-walk.md](gc/rc-walk.md)). Zend's single table in
+(gc/rc-walk.md). Zend's single table in
 `EG(weakrefs)` is the same structure made global because the engine is
 single-threaded; globalizing it here would buy a mutex on every
 create and death. Consequence: the thread-exit teardown that already
@@ -112,7 +112,7 @@ thread and no actor.** Once the scheduler mounts an actor, "the owning thread"
 stops being constant across an entity's life: the actor may migrate between
 messages while its rows stay in the table of the thread it left. The residence
 that survives migration is the open half of node
-[E1](gc/walk/questions.md#e1-actors-and-the-epoch-protocol--the-stamp-half-answered-for-actors-2026-08-24-four-items-open),
+E1,
 which enumerates the candidates and their call-site costs and chooses none; [gc/domains.md](gc/domains.md), a proposal
 scoped to threads with actors deferred, already writes the table as
 per-domain and keyed by address, a domain being a thread or an actor mounted
@@ -239,7 +239,7 @@ Two smaller pins the sites imply:
   must be re-examined there, not silently extended. A migrating actor is
   the second occasion for that re-examination, and this bullet's disposal
   step is one of the claims it takes: see
-  [E1](gc/walk/questions.md#e1-actors-and-the-epoch-protocol--the-stamp-half-answered-for-actors-2026-08-24-four-items-open).
+  E1.
 
 ## Across an actor boundary
 
@@ -256,7 +256,7 @@ decidable from the class where the class is closed. Decided 2026-08-23
 
 What this does not settle is where the table lives when an actor moves
 between threads: the queue is not the door that shape uses. That is node
-E1 of [gc/walk/questions.md](gc/walk/questions.md#e1-actors-and-the-epoch-protocol--the-stamp-half-answered-for-actors-2026-08-24-four-items-open).
+E1 of gc/walk/questions.md.
 
 ## `WeakMap` cleanup is eager, not lazy
 
@@ -302,7 +302,7 @@ accident.
 
 ## Build scope
 
-Step 4 of the rc-walk build plan ([gc/rc-walk.md](gc/rc-walk.md))
+Step 4 of the rc-walk build plan (gc/rc-walk.md)
 covers: the kind-5 entity, the weak table and rows, `notify` wired
 into ordinary teardown and the drain, the arena weak list, and the
 `create`/`get` ABI surface — the machinery is untestable without its

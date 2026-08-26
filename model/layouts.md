@@ -74,7 +74,7 @@ store after the body zero-fill. Every store writes all 16 bytes,
 clearing UNDEF for free — but the publish is **two** stores (payload,
 then the tag word), not one atomic 16-byte write; a concurrent marker
 could catch a torn pair, which is what the WRITING lock exists for
-([satb.md](gc/satb.md)).
+(satb.md).
 
 ---
 

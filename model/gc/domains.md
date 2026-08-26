@@ -368,7 +368,7 @@ the **destructor**, and what stops the slot being reissued mid-walk.
 | moved A → B | B | A | nobody — skipped by both | B |
 | `shared` | any, through a box | its creator | nobody — skipped | the domain whose box died last |
 | arena entity, never escapes | A's arena | arena blocks | nobody | A, in the reset fixpoint |
-| arena escapee, promoted at reset | A | retained block | nobody (outside the registry — unless [retained-block-walk.md](retained-block-walk.md) lands) | A |
+| arena escapee, promoted at reset | A | retained block | nobody (outside the registry — unless retained-block-walk.md lands) | A |
 | frozen / immortal | any | immortal region | nobody | never |
 | host thread exited, entity moved | B | the adopter | nobody — skipped, as row 2 | B |
 | host thread exited, entity is the adopter's own | the adopter | the adopter | the adopter | the adopter |
@@ -445,7 +445,7 @@ Conservative, never unsound: the last four rows of the table above.
   on a member's moved bit is the obvious one — the corpse scan already
   loads that word).
 - **The drain-exclusivity window** is proven for one mutator
-  ([drain-window.md](drain-window.md)); the re-derivation is owed.
+  (drain-window.md); the re-derivation is owed.
 - **May a `shared` class have a destructor at all?** (Recorded as a
   question, 2026-07-28.) It runs in whichever domain dropped the last
   box — an arbitrary one — so anything with thread affinity in it is a

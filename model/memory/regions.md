@@ -108,7 +108,7 @@ only references the objects actually hold — never a fabricated address.
 Over-reporting keeps a dead object alive one extra cycle (harmless);
 under-reporting frees a still-referenced object, a use-after-free, and is
 forbidden. This is the discipline the arena's release-at-reset list and
-SATB marking already rely on ([../gc/satb.md](../gc/satb.md)): erring
+SATB marking already rely on (../gc/satb.md): erring
 toward *more* live is always safe, erring toward *less* never is. The
 runtime does **not** verify a hand-written traversal — honoring the
 contract is the author's responsibility, and a traversal that
@@ -121,7 +121,7 @@ construction, so only a hand-written override carries the risk.
 skips them ([../gc/heap-design.md](../gc/heap-design.md)); the region's
 own collector, driven by its own traversal and free rules, is solely
 responsible for them, and its outgoing references into the general heap
-enter the global marker as roots ([../gc/satb.md](../gc/satb.md)),
+enter the global marker as roots (../gc/satb.md),
 published the way an actor publishes its arena roots
 ([../../runtime/actors.md](../../runtime/actors.md)). The compiler wires
 this: allocation inside the region's methods routes to the region's

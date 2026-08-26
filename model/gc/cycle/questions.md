@@ -2,7 +2,7 @@
 
 Every open question of `rc-cycle`, as a node with what would answer it and
 what it blocks. A node carries a mark for what blocks it, the same legend
-the closed graph of [`../walk/questions.md`](../walk/questions.md) used:
+the closed graph of `../walk/questions.md` used:
 **today** — answerable with the code and instruments that exist;
 **measure** — a number nobody has taken, on instruments that exist;
 **design** — a decision to be made and written;
@@ -48,7 +48,7 @@ differencing (its §4.2) — is Paz, Bacon, Kolodner, Petrank and Rajan's
 the log is a per-store soundness cost no proof can delete, where this
 design's per-release cost is deletable precision.** The original ground —
 `rc-walk`'s rule that the mutator does no per-operation work for the
-collector ([`../rc-walk.md`](../rc-walk.md)) — died the day it was used:
+collector (`../rc-walk.md`) — died the day it was used:
 `rc-cycle` itself puts the enrolling decrement, the already-enrolled
 test-and-set and the queue write on the mutator (Y9, Y11, Y12), so "no
 per-operation work" refuses this design too and refuses nothing. What
@@ -297,7 +297,7 @@ component's counts at a single instant needs the snapshot Y1 refused.
 
 *The second is the weak cell.* `rc-walk` binds every design here to null every
 weak cell naming a confirmed member **before** any user code runs
-([`../rc-walk.md`](../rc-walk.md#what-this-design-does-not-solve)), because a
+(`../rc-walk.md`), because a
 weak load is the one channel that can hand a destructor a pointer the counted
 world cannot account for. The mechanism that discharges it is a **per-thread**
 weak table: the dying entity finds its subscribers through the owning thread's
@@ -365,7 +365,7 @@ buffer, and pinned by a test rather than by construction.
 **The constraint, ruled by Edmond on the map: the header does not grow** —
 no second word, no extra byte. Two directions came with the ruling. The
 collection tag is first tried in the **epoch byte** `rc-walk` already
-carries at offset 6 ([`../rc-walk.md`](../rc-walk.md#the-one-header-byte)),
+carries at offset 6 (`../rc-walk.md`),
 written as today by single-byte atomic stores rather than through the flags
 word. And the seventeen-bit candidate index is not needed at all: a
 buffered entity is found through its entry in the root queue (Y12), which
@@ -607,9 +607,8 @@ itself held cannot orphan a cycle by being dropped, so no suspicion arises.
 **Why it matters more than the gates of Y10.** Those gates make the test
 cheap; this removes the test. The candidate branch disappears entirely at
 every site the proof discharges, so the mutator pays only where the compiler
-could not prove anything — which is the same bargain the count elisions of
-`../gc-horizon.md` struck, applied to enrolment rather than to the count
-itself.
+could not prove anything — the same bargain the horizon's count elisions
+struck, applied to enrolment rather than to the count itself.
 
 **What this repository owes, and what it does not.** The compiler's proof
 logic is outside these documents since the scope ruling of 2026-08-23; what
@@ -637,8 +636,20 @@ this decrement was the cycle's last external release.
 the candidate set at all — every release site of an owned entity takes the
 plain form, the enrolling obligation riding the owning edge's own release.
 And by Edmond's addendum the same proof elides more than the test: at the
-proven sites the counting pair itself can go, which is `../gc-horizon.md`'s
-count-elision bargain made available to `rc-cycle`. **How the release path
+proven sites the counting pair itself can go.
+
+> **The count-elision bargain, moved here 2026-08-26** before the document
+> that carried it was deleted with the horizon. Its terms: a retain/release
+> pair on a *local* reference may be removed where the compiler proves the
+> referent outlives the local, and what the runtime gets in exchange is that
+> such a reference is then invisible to the counts. The collector may
+> therefore never treat a count as a complete census of references — which is
+> exactly why soundness here rests on the owning thread's exact judgement and
+> not on the trace (`../rc-cycle.md`, "Who judges"), and why the covering
+> claim above has to be a claim rather than a hint. The compiler's side of
+> the bargain — which sites qualify, and how a certificate is checked — left
+> these documents with the scope ruling of 2026-08-23 and is not recoverable
+> from here; the branch `archive/pre-rc-cycle` holds the text. **How the release path
 knows is answered since 2026-08-25: bit 5 of the header**, one of the three the
 cycle colour and the dead half of the GC-state field left behind when Y7 was
 laid out. The mark is tested beside the acyclic gate at bit 4, in the word the
@@ -796,7 +807,7 @@ Edmond, 2026-08-25: under memory pressure the collector may start directly on
 the mutator's thread, provided no collector is running on another thread.
 
 **The rung it replaces already exists and is about to be deleted.**
-[`../rc-walk.md`](../rc-walk.md#when-the-collector-runs-the-pressure-ladder)
+`../rc-walk.md`
 sends a mutator that cannot serve an allocation down a ladder of self-help, and
 its fourth rung runs `walk::collect_cycles` on the allocating thread before
 honest failure. Y5 deletes that form with the census, and
@@ -920,15 +931,17 @@ which is Y13's dial at a second setting and is unmeasured.
 ## Verification debt
 
 Inherited from the dropped stage S4, whose tombstone re-aimed the
-model-checker debt **at `rc-cycle` rather than at the cases**: the TLC
-battery under `dev/tools/rc-walk/` proves the walk's drain
-(`DrainPause.tla` and its kin, results in
-[`../rc-walk-proof.md`](../rc-walk-proof.md)), and nothing yet models this
-design's collection — the shadow count against a running mutator, the
-edge-triggered enrolment, the collector-side free of Y5's open seam.
-Whether the specs are re-derived for `rc-cycle` or retired with the walk's
-code (twelfth ruling of 2026-08-25) is a placement Edmond has not made;
-the debt itself does not lapse with the walk.
+model-checker debt **at `rc-cycle` rather than at the cases**. **The debt
+lives here from 2026-08-26**, the battery that used to carry it having been
+deleted with the walk: a TLC battery — `DrainPause.tla` and four siblings —
+model-checked the walk's drain against a running mutator, and its specs and
+results are on the branch `archive/pre-rc-cycle` under `dev/tools/rc-walk/`
+and `model/gc/rc-walk-proof.md`. **Nothing models this design's collection**:
+the shadow count against a running mutator, the edge-triggered enrolment, the
+collector-side free of Y5's open seam. Deleting the walk's specs retired the
+instrument, not the obligation, and the obligation is owed before a collector
+thread exists — the in-line form is exact by construction and needs no model,
+the accelerator is what does.
 
 ## Prior art, as of 2026-08-25
 

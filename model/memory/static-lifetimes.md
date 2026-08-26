@@ -128,14 +128,14 @@ and its owner are decided by one compilation of one function. The
 obligation is a within-frame property, not a whole-program one.
 
 **The acyclic flag does not relax this.** An acyclic holder cannot be a
-cycle member ([../gc/rc-walk.md](../gc/rc-walk.md), "The compiler's
+cycle member (../gc/rc-walk.md, "The compiler's
 acyclic flag"), but it can still be garbage *held by* a cycle, and it
 dies in the cascade the moment the collector frees that cycle. Its field
 is therefore no safer an owner than any other.
 
 ### The chain rule, and the borrow as a use of its anchor
 
-Amended 2026-08-20 by [../gc/gc-horizon.md](../gc/gc-horizon.md), which
+Amended 2026-08-20 by ../gc/gc-horizon.md, which
 extends the rule above rather than replacing it. A heap field covers a
 borrow when the field sits on a **counted path from a root**: the anchor
 is a root by the rule above, every edge from the anchor to the borrowed
@@ -145,7 +145,7 @@ first point that can break either half.
 The extension is sound for the same reason the strict rule is. At any
 drain, a condemned component intersecting the path carries an external
 counted in-edge traceable to the root, so the Phase 4 exact test
-([../gc/rc-walk.md](../gc/rc-walk.md#phase-4--verify-and-release-mutator-thread-by-message))
+(../gc/rc-walk.md)
 acquits the whole path. The second case above fails not because the
 cover is a field but because `$obj = null` removes the root, leaving the
 path with no counted in-edge from outside — which is why a store to any
@@ -156,7 +156,7 @@ below and the move rule above are both computed over the borrow's live
 range rather than over the anchor's own last syntactic use; otherwise
 the drop releases the anchor, or the move transfers it, while a borrow
 still leans on it. The points that end the coverage are enumerated in
-[../gc/gc-horizon.md](../gc/gc-horizon.md#the-horizon-list): a store to a
+../gc/gc-horizon.md: a store to a
 chain local, a store through a may-alias of a path base, a release of a
 class whose purity closure is impure, an unsummarized call, and a
 checkpoint that can drain a verdict.

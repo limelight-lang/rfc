@@ -21,7 +21,7 @@ into proper RFCs when picked up.
   workloads.
 - **rc-walk: epoch abort on a parked-volume watermark** — under eager
   death the parked queue is bounded by churn × epoch duration, not by
-  the live heap ([rc-walk.md](model/gc/rc-walk.md), F2 correction
+  the live heap (rc-walk.md, F2 correction
   2026-07-27). While nothing is posted the collector can abandon the
   epoch, drop its private tables and release the deferral window at
   zero mutator cost; the identity obligation only runs from walk to
@@ -39,7 +39,7 @@ into proper RFCs when picked up.
   epoch they died in, measured 2026-08-22 as a share of the workload's
   lifetimes rather than a constant — zero where entities outlive the
   epoch (`ll-model` `dev/BENCHMARKS.md`,
-  [walk/questions.md](model/gc/walk/questions.md), node C2). Needs a
+  walk/questions.md, node C2). Needs a
   proof pass (interaction with the epoch-byte wrap and with buffer
   frees).
 
@@ -169,7 +169,7 @@ needs a design decision, deferred deliberately.
   slot whose `WRITING` bit is set (safe — the deletion barrier already
   captured the old value). Single writer, so no CAS — plain
   release/acquire. One extra store per boxed write, `rc-satb` only. Written
-  into [satb.md](model/gc/satb.md), [values.md](model/values.md).
+  into satb.md, [values.md](model/values.md).
 - **`escape_lose` for a thread-local static block holding an arena
   escapee** — **resolved 2026-07-22**. Static blocks get a **teardown at
   thread exit** (the counterpart of the static initializer): a per-thread
@@ -344,7 +344,7 @@ documents** (2026-07-22); what remains open is at the end.
   saturating counts as a future build strategy reusing the SATB
   machinery; applies to tier-3 objects only
   ([static-lifetimes.md](model/memory/static-lifetimes.md),
-  [satb.md](model/gc/satb.md),
+  satb.md,
   [gc-research.md](model/gc/gc-research.md)).
 - **Level C non-counting backedges** — compiler-verified ownership
   trees where `#[Backedge]` edges carry no refcount; needs the
@@ -362,7 +362,7 @@ documents** (2026-07-22); what remains open is at the end.
   parked mid-message on I/O reaches no message boundary until the
   operation completes, so it answers no handshake, and mark termination
   requires every actor to have replied ([actors.md](runtime/actors.md),
-  [satb.md](model/gc/satb.md)). An actor blocked on a socket for 30 s
+  satb.md). An actor blocked on a socket for 30 s
   holds the marking phase for 30 s, and every other actor's SATB buffer
   grows meanwhile. The system-signal check compiled into unbounded loops
   does not reach this case: a parked actor executes no loop. Answering
@@ -385,7 +385,7 @@ documents** (2026-07-22); what remains open is at the end.
   the explicit pack/optimize operation (below).
 - **SATB epoch trigger and queue overflow policy** — calibrate the
   candidate-bytes threshold; segment size and marker backpressure
-  ([satb.md](model/gc/satb.md)).
+  (satb.md).
 - **Periodic interruption of unbounded loops (system-signal check)** —
   loops with no provable bound get an iteration guard: a counter in
   the actor context, decrement + branch on the back-edge, on zero peek

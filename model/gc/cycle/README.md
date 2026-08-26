@@ -6,7 +6,7 @@ Edmond chose the direction and the name. The protocol text is
 as stage S5 was.
 
 **What it replaces, and in what sense.** `rc-walk` is the strategy the crate
-runs and [`../rc-walk.md`](../rc-walk.md) is the text in force for it. What
+runs and `../rc-walk.md` is the text in force for it. What
 changes on 2026-08-25 is which design the work serves: new questions are
 asked of `rc-cycle`, and `walk/` is closed — its graph stands as the record
 of a stage that finished, not as a queue. Nothing is deleted and no code

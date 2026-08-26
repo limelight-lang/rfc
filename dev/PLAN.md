@@ -1,6 +1,7 @@
 # PLAN
 
-Updated: 2026-08-25 · Active: S7 (blocked on the build)
+Updated: 2026-08-26 · Active: S7 — the deletion it was written for is executed
+from `model/PLAN.md` S30, and what is left here is the record
 
 Destination, as amended 2026-08-23: the collector design of record is
 readable here as a question graph — thirty questions about the collector and
@@ -174,42 +175,66 @@ broken links.
         eight bits, against a `u32` count. The off-heap side table of Y4 is
         recorded there as not chosen.
 
-## S7 — retire `rc-walk` and the GC horizon  [blocked on S6 and on the build]
+## S7 — Record the 2026-08-26 rulings, and reverse the twelfth ruling's document half
 
-Ordered by Edmond 2026-08-25: when `rc-cycle` is finished, the old collector
-and the horizon algorithm leave the repository and the crate — not under a
-banner, not as records. **This reverses the document half of the twelfth
-ruling of 2026-08-25**, which deleted code and kept documents as the record;
-the reversal gets its own `DECISIONS.md` entry before the first file goes.
+Reordered 2026-08-26. The stage was written as "nothing here starts before
+`rc-cycle` is in force"; Edmond then ruled the deletion goes first, all at once,
+so that no reader takes a superseded mechanism for the design in force. The
+deletion itself — of documents in this repository as well as of code in
+`ll-model` — is executed from `model/PLAN.md` S30, which spans both
+repositories: S30.5 deletes the documents and moves the arguments that outlive
+them, S30.6 writes the teardown's order into `rc-cycle.md` before any deletion,
+S30.7 amends `strategies.md` instead of deleting it. What is left here is the
+specification's own record: the reversal entry, and the four Sage rulings of
+2026-08-26 written into the nodes they move.
 
-Nothing here starts before `rc-cycle` is in force. Each step is a checklist
-rather than one commit, and `dev/tools/linkcheck.php` reports zero broken
-links at the end of each.
+The old steps went as follows. S7.1 (delete the `rc-walk` code) is
+`model/PLAN.md` S30.2, amended — `walk.rs` is split rather than deleted,
+because its upper half is the crate's only entity tracer. S7.2 (delete the
+`rc-walk` documents) is S30.5, which carries S7.2's clause on the TLC battery's
+obligation. S7.3 (delete the horizon documents) is S30.5 too, which carries
+S7.3's clause on the count-elision bargain.
 
-- [ ] S7.1 Delete the `rc-walk` code from `ll-model`
-      done: `src/walk.rs` and `src/walk/`, `src/collector.rs` and
-        `src/collector/`, `src/epoch.rs`, the `rc-walk` Cargo feature with the
-        24 files gated on it and the 13 carrying `not(feature = "rc-walk")`
-        guards, and `dev/RC_WALK_CRITICAL_REVIEW.md` are gone; what `rc-cycle`
-        inherits — the deferred-free parking, the handshake, the exact test —
-        has moved rather than died, and the crate builds and tests green
-        without the feature
-      tier: T2 · role: Code Reviewer
-- [ ] S7.2 Delete the `rc-walk` documents
-      done: `model/gc/rc-walk.md`, `rc-walk-proof.md`, `rc-walk-model.md`,
-        `rc-walk-states.md`, `rc-walk-danger-cases.md`, `rc-walk-review.md`,
-        `model/gc/walk/`, `model/gc/retained-block-walk.md`,
-        `dev/TASK-rc-walk-proof.md` and `dev/tools/rc-walk/` are gone, every
-        inbound link is repointed or its paragraph went with it, and the
-        verification debt of `model/gc/cycle/questions.md` names where the TLC
-        battery's obligation now lives — it does not lapse with the battery
+- [ ] S7.4 Reverse the document half of the twelfth ruling
+      done: `dev/DECISIONS.md` carries an entry stating that the twelfth ruling
+        of 2026-08-25 — delete the code, keep the documents as the record — is
+        reversed for `rc-walk`, `rc-trace` and the horizon by Edmond's ruling of
+        2026-08-26, with the reason (a superseded mechanism left in the tree is
+        read as the design in force) and with `archive/pre-rc-cycle` named as
+        where the deleted text lives; the entry lands **before the first file
+        goes**, so `model/PLAN.md` S30.5 cannot start without it
+      tier: T1 · role: —
+- [ ] S7.5 Write the four Sage rulings into the nodes they move
+      done: `model/gc/rc-cycle.md`'s summary bullet states Y9's edge-side prune
+        — a mature member is read as an opaque live external and is not
+        descended into — in place of "traced only after it has stayed a
+        candidate across `k` collections", which bounds nothing and seeded a
+        wrong step; Y7's wrap paragraph carries a superseded note pointing at
+        the ruling, since the collector no longer clears a stamp on contact;
+        Y12 clause 4's second half is narrowed to "cleared by the owner at
+        death", with a line saying what a dirty reader does instead — mark the
+        entry, leave the bit — and the count corrected from six clauses to
+        seven; Y14's clause "a thread that finds the token taken does not wait"
+        is retired with its reason, the handshake the 2026-08-26 amendment
+        deleted, and `rc-cycle.md`'s Concurrency section states the wait against
+        any non-self holder together with the thread-local held flag that makes
+        self-re-entry distinguishable
+      tier: T2 · role: Critic
+      handoff: three of the four are amendments to text written the day before,
+        and the fourth retires a clause of Edmond's own ruling on the ground
+        that the ruling's main clause removed the clause's reason. Each keeps
+        the superseded reasoning readable beneath it, as the 2026-08-26
+        amendments already do.
+- [ ] S7.6 Consolidation pass over everything written on 2026-08-26
+      done: the consolidation check of `dev/WORKFLOW.md` runs over
+        `model/gc/rc-cycle.md`, `model/gc/cycle/questions.md`,
+        `model/gc/strategies.md`, `model/weak-references.md` and
+        `dev/DECISIONS.md` as amended — a separate reader, not the author,
+        looking for a citation that does not say what it is cited for, a
+        superseded document used as if in force, two documents contradicting
+        each other, and a claim traceable to nothing; it reports and changes
+        nothing, and its findings are answered before S30.5 runs
       tier: T2 · role: —
-- [ ] S7.3 Delete the GC horizon documents
-      done: `model/gc/gc-horizon.md`, `gc-horizon-states.md`,
-        `gc-horizon-cases/`, `gc-horizon-v2/` and
-        `model/gc/walk/compiler-proofs.md` are gone; the arguments that
-        outlive them are moved first — the chain rule already sits in
-        `model/memory/static-lifetimes.md`, and the count-elision bargain
-        cited by Y11 and by the fourteenth ruling moves into `rc-cycle`'s own
-        documents
-      tier: T2 · role: —
+      handoff: `dev/WORKFLOW.md` requires this of every set of documents written
+        in one sitting. The set of 2026-08-26 was committed as `bb44ddd` without
+        it, and this step is that debt plus the amendments above.

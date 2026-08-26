@@ -2107,3 +2107,74 @@ kill variant for a synchronous collection meeting outstanding guards, now
 with a second shape to model; G14; the cursor's home, waiting on D1. And the
 code — `sever_counted_children`, `sever_entries` and `sever_cells` carry no
 cursor today.
+
+## 2026-08-26 — four rulings from the Critic round over `ll-model`'s plan, and what they change here
+
+Edmond asked for a Critic round and a Sage pass over `model/PLAN.md`
+S30–S40 before the deletion started. Four rulings came back; three of them
+change this repository, and they are recorded here because the plan that
+carries them lives in the other one.
+
+**Y9's prune is the maturation mechanism, and the summary bullet that said
+otherwise is wrong.** `model/gc/rc-cycle.md` says "an entity is traced only
+after it has stayed a candidate across `k` collections" — a delay on the root
+side. Y9 says a stamped mature member is read as an opaque live external and
+is **not descended into** — a prune on the edge side — and calls it the only
+mechanism in this design that bounds the closure. The root-side reading
+filters which roots start a trace and leaves the closure alone, and the
+closure is the problem: the subgraph reachable from a median candidate root
+on the booted Laravel corpus is 381 of 381 objects. The bullet is rewritten
+to the prune.
+
+**The trace writes nothing, so Y7's wrap rule is superseded.** Y7 has the
+collector clearing a stamp whose epoch is not the current one "at the moment
+it first touches the entity". The stamp is written by commit on the owning
+thread and only read by the trace, which is what keeps an aborted collection
+free of heap cost. The wrap clause is also useless where it was placed:
+eager clearing fires only on contact, and the stamp that wraps is exactly the
+one no trace touched for four epochs. The real backstop is that **acquittal
+never clears the enrolment bit** — a proven-live root parks in a suspects
+buffer with its bit set and is re-offered at epoch turnover — which turns
+ring-mates matured apart, a wrapped stamp and a wrong dirty proposal from a
+permanent miss into bounded floating garbage.
+
+**Y12 clause 4 is narrowed, and the clause count corrected.** The text says
+"Six clauses" and numbers seven. Clause 4 has the already-enrolled bit
+"cleared after the root is walked"; the law of 2026-08-26 has every reduction
+of state belonging to the owner on an exact reading. A dirty pass that walks
+a root and clears its bit performs exactly the acquittal the law forbids, and
+because enrolment is edge-triggered the ring is then unreachable garbage
+forever. The bit is cleared only at death; a dirty reader marks the entry and
+leaves the bit.
+
+**Y14's non-wait clause retires with its reason.** "A thread that finds the
+token taken does not wait" was argued from the handshake's deadlock, and the
+amendment of 2026-08-26 deleted the handshake. A holder's in-line collection
+is synchronous and needs nothing from the waiter, so a refused allocation
+waits on a held claim by any holder but itself, then takes the claim and
+collects. The claim carries a thread-local held flag, so a destructor
+allocating inside its own thread's collection collects nothing rather than
+waiting on itself.
+
+**And `strategies.md` leaves the deletion list.** Edmond's deletion ruling
+named `rc-walk`, `rc-trace` and the horizon. `model/gc/strategies.md` is not
+a collector's document: it carries the store-barrier micro-operation contract
+(`store_ptr` / `store_box` / `drop`), the safepoint duties including the log
+reserve's refill, the non-moving constraint, and the arm/fire rule that Y14
+cites as a correctness requirement — a store lowers the old value's count
+before overwriting the pointer, and a collection firing in that window
+subtracts one reference twice and frees a live object. Twenty-one documents
+link it and fourteen of them survive the deletion. It is amended instead: the
+`rc-trace` section and the two dead registry rows go, the registry lists
+`rc-cycle` and `rc-satb`, and §2's counted-locals argument is re-attributed
+from `rc-walk` to `rc-cycle`.
+
+**The teardown's order is written here before the old collector's document
+goes.** `model/weak-references.md`, "Cycle death", binds the drain to null
+every confirmed member's weak cell after the exact test passes and before any
+user code runs, and names `gc/rc-walk.md` as the obligation's source.
+`rc-cycle.md` does not restate it, and the deletion would take the only
+written form of an ordering whose violation hands a destructor a strong
+reference to a severed object. `rc-cycle.md` gains a "Cycle teardown"
+section, transcribed against the running `drain_confirmed` before the code is
+removed, and `weak-references.md` repoints to it.

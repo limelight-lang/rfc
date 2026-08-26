@@ -40,7 +40,7 @@ predicates are mask tests and the enrolment gate is one.
 | 13 | **`DESTRUCTOR_PENDING`** — this instance owes a `__destruct`: set only when the user constructor has returned successfully, **and** only for a class that has a destructor. What every teardown path dispatches on, not just the arena's ([object-lifecycle.md](../runtime/object-lifecycle.md)) |
 | 14 | **`DESTRUCTOR_RAN`** — `__destruct` has already run (exactly-once guard) |
 | 15 | Free |
-| 16–17 | Epoch, the collector's own |
+| 16–17 | Epoch, the collector's own. **Byte 6 has one writer**: epoch, age and reserve share it, and each is written by a byte-wide read-modify-write, so a second writer would lose the first's bits with no wider access anywhere to blame |
 | 18–19 | Maturation age |
 | 20–23 | Collector reserve |
 | 24–31 | Free |

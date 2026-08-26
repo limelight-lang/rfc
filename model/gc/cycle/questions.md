@@ -639,17 +639,19 @@ And by Edmond's addendum the same proof elides more than the test: at the
 proven sites the counting pair itself can go.
 
 > **The count-elision bargain, moved here 2026-08-26** before the document
-> that carried it was deleted with the horizon. Its terms: a retain/release
-> pair on a *local* reference may be removed where the compiler proves the
-> referent outlives the local, and what the runtime gets in exchange is that
-> such a reference is then invisible to the counts. The collector may
-> therefore never treat a count as a complete census of references — which is
-> exactly why soundness here rests on the owning thread's exact judgement and
-> not on the trace (`../rc-cycle.md`, "Who judges"), and why the covering
-> claim above has to be a claim rather than a hint. The compiler's side of
-> the bargain — which sites qualify, and how a certificate is checked — left
-> these documents with the scope ruling of 2026-08-23 and is not recoverable
-> from here; the branch `archive/pre-rc-cycle` holds the text. **How the release path
+> that carried it was deleted with the horizon, and **bounded the same day by
+> Edmond**: an entity named by a local variable or held on the stack carries a
+> counted `+1`, always. A retain/release pair may be removed only inside a
+> region where no collection can fire — no call, no store, no release, no
+> checkpoint (`ll-model` `dev/DECISIONS.md`, "The set's bound") — so the
+> elision is invisible to the collector rather than the reference being
+> invisible to the counts. That bound is what makes the exact test exact:
+> a covering reference of the "someone else holds it" kind is worthless here,
+> because it may be an edge inside the very component under judgement, and a
+> cycle collector frees at a non-zero count. The compiler's side — which
+> sites qualify, and how a certificate is checked — left these documents with
+> the scope ruling of 2026-08-23; the branch `archive/pre-rc-cycle` holds
+> the text. **How the release path
 knows is answered since 2026-08-25: bit 5 of the header**, one of the three the
 cycle colour and the dead half of the GC-state field left behind when Y7 was
 laid out. The mark is tested beside the acyclic gate at bit 4, in the word the

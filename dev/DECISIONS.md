@@ -2178,3 +2178,35 @@ written form of an ordering whose violation hands a destructor a strong
 reference to a severed object. `rc-cycle.md` gains a "Cycle teardown"
 section, transcribed against the running `drain_confirmed` before the code is
 removed, and `weak-references.md` repoints to it.
+
+## 2026-08-26 — a local reference always carries a counted `+1`, so the trace's only error is staleness
+
+Ruled by Edmond, closing the question this session left open.
+
+**Decided:** an entity named by a local variable, or held anywhere on the
+stack, carries a counted `+1`. The compiler guarantees it. A retain/release
+pair may be elided only inside a region where no collection can fire — the
+enclosed region contains no call, no store, no release and no checkpoint, the
+bound already recorded in `ll-model`'s `dev/DECISIONS.md` under the
+always-provable elision rules — so an elision is invisible to the collector
+rather than making a reference invisible to the counts.
+
+**What it changes.** `rc-cycle.md` said the one source of trace error was that
+"the counts do not see local references whose retain/release pairs the
+compiler elided", and drew from it that soundness rests on the owner because
+"only the owning thread sees its own stack". Both sentences described a
+danger that the guarantee rules out. The one source of error is **staleness**:
+a dirty pass may read a count that has changed since, and cannot read a count
+that was never taken. Soundness still rests on the owner's exact judgement,
+now for the plain reason that the owner re-reads current fields on its own
+thread.
+
+**Why the weaker form would not have done.** The bargain as the horizon wrote
+it was "a pair may go where the compiler proves the referent outlives the
+local". Under refcounting alone that is enough, because nothing frees an
+object at a non-zero count. A cycle collector frees at a non-zero count, and
+the covering reference may be an edge *inside* the component under judgement:
+`$node = $ring->head` with the retain elided against `$ring->head`, then
+`$ring = null`, leaves a ring the trace reads as internally balanced and a
+`$node` pointing at freed memory. The counted `+1` is what closes it, and no
+proof about lifetimes can substitute for it.

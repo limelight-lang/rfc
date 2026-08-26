@@ -46,9 +46,27 @@ set only by proof, never by a run's history.
 must read a slot that already points at it, so a ring whose every referrer is
 inside itself cannot be reached from outside and cannot be resurrected. A
 verdict of "garbage" therefore cannot be overturned by anything the mutator
-does. What can overturn it is an error of the trace — and there is exactly one
-source of error: the counts do not see local references whose retain/release
-pairs the compiler elided.
+does. What can overturn it is an error of the trace, and there is exactly one
+source of error: **staleness**.
+
+**The counts are not blind, and this is a compiler guarantee** (Edmond,
+2026-08-26). An entity named by a local variable or held anywhere on the stack
+carries a counted `+1`, so every root the trace needs is in the counts and no
+reference is invisible to them. Elision of a retain/release pair is confined to
+a region in which no collection can fire — the enclosed region contains no
+call, no store, no release and no checkpoint (`ll-model` `dev/DECISIONS.md`,
+"The set's bound") — so the gap an elision opens is one no collector can
+observe. A dirty pass may therefore read a count that has changed since; it
+cannot read a count that was never taken.
+
+Written the other way round the danger is concrete, and it is what the
+guarantee rules out. Take `$node = $ring->head` with the retain elided against
+`$ring->head` as the covering reference, then `$ring = null`. The covering
+reference is an edge *inside* the ring, so the trace subtracts it, the ring
+reads as internally balanced, and `$node` would be left pointing at freed
+memory. Refcounting alone never has this problem, because it frees only at
+zero; a cycle collector frees at a non-zero count, which is why the covering
+obligation has to be the counted `+1` and not "someone else holds it".
 
 Two consequences, and they are the design's licence.
 
@@ -60,8 +78,8 @@ the counts — none of it can make a verdict wrong. This is the freedom
 `cycle/questions.md` Y13 was looking for.
 
 **Soundness rests entirely on the exact judgement, and that judgement is the
-owner's.** Only the owning thread sees its own stack, which is where the elided
-references live.
+owner's.** The owner re-reads the current fields on its own thread, so the
+staleness a dirty pass is exposed to cannot arise there.
 
 **The law, and it is load-bearing.** Every *reduction* of state — clearing the
 enrolment bit, dropping a queue entry, returning a slot — is the owner's, and

@@ -10,6 +10,26 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-26 — generated code touches bytes 4–5 of the header and nothing else
+
+**Decided:** the C mirror in [lowering.md](../model/lowering.md) declares the
+flags word as `_Atomic uint16_t flags` at +4, `_Atomic uint8_t collector` at
++6 and a reserved byte at +7. It stays one 32-bit word and
+[classes.md](../model/classes.md) keeps numbering its bits as one; what the
+declaration fixes is the width a consumer may access.
+**Why:** the collector writes byte 6 a byte at a time, so a 32-bit access at
++4 overlaps that store without covering it. That is a mixed-size atomic
+access, undefined in the C and the Rust memory model alike, and a consumer
+transcribing `_Atomic uint32_t flags` would emit exactly it — the mirror is
+what a compiler copies, so the width has to be in the declaration rather than
+in prose beside it. Every mask a mutator tests is below bit 16, which is what
+makes the narrow access lossless.
+**Rejected:** leaving the mirror at 32 bits and stating the rule in the text.
+A comment does not survive transcription; a type does.
+**Cost:** `ll_release`'s sketch loses its `is_gcheap_object` /
+`ll_buffer_cycle_root` pair, which named `rc-trace`'s candidate buffer and had
+outlived it. It reads the enrolment gate now, `flags & 0x723`.
+
 ## 2026-08-26 — the ring-closing reserve is widened to codes 0–7
 
 **Decided:** entity kinds are `Object 0, Lazy 1, Array 2, Reference 3, String 8,

@@ -10,18 +10,34 @@ Companion to [classes.md](classes.md): how the class and object model maps to co
 // Common refcounted header: offset 0 of EVERY heap entity
 // (object, string, array, closure, reference)
 typedef struct RcHeader {
-    _Atomic uint32_t refcount;
-    _Atomic uint32_t flags;      // bits: [0-1] memory category,
-                                 //       [2-5] entity kind, [6] COW,
-                                 //       [7] arena reset mark, [8] acyclic,
-                                 //       [9] owned, [10] enrolled,
-                                 //       [11] live escapee, [12] has-weak,
-                                 //       [13] DESTRUCTOR_PENDING,
-                                 //       [14] DESTRUCTOR_RAN, [15] free,
-                                 //       [16-17] epoch, [18-19] age,
-                                 //       [20-23] collector reserve.
+    _Atomic uint32_t refcount;   // +0
+    _Atomic uint16_t flags;      // +4: the mutator's half, bits [0-15] of
+                                 //     the flags word — [0-1] memory
+                                 //     category, [2-5] entity kind,
+                                 //     [6] COW, [7] arena reset mark,
+                                 //     [8] acyclic, [9] owned,
+                                 //     [10] enrolled, [11] live escapee,
+                                 //     [12] has-weak,
+                                 //     [13] DESTRUCTOR_PENDING,
+                                 //     [14] DESTRUCTOR_RAN, [15] free
+    _Atomic uint8_t  collector;  // +6: bits [16-23] of the same word —
+                                 //     epoch, maturation age, reserve.
+                                 //     Written by the collector, one byte
+                                 //     at a time; never by generated code
+    _Atomic uint8_t  reserved;   // +7: bits [24-31], free
                                  // Authoritative table: classes.md "Flags layout"
 } RcHeader;
+```
+
+**The split is about access width, not about a second field.** It is one
+32-bit flags word and `classes.md` numbers its bits as one; what the
+declaration fixes is that generated code touches bytes 4–5 and nothing
+else. A 32-bit access at +4 would overlap the collector's byte store
+without covering it, which is a mixed-size atomic access — undefined in
+both the C and the Rust memory model, and rejected by Miri. Every mask a
+mutator tests is therefore below bit 16 by construction.
+
+```c
 
 #define LL_MEMCAT_MASK 0x3u      // 00=GC heap, 01=request arena,
                                  // 10=long-lived, 11=immortal
@@ -122,9 +138,12 @@ static inline bool ll_release(RcHeader *h) {
     if ((h->flags & LL_MEMCAT_MASK) == LL_IMMORTAL) return false;
     if (--h->refcount == 0)
         return (h->flags & LL_MEMCAT_MASK) == LL_GCHEAP;
-    // Non-zero decrement of a heap *object* → possible cycle root.
-    // Buffering only arms a collection; it never runs one inline.
-    if (is_gcheap_object(h)) ll_buffer_cycle_root(h);
+    // Non-zero decrement → the one event that can leave a ring behind.
+    // Five conditions in one mask (classes.md, "Flags layout"): GC-heap
+    // category, a kind below eight, no acyclic proof, no proven owner,
+    // not already enrolled. Enrolling only arms a collection; it never
+    // runs one inline.
+    if ((h->flags & 0x723u) == 0) ll_enrol_cycle_root(h);
     return false;
 }
 ```

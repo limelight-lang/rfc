@@ -239,12 +239,13 @@ long-lived arena as immortal entities: one string = one address, equality
 
 ## Two Layouts Behind `StringInterface`
 
-**Revised decision**: inline and dynamic strings share the `string`
-entity kind and differ only in where the bytes are, so they are two
-**physical representations** selected by a header flag of their own,
-`STRING_OUT_OF_LINE` (not two class descriptors — a string carries no
-class pointer), presented to the language behind a shared
-`StringInterface`:
+**Revised decision**: inline and dynamic strings differ only in where the
+bytes are, so they are two **physical representations** rather than two
+class descriptors — a string carries no class pointer — presented to the
+language behind a shared `StringInterface`. Each takes an entity kind
+code of its own, `8` and `9`, and "is a string" stays one mask test
+because the pair shares the kind field's top three bits
+([classes.md](classes.md), "Flags layout"):
 
 - **Inline string** (the default) — bytes after the header, one
   allocation, fixed size once allocated.
@@ -255,27 +256,36 @@ class pointer), presented to the language behind a shared
   the holders of a string are not enumerable). No PHP-level API is
   defined yet; the runtime representation supports it natively.
 
-**The layout flag is set at creation and does not change during the
-string's life.** No operation flips it, so every path that needs to know
-where the bytes are reads a bit that cannot have moved since allocation.
+**The kind code is stamped at creation and does not change during the
+string's life.** No operation restamps it, so every path that needs to
+know where the bytes are reads a field that cannot have moved since
+allocation.
 
-**The layout is a separate bit from `COW`, and that separation is
-load-bearing** (2026-08-10,
-[memory/large-entities.md](memory/large-entities.md)). `COW` said both
-things until a string had to be out of line *by size*: past what a
-memory category's allocator packs in one slot the inline layout cannot be
-allocated at all, and such a string is copy-on-write like any other. One
-bit cannot express that combination, so the layout took a bit of its own
-— bit 15, which is dead on a string header in both collector builds,
-since the candidate index there is written only for kinds that can close
-a cycle and `string` is not one. `COW` means copy-on-write and nothing
-else: it also decides whether an arena entity is counted and whether it
-is copied or held when it escapes, and a string built out of line by size
-keeps all three behaviours.
+**The layout is not `COW`, and that separation is load-bearing**
+(2026-08-10, [memory/large-entities.md](memory/large-entities.md)). `COW`
+said both things until a string had to be out of line *by size*: past
+what a memory category's allocator packs in one slot the inline layout
+cannot be allocated at all, and such a string is copy-on-write like any
+other. One bit cannot express that combination. `COW` means
+copy-on-write and nothing else: it also decides whether an arena entity
+is counted and whether it is copied or held when it escapes, and a
+string built out of line by size keeps all three behaviours.
 
-Should a future operation ever need to change the flag, it changes the
-layout with it, and it is a copy, not a bit flip — the same argument
-that retired freeze below. No such operation exists.
+**Code `9` means bytes outside the body, whatever the reason** — a
+compiler proof of single ownership or a size past the slot limit — and
+not "growable". The distinction matters because the second kind of
+out-of-line string keeps `COW`, so an append may not write into it in
+place.
+
+The layout took a header bit of its own until 2026-08-26, when the flags
+word was re-laid and the kind field widened to four bits: a code says the
+same thing in a field every teardown and trace path already loads, and it
+says it without a second bit ([DECISIONS](../dev/DECISIONS.md), "the
+ring-closing reserve is widened to codes 0–7").
+
+Should a future operation ever need to change the representation, it
+changes the layout with it, and it is a copy, not a restamp — the same
+argument that retired freeze below. No such operation exists.
 
 **The inline layout occurs in every memory category; the dynamic one
 only in the GC heap and the request arena.** The request arena and the

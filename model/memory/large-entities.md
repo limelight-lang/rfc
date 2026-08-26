@@ -68,15 +68,16 @@ reset. Every part of that path was already built and tested: the arena's
 run, the reset's carry (`promote::carry_external_memory` and
 `string::carry_payload_out_of`), and the size-carrying free.
 
-**The factory's choice cost a header bit, not one line.** `COW` selected
-the layout and also meant copy-on-write, so building a large string in
-the dynamic layout would have made it non-COW — written in place under a
-second holder, uncounted in the arena, held rather than copied on escape.
-The layout took a bit of its own, `STRING_OUT_OF_LINE`, and `COW` now
-means only what it says; a string out of line by size carries both. The
-bit is string-scoped and free in both collector builds, because the
-candidate index that owns bit 15 is written only for the kinds that can
-close a cycle, and `String` is not one.
+**The factory's choice cost the layout a name of its own, not one line.**
+`COW` selected the layout and also meant copy-on-write, so building a
+large string in the dynamic layout would have made it non-COW — written
+in place under a second holder, uncounted in the arena, held rather than
+copied on escape. The layout took a header bit of its own instead, and
+`COW` now means only what it says; a string out of line by size carries
+both. Since the flags word was re-laid on 2026-08-26 the layout is a kind
+code, `9`, rather than a bit: it is read out of the field every teardown
+and trace path already loads, and "is a string" stays one mask test over
+the pair `{8, 9}` ([classes.md](../classes.md), "Flags layout").
 
 This covers the GC heap and the request arena, and only those two.
 `ll_string_new_dynamic` refuses `LongLived` and `Immortal` outright, and

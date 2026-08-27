@@ -218,7 +218,7 @@ S7.3's clause on the count-elision bargain.
         ones as records; `model/gc/rc-cycle.md`'s status banner says the crate
         runs `rc-trace` until `rc-cycle` is built; `model/gc/cycle/questions.md`
         takes its legend from the deleted `../walk/questions.md`.
-- [ ] S7.5 Write the four Sage rulings into the nodes they move
+- [x] S7.5 Write the four Sage rulings into the nodes they move
       done: `model/gc/rc-cycle.md`'s summary bullet states Y9's edge-side prune
         — a mature member is read as an opaque live external and is not
         descended into — in place of "traced only after it has stayed a
@@ -259,6 +259,16 @@ S7.3's clause on the count-elision bargain.
         swapping a queue buffer into a per-thread inbox. Recorded in
         `dev/DECISIONS.md`, "the trace token covers the trace alone, and the
         accelerator hands off by buffer swap". Final.
+      handoff: closed 2026-08-27 by `8c5c30c`, together with S7.7 — the
+        intermediate state contradicts itself, the handshake being struck in one
+        document and kept in another. Y12's contract grew a clause: the ruling's
+        backstop is a pair, and writing only "the bit is never cleared" without
+        "an acquitted root is re-offered" leaves a ring that no decrement can
+        ever enrol again.
+      handoff: the prune needed a rule the ruling did not state and now has one
+        — evaluated on the target of an edge, never on a root taken from the
+        queue. The other reading is YRC's, whose `claimCell` prunes the root
+        too, and it would make collection latency the length of an epoch.
 - [ ] S7.6 Consolidation pass over everything written on 2026-08-26
       done: the consolidation check of `dev/WORKFLOW.md` runs over
         `model/gc/rc-cycle.md`, `model/gc/cycle/questions.md`,
@@ -272,7 +282,7 @@ S7.3's clause on the count-elision bargain.
       handoff: `dev/WORKFLOW.md` requires this of every set of documents written
         in one sitting. The set of 2026-08-26 was committed as `bb44ddd` without
         it, and this step is that debt plus the amendments above.
-- [ ] S7.7 Carry the trace-token ruling into the nodes outside S7.5's four
+- [x] S7.7 Carry the trace-token ruling into the nodes outside S7.5's four
       done: `model/gc/rc-cycle.md`'s "Death while enrolled" re-scopes the second
         parking to the trace and puts the in-trace return instant at the token's
         release; "What it keeps from `rc-walk`" strikes the handshake and names
@@ -292,3 +302,9 @@ S7.3's clause on the count-elision bargain.
         pass. Half of it is worse than none: until the handshake is struck from
         Y5 and from "What it keeps", the tree says both that it survives and
         that it is deleted.
+      handoff: closed 2026-08-27 by `8c5c30c`. Two documents outside both steps
+        carried the retired rule as if in force and were repaired with them:
+        `model/memory/critical-reserve.md` stated the refusal to wait as the
+        rule, and `model/gc/strategies.md` implied a handshake exists somewhere.
+        A grep for `handshake` over `model/` is what found them, and it is what
+        the next such deletion should run.

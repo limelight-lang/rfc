@@ -1019,8 +1019,12 @@ after the destructor, so a deferred destructor is a deferred reclamation, and
 reclamation is what the collection was called for. The gates the crate already
 enforces stand instead: `TEARDOWN_DEPTH` makes every fire point inside a
 teardown collect nothing, and the collecting flag makes a nested collection a
-no-op. `WALK_ACTIVE` did the second job until 2026-08-26 and went with
-`walk.rs`. What is missing is the entry gate, and
+no-op. **Neither exists in the crate today**: `gc::GC_ACTIVE`, `gc::TEARDOWN_`
+`DEPTH`, `epoch::TEARDOWN_DEPTH` and `walk::WALK_ACTIVE` all went with the two
+collectors on 2026-08-26. All four were `thread_local!` cells, which is what
+the gate ruling's premise needs and what the step that rebuilds them owes
+([`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md), "the gate's two
+inputs were thread-local in the deleted code, and neither exists today"). What is missing is the entry gate, and
 the crate named its absence where the gate belonged, in the `walk.rs` deleted on
 2026-08-26: "The entry gate belongs to the pressure ladder ... unbuilt". The gate reads two things
 and no third — this thread's own collecting flag and `TEARDOWN_DEPTH` — and it

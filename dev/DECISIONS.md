@@ -10,6 +10,34 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-27 — the gate's two inputs were thread-local in the deleted code, and neither exists today
+
+**Verified, not decided.** The ruling below rests on the entry gate reading this
+thread's own state, and named as its one obligation the scope of `ll-model`'s
+collecting flag. Read from the source on the branch `archive/pre-rc-cycle`, all
+four candidates were declared inside `thread_local!` blocks as `Cell`s:
+`gc::GC_ACTIVE` ("True while a collection is running", the reentrancy guard),
+`gc::TEARDOWN_DEPTH`, `epoch::TEARDOWN_DEPTH` and `walk::WALK_ACTIVE` ("whether
+a synchronous collection is running **on this thread**"). The premise holds for
+the shape the crate had.
+
+**What it does not hold for is the present tense.** All four went with `rc-walk`
+and `rc-trace` on 2026-08-26, so the gate has no inputs in the tree today and
+the verification is of a precedent rather than of a live flag. The obligation
+therefore moves rather than closing: **the step that rebuilds the reentrancy
+guard writes it thread-local**, and a global "a collection is running" bit is
+refused at that step rather than debated after it.
+
+**The trap the reading exposes is the spelling, and it is why this is written
+down.** `GC_ACTIVE`'s own comment reads "True while a collection is running" —
+a sentence with no thread in it, over storage that is per-thread. A reader
+checking the ruling's premise against the comment would answer wrongly in both
+directions, and only the declaration settles it.
+
+**Cost:** none; the finding is a constraint on unwritten code. What stays
+unmeasured is what a per-thread guard costs against a global one on the entry
+gate's path, there being no such path yet.
+
 ## 2026-08-27 — the entry gate reads this thread's own state and never the trace token
 
 **Decided (Sage), amending the entry below.** The entry gate reads two things

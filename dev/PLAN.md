@@ -48,7 +48,7 @@ amended.
 The four are what survived stage S6 and the rulings of 2026-08-27. Each was
 recorded in a journal and owned by no step, which is what rule 23.1.2а forbids.
 
-- [ ] S8.1 Verify that `ll-model`'s collecting flag is per-thread
+- [x] S8.1 Verify that `ll-model`'s collecting flag is per-thread
       done: the flag the entry gate reads is named in `ll-model`, its scope is
         read from the source rather than assumed, and either `dev/DECISIONS.md`
         records that the premise holds or a new entry amends the gate ruling to
@@ -60,6 +60,16 @@ recorded in a journal and owned by no step, which is what rule 23.1.2а forbids.
         rejected reading without naming the token: every trace in flight would
         close every allocator's gate, and the thread that most needs memory
         would skip the collection that could free it.
+      handoff: closed 2026-08-27. The premise holds for the shape the crate had
+        and for nothing in the tree: `gc::GC_ACTIVE`, `gc::TEARDOWN_DEPTH`,
+        `epoch::TEARDOWN_DEPTH` and `walk::WALK_ACTIVE` were all `thread_local!`
+        cells, and all four went with the two collectors on 2026-08-26. The
+        obligation moves to the step that rebuilds the guard rather than
+        closing.
+      handoff: the trap is the spelling. `GC_ACTIVE`'s comment reads "True while
+        a collection is running", a sentence with no thread in it over storage
+        that is per-thread — a reader checking the premise against the comment
+        answers wrongly in both directions, and only the declaration settles it.
 - [ ] S8.2 Decide who pre-allocates the spare queue buffer, and how it is
       replenished
       done: choice and reason in `dev/DECISIONS.md`, and Y12 clause 3 states

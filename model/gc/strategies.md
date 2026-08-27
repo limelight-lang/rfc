@@ -223,7 +223,7 @@ its predecessors too; point 3 is where this strategy differs from them.
 
 The collector proposes and the owning thread judges. A collection run
 in-line on the owning thread is exact by construction and needs no
-handshake; a collector thread is an accelerator that narrows the owner's
+second phase; a collector thread is an accelerator that narrows the owner's
 list, and every *reduction* of state — clearing an enrolment bit,
 dropping a queue entry, returning a slot — is the owner's, on an exact
 reading.

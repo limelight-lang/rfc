@@ -72,12 +72,15 @@ leaves reserve mode only when every queued root has been walked, so the queue
 drains while it fills.
 
 **The mutator that cannot collect.** A thread short of memory tries to become
-the collector, finds the token held, and must not wait for it: the running
-collection may be waiting for this thread's own handshake acknowledgement,
-which rides this thread's next checkpoint. It draws and continues to that
-checkpoint. The draw is bounded by what one thread allocates between two polls,
-the same quantity `exceptions.md` bounds for the log reserve and leaves to the
-ABI.
+the tracer, and reads its own entry gate first — the collecting flag and
+`TEARDOWN_DEPTH`. A closed gate sends it down the ladder, where it draws and
+continues to its next checkpoint; an open one lets it wait on the trace token,
+take it and trace, the wait terminating because the token is never held across
+user code ([`../gc/rc-cycle.md`](../gc/rc-cycle.md), "Concurrency"). The refusal
+to wait that stood here until 2026-08-27 was argued from a handshake
+acknowledgement riding this thread's checkpoint, and the handshake is deleted.
+The draw is bounded by what one thread allocates between two polls, the same
+quantity `exceptions.md` bounds for the log reserve and leaves to the ABI.
 
 **A collection's working memory.** The in-line collection of Y14 runs because
 memory ran out, so its mark stack and its shadow-count arrays are drawn through

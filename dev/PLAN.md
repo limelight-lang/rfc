@@ -273,16 +273,18 @@ S7.3's clause on the count-elision bargain.
         in one sitting. The set of 2026-08-26 was committed as `bb44ddd` without
         it, and this step is that debt plus the amendments above.
 - [ ] S7.7 Carry the trace-token ruling into the nodes outside S7.5's four
-      done: `model/gc/rc-cycle.md`'s "Concurrency" states the token's coverage,
-        its release instant, the one-bit word and gate-before-wait; "Death while
-        enrolled" re-scopes the second parking to the trace and moves `used`'s
-        fall to the release; "What it keeps from `rc-walk`" strikes the
-        handshake and names the swap-and-inbox handoff; `questions.md`'s Y5
-        strikes the handshake from its survival list, Y12's clauses 2, 3 and 5
-        are amended to the swap and the inbox, and no page of either document
-        still calls the word a claim or a collection token except Y9's quoted
-        `claimCell`; the verification debt is widened to the TLC obligation the
-        ruling names; `linkcheck.php` clean
+      done: `model/gc/rc-cycle.md`'s "Death while enrolled" re-scopes the second
+        parking to the trace and puts the in-trace return instant at the token's
+        release; "What it keeps from `rc-walk`" strikes the handshake and names
+        the swap-and-inbox handoff; `questions.md`'s Y5 strikes it from its
+        survival list and its graph label, and Y12's clauses 2, 3 and 5 are
+        amended to the swap and the inbox; no page of either document still
+        calls the word a claim or a collection token, Y9's quoted `claimCell`
+        apart; `model/memory/critical-reserve.md` no longer states the retired
+        refusal to wait as the rule, and `model/gc/strategies.md` no longer
+        implies a handshake exists elsewhere; the verification debt carries the
+        TLC obligation the ruling names first; `linkcheck.php` clean
+        (Concurrency itself is S7.5's, whose criterion names it)
       tier: T2 · role: —
       handoff: this step exists because the ruling of 2026-08-27 reaches five
         documents while S7.5's criterion names four nodes, and widening that

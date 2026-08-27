@@ -30,9 +30,18 @@ the counts left alone.** Three parts.
   decrement a working count in a side row and leave the real count untouched, so
   nothing a destructor depends on is ever in a torn state — and an aborted
   collection costs **zero heap writes**.
-- **Candidates mature by age**, carried in the header's epoch stamp: an entity
-  is traced only after it has stayed a candidate across `k` collections without
-  dying.
+- **Candidates mature by age**, carried in the header's epoch stamp, and the age
+  prunes an **edge** rather than delaying a root: a member whose stamp is the
+  current epoch and whose age has reached the promote bound is read as an opaque
+  live external, and the traversal does not descend into it. The prune is
+  evaluated on the target of an edge and never on a root taken from the queue,
+  or a ring whose own root had matured would go uncollected until its epoch
+  turned. This is what makes a trace cheaper than the closure it starts from,
+  which is the whole economy: measured 2026-08-25, the subgraph reachable from a
+  median candidate root is the entire object population, 381 of 381. It bounds
+  nothing in the first collection after an epoch turns over, when every stamp is
+  stale, and it is not the only bound — a trace may also be cut by a budget
+  ([`cycle/questions.md`](cycle/questions.md), Y9 and Y13).
 
 Beside them stands the class filter: a class whose declared slots cannot hold a
 reference to a kind that can close a ring cannot be a cycle member, and its
@@ -83,7 +92,11 @@ staleness a dirty pass is exposed to cannot arise there.
 
 **The law, and it is load-bearing.** Every *reduction* of state — clearing the
 enrolment bit, dropping a queue entry, returning a slot — is the owner's, and
-only on an exact reading. A dirty pass may add suspicion and nothing else.
+only on an exact reading. A dirty pass may add suspicion and nothing else. The
+bit is narrower still since 2026-08-26: an exact acquittal does not clear it
+either, and it falls only at the entity's death, the acquitted root being
+re-offered instead ([`cycle/questions.md`](cycle/questions.md), Y12, clauses 4
+and 8).
 Without the law an acquittal leaks a ring forever: take a ring A↔B with an
 external X→B. The trace captures `RC(B) = 2`, subtracts the one internal edge,
 reads 1 and acquits B as live from outside. Meanwhile X releases B — not to
@@ -170,11 +183,17 @@ published the zero but the death path has not yet begun, during which a slot
 returned by a reader could be handed back out under a running destructor.
 
 **Two parkings, with different windows.** The one above is between collections.
-The other is inside one: a slot freed during a collection waits for its end,
-because the row is keyed by the slot and a reused slot would inherit the dead
-occupant's met bit and working count. A slot returns when both windows are shut,
-and `used` falls at the return rather than at the parking — otherwise a block
-empties with a corpse inside it and goes back to the pool.
+The other is inside a **trace**: a thread's frees park while the trace token is
+held by any thread but itself and return when that thread next observes it free,
+which is one load on the slot-return path, because a row is keyed by the slot
+and a reused slot would inherit the dead occupant's met bit and working count.
+No finer per-thread condition is kept, since a trace's closure crosses heap
+partitions and its holder cannot know in advance whose blocks it will touch. A
+slot returns when both windows are shut, and `used` falls at the return rather
+than at the parking — otherwise a block empties with a corpse inside it and goes
+back to the pool. For the in-trace window that return instant is the token's
+release, so a block may go back to the pool while a teardown still runs, which
+is correct: the rows it could have collided with are dead by then.
 
 **Enrolment requires the GC-heap category**, which the release path gets for
 free: category zero, kind below eight, class not acyclic, ownership not proven
@@ -255,22 +274,56 @@ notification on the header's weak bit, at step 6.
 
 ## Concurrency
 
-One collection at a time in the process — the `amSolo` rule — because the
-shadow rows are one collection's scratch and a second would read the first's
-decrements. The claim is one word with three states: free, held by the owning
-thread, held by a collector thread, entered by CAS from free.
+One **trace** at a time in the process — the `amSolo` rule — because the shadow
+rows are one trace's scratch and a second would read the first's decrements. The
+**trace token** is one bit, free or held, entered by CAS from free and released
+by one store (`dev/DECISIONS.md`, "the trace token covers the trace alone, and
+the accelerator hands off by buffer swap").
 
-A collector thread that finds the claim held skips that thread and returns in a
-later round; the candidates keep their bits, so a skip costs nothing. A mutator
-that cannot serve an allocation and finds the claim held by a collector
-**waits** (Edmond, 2026-08-26) rather than preempting — and waiting is safe here
-because the claim covers the trace alone: the exact judgements are the owners'
-own, taken at their own checkpoints, so a sleeping thread delays only the
-components it is party to.
+**What the token covers, and when it is released.** It covers mark and scan and
+the reading of the live root queues that feed them. Its holder releases it at
+the end of scan — after the last touch of any shadow row, any met-bitmap word
+and any live queue, and **before the exact test of any component**. Everything
+after that store runs untokened: the corpse rule, the guards, the weak-cell
+nulling, the destructors, the re-verify, the sever, the frees, the slot returns,
+the bit clearings. There is one release instant and not one per form, and a code
+path of a collection that touches a shadow row, a bitmap word or a live queue
+after the release store is a defect rather than a reading.
 
-While a trace is in flight over a thread's blocks, that thread's frees park.
-That is the floating garbage every concurrent collector pays, bounded by the
-allocation churn of one collection.
+**The release obliges a readership rule.** Mark and scan are the only readers
+and writers of the shadow rows and the met bitmap. The exact test and the
+teardown's re-verify compute `IN` by iterating a component's current fields
+against the component's own member list, in collection-private memory from the
+collector's reserve, never through the shared rows. Without that clause the rows
+would outlive the token that protects them and the release instant would be a
+lie.
+
+**Gate before wait.** A thread whose allocation fails reads its own entry gate
+first — the collecting flag and `TEARDOWN_DEPTH` — and goes down the pressure
+ladder when the gate is closed, because it could not collect on taking the token
+anyway. Otherwise it waits on the token (Edmond, 2026-08-26), takes it and
+collects. The wait terminates because the token is never held across user code:
+a trace is synchronous, runs no destructor and draws its working memory through
+the reserve door, so it asks nothing of another thread and takes no user lock.
+Gate before wait is also what makes a thread waiting on its own token
+impossible, which is why the word carries no holder identity.
+
+A collector thread that finds the token held retries in a later round, naming no
+thread; one that finds a thread's inbox unconsumed skips that thread for this
+round. The candidates keep their bits, so both skips cost nothing.
+
+**How a collector thread's shortlist reaches an owner.** The token holder swaps
+a thread's live queue buffer for a spare and traces the detached buffer, marking
+entries; at the release it posts the marked buffer to a per-thread inbox of
+capacity one, and the owner reads it at its own checkpoint. Nothing waits on the
+pickup, and the owner re-enqueues what stays enrolled, which it may do as its
+queue's one writer. The wait graph therefore has one edge kind — a waiter on the
+token — and no cycle.
+
+While a trace is in flight, every thread's frees park, not only those whose
+blocks it reaches: a closure crosses heap partitions and the holder cannot know
+in advance whose blocks it will touch. That is the floating garbage every
+concurrent collector pays, bounded by one trace.
 
 ## What it trades
 
@@ -296,9 +349,13 @@ design including today's.
 ## What it keeps from `rc-walk`
 
 The expensive half of concurrency is already built and is not re-derived here:
-the handshake, the exact test against current fields on the owning thread, the
-deferred-free parking that keeps a slot from being recycled under an identifier
-in flight, eager death, and the occupancy index of retained blocks.
+the exact test against current fields on the owning thread, the deferred-free
+parking that keeps a slot from being recycled under an identifier in flight,
+eager death, and the occupancy index of retained blocks. `rc-walk`'s handshake
+is **not** among them. It was deleted design-wide on 2026-08-27, an acknowledged
+rendezvous being what a thread waiting on the trace token would deadlock
+against, and a collector thread hands its shortlist over by buffer swap instead
+("Concurrency").
 
 **Ruling 5 stands whole: the collector judges and only the mutator frees.** The
 exact test is sound only because the owning thread holds the entity while it

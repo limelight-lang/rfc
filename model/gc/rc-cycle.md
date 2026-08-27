@@ -2,10 +2,11 @@
 
 > **Status: design of record since 2026-08-25, nothing built.** The residence of
 > the shadow count, the header's layout and the division of labour between
-> mutator and collector were decided on 2026-08-26 and are below. Until
-> `rc-cycle` is built the crate runs `rc-trace`; both it and `rc-walk` are
-> deleted before the first line of `rc-cycle` is written, and the old state is
-> reachable as the branch `archive/pre-rc-cycle`. The open questions are a
+> mutator and collector were decided on 2026-08-26 and are below, together with
+> the trace token of 2026-08-27. `rc-trace` and `rc-walk` were deleted on
+> 2026-08-26, before the first line of `rc-cycle` was written, so until it is
+> built **the runtime collects no cycles at all** and a garbage ring is
+> retained; the old state is reachable as the branch `archive/pre-rc-cycle`. The open questions are a
 > graph: [`cycle/questions.md`](cycle/questions.md).
 
 ## What it is

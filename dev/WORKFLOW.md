@@ -54,16 +54,19 @@ reader, not the author, and it looks for four things:
 
 - **A citation that does not say what it is cited for.** Quote against
   source, line by line.
-- **A superseded document used as if it were in force.** `model/gc/rc-walk.md`
-  is the protocol text and is in force — its own banner says design,
-  partially built, with product code in `ll-model`. What is a record is
-  `gc-horizon-v2/`, a refused regime; `gc-horizon.md`, `gc-horizon-cases/` and
-  `walk/compiler-proofs.md`, struck as compiler business on 2026-08-23; and
-  the pre-amendment protocol of `rc-walk-model.md`. Text taken from a record
-  is never an obligation the new work must satisfy, and a new document that
-  reconciles itself against one has taken the wrong authority. A draft of this
-  bullet named `rc-walk.md` among them, which would send this pass to
-  discount the one document every ruling cites.
+- **A superseded document used as if it were in force.** In force in the
+  collector area: [`../model/gc/rc-cycle.md`](../model/gc/rc-cycle.md), the
+  design of record, and [`../model/gc/strategies.md`](../model/gc/strategies.md)
+  as amended on 2026-08-26. What is a record: `model/gc/gc-research.md`, whose
+  own banner supersedes its §7 recommendation, and
+  `model/gc/domains-rejected.md`, which is kept so nothing in it is proposed
+  twice. The documents this bullet used to sort — `rc-walk.md`,
+  `rc-walk-model.md`, `gc-horizon.md`, `gc-horizon-cases/`, `gc-horizon-v2/`
+  and `walk/compiler-proofs.md` — were all deleted on 2026-08-26 and are on
+  `archive/pre-rc-cycle`; a text quoted from the branch is a record whatever it
+  once was. Text taken from a record is never an obligation the new work must
+  satisfy, and a new document that reconciles itself against one has taken the
+  wrong authority.
 - **Two of the new documents contradicting each other**, or a banner, status
   line or index row contradicting the body it introduces.
 - **A claim with no source at all** — a number, a mechanism or a rule stated

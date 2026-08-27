@@ -1,8 +1,9 @@
 # The question graph
 
 Every open question of `rc-cycle`, as a node with what would answer it and
-what it blocks. A node carries a mark for what blocks it, the same legend
-the closed graph of `../walk/questions.md` used:
+what it blocks. A node carries a mark for what blocks it, in the legend the
+closed question graph of `rc-walk` used before it was deleted with that
+collector on 2026-08-26:
 **today** — answerable with the code and instruments that exist;
 **measure** — a number nobody has taken, on instruments that exist;
 **design** — a decision to be made and written;

@@ -39,8 +39,8 @@ work that is the same for every task.
   `role:` — the reviewer the step gets.
 - A question-graph node closes by measurement where an instrument exists;
   where none does, the node records what would answer it and stops. The
-  rule is stage S5's lesson: every closure written by argument broke under
-  review, and every closure written by measurement held.
+  rule was learned on the walk's own graph: every closure written by argument
+  broke under review, and every closure written by measurement held.
 - Two review roles, and `—` when a step gets neither. **Critic** attacks the work
   and decides nothing. **Sage** settles a dispute Critic did not close after two
   rounds, and the verdict is marked `Final`. A role line is written when the call

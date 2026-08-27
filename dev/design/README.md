@@ -8,6 +8,7 @@ absent. English only — except the interactive maps (`*.map.yaml`), which
 are in Russian by Edmond's ruling of 2026-08-25: a map is read on its
 served page, not in the repository, and he reads it in Russian.
 
-Occupants: `rc-cycle.map.yaml`, the question graph of stage S6 as an
+Occupants: `rc-cycle.map.yaml`, `rc-cycle`'s question graph
+([`../../model/gc/cycle/questions.md`](../../model/gc/cycle/questions.md)) as an
 interactive map. Still expected: the fact-base schema (entities,
 relations, attributes, invariants) once the formalism is chosen.

@@ -21,8 +21,10 @@ The class descriptor and its behaviour pointers are
 
 Two dependencies are named rather than assumed. A map's entries lie
 outside the entity, so the collector reaches them only through the
-optional hook family on the class descriptor, which is `ll-model`'s stage
-S18, raised for a coroutine whose waker cells lie outside its object.
+optional hook family on the class descriptor, raised for a coroutine whose
+waker cells lie outside its object and ruled on 2026-08-13
+([`../dev/DECISIONS.md`](../dev/DECISIONS.md), "a class with cells outside
+itself carries one flag and one group of five").
 This design may be read before that hook exists; it cannot be built
 before it, and it widens what the hook owes — see "The cells that lie
 outside the entity". The second is `Object::object_id`, in the Open
@@ -92,7 +94,7 @@ therefore needs a way to say "these bytes are mine and no run describes
 them", and the storage head's own rule travels with it: no `&mut` may
 span the head, because a concurrent walker reads those words. Both are
 requirements this design places on the descriptor, listed again under
-"What S18 owes a map".
+"What the outside-cells hook owes a map".
 
 ---
 
@@ -604,14 +606,14 @@ reason the array's copy states.
 
 ---
 
-## What S18 owes a map
+## What the outside-cells hook owes a map
 
 Named here because a map is the hook's second customer and it asks for
 more than the first:
 
 1. A hook that yields **cells**, from storage the parking machinery can
    take, because a block whose cells the collector recorded may not be
-   freed while an epoch is in flight. This is S18 as raised.
+   freed while an epoch is in flight. This is the hook as first raised.
 2. A **version**: read through the head's window, with the entity given
    up for the epoch when no coherent reading is obtained, and a
    **re-check** the descriptor answers, because Phase 3 finds an array's
@@ -626,7 +628,7 @@ more than the first:
 5. **Inheritance of the group**, which the descriptor builder does not do
    for `dispose` today.
 
-Everything but point 1 is an addition to what S18 was raised for. The
+Everything but point 1 is an addition to what the hook was first raised for. The
 shape they take is `dev/DECISIONS.md`, 2026-08-13, "a class with cells
 outside itself carries one flag and one group of five".
 

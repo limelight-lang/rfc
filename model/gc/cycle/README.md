@@ -3,7 +3,7 @@
 Edmond chose the direction and the name. The protocol text is
 [`../rc-cycle.md`](../rc-cycle.md); the open questions are
 [`questions.md`](questions.md) and the work is built on them, node by node,
-as stage S5 was.
+as the walk's graph was built before it.
 
 **What it replaces, and in what sense.** `rc-walk` is the strategy the crate
 runs and `../rc-walk.md` is the text in force for it. What

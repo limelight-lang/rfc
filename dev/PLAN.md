@@ -1,7 +1,10 @@
 # PLAN
 
-Updated: 2026-08-26 · Active: S7 — the deletion it was written for is executed
-from `model/PLAN.md` S30, and what is left here is the record
+Updated: 2026-08-27 · Active: S8 — the clauses the build runs into first
+
+**Closed stages are deleted whole** (rule 23.1.3). S1 through S5 went on
+2026-08-25, S6 and S7 on 2026-08-27; what survived each is in
+`dev/DECISIONS.md` and in the question graphs, and a number is never reissued.
 
 Destination, as amended 2026-08-23: the collector design of record is
 readable here as a question graph — thirty questions about the collector and
@@ -28,301 +31,66 @@ the steps below).
   `model/gc/pure-destructors.md` as open items, unresolved in the code
   repository (`model/dev/design/pure-destructors.md` there).
 - Closure and fiber/generator layouts are unspecified anywhere in this
-  repository, so the case book's `closure.md` and `suspension.md`
-  (`model/gc/gc-horizon-cases/`) are hole reports rather than cases.
-- ~~Section G, the proof side~~ — ruled out 2026-08-23: pairs on local
-  references are removed where the compiler proves it safe, a horizon is
-  where that proof stops, and both are the compiler's business. All
-  seventeen nodes left the index; `gc-horizon.md` is bannered and
-  `walk/README.md` no longer claims the proofs as an inheritance.
-- Whether the economics and measurement-order sections belong in the RFC at
-  all, or stay in the code repository as a working note — `gc-horizon.md`
-  keeps them with a revision pointer; the split is revisited if the corpus
-  veto is exercised.
+  repository. The case book that reported the holes went with the horizon on
+  2026-08-26; the holes did not.
 
-## S6 — `rc-cycle`: on-the-fly cycle collection from a mutator-fed candidate set  [done 2026-08-25]
+## S8 — The open clauses `rc-cycle` cannot be built without
 
-Goal, set by Edmond 2026-08-25: the collector's cost stops following the size
-of the heap and starts following the size of what changed. The candidate set
-comes from the mutator, and the classes that cannot hold a cycle leave the
-set by proof. The stage opened under the words "over a sliding view", with
-the view from a coalescing log; S6.1 refused the sliding view the same day,
-and the view is the candidate set alone — the words are amended here so the
-goal does not contradict the step that closed under it. The
-design of record is [`../model/gc/rc-cycle.md`](../model/gc/rc-cycle.md) and
-the work is built on its graph,
-[`../model/gc/cycle/questions.md`](../model/gc/cycle/questions.md), node by
-node, as S5 was built on the walk's.
-Done when: every node of that graph carries an answer with its argument or a
-recorded reason for staying open, and `dev/tools/linkcheck.php` reports zero
-broken links.
+Goal: every clause the first line of `rc-cycle`'s code would run into is closed
+or owned, so the build stops at code nobody has written rather than at a
+decision nobody took.
 
-- [x] S6.0 Name the design, banner what it supersedes, and seed the graph
-      done: `model/gc/rc-cycle.md` and `model/gc/cycle/` exist, the registry
-        and the `model/gc/` index carry `rc-cycle`, `rc-walk.md` and `walk/`
-        are bannered as the text in force and a closed record rather than as
-        work, and the graph holds the eight nodes the day's reading produced
-      tier: T2 · role: —
-      handoff: the premise is **not** verified — sliding views are a write
-        barrier and `rc-walk` was built on the constraint that the mutator
-        does no per-operation work for the collector. Node Y1 holds it and a
-        reader was on the paper when the stage opened.
-- [x] S6.1 Answer Y1: what the mutator pays per store, and whether a sliding
-      view needs enumerated roots
-      done: the paper is read and the node carries what the barrier executes
-        in the common case, whether a thread must publish its local roots,
-        and what either answer costs against `rc-walk`'s constraint
-      tier: T2 · role: Critic
-      handoff: **the sliding view is refused, on the paper's own reading.**
-        All three constraints break on load-bearing parts: the write barrier
-        *is* the snapshot, the fourth handshake suspends each thread and scans
-        its stack while §4.2 differences the root set between collections, and
-        the counts are reconstructed at a collection rather than maintained,
-        so no instant exists at which the last reference was dropped. What
-        `rc-cycle` takes instead is the candidate economy — the shadow count
-        (Y4), maturation over rotating buffers (Y9, new), the acyclic-class
-        filter, and one linear pass over all candidates — with the counts left
-        alone. **Y2 narrows with it:** every design the survey found defers
-        destructors because its *counting* is deferred; real counts keep prompt
-        destruction for everything whose count reaches zero, and only cyclic
-        garbage waits, as it does today. The Critic round is owed.
-- [x] S6.2 Put Y2 to Edmond: may a destructor wait for the collection?
-      done: his ruling is recorded in `dev/DECISIONS.md` and folded wherever a
-        document in force states the `__destruct` promise
-      tier: T2 · role: —
-      handoff: ruled on the map (seventh entry): the destructor runs when
-        death is established — zero count immediately, a cycle at its
-        confirming collection — and the arena reset's own destructor pass is
-        the backstop, so no document in force stated a promise that needed
-        weakening. The same map round answered Y3, Y5, Y6, Y8, Y9, Y10 and
-        Y11 (entries eight to twelve) and filed Y12 (root queue) and Y13
-        (traversal aggression); all folded into `cycle/questions.md`.
-- [x] S6.3 Write the class filter of Y3 against the class descriptor
-      done: the rule is written against `SlotKind` and the share of a real
-        corpus's classes it demotes is measured with the recorded bootstrap
-      tier: T2 · role: Critic
-      handoff: closed by measurement against its own premise. **The rule cannot
-        be written against `SlotKind`** — its `Pointer` variant covers a
-        declared class type, a `string` and an `array` in one code, and
-        `PropSlot` carries no target; `model/classes.md` makes the same
-        collapse, so the gap is this repository's. **The evaluable form demotes
-        nothing:** 0 of 114 classes with live instances and 0 of 381 objects on
-        booted Laravel plus one request, 94 of 5680 statically with two thirds
-        of that test tooling. Measured 2026-08-25 with a separate script — the
-        recorded instrument classifies a slot by the runtime type of the value
-        in it and cannot answer this — cross-checked against it on the walk,
-        381 objects in 114 classes both ways. What S6.3 turned out to owe is a
-        declared target per pointer slot in `classes.md`. Eighteenth
-        `DECISIONS.md` entry.
-- [x] S6.4 Write the root queue's contract (Y12) against
-      `zend_spsc_queue.{c,h}` in the `spsc-refactor` tree, read first-hand —
-      the specification the header points to does not exist, so the header's
-      CAS and growth figures are verified against the code
-      done: Y12 carries the enrolment queue's contract — queue-per-thread
-        ownership, the read side, the already-enrolled bit's position
-        relative to the queue write, the growth rule of Y6, and the
-        reserve-mode entry and exit of the thirteenth 2026-08-25 ruling
-        (growth under OOM draws on the reserved critical area; normal mode
-        resumes only after all roots are walked)
-      tier: T2 · role: —
-      handoff: read first-hand, and **the named candidate does not meet the
-        contract**. Its top comment is wrong on three claims of four (no
-        `fetch_add` anywhere, no CAS and no batch on the reader, the first
-        overflow allocates at the same capacity), and three properties refuse
-        enrolment outright: growth drops the root on allocation failure,
-        growth runs on the mutator's thread inside a mutex and may copy the
-        whole buffer, and a second reader crashes it — the case Y14 creates.
-        Y12 now carries a six-clause contract instead; clause 3, who
-        pre-allocates the spare buffer so the overflow path never calls the
-        allocator, is the one part left open. Seventeenth `DECISIONS.md`
-        entry.
-- [x] S6.5 Lay out the header under the no-growth rule (Y7)
-      done: Y7 carries the split between the epoch byte and the freed index
-        bits — epoch, maturation age, stamp-against-claim mark — with the
-        one-store discipline argued for each field the collector reads
-      tier: T2 · role: —
-      handoff: **bytes 6 and 7, one aligned two-byte atomic store**: epoch 2,
-        age 2, stamp-against-claim 1, index 11. Edmond's two-bit epoch is what
-        made it fit. The eleven bits are an index into the collector's side
-        arrays rather than a count, because `CRC` is a full `u32` — so the
-        shadow counts leave the heap, mark and scan write nothing into it, and
-        an aborted collection costs zero heap writes. Bit 15 stays the
-        string's: it is the top bit of byte 5 and would widen the store. Open
-        with it: the slice is bounded at 2047 entities, so a larger component
-        needs the paper's overflow table, and Y13's dial now has a unit.
-        Nineteenth `DECISIONS.md` entry.
-- [x] S6.6 Answer Y14: the collection the mutator runs itself under memory
-      pressure, while no collector runs on another thread
-      done: Y14 carries the trigger, the exclusion token and what holds it,
-        the clean point the collection fires at against the arm/fire rule of
-        `../model/gc/strategies.md`, where its own working memory comes from,
-        and what it may not do on the allocating thread
-      tier: T2 · role: Critic
-      handoff: **the in-line collection is the synchronous form on the thread's
-        own roots**, and that choice is what dissolves the hazards — no
-        deferral window opens, so what it frees is recyclable at once; no
-        handshake, the judge being the owner; no thread crossed, as the ladder
-        requires. It narrows the tenth ruling rather than reversing it: the
-        writer still never drains at a failed enrolment, which is mid-mutation
-        and where the arm/fire rule forbids collecting. **The Critic round ran
-        and its verification did not** — the session limit killed the verify
-        pass, so the load-bearing findings were checked by hand against the
-        code (the deferral window's only opener, `retire_empty`'s block return,
-        the teardown gate) and the rest stand unverified. **One finding is
-        Edmond's and blocks S6.5:** `CRC` has no address. Y4 orders a second
-        count field, the eleventh ruling forbids the header growing, and the
-        candidate index frees bits 16-31 of which the epoch byte holds 16-23 —
-        eight bits, against a `u32` count. The off-heap side table of Y4 is
-        recorded there as not chosen.
+Done when: `cycle/questions.md` Y12 names an owner and a mechanism for clauses 3
+and 8, `classes.md` carries a declared target per pointer slot, and the gate
+ruling's premise about `ll-model`'s collecting flag is verified or the ruling is
+amended.
 
-## S7 — Record the 2026-08-26 rulings, and reverse the twelfth ruling's document half
+The four are what survived stage S6 and the rulings of 2026-08-27. Each was
+recorded in a journal and owned by no step, which is what rule 23.1.2а forbids.
 
-Reordered 2026-08-26. The stage was written as "nothing here starts before
-`rc-cycle` is in force"; Edmond then ruled the deletion goes first, all at once,
-so that no reader takes a superseded mechanism for the design in force. The
-deletion itself — of documents in this repository as well as of code in
-`ll-model` — is executed from `model/PLAN.md` S30, which spans both
-repositories: S30.5 deletes the documents and moves the arguments that outlive
-them, S30.6 writes the teardown's order into `rc-cycle.md` before any deletion,
-S30.7 amends `strategies.md` instead of deleting it. What is left here is the
-specification's own record: the reversal entry, and the four Sage rulings of
-2026-08-26 written into the nodes they move.
-
-The old steps went as follows. S7.1 (delete the `rc-walk` code) is
-`model/PLAN.md` S30.2, amended — `walk.rs` is split rather than deleted,
-because its upper half is the crate's only entity tracer. S7.2 (delete the
-`rc-walk` documents) is S30.5, which carries S7.2's clause on the TLC battery's
-obligation. S7.3 (delete the horizon documents) is S30.5 too, which carries
-S7.3's clause on the count-elision bargain.
-
-- [x] S7.4 Reverse the document half of the twelfth ruling
-      done: `dev/DECISIONS.md` carries an entry stating that the twelfth ruling
-        of 2026-08-25 — delete the code, keep the documents as the record — is
-        reversed for `rc-walk`, `rc-trace` and the horizon by Edmond's ruling of
-        2026-08-26, with the reason (a superseded mechanism left in the tree is
-        read as the design in force) and with `archive/pre-rc-cycle` named as
-        where the deleted text lives; the entry lands **before the first file
-        goes**, so `model/PLAN.md` S30.5 cannot start without it
+- [ ] S8.1 Verify that `ll-model`'s collecting flag is per-thread
+      done: the flag the entry gate reads is named in `ll-model`, its scope is
+        read from the source rather than assumed, and either `dev/DECISIONS.md`
+        records that the premise holds or a new entry amends the gate ruling to
+        say what the gate reads instead
       tier: T1 · role: —
-      handoff: closed 2026-08-27 by `421edeb`. The ordering clause was already
-        met, and was checked in git rather than assumed: `af10eae` put the
-        2026-08-26 ruling, its reason and `archive/pre-rc-cycle` on record at
-        11:53, and the first deletion is `827e6a9` at 12:26. What no entry said
-        is that this reverses the twelfth ruling, and nothing said anything at
-        all about `rc-trace`'s documents or `rc-satb`'s, which the same deletion
-        took — that gap is what the new entry closes.
-      handoff: three stale citations found while reading, left to S7.6 because
-        naming which surviving documents are records today is that step's
-        question: `dev/WORKFLOW.md`'s consolidation bullet calls
-        `model/gc/rc-walk.md` a document in force and lists four more deleted
-        ones as records; `model/gc/rc-cycle.md`'s status banner says the crate
-        runs `rc-trace` until `rc-cycle` is built; `model/gc/cycle/questions.md`
-        takes its legend from the deleted `../walk/questions.md`.
-- [x] S7.5 Write the four Sage rulings into the nodes they move
-      done: `model/gc/rc-cycle.md`'s summary bullet states Y9's edge-side prune
-        — a mature member is read as an opaque live external and is not
-        descended into — in place of "traced only after it has stayed a
-        candidate across `k` collections", which bounds nothing and seeded a
-        wrong step; Y7's wrap paragraph carries a superseded note pointing at
-        the ruling, since the collector no longer clears a stamp on contact;
-        Y12 clause 4's second half is narrowed to "cleared by the owner at
-        death", with a line saying what a dirty reader does instead — mark the
-        entry, leave the bit — and the count corrected from six clauses to
-        seven; Y14's clause "a thread that finds the token taken does not wait"
-        is retired with its reason, the handshake the 2026-08-26 amendment
-        deleted, and `rc-cycle.md`'s Concurrency section states the wait against
-        any non-self holder — **amended 2026-08-27**: the thread-local held flag
-        this clause asked for is deleted by the trace-token ruling of that date,
-        and what the section states instead is the token's coverage, its release
-        instant and the gate-before-wait order
-      tier: T2 · role: Critic
-      handoff: three of the four are amendments to text written the day before,
-        and the fourth retires a clause of Edmond's own ruling on the ground
-        that the ruling's main clause removed the clause's reason. Each keeps
-        the superseded reasoning readable beneath it, as the 2026-08-26
-        amendments already do.
-      Critic 2026-08-27: eight findings, five repaired in place and three sent
-        on. Repaired: only half of the ruling's backstop reached a clause, so
-        the bit is cleared nowhere but at death and the suspects buffer's
-        re-offer is unwritten, which makes an acquitted ring unenrollable for
-        ever; `rc-cycle.md`'s law still grants the owner the clearing the
-        narrowed clause forbids; Y12 clause 7 has the reader drop a corpse entry
-        that is now the owner's only signal; "the rest of the ladder" reinstates
-        rungs the design deleted; and "the only mechanism that bounds the
-        closure" collides with Y9's own "nothing bounds the first collection of
-        an epoch". The three sent on were one question — what the exclusion word
-        covers — and are the Sage line below.
-      Sage 2026-08-27: the word is the **trace token**, it covers mark and scan
-        and the live queues and is released at the end of scan before any exact
-        test, it carries one bit, the entry gate is checked before any wait, the
-        handshake is deleted design-wide and the accelerator hands off by
-        swapping a queue buffer into a per-thread inbox. Recorded in
-        `dev/DECISIONS.md`, "the trace token covers the trace alone, and the
-        accelerator hands off by buffer swap". Final.
-      handoff: closed 2026-08-27 by `8c5c30c`, together with S7.7 — the
-        intermediate state contradicts itself, the handshake being struck in one
-        document and kept in another. Y12's contract grew a clause: the ruling's
-        backstop is a pair, and writing only "the bit is never cleared" without
-        "an acquitted root is re-offered" leaves a ring that no decrement can
-        ever enrol again.
-      handoff: the prune needed a rule the ruling did not state and now has one
-        — evaluated on the target of an edge, never on a root taken from the
-        queue. The other reading is YRC's, whose `claimCell` prunes the root
-        too, and it would make collection latency the length of an epoch.
-- [x] S7.6 Consolidation pass over everything written on 2026-08-26
-      done: the consolidation check of `dev/WORKFLOW.md` runs over
-        `model/gc/rc-cycle.md`, `model/gc/cycle/questions.md`,
-        `model/gc/strategies.md`, `model/weak-references.md` and
-        `dev/DECISIONS.md` as amended — a separate reader, not the author,
-        looking for a citation that does not say what it is cited for, a
-        superseded document used as if in force, two documents contradicting
-        each other, and a claim traceable to nothing; it reports and changes
-        nothing, and its findings are answered before S30.5 runs
+      handoff: the ruling of 2026-08-27, "the entry gate reads this thread's own
+        state and never the trace token", names this as its one new obligation.
+        A flag spelled as a global "a collection is running" bit reproduces the
+        rejected reading without naming the token: every trace in flight would
+        close every allocator's gate, and the thread that most needs memory
+        would skip the collection that could free it.
+- [ ] S8.2 Decide who pre-allocates the spare queue buffer, and how it is
+      replenished
+      done: choice and reason in `dev/DECISIONS.md`, and Y12 clause 3 states
+        the mechanism rather than the question
+      tier: T2 · role: Sage
+      handoff: open since S6.4 wrote the contract, and on the critical path
+        since 2026-08-27: a trace consumes a spare of its own, because the
+        token holder swaps a thread's live buffer out in order to trace it, in
+        the in-line form as well as under the accelerator. The overflow path
+        may not call the allocator, so somebody else allocates — the reader, or
+        the thread at a checkpoint — and the choice decides what a failed
+        replenishment costs.
+- [ ] S8.3 Decide where the suspects buffer lives
+      done: choice and reason in `dev/DECISIONS.md`, and Y12 clause 8 says
+        whether it is one per thread like the queue, who re-offers from it and
+        at what instant
+      tier: T2 · role: Sage
+      handoff: clause 8 was written on 2026-08-27 as the second half of the
+        backstop — an acquitted root keeps its enrolment bit, so without a
+        re-offer no decrement can ever enrol it again. The obligation is
+        stated; the residence is not. YRC's own suspects buffer is priced at
+        56 % of captures removed (Y9), which prices the economy and not this.
+- [ ] S8.4 Give the class descriptor a declared target per pointer slot
+      done: `classes.md` carries, per pointer slot, at minimum a three-way tag
+        separating class, string and array, and for the class case a pointer or
+        link-time id, so a class's own slots can be examined; Y3's "what
+        remains" paragraph states the field rather than owing it
       tier: T2 · role: —
-      handoff: `dev/WORKFLOW.md` requires this of every set of documents written
-        in one sitting. The set of 2026-08-26 was committed as `bb44ddd` without
-        it, and this step is that debt plus the amendments above.
-      handoff: closed 2026-08-27 by `1565dbf` and `79e5391`. The pass's own
-        instruction sheet went first: `dev/WORKFLOW.md` named the deleted
-        `model/gc/rc-walk.md` as a document in force and sorted five more
-        deleted ones into records, and a pass told that a deleted document is
-        authoritative discounts the ones that are.
-      handoff: two readers rather than one, split on the document boundary —
-        4400 lines is past the length a single run holds. They returned 25
-        findings, all repaired, and one question: whether the entry gate loads
-        the trace token. The Sage said no, and the reason is that a gate closing
-        on a held token silently re-derives the non-wait clause of 2026-08-26.
-        `dev/DECISIONS.md`, "the entry gate reads this thread's own state and
-        never the trace token".
-      handoff: two things were found and not done. `dev/tools/rc-walk/states/`
-        is still tracked — twenty TLC checkpoint files whose specs went with the
-        battery on 2026-08-26, outside the letter of that ruling and left for
-        Edmond. And the collecting flag's scope in `ll-model` is unverified: if
-        it is global rather than per-thread, the gate's ruling is defeated by
-        the spelling.
-- [x] S7.7 Carry the trace-token ruling into the nodes outside S7.5's four
-      done: `model/gc/rc-cycle.md`'s "Death while enrolled" re-scopes the second
-        parking to the trace and puts the in-trace return instant at the token's
-        release; "What it keeps from `rc-walk`" strikes the handshake and names
-        the swap-and-inbox handoff; `questions.md`'s Y5 strikes it from its
-        survival list and its graph label, and Y12's clauses 2, 3 and 5 are
-        amended to the swap and the inbox; no page of either document still
-        calls the word a claim or a collection token, Y9's quoted `claimCell`
-        apart; `model/memory/critical-reserve.md` no longer states the retired
-        refusal to wait as the rule, and `model/gc/strategies.md` no longer
-        implies a handshake exists elsewhere; the verification debt carries the
-        TLC obligation the ruling names first; `linkcheck.php` clean
-        (Concurrency itself is S7.5's, whose criterion names it)
-      tier: T2 · role: —
-      handoff: this step exists because the ruling of 2026-08-27 reaches five
-        documents while S7.5's criterion names four nodes, and widening that
-        step silently would have hidden a design change inside an amendment
-        pass. Half of it is worse than none: until the handshake is struck from
-        Y5 and from "What it keeps", the tree says both that it survives and
-        that it is deleted.
-      handoff: closed 2026-08-27 by `8c5c30c`. Two documents outside both steps
-        carried the retired rule as if in force and were repaired with them:
-        `model/memory/critical-reserve.md` stated the refusal to wait as the
-        rule, and `model/gc/strategies.md` implied a handshake exists somewhere.
-        A grep for `handshake` over `model/` is what found them, and it is what
-        the next such deletion should run.
+      handoff: what S6.3 turned out to owe, recorded in Y3 and in the
+        eighteenth `dev/DECISIONS.md` entry of 2026-08-25, owned by no step
+        since. The class filter of Y3 cannot be written without it:
+        `SlotKind`'s `Pointer` variant covers a declared class type, a `string`
+        and an `array` in one code, and `PropSlot` carries no target, so the
+        evaluable form demotes 0 of 114 classes with live instances.

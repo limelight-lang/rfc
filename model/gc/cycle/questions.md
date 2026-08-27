@@ -202,7 +202,7 @@ application's own code contributes none of 49.
 form needs the class descriptor to gain a declared target per pointer slot: at
 minimum a three-way tag separating class, string and array, and for the class
 case a pointer or link-time id so the target's own slots can be examined. That
-is what S6.3 turned out to owe, and it is a change to `classes.md` before it is
+is owed by `dev/PLAN.md` S8.4, and it is a change to `classes.md` before it is
 a change to `src/class.rs`.
 
 **Edmond confirmed the direction on the map and added the other half:** the
@@ -1070,7 +1070,7 @@ which is Y13's dial at a second setting and is unmeasured.
 
 ## Verification debt
 
-Inherited from the dropped stage S4, whose tombstone re-aimed the
+Inherited from a dropped stage of 2026-08-23, whose tombstone re-aimed the
 model-checker debt **at `rc-cycle` rather than at the cases**. **The debt
 lives here from 2026-08-26**, the battery that used to carry it having been
 deleted with the walk: a TLC battery — `DrainPause.tla`, `DrainWindow.tla` and `RcWalk.tla` —

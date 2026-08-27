@@ -109,6 +109,14 @@ the collection rather than the process. Blocks drawn through this door return to
 the reserve at the arena's reset, abort included, so an aborted collection
 leaves the reserve full without waiting for the poll.
 
+**The suspects buffer is not a fourth customer.** An acquitted root parks in a
+per-thread chain funded by its own tail's free space and then by the ordinary
+door, and deliberately by nothing a pickup frees, so it neither draws here nor
+withholds a block the first customer's return path would have brought back.
+Both of its sources refusing re-enqueues the root into the queue instead, which
+is that first customer again ([../gc/cycle/questions.md](../gc/cycle/questions.md),
+Y12 clause 8).
+
 ## Sizing
 
 **The collector's share was derivable and is not any more.** The arithmetic

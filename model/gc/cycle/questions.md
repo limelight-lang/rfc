@@ -583,7 +583,7 @@ mean deleted".
 **What is still evidence-gated:** when the registry's default moves — Y1's
 answer and a measurement, not a preference.
 
-## Y9. Candidate maturation  [answered 2026-08-25: age in the epoch stamp]
+## Y9. Candidate maturation  [answered 2026-08-25: age in the epoch stamp; the counter's residence ruled 2026-08-27]
 
 **Maturation is kept, and its residence is ruled: an age carried in the
 header's stamp, not a carousel of `k + 1` rotating buffers.** The rotating
@@ -629,9 +629,21 @@ lever; and a separate suspects buffer for stamped survivors, which on
 YRC's generational bench removed the 56 % of captures that were the same
 survivors re-registering every collection.
 
+**The epoch counter's residence was ruled 2026-08-27** with the suspects
+buffer that reads it ([`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md),
+"the suspects buffer is the owner's, and the re-offer is a splice at the
+epoch's turn"): the counter is process-global and full-width, a collection's
+commit advances it once every N collections, and the epoch field of the
+header's four-bit maturation stamp carries its low two bits. A thread compares
+it against a full-width local
+mirror, so a stamp that wraps hides no turnover from the re-offer.
+
 **What would answer the rest:** the promote bound `k` — a measurement on a
-real workload, YRC's 3 being the only known value — and the stamp's exact
-residence in the header, which is Y7's layout under its no-growth rule. The
+real workload, YRC's 3 being the only known value; the advance period `N`,
+where YRC's 64 is likewise the only known value and the two dials are separate;
+and how concurrent commits count `N` on one process-global word, several owner
+threads being able to commit at the same instant. The stamp's residence in the
+header is settled — epoch 16-17, age 18-19, under Y7's re-lay of 2026-08-26. The
 381-of-381 figure also owes its instrument: it was taken on 2026-08-25 against
 the booted Laravel corpus, the filed corpus tool
 [`../../../dev/tools/heap-composition.php`](../../../dev/tools/heap-composition.php)
@@ -741,7 +753,7 @@ sites the compiler could not prove.
 a proof — the enrolling form everywhere, which is what the crate does
 today.
 
-## Y12. The root queue: written by the mutator, read behind it by the collector  [contract written 2026-08-25; the named candidate does not meet it; clause 3 ruled 2026-08-27]
+## Y12. The root queue: written by the mutator, read behind it by the collector  [contract written 2026-08-25; the named candidate does not meet it; clauses 3 and 8 ruled 2026-08-27]
 
 Filed by Edmond on the map, 2026-08-25. Candidates come from the release
 path itself, so the enrolment write lands on the hottest path in the
@@ -887,8 +899,10 @@ the first three are what the candidate would have to be given.
 5. **A root the trace did not walk stays enrolled**, its bit uncleared and its
    entry re-enqueued by the owner out of the detached buffer — the owner being
    its queue's one writer, which is what makes the re-enqueue legal
-   (amended 2026-08-27). A partial collection is legal (Y14) and a dropped
-   root is not (Y6).
+   (amended 2026-08-27). **So does a root the trace marked and the owner did not
+   judge**: a mark is a proposal and only an exact reading disposes of one, so
+   an unjudged proposal is re-enqueued exactly as an unwalked root is. A partial
+   collection is legal (Y14) and a dropped root is not (Y6).
 6. **Growth that cannot allocate draws on the reserve.** The thirteenth
    ruling: the enrolment does not drop, the runtime enters reserve mode, and
    it leaves reserve mode only after every queued root has been walked.
@@ -908,22 +922,71 @@ the first three are what the candidate would have to be given.
    What this costs is a stale entry occupying queue space until the owner
    reads it, which the growth rule already pays for.
 
-8. **An acquitted root is re-offered rather than forgotten** (2026-08-26). The
-   bit staying set is only half the backstop: with it set no decrement
+8. **An acquitted root is re-offered rather than forgotten** (2026-08-26;
+   residence and instant ruled 2026-08-27,
+   [`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md), "the suspects
+   buffer is the owner's, and the re-offer is a splice at the epoch's turn").
+   The bit staying set is only half the backstop: with it set no decrement
    re-enrols the entity, so an exact acquittal that forgot the root would
    leave a ring that later becomes garbage with nothing left to name it. A
    proven-live root therefore parks in a **suspects buffer** with its bit set
    and is re-offered at epoch turnover, which is what turns ring-mates matured
    apart, a wrapped stamp (Y7) and a wrong dirty proposal into bounded floating
-   garbage instead of a permanent miss (Y6). **Open:** where the suspects
-   buffer lives and whether it is one per thread like the queue, and what the
-   re-offer costs — YRC's own suspects buffer is quoted below at 56 % of
-   captures removed, which prices the economy and not this obligation.
+   garbage instead of a permanent miss (Y6).
+
+   **The buffer is one per mutator thread, beside that thread's queue**, a
+   chain of the same segments, and the owner is its only writer and its only
+   reader. It takes no atomics and the trace token does not cover it, because
+   acquittal is the owner's exact reading in both forms — the in-line commit
+   and the inbox pickup — and the re-offer is a write into the queue, whose one
+   writer is the owner (clause 1).
+
+   **Parking is the owner's disposition at that reading.** Draining a detached
+   buffer, the owner sorts each entry four ways: an entry whose entity reads
+   zero drops, its bit clears and its slot returns (clause 7); a condemned
+   component goes to teardown; a root the trace did not walk, or one a dirty
+   pass only marked, is re-enqueued (clause 5); a root the exact test acquitted
+   is appended here. Under the law of 2026-08-26 the park is a reduction of
+   queue state paired with an addition, made by the owner on an exact reading,
+   which is the actor and the instant the law entitles. A dirty pass never
+   parks. The append is funded by the tail segment's free space and then by the
+   ordinary door, and by nothing the pickup itself frees: clause 3 spends those
+   segments in a fixed order — the cells first, the reserve's return after — and
+   a segment retained here is one the reserve does not get back. Both refusing
+   re-enqueues the root instead, which puts it back on the queue's own funding
+   path, cells and then reserve, so what the buffer's growth can cost is a queue
+   slot and never a root.
+
+   **Epoch turnover is the maturation epoch of Y7 and Y9**, `rc-walk`'s drain
+   epoch having been deleted with it. The counter is process-global and
+   full-width, a collection's commit advances it once every N collections (N is
+   Y9's dial, and YRC's 64 is the only known value), and the epoch field of the
+   header's four-bit maturation stamp carries its low two bits. **The re-offer instant is the owner's first
+   safepoint poll that finds the counter moved** from a thread-local
+   full-width mirror recorded at the last re-offer; full-width on both sides,
+   so a stamp that wraps hides no turnover. At that poll, after clause 3's
+   cells are refilled, the owner links every suspects segment onto its own live
+   queue, one link per segment and no entry copied, and records the counter.
+   The poll is the instant rather than the owner's next judgement, because a
+   thread whose only garbage is a parked ring has an empty queue, and Y14 fixes
+   an in-line collection's scope at that queue: no roots, so no judgement, and
+   the parked ring is outside the token's coverage where no accelerator reaches
+   it either. Waiting for a judgement would therefore wait for ever, which is
+   Y6's miss by another road.
+
+   **A suspect that dies while parked keeps its slot parked** until the splice
+   puts its entry back where clause 7's corpse rule reads it. An in-line
+   collection on the pressure path may sweep its own suspects buffer for
+   corpses first, in place, which is lawful because the owner is doing it on an
+   exact reading. That retention window is up to one epoch and is the widest
+   this design carries, wider than clause 7's "until the owner reads it".
 
 **What is still open:** what an overflow does when the critical reserve is
 spent too, which no clause reaches — the thirteenth ruling funded "never
-dropped" out of the reserve and stopped at the reserve running out; where the
-suspects buffer of clause 8 lives; the poll bound clause 3's two cells are
+dropped" out of the reserve and stopped at the reserve running out; what the
+writer and the swapper of clause 2 agree on, so that an entry written while the
+live buffer is being detached lands in exactly one of the two buffers and in
+neither twice; the poll bound clause 3's two cells are
 sized against, which the ABI has not written down; and the reserved critical
 area's sizing —
 [`../../memory/critical-reserve.md`](../../memory/critical-reserve.md) exists

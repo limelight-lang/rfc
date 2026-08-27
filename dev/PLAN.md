@@ -27,6 +27,11 @@ the steps below).
 
 ## Fog
 
+- `model/memory/large-entities.md` is in force and still runs on `rc-walk`'s
+  collection epoch — a per-epoch snapshot, a removal parking inside a collection
+  epoch — and `model/gc/domains.md` uses the same word. The collector that
+  defined that epoch was deleted on 2026-08-26 and the epoch in force is the
+  maturation one, so the two documents describe a mechanism with no owner.
 - The purity ladder's four open questions are carried in
   `model/gc/pure-destructors.md` as open items, unresolved in the code
   repository (`model/dev/design/pure-destructors.md` there).
@@ -41,16 +46,20 @@ or owned, so the build stops at code nobody has written rather than at a
 decision nobody took.
 
 Done when: `cycle/questions.md` Y12 names an owner and a mechanism for clauses 3
-and 8, no clause leaves the spent-reserve case to the reader,
-`rc-cycle.md`'s teardown order names the instant a collection's blocks return,
-`classes.md` carries a declared target per pointer slot,
-and the gate ruling's premise about `ll-model`'s collecting flag is verified or
-the ruling is amended.
+and 8, clause 2 states what the queue's writer and its swapper agree on, no
+clause leaves the spent-reserve case to the reader, `rc-cycle.md`'s teardown
+order names the instant a collection's blocks return, `classes.md` carries a
+declared target per pointer slot, Y9 states who advances the epoch counter and
+how it is counted, and the gate ruling's premise about `ll-model`'s collecting
+flag is verified or the ruling is amended.
 
 The first four are what survived stage S6 and the rulings of 2026-08-27, each
 recorded in a journal and owned by no step, which is what rule 23.1.2а forbids.
-S8.5 and S8.6 are what the clause-3 ruling of 2026-08-27 left behind, and they
-are here for the same reason.
+S8.5 through S8.8 are what the two rulings of 2026-08-27 left behind — the
+boundary one of them refused to cross, the ordering obligation it created, the
+clause whose swap their mechanisms gave a chain and a third writer, and the
+counter one of them gave a reader and no writer discipline — and they are here
+for the same reason.
 
 - [x] S8.1 Verify that `ll-model`'s collecting flag is per-thread
       done: the flag the entry gate reads is named in `ll-model`, its scope is
@@ -108,7 +117,7 @@ are here for the same reason.
         `ll_thread_exit` drains the inbox and the queue beside the reserves, and
         the spent-reserve tier needs a forced-refusal test naming which door
         refused once S8.5 says what that tier is.
-- [ ] S8.3 Decide where the suspects buffer lives
+- [x] S8.3 Decide where the suspects buffer lives
       done: choice and reason in `dev/DECISIONS.md`, and Y12 clause 8 says
         whether it is one per thread like the queue, who re-offers from it and
         at what instant
@@ -118,6 +127,36 @@ are here for the same reason.
         re-offer no decrement can ever enrol it again. The obligation is
         stated; the residence is not. YRC's own suspects buffer is priced at
         56 % of captures removed (Y9), which prices the economy and not this.
+      Sage 2026-08-27: one per mutator thread beside its queue, owner-written
+        and owner-read, because acquittal is the owner's exact reading on the
+        owner's thread and the re-offer is a write into the queue, whose one
+        writer is the owner. The instant is the owner's safepoint poll, not its
+        next judgement: a thread whose only garbage is a parked ring presents an
+        empty queue and would never reach a judgement. Accepted. Final.
+      handoff: closed 2026-08-27. Y12 clause 8 is rewritten in the indicative,
+        the node header says clauses 3 and 8 are ruled, `model/gc/rc-cycle.md`
+        carries the four-way disposition at the pickup and the parked corpse's
+        window, `model/memory/critical-reserve.md` records that the buffer is no
+        fourth customer, and the ruling is the top entry of `dev/DECISIONS.md`.
+      handoff: the ruling had to name what an epoch is, so Y9 gains it: the
+        counter is process-global and full-width, a commit advances it every N
+        collections, the epoch field of the header's four-bit maturation stamp
+        takes its low two bits, and a thread compares against a full-width
+        mirror so a wrap hides no turnover.
+        `N` joins the promote bound `k` as an open dial; YRC's 64 and 3 are the
+        only known values of either.
+      handoff: the retention this buys is the widest in the design and was
+        accepted rather than solved — a suspect that dies while parked keeps its
+        slot, and the slot's block, until the next turnover or an in-line
+        sweep. `model/PLAN.md` S34.2 gets its mechanism from this: force the
+        counter forward through a `#[cfg(test)]` shorthand, run the poll, run a
+        collection, and assert the stale-acquitted ring reclaimed.
+      handoff: the ruling adds a third per-thread chain, so the exit obligation
+        S8.2 handed the crate grows with it: `ll_thread_exit` drains the
+        suspects buffer beside the inbox and the queue. Its entries hold their
+        enrolment bits set and, by this ruling, hold slots and blocks parked, so
+        a thread that exits without draining it parks them for the life of the
+        process.
 - [ ] S8.4 Give the class descriptor a declared target per pointer slot
       done: `classes.md` carries, per pointer slot, at minimum a three-way tag
         separating class, string and array, and for the class case a pointer or
@@ -165,3 +204,33 @@ are here for the same reason.
         destructors can overflow a queue. Against that, the exact test and the
         re-verify compute `IN` in collection-private memory drawn from the same
         reserve and run after the release, so one arena cannot serve both.
+- [ ] S8.7 Decide what the queue's writer and the buffer's swapper agree on
+      done: Y12 clause 2 states the agreement, so that an entry written while
+        the live buffer is being detached lands in exactly one of the two
+        buffers and in neither twice, and so does a whole segment spliced onto
+        the chain at a re-offer poll
+      tier: T2 · role: Sage
+      handoff: clause 2 says the holder swaps the live buffer for a spare and
+        traces the detached one, and clause 1 says the owner is the only
+        writer. Neither says how the two agree at the instant of the swap. The
+        second swapper arrived with the token ruling of 2026-08-27, which gave
+        clause 2 its swap; what the clause-3 ruling of the same day added is the
+        chain, so the two now agree on a link as well as on the live pointer,
+        and the clause-8 ruling added a third writer of that chain — the
+        re-offer splice at a poll.
+      handoff: it does not block `model/PLAN.md` S34.1, which writes only the
+        owner's side: the enrolment, the overflow swap and the in-line reader
+        all run on the one thread, and that step's criterion is met by refusing
+        a second reader by construction. What it blocks is the accelerator,
+        where a second thread swaps the word for the first time.
+- [ ] S8.8 Decide how concurrent commits advance the epoch counter
+      done: Y9 states who writes the process-global counter, how "every N
+        collections" is counted when several owners commit at once, and what
+        orders that write against the header stamps a commit writes on its own
+        thread
+      tier: T2 · role: Sage
+      handoff: the clause-8 ruling of 2026-08-27 gave the counter its residence
+        and its reader and left its writer undisciplined. Commits are not
+        serialised: the trace token is released before any exact test, so
+        several owner threads judge, tear down and commit at the same instant,
+        and each of them stamps entities of its own on the epoch it reads.

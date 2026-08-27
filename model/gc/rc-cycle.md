@@ -220,7 +220,11 @@ to the exact judgement. That closes the window in which `ll_release` has
 published the zero but the death path has not yet begun, during which a slot
 returned by a reader could be handed back out under a running destructor.
 
-**Two parkings, with different windows.** The one above is between collections.
+**Two parkings, with different windows.** The one above is between collections,
+and its widest form is a corpse whose entry has been parked in the suspects
+buffer of [`cycle/questions.md`](cycle/questions.md), Y12 clause 8: the entry is
+not read again until the epoch turns, so the slot stays parked that long unless
+an in-line collection sweeps the buffer for corpses first.
 The other is inside a **trace**: a thread's frees park while the trace token is
 held by any thread but itself and return when that thread next observes it free,
 which is one load on the slot-return path, because a row is keyed by the slot
@@ -359,9 +363,13 @@ there skips that thread for the round; the in-line form asks the pool, then the
 owner's two spare cells, then the owner's critical reserve, and aborts before
 tracing when all three refuse ([cycle/questions.md](cycle/questions.md), Y12
 clause 3). Nothing waits on the
-pickup, and the owner re-enqueues what stays enrolled, which it may do as its
-queue's one writer. The wait graph therefore has one edge kind — a waiter on the
-token — and no cycle.
+pickup. At it the owner disposes of every entry four ways — a corpse's slot
+returns, a condemned component goes to teardown, a root the trace did not walk
+or marked and the owner did not judge is re-enqueued, and one the exact test
+acquitted parks in the owner's suspects buffer until the epoch turns
+([cycle/questions.md](cycle/questions.md), Y12 clauses 5, 7 and 8) — all of
+which it may do as its queue's one writer. The wait
+graph therefore has one edge kind — a waiter on the token — and no cycle.
 
 While a trace is in flight, every thread's frees park, not only those whose
 blocks it reaches: a closure crosses heap partitions and the holder cannot know

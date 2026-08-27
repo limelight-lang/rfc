@@ -10,6 +10,70 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-27 — the suspects buffer is the owner's, and the re-offer is a splice at the epoch's turn
+
+**Decided (Sage), closing Y12 clause 8.** The suspects buffer is one per
+mutator thread, beside that thread's enrolment queue and made of the same
+segments, and the owner is its only writer and its only reader — no atomics,
+and the trace token does not cover it. Parking is the owner's disposition at
+its exact reading: draining a detached buffer it sorts each entry four ways —
+corpse, condemned, not-walked, acquitted — and the acquitted one is appended
+here with its bit still set. **Epoch turnover is the maturation epoch of Y7 and
+Y9**, whose counter is process-global and full-width, advanced by a collection's
+commit once every N collections, the epoch field of the header's four-bit
+maturation stamp carrying its low two bits. **The re-offer is the owner's first safepoint poll that finds the
+counter moved** from a full-width thread-local mirror; at it the owner links
+every suspects segment onto its own live queue, one link per segment, and
+records the counter.
+
+**Why the owner and why the poll.** Acquittal is the owner's exact reading, on
+the owner's thread, in the in-line commit and at the inbox pickup alike, and the
+re-offer is a write into the queue whose one writer is the owner (clause 1) — so
+writer and reader are the same thread by construction, which is what makes the
+buffer a plain owner-private chain. The poll is the instant rather than the
+owner's next judgement, because a thread whose only garbage is a parked ring has
+an empty queue, and Y14 fixes an in-line collection's scope at that queue: no
+roots, so no judgement, and the ring is outside the token's coverage where no
+accelerator reaches it either. Waiting for a judgement would wait for ever,
+which is Y6's permanent miss by another road. The poll is not unconditional
+either — `model/gc/strategies.md` puts it at statement boundaries, allocation
+slow paths and request end — so a thread that blocks or exits reaches none, and
+thread exit drains this chain beside the queue and the inbox.
+
+**Rejected: the shadow arena as residence.** Its blocks return at the arena's
+reset while a suspect must outlive many collections, so parking there either
+pins the arena or forces a copy out at reset, which re-asks this question.
+**Rejected: a process-global buffer.** The token is released before any exact
+test, so several owners judge and park at the same instant, and the drain would
+be a cross-thread write into per-thread queues that clause 1 forbids in terms.
+**Rejected: no buffer, re-enqueuing every acquitted root under clause 5.**
+Correct, and the negation of the economy: the age prune is evaluated on edge
+targets and never on a root taken from the queue, so every survivor re-enqueued
+would be re-descended from as a root — cheaply within an epoch, where its mature
+targets read as opaque, and in full in the first collection after a turnover,
+when every stamp is stale. That is the population YRC's own suspects buffer
+removed, at 56 % of captures on its generational bench (Y9). It survives demoted to the funding
+fallback, which is what lets the buffer's own growth refuse harmlessly.
+**Rejected: an entry-by-entry copy at the re-offer.** A copy drains through the
+queue's overflow path, and a large drain would consume both spare cells and then
+the reserve, breaking clause 3's two-cell argument at a single poll; linking
+whole segments consumes nothing.
+
+**Cost:** up to one segment per thread from its first acquittal, and as many as
+the acquittals between two re-offers fill — the chain empties at the first
+re-offer poll after a turnover rather than at the turnover itself, so that
+interval and not the epoch is the bound, and it is unmeasured in size. What would settle it is
+suspects churn per epoch on the corpus, the same measurement
+`model/memory/critical-reserve.md`'s sizing already waits behind; YRC's 56 %
+prices the benefit and not this footprint. Per poll it costs two loads — the
+global counter and the thread's own mirror — and one compare. **A suspect that dies while parked keeps its slot, and the slot's
+block, parked until the splice puts its entry back where the corpse rule reads
+it**, or until an in-line collection sweeps the buffer for corpses first — up to
+one epoch, which is the widest retention this design carries and is accepted
+rather than solved. The mass re-offered at a turnover feeds the expense Y9
+already records, the first collection of an epoch being the expensive one, and
+nothing bounds that mass here or there.
+
 ## 2026-08-27 — each consumer of a queue segment provisions its own swap
 
 **Decided (Sage), closing Y12 clause 3.** The enrolment queue grows by linking

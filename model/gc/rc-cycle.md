@@ -165,9 +165,22 @@ the 717 MiB case: 41–76 ms to zero already-mapped memory, 178–196 ms to
 first-touch fresh memory, and it is asked for on the path where an allocation
 has already failed. So the "met" flag leaves the row for a **bitmap of one bit
 per group of eight slots**, and only the bitmap and the touched group are
-zeroed: 1.4 ms instead, and the pages of the row array that the trace never
-touches are never materialised, so the reservation stays virtual while the
-footprint follows the trace. The row is then two bits of colour and thirty of
+zeroed: 1.4 ms instead, and the rows are funded per touched block rather than
+per heap. The collection's arena bump-allocates a block's `slots × 4` rows with
+their met bitmap at the block's first touch, unzeroed, from pooled 64 KiB
+blocks — the ordinary door while it serves, the critical door of
+[`../memory/critical-reserve.md`](../memory/critical-reserve.md) when it has
+refused — so the footprint follows the touched-block list and the zeroing
+follows the trace, while a block the trace never enters costs nothing. The
+page-by-page virtual reservation that stood here is withdrawn (2026-08-27): a
+page that fails to materialise cannot report a refusal, and on the path that
+runs because memory is short the failure would be the process's death rather
+than the collection's abort, so growth is an allocation that can return null and
+a refused growth aborts the collection, which returns every block it holds. What
+the bump form pays for that is the whole row array of a sparsely touched block —
+up to 16 KB for one traced entity at the smallest class — which is the
+twenty-fourth entry's old objection back at half its size, accepted and bounded
+by the touched-block list. The row is then two bits of colour and thirty of
 working count, with saturation reading as "external references exist,
 conservatively live".
 

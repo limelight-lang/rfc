@@ -85,9 +85,16 @@ acknowledgement riding this thread's checkpoint, and the handshake is deleted.
 The draw is bounded by what one thread allocates between two polls, the same
 quantity `exceptions.md` bounds for the log reserve and leaves to the ABI.
 
-**A collection's working memory.** The in-line collection of Y14 runs because
-memory ran out, so its mark stack and its shadow-count arrays are drawn through
-the critical door, from the reserve of the thread running it.
+**A collection's working memory.** The mark stack and the shadow rows live in
+the collection's bump arena of pooled 64 KiB blocks, and the arena asks the
+ordinary door first: the in-line form has been the standard collection since
+2026-08-26, most of its runs begin with no refusal anywhere, and a full trace's
+rows are far beyond any reserve. The critical door is its fallback when the
+ordinary door refuses — on Y14's pressure path that is the first draw, the
+trigger being the refusal itself — and an arena both doors have refused aborts
+the collection rather than the process. Blocks drawn through this door return to
+the reserve at the arena's reset, abort included, so an aborted collection
+leaves the reserve full without waiting for the poll.
 
 ## Sizing
 
@@ -99,13 +106,21 @@ slice bound that depended on it, then refused again on 2026-08-26
 ([../../dev/DECISIONS.md](../../dev/DECISIONS.md), "the header carries a hash
 displacement, not an index" and "the shadow count is found by arithmetic from
 the address"). There is no slice and no per-entity captured count now: a row is
-four bytes in a per-block array. **How the rows are funded is open**, and it is
-a question rather than a repair — this document draws them through the critical
-door while [../gc/rc-cycle.md](../gc/rc-cycle.md) describes a virtual
-reservation materialised page by page, and 500 KB a thread funds about sixteen
-sparsely touched blocks at the 32 KB a block that
-[../../dev/DECISIONS.md](../../dev/DECISIONS.md), "the shadow rows are not
-zeroed greedily", prices. None of the three shares is derivable today.
+four bytes in a per-block array. **How the rows are funded is settled**
+(2026-08-27, the S33.1 ruling): a bump arena over pooled 64 KiB blocks, ordinary
+door first and this door on refusal, and [../gc/rc-cycle.md](../gc/rc-cycle.md)'s
+page-by-page virtual reservation is amended out, a lazily materialised page
+having no way to report a refusal the abort path could catch. The crate builds
+this reserve as eight pool blocks, 512 KB — this document's figure at block
+granularity. On the pressure path the reserve is the collection's trace budget,
+and exhausting it aborts the collection into the retry-then-raise
+[../../runtime/exceptions.md](../../runtime/exceptions.md) already promises. The
+sixteen-blocks arithmetic that stood here priced an 8-byte row; the row is four
+bytes since the captured count went, so a smallest-class block's rows are 16 KB
+and the reserve funds about thirty such blocks, over a hundred at the mid
+classes — and how far a pruned pressure trace gets inside that is the unmeasured
+number. The other two shares remain not derivable today, and no partition among
+the three customers is built until one is.
 
 **The queue's share is a rate against a duration and nobody has measured it.**
 The question is not how large a thread's enrolment queue becomes but how many

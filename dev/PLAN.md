@@ -269,7 +269,7 @@ S7.3's clause on the count-elision bargain.
         — evaluated on the target of an edge, never on a root taken from the
         queue. The other reading is YRC's, whose `claimCell` prunes the root
         too, and it would make collection latency the length of an epoch.
-- [ ] S7.6 Consolidation pass over everything written on 2026-08-26
+- [x] S7.6 Consolidation pass over everything written on 2026-08-26
       done: the consolidation check of `dev/WORKFLOW.md` runs over
         `model/gc/rc-cycle.md`, `model/gc/cycle/questions.md`,
         `model/gc/strategies.md`, `model/weak-references.md` and
@@ -282,6 +282,24 @@ S7.3's clause on the count-elision bargain.
       handoff: `dev/WORKFLOW.md` requires this of every set of documents written
         in one sitting. The set of 2026-08-26 was committed as `bb44ddd` without
         it, and this step is that debt plus the amendments above.
+      handoff: closed 2026-08-27 by `1565dbf` and `79e5391`. The pass's own
+        instruction sheet went first: `dev/WORKFLOW.md` named the deleted
+        `model/gc/rc-walk.md` as a document in force and sorted five more
+        deleted ones into records, and a pass told that a deleted document is
+        authoritative discounts the ones that are.
+      handoff: two readers rather than one, split on the document boundary —
+        4400 lines is past the length a single run holds. They returned 25
+        findings, all repaired, and one question: whether the entry gate loads
+        the trace token. The Sage said no, and the reason is that a gate closing
+        on a held token silently re-derives the non-wait clause of 2026-08-26.
+        `dev/DECISIONS.md`, "the entry gate reads this thread's own state and
+        never the trace token".
+      handoff: two things were found and not done. `dev/tools/rc-walk/states/`
+        is still tracked — twenty TLC checkpoint files whose specs went with the
+        battery on 2026-08-26, outside the letter of that ruling and left for
+        Edmond. And the collecting flag's scope in `ll-model` is unverified: if
+        it is global rather than per-thread, the gate's ruling is defeated by
+        the spelling.
 - [x] S7.7 Carry the trace-token ruling into the nodes outside S7.5's four
       done: `model/gc/rc-cycle.md`'s "Death while enrolled" re-scopes the second
         parking to the trace and puts the in-trace return instant at the token's

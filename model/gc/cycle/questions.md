@@ -741,7 +741,7 @@ sites the compiler could not prove.
 a proof — the enrolling form everywhere, which is what the crate does
 today.
 
-## Y12. The root queue: written by the mutator, read behind it by the collector  [contract written 2026-08-25; the named candidate does not meet it]
+## Y12. The root queue: written by the mutator, read behind it by the collector  [contract written 2026-08-25; the named candidate does not meet it; clause 3 ruled 2026-08-27]
 
 Filed by Edmond on the map, 2026-08-25. Candidates come from the release
 path itself, so the enrolment write lands on the hottest path in the
@@ -818,15 +818,59 @@ the first three are what the candidate would have to be given.
    the owner judges from that detached buffer, which it alone holds. The
    queue stays single-reader across both phases, and the candidate's fatal
    second-reader case never arises.
-3. **The enrolment write never allocates, never locks and never copies.**
-   Growth is the expensive half and it lands on a non-final decrement, so the
-   overflow path is a pointer swap into a buffer somebody else allocated: the
-   reader, or the thread at a checkpoint. Which of the two, and how the spare
-   is replenished after it is consumed, is the one part of this contract
-   still open — and since 2026-08-27 it is on the critical path rather than
-   beside it, because a trace consumes a spare of its own: the token holder
-   swaps the live buffer out in order to trace it, in the in-line form as
-   well as under the accelerator.
+3. **The enrolment write never allocates, never locks and never copies**, so
+   the overflow path is a pointer swap: the filled segment is linked into the
+   queue's chain and a fresh one becomes live. **The queue is a chain of
+   segments**, so nothing is copied and nothing is discarded, and a drain
+   reads every segment in it. A **segment is one 64 KiB pool block**, which is
+   the only unit both funding doors dispense; any other size would put a
+   carving allocator on the exhaustion path. Two consumers swap a segment in —
+   the enrolment overflow and the trace, the token holder swapping a thread's
+   live buffer out in order to trace it — and **each provisions its own swap**,
+   through its own doors, because the two stand at different instants (ruled
+   2026-08-27, [`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md), "each
+   consumer of a queue segment provisions its own swap").
+
+   **The owner provisions the overflow**, no reader existing at a non-final
+   decrement to have provisioned it. It holds **two spare segments** in a
+   thread-private inventory of two pointer cells, initialised to null without
+   allocating, and fills them at thread init and at every safepoint poll
+   through the ordinary door. The overflow swaps a cell in; with both cells
+   null it draws the critical reserve and the runtime enters reserve mode
+   (clause 6). What the poll asks is the null cell itself rather than a flag a
+   draw sets, so a thread whose fill at init was refused is asked again at
+   every poll instead of never.
+
+   **The live segment is a cell too.** A thread holds none until its first
+   enrolment, which finds no room by construction and takes the overflow path,
+   so a thread that never enrols holds two segments and not three, and the
+   empty-queue case needs no separate arm.
+
+   Two cells cover the two consumptions a single interval between polls can
+   hold: one overflow, and one in-line collection whose own request to the pool
+   was refused, which then takes a cell. An accelerator's swap takes none,
+   provisioning its own. Two overflows in one interval would need a whole
+   segment — 65 280 bytes of entries — to fill between two polls, which the
+   ABI's bound on operations between two polls excludes at any entry size; that
+   bound is unwritten, so the exclusion is an argument and not yet a
+   guarantee. Beyond the two, the critical reserve is what answers, which is
+   what it is for.
+
+   **The token holder provisions the trace's swap**, at the moment of the
+   swap. A collector thread takes a block through its own ordinary door and
+   skips the thread for the round when the pool refuses; the in-line form,
+   which starts at a legal allocation point, asks the pool, then its own
+   cells, then its own critical reserve, and aborts before tracing anything
+   when all three refuse — a partial collection is legal (Y14) and a dropped
+   root is not (Y6).
+
+   **A consumed spare is replenished by the buffer that comes back.** At the
+   inbox pickup the owner drains the detached segments, disposes of each entry
+   (clauses 5, 7 and 8), refills its cells to two out of the drained segments,
+   and returns the rest through the critical reserve's return path, which
+   refills the reserve before the pool sees anything
+   ([`../../memory/critical-reserve.md`](../../memory/critical-reserve.md)).
+   The poll's fill is what covers a thread that has not been traced.
 4. **The already-enrolled bit is set before the queue write and cleared by
    the owner at the entity's death, and at no other point** (narrowed
    2026-08-26). Setting it after the write lets a second decrement enrol the
@@ -876,12 +920,15 @@ the first three are what the candidate would have to be given.
    re-offer costs — YRC's own suspects buffer is quoted below at 56 % of
    captures removed, which prices the economy and not this obligation.
 
-**What is still open:** who allocates the spare buffer of clause 3 and when;
-and the reserved critical area's sizing —
+**What is still open:** what an overflow does when the critical reserve is
+spent too, which no clause reaches — the thirteenth ruling funded "never
+dropped" out of the reserve and stopped at the reserve running out; where the
+suspects buffer of clause 8 lives; the poll bound clause 3's two cells are
+sized against, which the ABI has not written down; and the reserved critical
+area's sizing —
 [`../../memory/critical-reserve.md`](../../memory/critical-reserve.md) exists
 and records that **no** share of it is derivable today, the collector's having
-lost its arithmetic when the header index went; and where the suspects buffer
-of clause 8 lives.
+lost its arithmetic when the header index went.
 
 ## Y13. Traversal aggression, and what the class flag feeds  [design; licensed 2026-08-26]
 

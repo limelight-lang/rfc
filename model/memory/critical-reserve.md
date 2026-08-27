@@ -64,15 +64,28 @@ memory-exhausted is being raised, and its log reserve is per mutator thread.
 
 ## The three customers
 
-**The enrolment queue's growth.** A non-final decrement enrols a candidate, the
-queue fills, and its growth allocation is refused at the ordinary door. The
-root is never dropped — a dropped enrolment is a garbage cycle no later
-collection can find, enrolment being edge-triggered — so the growth goes to the
-critical door (`../../dev/DECISIONS.md`, thirteenth entry of 2026-08-25). The
-draw is one growth step. What bounds the total is not the queue's eventual size
+**The enrolment queue's growth.** A non-final decrement enrols a candidate and
+the queue's live segment fills. The overflow swaps in a spare segment out of a
+thread-private inventory of two pointer cells, which the owner fills at thread
+init and at every safepoint poll through the ordinary door
+([../gc/cycle/questions.md](../gc/cycle/questions.md), Y12 clause 3, ruled
+2026-08-27), so this door is reached only where a poll's refill has already
+been refused. The root is never dropped — a dropped enrolment is a garbage
+cycle no later collection can find, enrolment being edge-triggered — so the
+growth goes to the critical door (`../../dev/DECISIONS.md`, thirteenth entry of
+2026-08-25). The draw is one block, and the in-line collection's own swap draws
+here too, after the pool and after the cells; all three refusing aborts that
+collection before it traces anything. What bounds the total is not the queue's eventual size
 but the mode: from the first such draw the runtime is in reserve mode, and it
 leaves reserve mode only when every queued root has been walked, so the queue
-drains while it fills.
+drains while it fills. **What an overflow does when this door refuses too is
+open**, and "When the reserve is spent too" below does not answer for this
+customer: raising memory-exhausted needs a frame, and the enrolment runs inside
+`ll_release`, which has none — the reason
+[../../runtime/exceptions.md](../../runtime/exceptions.md) files the candidate
+buffer under refusable work. The thirteenth ruling funded "never dropped" out
+of the reserve and stopped at the reserve running out
+([../../dev/PLAN.md](../../dev/PLAN.md), S8.5).
 
 **The mutator that cannot collect.** A thread short of memory tries to become
 the tracer, and reads its own entry gate first — the collecting flag and
@@ -152,7 +165,11 @@ and smaller headroom.
 
 The runtime raises memory-exhausted, an ordinary catchable `Throwable` here
 rather than a fatal error, and it is legitimate precisely because everything
-above has already been tried and a collection has run and lost. Constructing
+above has already been tried and a collection has run and lost. **This answers
+for the two customers that hold a frame** — the mutator that cannot collect,
+and a collection's working memory, whose abort path raises. The enrolment
+queue's growth holds none, so what it does at this boundary is open and is
+`../../dev/PLAN.md` S8.5. Constructing
 the exception draws on the exception reserve, which is a different block and is
 never lent to these three.
 

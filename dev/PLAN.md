@@ -41,12 +41,16 @@ or owned, so the build stops at code nobody has written rather than at a
 decision nobody took.
 
 Done when: `cycle/questions.md` Y12 names an owner and a mechanism for clauses 3
-and 8, `classes.md` carries a declared target per pointer slot, and the gate
-ruling's premise about `ll-model`'s collecting flag is verified or the ruling is
-amended.
+and 8, no clause leaves the spent-reserve case to the reader,
+`rc-cycle.md`'s teardown order names the instant a collection's blocks return,
+`classes.md` carries a declared target per pointer slot,
+and the gate ruling's premise about `ll-model`'s collecting flag is verified or
+the ruling is amended.
 
-The four are what survived stage S6 and the rulings of 2026-08-27. Each was
+The first four are what survived stage S6 and the rulings of 2026-08-27, each
 recorded in a journal and owned by no step, which is what rule 23.1.2а forbids.
+S8.5 and S8.6 are what the clause-3 ruling of 2026-08-27 left behind, and they
+are here for the same reason.
 
 - [x] S8.1 Verify that `ll-model`'s collecting flag is per-thread
       done: the flag the entry gate reads is named in `ll-model`, its scope is
@@ -70,7 +74,7 @@ recorded in a journal and owned by no step, which is what rule 23.1.2а forbids.
         a collection is running", a sentence with no thread in it over storage
         that is per-thread — a reader checking the premise against the comment
         answers wrongly in both directions, and only the declaration settles it.
-- [ ] S8.2 Decide who pre-allocates the spare queue buffer, and how it is
+- [x] S8.2 Decide who pre-allocates the spare queue buffer, and how it is
       replenished
       done: choice and reason in `dev/DECISIONS.md`, and Y12 clause 3 states
         the mechanism rather than the question
@@ -82,6 +86,28 @@ recorded in a journal and owned by no step, which is what rule 23.1.2а forbids.
         may not call the allocator, so somebody else allocates — the reader, or
         the thread at a checkpoint — and the choice decides what a failed
         replenishment costs.
+      Sage 2026-08-27: each consumer provisions its own swap, the either/or of
+        the question being right for one consumer each. The owner keeps two
+        spare segments in two pointer cells, filled at thread init and at every
+        safepoint poll through the ordinary door, because at a non-final
+        decrement no reader exists to have provisioned anything; the token
+        holder takes the trace's spare through its own ordinary door at the
+        swap, standing at no hot path. Accepted on the question asked; the
+        terminal tier at the spent reserve, which the ruling volunteered, was
+        refused and became S8.5. Final on clause 3.
+      handoff: closed 2026-08-27. Y12 clause 3 is rewritten in the indicative
+        and the node's header says so; `model/memory/critical-reserve.md`'s
+        queue paragraph and `model/gc/rc-cycle.md`'s "Concurrency" carry the
+        halves that touch them; the ruling and both refused alternatives are the
+        top entry of `dev/DECISIONS.md`. A segment is one 64 KiB pool block,
+        which is what lets either door fund one.
+      handoff: what it hands the crate. `model/PLAN.md` S34.1 can be built
+        against its allocation counter, the overflow being a cell swap and the
+        backstop a fixed-array pop. Three obligations come with it: the queue's
+        return paths join the critical reserve's return as callers,
+        `ll_thread_exit` drains the inbox and the queue beside the reserves, and
+        the spent-reserve tier needs a forced-refusal test naming which door
+        refused once S8.5 says what that tier is.
 - [ ] S8.3 Decide where the suspects buffer lives
       done: choice and reason in `dev/DECISIONS.md`, and Y12 clause 8 says
         whether it is one per thread like the queue, who re-offers from it and
@@ -104,3 +130,38 @@ recorded in a journal and owned by no step, which is what rule 23.1.2а forbids.
         `SlotKind`'s `Pointer` variant covers a declared class type, a `string`
         and an `array` in one code, and `PropSlot` carries no target, so the
         evaluable form demotes 0 of 114 classes with live instances.
+- [ ] S8.5 Decide what an overflow does when the critical reserve is spent too
+      done: `dev/DECISIONS.md` records the boundary and Y12 states it, so no
+        clause leaves the spent-reserve case to the reader
+      tier: T2 · role: —
+      handoff: put to Edmond rather than to a Sage, because it reverses his own
+        ruling. The Sage of 2026-08-27 ruled a terminal tier — clear the bit the
+        enrolment had just set, record the root as a known leak, arm
+        memory-exhausted — and it was not adopted: it reinstates for candidate
+        roots the drop-as-known-leak licence of `runtime/exceptions.md` that the
+        thirteenth ruling of 2026-08-25 overrode for them by name.
+      handoff: the second defect is the record channel. `ll-model` compiles the
+        journal's record sites away without the `debug-journal` feature, which
+        is off by default, so in any ordinary build "recorded as a known leak"
+        is a silent permanent miss of exactly the class Y6 refuses. Whatever
+        tier is chosen needs a channel compiled into the default build, or it
+        needs to say that the miss is silent.
+      handoff: `runtime/exceptions.md` already argues the tier's own case
+        against itself: it files `ll_release`'s candidate buffer under
+        refusable work because the release path holds no frame to raise from,
+        and its own passage on that refusal calls the resulting leak "still the
+        right trade against killing the process". The thirteenth ruling moved
+        the candidate buffer out of that class only as far as the reserve
+        reaches, which is why this boundary is the ruling's edge and not a new
+        question.
+- [ ] S8.6 Decide when the shadow arena resets, against the teardown order
+      done: `rc-cycle.md`'s teardown order names the instant a collection's
+        blocks return, and says where the exact test's collection-private memory
+        comes from once they have
+      tier: T2 · role: Sage
+      handoff: raised by the Sage of 2026-08-27 as the one ordering obligation
+        its ruling creates. Returning the blocks at the token's release, before
+        the first destructor, refills the reserve ahead of a teardown whose own
+        destructors can overflow a queue. Against that, the exact test and the
+        re-verify compute `IN` in collection-private memory drawn from the same
+        reserve and run after the release, so one arena cannot serve both.

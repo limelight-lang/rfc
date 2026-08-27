@@ -10,6 +10,65 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-27 — each consumer of a queue segment provisions its own swap
+
+**Decided (Sage), closing Y12 clause 3.** The enrolment queue grows by linking
+whole 64 KiB pool blocks — the only unit both funding doors dispense — and each
+of the two consumers that swaps a segment in provisions it through its own
+doors. The **owner** keeps two spare segments in a thread-private inventory of
+two pointer cells, initialised to null without allocating and filled at thread
+init and at every safepoint poll through the ordinary door; an overflow swaps a
+cell in, and with both cells null draws the critical reserve and enters reserve
+mode. The **token holder** provisions the trace's swap at the swap itself: a
+collector thread takes a block through its own ordinary door and skips the
+thread for the round when the pool refuses, while the in-line form asks the
+pool, then its own cells, then its own critical reserve, and aborts before
+tracing when all three refuse. A consumed spare is replenished at the inbox
+pickup out of the buffer that comes back.
+
+**Why the two halves differ.** At a non-final decrement no reader exists, so
+"the reader allocates" serves the overflow never and the owner's checkpoint
+inventory has to be built whatever feeds the trace. The holder then has no
+reason to be on a pre-allocation discipline at all, standing at no hot path,
+and the pool keeps a per-thread cache of eight blocks in front of its global
+chain, so a holder is served in cases where the visited thread's own refill was
+refused — provisioning at the swap is therefore no less available than
+provisioning ahead of it, and it asks nothing of the hot path. It also
+leaves the cells single-threaded, the owner being their only reader and writer,
+so they need no atomics.
+
+**Rejected: the accelerator drawing from the visited thread's cells.** Its skip
+would fire on a timing gap the pool could serve — spares consumed, poll not yet
+run — and each swap would strip that thread's overflow cover at the instant a
+trace had just been provoked. **Rejected: the spares being the critical reserve
+itself.** The reserve is per thread and unreachable to an accelerator, and
+routing ordinary overflow through it would make reserve mode, whose exit is
+gated on a full drain, the queue's normal operating regime.
+
+**Cost:** 128 KiB resident per thread at rest, the two spares, on top of
+`model/memory/critical-reserve.md`'s 500 KB, and 192 KiB from a thread's first
+enrolment on — the live segment is a cell that first enrolment swaps in, so a
+thread that never enrols holds two segments and not three. Add one transient
+pool block per visited thread per accelerator round. A
+reserve block can end up installed as a live segment on the in-line pressure
+path and is repaid at that collection's drain, or at the next pickup after an
+abort, so the reserve runs one block short for a bounded interval. Not
+measured: the poll bound the two cells are sized against, which is the ABI's
+and unwritten, and the enrolment rate during a drain, which is the corpus
+measurement `critical-reserve.md` already waits on.
+
+**Not adopted from the same ruling: a terminal tier at the spent reserve.** The
+Sage also ruled that an overflow finding the critical reserve empty clears the
+bit it had just set, records the root as a known leak and arms
+memory-exhausted. Two things hold it back. It reinstates for candidate roots
+the drop-as-known-leak licence of `runtime/exceptions.md` that the thirteenth
+ruling of 2026-08-25 overrode for them by name, which is Edmond's to reverse
+rather than a Sage's. And the record channel it names is not there: `ll-model`
+compiles the journal's record sites away without the `debug-journal` feature,
+which is off by default, so in any ordinary build the tier is a silent
+permanent miss of exactly the class Y6 refuses. The boundary is open and belongs to no clause; `dev/PLAN.md` S8.5
+carries it.
+
 ## 2026-08-27 — the gate's two inputs were thread-local in the deleted code, and neither exists today
 
 **Verified, not decided.** The ruling below rests on the entry gate reading this

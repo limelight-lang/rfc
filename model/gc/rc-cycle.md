@@ -353,7 +353,12 @@ round. The candidates keep their bits, so both skips cost nothing.
 **How a collector thread's shortlist reaches an owner.** The token holder swaps
 a thread's live queue buffer for a spare and traces the detached buffer, marking
 entries; at the release it posts the marked buffer to a per-thread inbox of
-capacity one, and the owner reads it at its own checkpoint. Nothing waits on the
+capacity one, and the owner reads it at its own checkpoint. **The spare is the
+holder's own**, taken through its ordinary door at the swap, and a refusal
+there skips that thread for the round; the in-line form asks the pool, then the
+owner's two spare cells, then the owner's critical reserve, and aborts before
+tracing when all three refuse ([cycle/questions.md](cycle/questions.md), Y12
+clause 3). Nothing waits on the
 pickup, and the owner re-enqueues what stays enrolled, which it may do as its
 queue's one writer. The wait graph therefore has one edge kind — a waiter on the
 token — and no cycle.

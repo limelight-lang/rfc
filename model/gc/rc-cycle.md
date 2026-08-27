@@ -147,6 +147,17 @@ never entered: the descent stops at any child outside the GC heap and treats it
 as an external live reference, because a ring through the arena is broken by the
 arena's own reset.
 
+**A large entity's block kind does not say which heap it belongs to, and the
+category is what does** (found while building the dispatch, 2026-08-27). An
+arena entity past one block payload is allocated by the same allocator a heap
+one is and carries the same block kind, so a dispatch that took the kind for
+proof would descend into an arena entity — and a component condemned through it
+would be freed by the teardown and again by the arena's reset, which still holds
+the run in its log. The other two populations need no such test: an entity block
+and a retained block hold entities of the collected heap alone. Promotion
+rewrites a surviving run's category in place and deliberately leaves its kind
+unchanged, so the category is the word that is right on both sides of a reset.
+
 **The rows are not zeroed greedily.** A zero row means "not met in this
 collection", so a per-slot array would have to arrive zeroed — and that is paid
 for every slot of a touched block rather than for the ones visited. Measured for

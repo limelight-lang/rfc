@@ -195,7 +195,7 @@ because its upper half is the crate's only entity tracer. S7.2 (delete the
 obligation. S7.3 (delete the horizon documents) is S30.5 too, which carries
 S7.3's clause on the count-elision bargain.
 
-- [ ] S7.4 Reverse the document half of the twelfth ruling
+- [x] S7.4 Reverse the document half of the twelfth ruling
       done: `dev/DECISIONS.md` carries an entry stating that the twelfth ruling
         of 2026-08-25 — delete the code, keep the documents as the record — is
         reversed for `rc-walk`, `rc-trace` and the horizon by Edmond's ruling of
@@ -204,6 +204,20 @@ S7.3's clause on the count-elision bargain.
         where the deleted text lives; the entry lands **before the first file
         goes**, so `model/PLAN.md` S30.5 cannot start without it
       tier: T1 · role: —
+      handoff: closed 2026-08-27 by `421edeb`. The ordering clause was already
+        met, and was checked in git rather than assumed: `af10eae` put the
+        2026-08-26 ruling, its reason and `archive/pre-rc-cycle` on record at
+        11:53, and the first deletion is `827e6a9` at 12:26. What no entry said
+        is that this reverses the twelfth ruling, and nothing said anything at
+        all about `rc-trace`'s documents or `rc-satb`'s, which the same deletion
+        took — that gap is what the new entry closes.
+      handoff: three stale citations found while reading, left to S7.6 because
+        naming which surviving documents are records today is that step's
+        question: `dev/WORKFLOW.md`'s consolidation bullet calls
+        `model/gc/rc-walk.md` a document in force and lists four more deleted
+        ones as records; `model/gc/rc-cycle.md`'s status banner says the crate
+        runs `rc-trace` until `rc-cycle` is built; `model/gc/cycle/questions.md`
+        takes its legend from the deleted `../walk/questions.md`.
 - [ ] S7.5 Write the four Sage rulings into the nodes they move
       done: `model/gc/rc-cycle.md`'s summary bullet states Y9's edge-side prune
         — a mature member is read as an opaque live external and is not

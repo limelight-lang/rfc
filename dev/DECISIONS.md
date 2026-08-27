@@ -10,6 +10,26 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-27 — the twelfth ruling's document half is reversed for all three bodies of text
+
+**Decided:** the twelfth ruling of 2026-08-25 — code is deleted and documents
+stay the record — no longer holds for `rc-walk`, `rc-trace` or the GC horizon.
+Edmond's ruling of 2026-08-26 sent all three out of the working tree in code and
+in documents, and sent them out first rather than one piece at a time behind
+each replacement. `archive/pre-rc-cycle` carries the deleted text in both
+repositories.
+**Why:** a superseded mechanism left in the tree is read as the design in force,
+by a person or by an agent, which costs more than the record is worth. The entry
+of 2026-08-25 (sixteenth) withdrew the document half for `rc-walk`'s documents
+and the horizon; the deletion of 2026-08-26 took `rc-trace`'s and `rc-satb`'s as
+well, and no entry says so, so a reader who finds the twelfth entry reads it as
+in force for those.
+**Rejected:** leaving the twelfth entry to be read against the two later ones,
+which name `rc-walk` and the horizon and answer nothing about the other two.
+**Cost:** the twelfth ruling's own cost clause goes with its document half — the
+pieces did not go one by one behind their replacements, so `ll-model` carries no
+cycle collector at all from the deletion until `rc-cycle` is built.
+
 ## 2026-08-26 — generated code touches bytes 4–5 of the header and nothing else
 
 **Decided:** the C mirror in [lowering.md](../model/lowering.md) declares the

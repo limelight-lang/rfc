@@ -161,7 +161,10 @@ Strategies consume, not define, the object model:
   left open. A strategy that does free directly still owes the
   bookkeeping teardown would have done: above all, dropping the escape
   hold-count of every request-arena entity the dead holder referenced,
-  since arena entities are invisible to the trace and nothing else will
+  since arena entities are invisible to the trace and nothing else will do
+it.
+
+---
 
 ## Constraint: non-moving only
 
@@ -179,7 +182,7 @@ event with no live stack, outside any strategy
 |---|---|---|---|---|
 | `nogc` | bump allocation, never frees | leaks | none | benchmarks baseline; short scripts |
 | `rc` | ARC + arenas | **leaks cycles** | none | short CLI where cycles don't accumulate |
-| `rc-cycle` **(in force)** | ARC + arenas + on-the-fly cycle collection from a mutator-fed candidate set | collected | enrolment on the release path, price bounded at ~0.4 ns a pair | the design of record since 2026-08-25, being built — see [rc-cycle.md](rc-cycle.md) |
+| `rc-cycle` **(in force)** | ARC + arenas + on-the-fly cycle collection from a mutator-fed candidate set | collected **once built**; until then a garbage ring is retained | enrolment on the release path, price bounded at ~0.4 ns a pair | the design of record since 2026-08-25, being built — see [rc-cycle.md](rc-cycle.md) |
 
 `nogc` is what the echo compiler ships today; `rc` is approximately
 elephc's model; `rc-cycle` is the Zend architecture done right
@@ -199,7 +202,8 @@ force. The code and the documents are on the branch
 
 ## `rc-cycle`
 
-The strategy in force since 2026-08-26 and the only one being built.
+The design of record since 2026-08-25 and the only strategy being built;
+the two it replaced left the tree on 2026-08-26.
 Points 1 and 2 belong to the whole ARC-plus-arenas family and held for
 its predecessors too; point 3 is where this strategy differs from them.
 
@@ -216,8 +220,9 @@ its predecessors too; point 3 is where this strategy differs from them.
    **computed**, `RC − IN > 0` over what the trace reached, never
    scanned. What the trace reaches is not the heap: the candidates come
    from the mutator, which enrols an entity at a decrement that does not
-   reach zero, and the descent stops at a mature member, at a child
-   outside the GC heap, and at a budget ([rc-cycle.md](rc-cycle.md)).
+   reach zero, and the descent stops at a mature member and at a child
+   outside the GC heap, and may also be cut by a budget, which is open
+   ([rc-cycle.md](rc-cycle.md), `cycle/questions.md` Y9 and Y13).
    Trial deletion runs on shadow rows off the heap, so an abandoned
    trace writes nothing into any entity.
 
@@ -236,14 +241,15 @@ where refcounts and edges agree** — between mutator operations, after
 the current store or teardown has completed. This is a *correctness*
 requirement, not a tuning choice.
 
-The failure it rules out is concrete. A reference store
-(`$box->slot = null`) lowers the old value's refcount *before* it
-overwrites the pointer; for that instant the count says "one fewer
-reference" while the pointer is still physically in the slot. A
-collection that runs in that window walks the stale edge and subtracts
-that same reference a second time, drives a still-live object to
-refcount 0, and frees it out from under its remaining holder. The same
-window opens mid-teardown (a child release during phase 2) and mid-reset.
+The failure it rules out is concrete: a window in which a count and the
+edges that justify it disagree, so a collection walking the edge subtracts
+the same reference a second time, drives a still-live object to refcount 0
+and frees it out from under its remaining holder. It opens mid-teardown, at
+a child release during phase 2, and mid-reset. It does **not** open at an
+overwriting store, because §1 mandates `store_*` then `drop(old)`: the slot
+carries the new value before the old count falls, so the skew there is the
+conservative one — the count is high, never low. An earlier draft of this
+section argued from the opposite order, which the composition forbids.
 
 So the trigger splits in two, and only the runtime half is fixed:
 
@@ -281,15 +287,26 @@ retained cycles, the caller's call to make).
 
 The runtime therefore exposes only mechanism: enrolment on the release
 path (arm), `ll_gc_collect_cycles` (fire now), `ll_gc_maybe_collect`
-(fire if armed), the reentrancy guard, and the GC-heap allocation slow
-path, which collects in-line on a refusal rather than reporting one. No
-triggering policy lives in the model.
+(fire if armed), the entry gate and the reentrancy guard behind it, the
+inbox pickup at a safepoint, and the GC-heap allocation slow path, which
+collects in-line on a refusal rather than reporting one. No triggering
+policy lives in the model.
+
+**The entry gate and the inbox are `rc-cycle`'s, added 2026-08-27.** A
+thread whose allocation fails reads its own gate — the collecting flag and
+`TEARDOWN_DEPTH` — before waiting on the trace token, and a closed gate
+sends it down the pressure ladder instead; and a thread's safepoint poll
+picks up the per-thread inbox in which a collector thread leaves the
+shortlist it traced, that being how the accelerator delivers now that the
+handshake is gone ([rc-cycle.md](rc-cycle.md), "Concurrency").
 
 The allocation slow path is the one fire point the runtime owns
 outright, because it is the point at which not collecting is a failure
 rather than a delay: `runtime/exceptions.md` promises a *catchable*
-memory-exhausted, and that promise holds only because a collection ran
-first ([rc-cycle.md](rc-cycle.md), `cycle/questions.md` Y14).
+memory-exhausted. That promise now has two legs rather than one — a
+collection ran first, or the gate was closed and the reserve carried the
+thread to its next checkpoint ([rc-cycle.md](rc-cycle.md),
+`cycle/questions.md` Y14, [`../memory/critical-reserve.md`](../memory/critical-reserve.md)).
 
 ## What the GC/mutator coordination machinery went with
 

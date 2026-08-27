@@ -5,13 +5,14 @@ system once and holds, so that work which must not fail can be served after the
 ordinary path has nothing left. It belongs to the allocator rather than sitting
 beside it: **the same allocator has two doors**, and the caller names which one
 it is entitled to. It is **per mutator thread, 500 KB**, and it has three
-customers — the enrolment queue's growth, the mutator that cannot collect and
-must continue anyway, and the working memory of a collection running in the
-mutator's own thread.
+customers — the enrolment queue's growth, the mutator whose entry gate is
+closed and must continue anyway, and the working memory a collection uses on
+the thread that runs it, trace and judgement alike.
 
 The size is Edmond's, set 2026-08-25 (`../../dev/DECISIONS.md`), and it is a
-starting figure rather than a measured one. Only one of the three shares can be
-derived today; the section on sizing says which, and what the other two wait on.
+starting figure rather than a measured one. **No share is derivable today** —
+the one that was lost its arithmetic when the header index went — and the
+section on sizing says what each waits on.
 
 ## The two doors
 
@@ -44,16 +45,18 @@ pressure alone converts the reserve into ordinary memory with extra steps.
 The residence follows who can draw at the same instant. Two customers are
 per-thread and concurrent: every thread owns its enrolment queue
 ([../gc/cycle/questions.md](../gc/cycle/questions.md), Y12), so several threads
-can need a growth allocation at once, and a thread that finds the collection
-token taken continues on the reserve without waiting for anyone.
+can need a growth allocation at once, and a thread whose entry gate is closed
+continues on the reserve rather than waiting for the trace token.
 
-The third is exclusive by construction. One collection exists in the heap at a
-time, which is what the collection token guarantees (Y14), so at any instant
-exactly one thread draws for a collection's working memory. A process-global
-block for it would be a second residence for a load the collecting thread's own
-zone already carries, and a per-thread copy of it would be one live copy and
-N − 1 idle ones. The zone of whichever thread holds the token funds the
-collection.
+The third is per-thread too, and since 2026-08-27 it is no longer exclusive.
+The trace token serializes the **trace** and nothing else, and it is released
+before any exact test, so several owner threads can be judging and tearing down
+at the same instant and each draws for its own working memory
+([../../dev/DECISIONS.md](../../dev/DECISIONS.md), "the trace token covers the
+trace alone, and the accelerator hands off by buffer swap"). A process-global
+block would therefore be a contended residence for a per-thread load, and the
+argument that used to carry this share — one collection at a time, so one
+drawer — is retired with the clause it rested on.
 
 The same split is already in force in `exceptions.md`, on the same principle:
 its exception reserve is process-global because it is drawn only while
@@ -88,14 +91,21 @@ the critical door, from the reserve of the thread running it.
 
 ## Sizing
 
-**The collector's share is derivable, and it is small.** Y7 gives the header an
-eleven-bit collection index, so one slice addresses 2047 entities. Per entity
-the collector holds a captured count and a working count, four bytes each, and
-the mark and scan stages hold a pointer stack, eight bytes each: 16 bytes an
-entity, about 32 KB a slice, before the component bookkeeping and the overflow
-table that a larger-than-slice component needs. That is arithmetic from the
-field widths rather than a measurement, and it is the bound on this reserve's
-largest single draw.
+**The collector's share was derivable and is not any more.** The arithmetic
+that stood here ran on Y7's eleven-bit collection index — 2047 entities to a
+slice, a captured and a working count of four bytes each, a pointer stack of
+eight, about 32 KB a slice — and the index was withdrawn on 2026-08-25 with the
+slice bound that depended on it, then refused again on 2026-08-26
+([../../dev/DECISIONS.md](../../dev/DECISIONS.md), "the header carries a hash
+displacement, not an index" and "the shadow count is found by arithmetic from
+the address"). There is no slice and no per-entity captured count now: a row is
+four bytes in a per-block array. **How the rows are funded is open**, and it is
+a question rather than a repair — this document draws them through the critical
+door while [../gc/rc-cycle.md](../gc/rc-cycle.md) describes a virtual
+reservation materialised page by page, and 500 KB a thread funds about sixteen
+sparsely touched blocks at the 32 KB a block that
+[../../dev/DECISIONS.md](../../dev/DECISIONS.md), "the shadow rows are not
+zeroed greedily", prices. None of the three shares is derivable today.
 
 **The queue's share is a rate against a duration and nobody has measured it.**
 The question is not how large a thread's enrolment queue becomes but how many

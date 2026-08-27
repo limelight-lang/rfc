@@ -10,6 +10,58 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-27 — the entry gate reads this thread's own state and never the trace token
+
+**Decided (Sage), amending the entry below.** The entry gate reads two things
+and no third: the allocating thread's own collecting flag and `TEARDOWN_DEPTH`.
+Neither touches the token. The gate answers one question — could this thread run
+a collection if it held the token — which is answerable from the thread's own
+state, and that is why it can precede the wait.
+
+**The order a failed allocation runs.** The gate first. Either flag closed sends
+the allocation to the next rung of the pressure ladder, and the token word is
+not accessed on that path at all. An open gate CASes the token from free: a
+successful CAS starts the in-line collection with no wait, a failed one means
+another thread's trace holds it, and the thread waits on the word and retries
+the CAS at each wake. There is no third outcome — an open gate leads to a
+collection, sooner or later, never to the ladder. The gate is not re-checked
+after the wait: a waiting thread is blocked inside the allocator and runs no
+user code, so neither of its inputs can have changed, and a post-wait re-check
+is a read with no writer.
+
+**The three-readers sentence of the entry below is superseded**, its count kept
+and one reader renamed: the word's readers are the failed-allocation waiter's
+CAS loop, whose first attempt and whose retries are one reader; the skip rule's
+round entry, whose try-take on finding the word held retries in a later round
+rather than waiting; and the slot-return path's load. The accelerator's
+periodic round and a mutator's allocation failure are two customers, and only
+the second ever waits — calling the first "the entry gate's load" is what
+produced the contradiction this amends.
+
+**The back door this pins shut.** The gate's inputs are the *thread's own*
+state. A collecting flag spelled as a global "a collection is running" bit
+would reproduce the rejected reading without naming the token: every trace in
+flight would close every allocator's gate. The gate therefore reads the flag in
+its per-thread meaning. **Whether the crate's current spelling is thread-local
+is unverified** and is an open item; if it is global, giving it a per-thread
+reading at the gate is a repair of unmeasured cost.
+
+**Rejected:** the gate loading the token, which re-derives the non-wait clause
+Edmond retired on 2026-08-26 — under pressure the thread that most needs memory
+would skip the collection that could free it, and every trace in flight would
+send every other allocator down the ladder. Also rejected is naming the
+try-take's CAS "the entry gate's load", which folds a token access into the gate
+and counts one code site as two readers; the try-take is the first iteration of
+the waiter's loop. A pre-CAS peek load is not forbidden in implementation but
+belongs to that loop and earns no sentence in the design.
+
+**Cost:** none in the machine — no access is added or removed, and the price is
+two document edits and this entry. The unfairness named on 2026-08-27 sharpens
+in wording: because the gate is blind to the token, an open-gated thread waits
+out a trace even when that trace frees nothing on its own heap, bounded by one
+mark and scan and unmeasured. The collecting-flag scope check is the one new
+obligation.
+
 ## 2026-08-27 — the trace token covers the trace alone, and the accelerator hands off by buffer swap
 
 **Decided (Sage), on three failures a Critic round found in the amendments of

@@ -6,8 +6,8 @@ How `WeakReference` and `WeakMap` are represented and how the runtime
 delivers death notification: the weak cell, the per-thread weak table
 with its subscriber rows, and the three places an object's death must
 clear its weak state. The cycle-collector obligation this machinery
-discharges is stated in gc/rc-walk.md, "What this
-design does not solve"; the arena interaction in
+discharges is stated in [gc/rc-cycle.md](gc/rc-cycle.md), "Cycle
+teardown", step 3; the arena interaction in
 [../runtime/object-lifecycle.md](../runtime/object-lifecycle.md),
 "Arena reset and destructors".
 
@@ -98,9 +98,10 @@ state pay one masked test and nothing else.
 
 **Per thread, no locks.** Entities are thread-confined, `create()`
 runs where the target lives, and every notification site below runs on
-the owning thread — including the rc-walk drain, which executes in the
-mutator's checkpoint, never on the collector thread
-(gc/rc-walk.md). Zend's single table in
+the owning thread, which under `rc-cycle` is the design's own rule rather
+than a property of one collector: the collector proposes and the owner
+tears down, so every free and every destructor happens where the entity
+lives ([gc/rc-cycle.md](gc/rc-cycle.md), "What it keeps from `rc-walk`"). Zend's single table in
 `EG(weakrefs)` is the same structure made global because the engine is
 single-threaded; globalizing it here would buy a mutex on every
 create and death. Consequence: the thread-exit teardown that already
@@ -111,9 +112,8 @@ exit") also disposes the thread's weak table.
 thread and no actor.** Once the scheduler mounts an actor, "the owning thread"
 stops being constant across an entity's life: the actor may migrate between
 messages while its rows stay in the table of the thread it left. The residence
-that survives migration is the open half of node
-E1,
-which enumerates the candidates and their call-site costs and chooses none; [gc/domains.md](gc/domains.md), a proposal
+that survives migration is open — "Open: where the weak table lives when an
+actor migrates", below; [gc/domains.md](gc/domains.md), a proposal
 scoped to threads with actors deferred, already writes the table as
 per-domain and keyed by address, a domain being a thread or an actor mounted
 on one — a shape rather than a ruling. Every per-thread claim in this section holds under the
@@ -177,10 +177,10 @@ committed, its cell reads null before any user code can run.**
 - **Cycle death** — the teardown notifies every confirmed member
   **after the exact test passes and before any user code runs**, the
   binding obligation of [gc/rc-cycle.md](gc/rc-cycle.md), "Cycle
-  teardown", step 3 (ruled 2026-07-26 for `rc-walk`; the
-  after-the-exact-test half became load-bearing 2026-07-28, when the
-  forced verdict made it possible to post a *live* component — a
-  dropped message must leave its cells untouched. CPython's PEP 442
+  teardown", step 3 (ruled 2026-07-26; the after-the-exact-test half
+  is load-bearing because a trace proposes a shortlist that may be
+  stale and only the owner's exact test confirms a member, so nulling
+  before it could clear the cells of a live object. CPython's PEP 442
   is the same move). Displaced map values go onto the teardown's
   existing deferred-drop queue (the one already deferring severed
   external children), never inline. Two consequences are accepted,
@@ -197,7 +197,7 @@ committed, its cell reads null before any user code can run.**
     (`WeakReference::create($this)`, a map insert): bit 12 was cleared,
     so nothing stops it. The safety net is the free itself — the
     sever-and-free path frees members through the ordinary dispose,
-    whose bit-7 test delivers a second, final notification. That
+    whose bit-12 test delivers a second, final notification. That
     free-time clear is **load-bearing, part of this design**, and its
     displaced map values also go onto the deferred queue — the
     sever-to-free window must stay free of user code
@@ -227,9 +227,9 @@ Two smaller pins the sites imply:
   weak-notify test lives in the generic entity death switch, not in
   the object arm alone.
 - **Thread exit**: the weak table outlives the static-block teardown
-  ([classes.md](classes.md), "Teardown at thread exit") and any
-  in-flight epoch's local drain — both deliver notifications through
-  it — and is disposed after them, ahead of the buffer arena and the
+  ([classes.md](classes.md), "Teardown at thread exit") and any teardown
+  still running on the thread — both deliver notifications through it —
+  and is disposed after them, ahead of the buffer arena and the
   thread's heaps; rows still present at that point (e.g. a
   weak reference to an immortal) are discarded without notification,
   the thread's cells dying with its heap. Cross-thread movement of a
@@ -238,8 +238,8 @@ Two smaller pins the sites imply:
   **reserved** for the threading pass — the per-thread/no-locks claim
   must be re-examined there, not silently extended. A migrating actor is
   the second occasion for that re-examination, and this bullet's disposal
-  step is one of the claims it takes: see
-  E1.
+  step is one of the claims it takes: see "Open: where the weak table lives
+  when an actor migrates", below.
 
 ## Across an actor boundary
 
@@ -248,15 +248,19 @@ holding a `WeakReference` is not sendable at all, and an object that is
 the target of one may not be moved — the send falls back to a deep copy,
 and the copy is a new entity nobody is subscribed to, while this actor's
 cell keeps naming the original and is nulled when the original dies. The
-test at pack time is per entity, flag 7 being set on a subscribed one
+test at pack time is per entity, bit 12 being set on a subscribed one
 ([classes.md](classes.md#flags-layout)); the holds-a-cell half is
 decidable from the class where the class is closed. Decided 2026-08-23
 ([../dev/DECISIONS.md](../dev/DECISIONS.md),
 [../runtime/actors.md](../runtime/actors.md#message-payload-discipline)).
 
-What this does not settle is where the table lives when an actor moves
-between threads: the queue is not the door that shape uses. That is node
-E1 of gc/walk/questions.md.
+**Open: where the weak table lives when an actor migrates.** The queue is not
+the door that shape uses, so the question the message path answers is not this
+one. It was node E1 of `rc-walk`'s question graph, which was deleted with that
+collector on 2026-08-26, and it has had no node since: it is carried here, by
+this lead-in, and the candidates and their call-site costs are enumerated by
+[gc/domains.md](gc/domains.md), which chooses none. What answers it is a
+threading pass, not a collector one.
 
 ## `WeakMap` cleanup is eager, not lazy
 
@@ -292,8 +296,8 @@ The subscriber row is a death-notification mechanism, and it stays
 internal to the runtime — `WeakReference`, `WeakMap`, and future
 runtime facilities (the object registry of the observability design)
 may subscribe; **no user-facing death callback is exposed**. The row
-is walked inside teardown and inside the drain, the two places whose
-safety argument is "no user code runs here"; a user callback in that
+is walked inside the three notification sites above, whose safety
+argument is "no user code runs here" at each; a user callback in that
 position could resurrect the dying object mid-notification, throw
 through teardown, or observe a half-severed cycle. Python permits
 weakref callbacks and has to swallow their exceptions; declining the
@@ -302,10 +306,11 @@ accident.
 
 ## Build scope
 
-Step 4 of the rc-walk build plan (gc/rc-walk.md)
-covers: the kind-5 entity, the weak table and rows, `notify` wired
-into ordinary teardown and the drain, the arena weak list, and the
-`create`/`get` ABI surface — the machinery is untestable without its
-entry points. The `Map` subscriber variant lands with `WeakMap`
+One step builds this whole machinery, the build plan that used to
+carry it having been deleted with `rc-walk` on 2026-08-26 and no
+successor step yet written: the kind-5 entity, the weak table and rows,
+`notify` wired into ordinary teardown and into the cycle teardown, the
+arena weak list, and the `create`/`get` ABI surface — the machinery is
+untestable without its entry points. The `Map` subscriber variant lands with `WeakMap`
 itself, when the runtime grows maps; nothing in the row format needs
 revisiting for it.

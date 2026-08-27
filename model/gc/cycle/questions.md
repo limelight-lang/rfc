@@ -4,9 +4,10 @@ Every open question of `rc-cycle`, as a node with what would answer it and
 what it blocks. A node carries a mark for what blocks it, in the legend the
 closed question graph of `rc-walk` used before it was deleted with that
 collector on 2026-08-26:
+**design** — a decision to be made and written, which is the only mark this
+graph has yet used;
 **today** — answerable with the code and instruments that exist;
 **measure** — a number nobody has taken, on instruments that exist;
-**design** — a decision to be made and written;
 **read** — a paper or an implementation that has to be read first;
 **corpus** — blocked on a measurement of real PHP programs;
 **Edmond** — his to rule.
@@ -25,7 +26,7 @@ flowchart TD
     Y3 --> Y10
     Y5[Y5 what survives from rc-walk<br/>answered: the ownership discipline]
     Y6[Y6 the candidate set is edge-triggered<br/>answered: the buffer grows] --> Y7 & Y12
-    Y7[Y7 what the header must carry<br/>answered: bytes 6-7; a hash displacement, not an index]
+    Y7[Y7 what the header must carry<br/>re-answered: the maturation stamp and nothing else]
     Y8[Y8 what becomes of rc-walk and its code<br/>answered: unneeded code is deleted]
     Y12[Y12 the root queue<br/>contract written; the candidate fails it] --> Y7 & Y14
     Y13[Y13 traversal aggression<br/>design] --> Y14
@@ -49,7 +50,8 @@ differencing (its §4.2) — is Paz, Bacon, Kolodner, Petrank and Rajan's
 the log is a per-store soundness cost no proof can delete, where this
 design's per-release cost is deletable precision.** The original ground —
 `rc-walk`'s rule that the mutator does no per-operation work for the
-collector (`../rc-walk.md`) — died the day it was used:
+collector (its document went with it on 2026-08-26; `archive/pre-rc-cycle`) —
+died the day it was used:
 `rc-cycle` itself puts the enrolling decrement, the already-enrolled
 test-and-set and the queue write on the mutator (Y9, Y11, Y12), so "no
 per-operation work" refuses this design too and refuses nothing. What
@@ -218,9 +220,12 @@ slot by the runtime type of the value in it and reports only a class count and
 a top five by instance, so the figures above were taken with a separate script
 and cross-checked against the instrument on the walk, where both give 381
 objects in 114 classes. And Y10's sentence that the gate is "a class property
-read from a bit the factory stamps into the header" describes nothing that
-exists: no acyclic flag is defined on the class or in the header word, and
-`src/walk.rs:754` records the skip as compiler-owed and untaken.
+read from a bit the factory stamps into the header" described nothing that
+existed when this was written: no acyclic flag on the class, and none in the
+header word either until the re-lay of 2026-08-26 gave the gate bit 8
+([classes.md](../../classes.md), "Flags layout"). The class half still stands,
+and the declared-target field the stamp would be computed from is this node's
+own open question.
 
 ## Y4. What replaces trial deletion's mutation of live counts  [answered 2026-08-25: a shadow count; residence re-decided 2026-08-26]
 
@@ -306,19 +311,21 @@ thread holds the entity, so nothing races the read of its current fields. A
 collector on another thread has no such warrant, and cannot get one: reading a
 component's counts at a single instant needs the snapshot Y1 refused.
 
-*The second is the weak cell.* `rc-walk` binds every design here to null every
-weak cell naming a confirmed member **before** any user code runs
-(`../rc-walk.md`), because a
+*The second is the weak cell.* Every design here nulls every weak cell naming a confirmed member **before**
+any user code runs — `rc-walk` bound it first and
+[`../rc-cycle.md`](../rc-cycle.md), "Cycle teardown", step 3, carries it now —
+because a
 weak load is the one channel that can hand a destructor a pointer the counted
 world cannot account for. The mechanism that discharges it is a **per-thread**
 weak table: the dying entity finds its subscribers through the owning thread's
 row. A collector has no access to another thread's row.
 
 **What the withdrawal costs is nothing, in this repository or in the crate.**
-`ll-model` never had a collector-side free to remove: `collector.rs` writes one
-thing into an entity, the epoch stamp, and its terminal act per confirmed
-component is to post it; every teardown path lives behind `drain_confirmed`,
-reached only from a mutator's checkpoint. The withdrawal restores the contract
+`ll-model` never had a collector-side free to remove: as of 2026-08-25
+`collector.rs` wrote one thing into an entity, the epoch stamp, and its terminal
+act per confirmed component was to post it; every teardown path lived behind
+`drain_confirmed`, reached only from a mutator's checkpoint. That module was
+deleted on 2026-08-26 and is on `archive/pre-rc-cycle`. The withdrawal restores the contract
 the code already keeps. What it does change is where the design's centre of
 gravity sits — the in-line collection of Y14, where judge and owner are one
 thread, is the only shape in which a collection frees anything, so it stops
@@ -349,7 +356,8 @@ which is this node's permanent miss.
 > **Amended 2026-08-26, and the amendment is the answer in force.** The
 > collector's way back to a row leaves the header entirely: the row is computed
 > from the address, so the six bits of hash displacement below are not needed
-> and bits 20–31 stay free. What the header keeps from the collector is the
+> and bits 24–31 stay free, the collector reserve taking 20–23. What the
+> header keeps from the collector is the
 > maturation stamp — epoch and age, four bits — because it lives *between*
 > collections, where no row exists.
 >
@@ -390,18 +398,19 @@ which is this node's permanent miss.
 > to, and of the two claims — `rc-trace`'s candidate index and `rc-walk`'s
 > condemned byte — whose removal freed the word.
 
-Under `rc-trace`'s shape the cycle collector owns **twenty of the flags
-word's thirty-two bits**: two for the colour, one for buffered, seventeen
+*(Record; the accounting below reasons about positions the re-lay of
+2026-08-26 moved — see the note above.)* Under `rc-trace`'s shape the cycle
+collector owns **twenty of the flags word's thirty-two bits**: two for the colour, one for buffered, seventeen
 for the candidate index (`ll-model` `src/refcount.rs`). Bit 15 is also the
 string's out-of-line bit, safe only because a string never enters the
 buffer, and pinned by a test rather than by construction.
 
 **The constraint, ruled by Edmond on the map: the header does not grow** —
 no second word, no extra byte. Two directions came with the ruling. The
-collection tag is first tried in the **epoch byte** `rc-walk` already
-carries at offset 6 (`../rc-walk.md`),
-written as today by single-byte atomic stores rather than through the flags
-word. And the seventeen-bit candidate index is not needed at all: a
+collection tag is first tried in the **epoch byte** `rc-walk` carried at
+offset 6, written by single-byte atomic stores rather than through the flags
+word — the layout the re-lay of 2026-08-26 kept, epoch at bits 16–17
+([classes.md](../../classes.md), "Flags layout"). And the seventeen-bit candidate index is not needed at all: a
 buffered entity is found through its entry in the root queue (Y12), which
 frees the bits that made unique ownership `rc-walk`-only.
 
@@ -468,7 +477,8 @@ to descend. Moving it off-heap would need a structure that outlives every
 collection and covers every mature entity, which is a resident per-entity cost
 — the thing the whole layout exists to avoid.
 
-**The two-bit epoch wraps, and one rule covers it.** Four values means a
+**The two-bit epoch wraps, and one rule covers it.** *(Record; superseded
+2026-08-26 — see the note at the head of this node.)* Four values means a
 maturation stamp four epochs old reads as current. The collector clears a stamp
 whose epoch is not the current one at the moment it first touches the entity,
 which it is doing anyway in order to trace it, so a stale stamp is retired on
@@ -498,7 +508,7 @@ exclusivity has no subject left.
 > accounting below reasoned about the old positions, which is why it reads as
 > a search for room: the kind field is now four bits at 2-5, the acyclic gate
 > is **bit 8** rather than 4, the enrolled bit is **bit 10** rather than 6, and
-> the ownership mark of Y12 has bit 9. The reasoning is kept because what it
+> the ownership mark of Y11 has bit 9. The reasoning is kept because what it
 > settles is not the positions but which bits have customers at all, and that
 > answer survived the move.
 
@@ -524,8 +534,9 @@ The **already-enrolled** bit of Y9 is bit 6, the buffered bit, which
 queue: same position, same meaning, same writer. Y9 asks for it by atomic
 test-and-set, and today the crate sets it with a plain whole-word
 read-modify-write on the mutator's own half; whether the test-and-set has to
-be atomic is the multi-mutator question that `rc-walk.md` records as open,
-not a layout question.
+be atomic is a multi-mutator question, not a layout one. `rc-walk.md` was the
+only document recording it as open and went on 2026-08-26, so it has no node
+today; it is carried here.
 
 The **acyclic gate** of Y10 takes bit 4. Y10 asks for "a class property read
 from a bit the factory stamps into the header, so the test is already in the
@@ -547,15 +558,27 @@ word the release path already holds, tested beside the acyclic gate.
 
 **Bit 3 stays free and is recorded as free**, with no customer invented for it.
 
-## Y8. What becomes of `rc-walk`, its registry row and its code  [answered 2026-08-25: unneeded code is deleted]
+## Y8. What becomes of `rc-walk`, its registry row and its code  [answered 2026-08-25; the two clauses below reversed 2026-08-26, and executed]
 
 **Ruled by Edmond on the map: the code does not wait under a banner —
 everything `rc-cycle` makes unneeded is deleted from `ll-model`.** That
 reverses this node's opening premise, which reasoned from the
 capture-count precedent (refused, kept as a record) to "superseded cannot
-mean deleted"; the precedent holds for documents, which stay the record,
-and not for code. The deletion follows the build: a piece goes when
-`rc-cycle`'s replacement for it lands, not before there is one.
+mean deleted".
+
+> **The two clauses that used to follow were reversed on 2026-08-26 and
+> executed the same day**
+> ([`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md), "the twelfth
+> ruling's document half is reversed for all three bodies of text"). They read
+> that the precedent holds for documents, which stay the record, and that the
+> deletion follows the build, a piece going when `rc-cycle`'s replacement for
+> it lands. Neither survived: `rc-walk`'s documents, `rc-trace`'s and the
+> horizon's left the tree with the code, and all of it went first and at once
+> rather than a piece at a time, on Edmond's ground that a superseded mechanism
+> left in the tree is read as the design in force. The cost is what this node
+> used to forbid — `ll-model` carries no cycle collector at all from the
+> deletion until `rc-cycle` is built — and the old state is the branch
+> `archive/pre-rc-cycle`.
 
 **What is still evidence-gated:** when the registry's default moves — Y1's
 answer and a measurement, not a preference.
@@ -569,7 +592,7 @@ across the last `k` collections are traced, measured there at 40–80 % of
 the candidates their other filters had already passed — and Edmond chose
 YRC's representation of the same idea on the map: a collection's commit
 stamps each proven-live component with the current epoch and an age, the
-minimum over the component's members plus one; a later claim reads the age
+minimum over the component's members plus one; a later trace reads the age
 back, and a member whose stamp is current and whose age has reached the
 promote bound has its edge pruned for the rest of the epoch instead of
 being traced again.
@@ -641,8 +664,10 @@ the loaded word, and the compiler's removal of the whole test is Y11 — as
 is the object-level exclusion of 2026-08-25, a proven-owned entity never
 entering the roots at all (fourteenth `dev/DECISIONS.md` entry).
 
-**The bit has an address since 2026-08-25: bit 4**, freed when the cycle colour
-left the header for the collector's side arrays (Y7). Until then this
+**The bit has an address: bit 8**, freed when the cycle colour left the header
+for the collector's side arrays (Y7). It was bit 4 when this was written on
+2026-08-25 and moved with the re-lay of the whole word on 2026-08-26
+([classes.md](../../classes.md), "Flags layout"). Until then this
 node spent a bit the layout did not have, every position in the mutator's half
 having a live customer. The factory stamps it from the class's own answer, so
 what it still waits on is Y3's declared-target field rather than the layout.
@@ -703,9 +728,10 @@ proven sites the counting pair itself can go.
 > sites qualify, and how a certificate is checked — left these documents with
 > the scope ruling of 2026-08-23; the branch `archive/pre-rc-cycle` holds
 > the text. **How the release path
-knows is answered since 2026-08-25: bit 5 of the header**, one of the three the
+knows is answered: bit 9 of the header**, one of the three the
 cycle colour and the dead half of the GC-state field left behind when Y7 was
-laid out. The mark is tested beside the acyclic gate at bit 4, in the word the
+laid out. It was bit 5 when written on 2026-08-25 and moved with the re-lay of
+2026-08-26. The mark is tested beside the acyclic gate at bit 8, in the word the
 release path already holds, so an owned entity costs the same test as an
 acyclic one. The compiler's site-by-site proof stays the stronger form — it
 removes the test rather than answering it — and the mark is what serves the
@@ -771,9 +797,10 @@ every queued root has been walked — the walk is what makes the reserve's
 use bounded. The root is never dropped, which overrides the
 drop-as-known-leak licence of
 [`../../../runtime/exceptions.md`](../../../runtime/exceptions.md) for
-candidate roots. The reserved area has no write-up of its own yet; that
-entry is its first written trace, and the area's size, residence and other
-customers belong to the memory documents.
+candidate roots. The reserved area's write-up is
+[`../../memory/critical-reserve.md`](../../memory/critical-reserve.md), written
+2026-08-25 on the twenty-first ruling of that day, and the area's size,
+residence and other customers belong to it.
 
 **The contract, written 2026-08-25 against that reading.** Eight clauses, and
 the first three are what the candidate would have to be given.
@@ -850,9 +877,11 @@ the first three are what the candidate would have to be given.
    captures removed, which prices the economy and not this obligation.
 
 **What is still open:** who allocates the spare buffer of clause 3 and when;
-and the reserved critical area itself, which
-[`../../../BACKLOG.md`](../../../BACKLOG.md) carries and which the thirteenth
-ruling is still the only written trace of.
+and the reserved critical area's sizing —
+[`../../memory/critical-reserve.md`](../../memory/critical-reserve.md) exists
+and records that **no** share of it is derivable today, the collector's having
+lost its arithmetic when the header index went; and where the suspects buffer
+of clause 8 lives.
 
 ## Y13. Traversal aggression, and what the class flag feeds  [design; licensed 2026-08-26]
 
@@ -892,10 +921,10 @@ same dial.
 Edmond, 2026-08-25: under memory pressure the collector may start directly on
 the mutator's thread, provided no collector is running on another thread.
 
-**The rung it replaces already exists and is about to be deleted.**
-`../rc-walk.md`
-sends a mutator that cannot serve an allocation down a ladder of self-help, and
-its fourth rung runs `walk::collect_cycles` on the allocating thread before
+**The rung it replaces existed until 2026-08-26 and went with the collector that defined it.**
+`rc-walk` sent a mutator that cannot serve an allocation down a ladder of
+self-help, and its fourth rung ran `walk::collect_cycles` on the allocating
+thread before
 honest failure. Y5 deletes that form with the census, and
 [`../rc-cycle.md`](../rc-cycle.md) does not keep the ladder, so without this
 node the allocation-failure path has nothing to call. `runtime/exceptions.md`
@@ -909,19 +938,21 @@ did not keep.
 **What runs is the synchronous form, not the concurrent one on a borrowed
 thread**, and every hazard of the in-line idea dissolves at that choice. The
 synchronous collection opens no deferral window, so the memory it frees is
-recyclable at once rather than parked until an epoch closes; in `ll-model` the
-window has exactly one opener, the concurrent protocol (`src/collector.rs:206`
-and `:535`), and `walk::collect_cycles` is not it. It runs no handshake and
+recyclable at once rather than parked until an epoch closes; in `ll-model` as of 2026-08-25 the
+window had exactly one opener, the concurrent protocol in the since-deleted
+`collector.rs`, and `walk::collect_cycles` was not it. It runs no handshake and
 posts no verdict, because the thread it judges on is the thread that owns what
 it judges, which is the same warrant the Phase 4 exact test already runs on.
 And it never crosses threads, which the ladder requires in terms: "the thread
 feeling the pressure is the thread that needs the memory, its parked list and
 its verdicts are thread-local, and no other mutator is paused, signalled, or
-waited on". The scope is therefore this thread's own root queue and the
-entities in its own heap partition. There is no general heap — every block
-belongs to a thread's heap
-([`../../../runtime/actors.md`](../../../runtime/actors.md#open-questions)) —
-so that scope is closed rather than truncated.
+waited on". The scope is therefore this thread's own root **queue**, and that is what is
+bounded: the closure reaching out of it goes wherever the edges lead, across
+heap partitions, which is why every thread parks its frees while any trace runs
+([`../rc-cycle.md`](../rc-cycle.md), "Concurrency"). There is no general heap —
+every block belongs to a thread's heap
+([`../../../runtime/actors.md`](../../../runtime/actors.md#open-questions)) — so
+the root set is closed rather than truncated.
 
 **Why the exclusion is soundness and not courtesy.** Trial deletion runs on the
 shadow count `CRC` (Y4): one scratch field, and the scratch of one collector.
@@ -929,9 +960,10 @@ A background collection reads every thread's entities, so two collections at
 once each decrement what the other captured and each conclude from the other's
 evidence. `rc-walk` had no such field, its counts being real and its
 condemnation collector-private, which is why its ladder could let rung 4 run
-during an open epoch and needed no rule. `rc-cycle` cannot: one collection
-exists in the heap at a time, and whose thread runs it is then a question of
-scheduling.
+during an open epoch and needed no rule. `rc-cycle` cannot: one **trace**
+exists in the heap at a time — teardowns run concurrently and need no exclusion
+— and whose thread runs the trace is then a question of scheduling
+([`../rc-cycle.md`](../rc-cycle.md), "Concurrency").
 
 > **Retired on 2026-08-26 with the handshake that was its reason, and the rule
 > that replaced it was settled on 2026-08-27**
@@ -952,7 +984,8 @@ scheduling.
 > the second phase ([`../rc-cycle.md`](../rc-cycle.md), "Who judges, and what a
 > trace is worth").
 
-**A thread that finds the token taken does not wait for it.** It takes the rest
+**A thread that finds the token taken does not wait for it.** *(Record;
+retired 2026-08-26 — see the note above.)* It takes the rest
 of the ladder — flush its own parked memory, drain the verdicts it already owes,
 signal pressure — and then fails honestly. Waiting is what must not happen: the
 running collection may be waiting for this thread's handshake acknowledgement,
@@ -985,23 +1018,27 @@ to a later safepoint defers the free with them — the drain severs and frees
 after the destructor, so a deferred destructor is a deferred reclamation, and
 reclamation is what the collection was called for. The gates the crate already
 enforces stand instead: `TEARDOWN_DEPTH` makes every fire point inside a
-teardown collect nothing, and `WALK_ACTIVE` makes a nested collection a no-op
-and refuses epoch pickup while it runs. What is missing is the entry gate, and
-the crate names its absence where the gate belongs: "The entry gate belongs to
-the pressure ladder ... unbuilt" (`ll-model` `src/walk.rs:724`). The gate reads
-the trace token, `TEARDOWN_DEPTH` and the collecting flag, and it is read
-**before** any wait on the token; a closed gate sends the allocation to the
-next rung rather than to a collection.
+teardown collect nothing, and the collecting flag makes a nested collection a
+no-op. `WALK_ACTIVE` did the second job until 2026-08-26 and went with
+`walk.rs`. What is missing is the entry gate, and
+the crate named its absence where the gate belonged, in the `walk.rs` deleted on
+2026-08-26: "The entry gate belongs to the pressure ladder ... unbuilt". The gate reads two things
+and no third — this thread's own collecting flag and `TEARDOWN_DEPTH` — and it
+is read **before** any wait, which it can be because it depends on no other
+thread. A closed gate sends the allocation down the ladder and never touches the
+token word; an open one CASes the token, and a failed CAS waits and retries
+rather than falling back to the ladder (`dev/DECISIONS.md`, "the entry gate
+reads this thread's own state and never the trace token").
 
 **Its working memory must be sized before it is needed.** `runtime/exceptions.md`
 splits the reserve in three and gives the third to the collector: "The
 collector's working room. Not blocks at all — the collector's own vectors — and
 therefore bounded separately, not from here." The crate does the opposite today.
-`deferred_free::park` allocates its `Vec` lazily and grows it with an ordinary
-`push` (`src/memory/deferred_free.rs:77-123`), the collector phases take `Vec`
-and `HashMap` with no fallible path, and the release profile is built
-`panic = "abort"` (`Cargo.toml:137`); finding 4 of `ll-model`
-`dev/RC_WALK_CRITICAL_REVIEW.md` records it as "dangerous precisely when
+`deferred_free::park` allocated its `Vec` lazily and grew it with an ordinary
+`push`, the collector phases took `Vec` and `HashMap` with no fallible path, and
+the release profile is built `panic = "abort"`; both modules went on 2026-08-26
+and the profile stands. Finding 4 of `ll-model`'s audit report — untracked, so
+quoted rather than cited — records it as "dangerous precisely when
 collection is triggered by memory pressure: freeing an object can require more
 memory". The answer is not to stop asking the allocator but to ask it
 differently: it holds a block taken from the operating system for exactly this,
@@ -1036,15 +1073,18 @@ which is Y13's dial at a second setting and is unmeasured.
 Inherited from the dropped stage S4, whose tombstone re-aimed the
 model-checker debt **at `rc-cycle` rather than at the cases**. **The debt
 lives here from 2026-08-26**, the battery that used to carry it having been
-deleted with the walk: a TLC battery — `DrainPause.tla` and four siblings —
+deleted with the walk: a TLC battery — `DrainPause.tla`, `DrainWindow.tla` and `RcWalk.tla` —
 model-checked the walk's drain against a running mutator, and its specs and
 results are on the branch `archive/pre-rc-cycle` under `dev/tools/rc-walk/`
 and `model/gc/rc-walk-proof.md`. **Nothing models this design's collection**:
-the shadow count against a running mutator, the edge-triggered enrolment, the
-collector-side free of Y5's open seam. Deleting the walk's specs retired the
+the shadow count against a running mutator, and the edge-triggered enrolment.
+The collector-side free is not among them: it was withdrawn on 2026-08-25 and
+Y5 records the withdrawal, so there is no seam left to model. Deleting the walk's specs retired the
 instrument, not the obligation, and the obligation is owed before a collector
-thread exists — the in-line form is exact by construction and needs no model,
-the accelerator is what does.
+thread exists — the in-line form is exact by construction and needs no model
+**of its judgement** — its concurrency still does, because every thread parks
+its frees while any trace runs, so the racing slot return below happens under an
+in-line trace as much as under the accelerator.
 
 **Its first obligation is named, 2026-08-27.** The model runs a trace
 concurrently with an owner's teardown and with a slot return racing the instant

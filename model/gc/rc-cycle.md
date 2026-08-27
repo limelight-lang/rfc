@@ -4,8 +4,9 @@
 > the shadow count, the header's layout and the division of labour between
 > mutator and collector were decided on 2026-08-26 and are below, together with
 > the trace token of 2026-08-27. `rc-trace` and `rc-walk` were deleted on
-> 2026-08-26, before the first line of `rc-cycle` was written, so until it is
-> built **the runtime collects no cycles at all** and a garbage ring is
+> 2026-08-26 — before the first line of `rc-cycle`'s *code*, this document
+> having been written the day before — so until it is built **the runtime
+> collects no cycles at all** and a garbage ring is
 > retained; the old state is reachable as the branch `archive/pre-rc-cycle`. The open questions are a
 > graph: [`cycle/questions.md`](cycle/questions.md).
 
@@ -278,7 +279,7 @@ notification on the header's weak bit, at step 6.
 One **trace** at a time in the process — the `amSolo` rule — because the shadow
 rows are one trace's scratch and a second would read the first's decrements. The
 **trace token** is one bit, free or held, entered by CAS from free and released
-by one store (`dev/DECISIONS.md`, "the trace token covers the trace alone, and
+by one store with release ordering (`dev/DECISIONS.md`, "the trace token covers the trace alone, and
 the accelerator hands off by buffer swap").
 
 **What the token covers, and when it is released.** It covers mark and scan and
@@ -349,10 +350,13 @@ design including today's.
 
 ## What it keeps from `rc-walk`
 
-The expensive half of concurrency is already built and is not re-derived here:
-the exact test against current fields on the owning thread, the deferred-free
+The expensive half of concurrency is settled and is not re-derived here: the
+exact test against current fields on the owning thread, the deferred-free
 parking that keeps a slot from being recycled under an identifier in flight,
-eager death, and the occupancy index of retained blocks. `rc-walk`'s handshake
+eager death, and the occupancy index of retained blocks. **Settled, not
+standing** — of the four, only the occupancy index is code today
+(`ll-model` `memory/retained.rs`); the rest went with `rc-walk` on 2026-08-26
+and are rebuilt against these paragraphs. `rc-walk`'s handshake
 is **not** among them. It was deleted design-wide on 2026-08-27, an acknowledged
 rendezvous being what a thread waiting on the trace token would deadlock
 against, and a collector thread hands its shortlist over by buffer swap instead

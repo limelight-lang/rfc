@@ -184,6 +184,18 @@ by the touched-block list. The row is then two bits of colour and thirty of
 working count, with saturation reading as "external references exist,
 conservatively live".
 
+**Saturation is absorbing, and that is a rule for every stage that touches a
+row** (2026-08-27). A saturated count is a floor rather than a total — "at
+least 2^30 − 1 references", the trace having no room to say how many — so
+subtracting an internal edge leaves it saturated and no scan may condemn it.
+Without the rule the entity above the field is the one the collector is most
+likely to free wrongly: a refcount of 2^31 meets at the bound, and a trace that
+finds 2^30 internal edges walks the row to zero while a billion external
+references stand. That heap is 16 GiB at the smallest size class, which is a
+large machine rather than an impossible one. The alternative — a wider row —
+was refused with the row's own width, and the alternative of a second word for
+"exact or floor" is the captured count this design does not keep.
+
 **The chunked form is the recorded alternative, not the choice**: rows in groups
 of eight behind a two-byte directory entry per group. It wins only where the
 density of traced slots in touched blocks stays below 29 % — the analytic

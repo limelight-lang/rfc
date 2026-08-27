@@ -231,14 +231,34 @@ S7.3's clause on the count-elision bargain.
         seven; Y14's clause "a thread that finds the token taken does not wait"
         is retired with its reason, the handshake the 2026-08-26 amendment
         deleted, and `rc-cycle.md`'s Concurrency section states the wait against
-        any non-self holder together with the thread-local held flag that makes
-        self-re-entry distinguishable
+        any non-self holder — **amended 2026-08-27**: the thread-local held flag
+        this clause asked for is deleted by the trace-token ruling of that date,
+        and what the section states instead is the token's coverage, its release
+        instant and the gate-before-wait order
       tier: T2 · role: Critic
       handoff: three of the four are amendments to text written the day before,
         and the fourth retires a clause of Edmond's own ruling on the ground
         that the ruling's main clause removed the clause's reason. Each keeps
         the superseded reasoning readable beneath it, as the 2026-08-26
         amendments already do.
+      Critic 2026-08-27: eight findings, five repaired in place and three sent
+        on. Repaired: only half of the ruling's backstop reached a clause, so
+        the bit is cleared nowhere but at death and the suspects buffer's
+        re-offer is unwritten, which makes an acquitted ring unenrollable for
+        ever; `rc-cycle.md`'s law still grants the owner the clearing the
+        narrowed clause forbids; Y12 clause 7 has the reader drop a corpse entry
+        that is now the owner's only signal; "the rest of the ladder" reinstates
+        rungs the design deleted; and "the only mechanism that bounds the
+        closure" collides with Y9's own "nothing bounds the first collection of
+        an epoch". The three sent on were one question — what the exclusion word
+        covers — and are the Sage line below.
+      Sage 2026-08-27: the word is the **trace token**, it covers mark and scan
+        and the live queues and is released at the end of scan before any exact
+        test, it carries one bit, the entry gate is checked before any wait, the
+        handshake is deleted design-wide and the accelerator hands off by
+        swapping a queue buffer into a per-thread inbox. Recorded in
+        `dev/DECISIONS.md`, "the trace token covers the trace alone, and the
+        accelerator hands off by buffer swap". Final.
 - [ ] S7.6 Consolidation pass over everything written on 2026-08-26
       done: the consolidation check of `dev/WORKFLOW.md` runs over
         `model/gc/rc-cycle.md`, `model/gc/cycle/questions.md`,
@@ -252,3 +272,21 @@ S7.3's clause on the count-elision bargain.
       handoff: `dev/WORKFLOW.md` requires this of every set of documents written
         in one sitting. The set of 2026-08-26 was committed as `bb44ddd` without
         it, and this step is that debt plus the amendments above.
+- [ ] S7.7 Carry the trace-token ruling into the nodes outside S7.5's four
+      done: `model/gc/rc-cycle.md`'s "Concurrency" states the token's coverage,
+        its release instant, the one-bit word and gate-before-wait; "Death while
+        enrolled" re-scopes the second parking to the trace and moves `used`'s
+        fall to the release; "What it keeps from `rc-walk`" strikes the
+        handshake and names the swap-and-inbox handoff; `questions.md`'s Y5
+        strikes the handshake from its survival list, Y12's clauses 2, 3 and 5
+        are amended to the swap and the inbox, and no page of either document
+        still calls the word a claim or a collection token except Y9's quoted
+        `claimCell`; the verification debt is widened to the TLC obligation the
+        ruling names; `linkcheck.php` clean
+      tier: T2 · role: —
+      handoff: this step exists because the ruling of 2026-08-27 reaches five
+        documents while S7.5's criterion names four nodes, and widening that
+        step silently would have hidden a design change inside an amendment
+        pass. Half of it is worse than none: until the handshake is struck from
+        Y5 and from "What it keeps", the tree says both that it survives and
+        that it is deleted.

@@ -10,6 +10,113 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-27 — the trace token covers the trace alone, and the accelerator hands off by buffer swap
+
+**Decided (Sage), on three failures a Critic round found in the amendments of
+S7.5.** The exclusion word of `rc-cycle` is named the **trace token**, it covers
+mark and scan and the reading of the live root queues, and its holder releases
+it at the end of scan — after the last touch of any shadow row, any met-bitmap
+word and any live queue, and **before the exact test of any component**.
+Everything after that store runs untokened: the corpse rule, the guards, the
+weak-cell nulling, the destructors, the re-verify, the sever, the frees, the
+slot returns, the bit clearings. There is one release instant and not one per
+form. A code path of a collection that touches a shadow row, a bitmap word or a
+live queue after the release store is a defect rather than an ambiguity.
+
+**The release obliges a readership rule, and the rule is what makes it legal.**
+Mark and scan are the only readers and writers of the shadow rows and the met
+bitmap. The exact test and the teardown's re-verify compute `IN` by iterating a
+component's current fields against the component's own member list, in
+collection-private memory from the collector's reserve, never through the shared
+rows. Without that clause the release instant is a lie, because the rows would
+outlive the token that protects them.
+
+**`amSolo` means one trace at a time, and the token alone enforces it.** The
+teardown gets no global exclusion and needs none: under the accelerator
+concurrent teardowns are the ordinary state already, and a second trace crossing
+blocks whose occupants are mid-teardown reads guards, nulled slots and parked
+corpses — staleness, which the law prices at zero, a dirty pass adding suspicion
+and reducing nothing. The in-line form is made to match the accelerated one
+rather than to differ from it.
+
+**The two parkings are re-scoped.** The between-collections parking — a slot
+withheld while a queue entry names it — is untouched. The in-collection parking
+becomes an **in-trace** parking: a thread's frees park while the token is held
+by any thread but itself and return when that thread next observes the token
+free, which is one load on the slot-return path. No finer per-thread flag is
+invented, because a trace's closure crosses heap partitions and the holder
+cannot know in advance whose blocks it will touch. `used` therefore falls at the
+token's release rather than at the collection's end, so a block may return to
+the pool while a teardown still runs — correct, because the rows it could have
+collided with are dead by then.
+
+**The handshake is deleted design-wide, and the accelerator hands off by buffer
+swap.** The Y14 amendment of 2026-08-26 deleted it only from the in-line form,
+while `questions.md` Y5 and `rc-cycle.md`, "What it keeps from `rc-walk`", kept
+it alive with no protocol behind it — and any acknowledged rendezvous that
+survived would revive the deadlock the retired non-wait clause named, a
+collection parked on an acknowledgement that rides the waiter's checkpoint.
+Instead the token holder **swaps** a thread's live queue buffer for a spare and
+traces the detached buffer, marking entries; at the release it posts the marked
+buffer to a per-thread inbox of capacity one, and the owner reads it at its own
+checkpoint. Nothing waits on the pickup. The owner re-enqueues what stays
+enrolled, which it may do as its queue's one writer, and Y12 clause 2 stays true
+under the new release point: the single reader of the *live* queue is the token
+holder, and the owner judges only from a detached buffer it alone holds. The
+wait graph then has one edge kind — waiter on token — and no cycle.
+
+**The skip rule's subject was never the token.** A collector that finds the
+token held retries in a later round, naming no thread; a collector that finds a
+thread's inbox unconsumed skips that thread for this round. Candidates keep
+their bits, so both skips cost nothing.
+
+**The word carries one bit.** Free or held, entered by CAS from free, released
+by one store with release ordering: no holder identity, no holder kind, no
+thread-local held flag. The three-state form dissolves because no reader needs
+the owner-or-collector distinction, and the identity dissolves because a waiter
+can no longer be the holder. **The entry gate is checked before any wait** —
+the crate's existing collecting flag and `TEARDOWN_DEPTH`, unchanged — and a
+thread whose gate is closed goes down the ladder rather than waiting, since it
+could not collect on taking the token anyway. Gate before wait makes self-wait
+structurally impossible: a trace runs no user code and draws its working memory
+through the reserve door, so no allocation site executes on a thread while that
+thread's trace holds the token. The word has three readers: the waiter's CAS
+loop, the entry gate's load, and the slot-return path's load.
+
+**One name.** `rc-cycle.md`'s "claim" and Y12 clause 2's "collection token" both
+become **trace token**, the name being normative because it teaches the
+coverage. Y9's `claimCell` is untouched, being YRC's own name in quotation.
+
+**Rejected, so none of it is proposed again:** the token spanning the whole
+collection, which puts arbitrary user code under a word other threads wait on;
+a second word serializing teardowns, which reintroduces the same deadlock one
+level down; a holder thread id in the word, for which no reader exists once
+release precedes user code and the gate precedes the wait; the thread-local held
+flag, whose one case is unreachable; the three-state word, the holder-kind
+distinction having no customer; a cursor by which an owner reads its live queue
+during judgement, which breaks clause 2 the moment judgement runs outside the
+token; and abort-flag preemption, refused by Edmond on 2026-08-26 — this ruling
+is what makes the waiting he chose terminate.
+
+**Costs.** The exact test and the re-verify carry a private per-component member
+set, sized by the component and drawn from the reserve — unmeasured. Every
+thread parks its frees during any trace rather than only during a trace over its
+own blocks, a wider floating-garbage window bounded by one trace; a thread
+seeing back-to-back traces with no observable gap defers its returns across them
+— unmeasured, presumed pathological. Waiting terminates but is not fair, and
+whether a ticket is needed is a measurement rather than a design change. The
+one-load parking protocol has a boundary race — a slot return in flight at the
+instant the token is taken — whose worst outcome under the law is lost precision
+and not a wrong free; proving that is now the **first obligation of the
+verification debt**, whose TLC model must run a trace concurrently with an
+owner's teardown and with a racing slot return. And Y12 clause 3's open
+question, who allocates the spare buffer and how it is replenished, becomes
+load-bearing for the in-line form too and is on the critical path.
+
+**What it supersedes:** the held-flag clause of the 2026-08-26 four-rulings
+entry, and that entry's claim that the amendment "deleted the handshake", which
+overreached — the amendment deleted it from the in-line form only.
+
 ## 2026-08-27 — the twelfth ruling's document half is reversed for all three bodies of text
 
 **Decided:** the twelfth ruling of 2026-08-25 — code is deleted and documents

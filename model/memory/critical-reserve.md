@@ -156,7 +156,10 @@ operations between two polls — and that contract sizes this share too.
 The block is taken from the operating system when the thread is initialised,
 where a refusal already has somewhere to go: the thread's first allocation
 returns null. It is held for the life of the thread and is never returned to
-the ordinary path.
+the ordinary path. The escrow's floor is the one draw of thread init whose
+refusal has nowhere to go: the thread never starts
+([../../dev/DECISIONS.md](../../dev/DECISIONS.md), "the escrow's floor is
+allocator-issued").
 
 Refill happens at the safepoint poll the compiler already emits, which runs in
 a Limelight frame, so a refill that fails does the ordinary thing — reclaim,
@@ -177,8 +180,11 @@ and a collection's working memory, whose abort path raises.
 
 **The enrolment queue holds no frame, and it is funded rather than reported**
 (2026-08-28, [../../dev/DECISIONS.md](../../dev/DECISIONS.md), "an enrolment
-cannot fail"). Below this door sits an escrow in the thread's own queue — a
-fixed array below it takes the entry, so the entry lands whatever happens here.
+cannot fail"). Below this door sits the escrow's floor — one pool block the
+allocator issues at thread init and the thread holds for life — so the entry
+lands whatever happens here. The floor's own edge is the thread that never
+starts; a thread that skipped init draws its floor lazily at first enrol,
+where refusal aborts.
 The raise is the next safepoint poll's, from a frame that has one, after that
 poll has tried a collection — **and a poll whose entry gate is closed tries
 none**: it neither collects nor waits, the thread carrying its entries to the

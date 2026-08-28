@@ -10,6 +10,77 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-28 — the escrow's floor is allocator-issued, and a thread without one never starts
+
+**Ruled by Edmond**, amending the escrow's storage two entries down. The escrow
+leaves the thread's TLS image: its storage is one 64 KiB pool block — the
+**floor** — the allocator issues at thread init, before the best-effort
+reserve fills, and the thread holds for one init→exit life, returning it after
+the exit drain. The draw's refusal is the thread that never starts, reported
+by `ll_thread_init`'s new status return. The invariant stands on that coupling
+instead of on TLS: every thread the runtime registered has a floor, because a
+thread whose floor was refused is a thread the runtime never registered.
+
+**The unregistered thread.** Entity work reaches a thread that never ran
+`ll_thread_init` — self-initialising allocation, releaser-only FFI consumers —
+and that thread has no floor at birth. It draws its floor lazily at first
+enrol, once, through the ordinary door; the draw's refusal aborts, which is
+the funded class's last resort reached by one more door. **Rejected: entity
+work requires registration.** The enrolled bit is set before the write and the
+undo is deleted, so a violation surfacing at `enrol` cannot continue except by
+abort — the same abort, one door earlier — and the amendment would revoke the
+recorded ABI promise that skipping `ll_thread_init` is slower-once rather than
+undefined. **Rejected: a TLS array as the unregistered thread's fallback.** The
+TLS image is what this ruling removes; conditional TLS storage does not exist;
+a smaller fallback array has no written bound and carries its own overflow
+abort.
+
+**One life, not one OS thread.** "Thread" in the runtime's vocabulary is an
+init→exit pair — the journal already gives each life its identity, and a pool
+thread runs a sequence of lives on one OS thread. The floor is per life: it
+returns at every `ll_thread_exit`, and a re-birth whose floor draw refuses
+refuses that new life — the task dies, the process lives — observable through
+the status return; the OS thread belongs to the host and is not the floor's
+subject. **Rejected: abort on re-birth refusal** — a new process-kill edge on
+a path that today degrades softly, a heapless re-birth. **Rejected: holding
+the floor across lives** — the exit guard calls the same exit symbol, so
+holding needs a second teardown mechanism; it parks 64 KiB in every OS thread
+that finished a task and lives on; and the floor would be the only per-life
+structure surviving its own life.
+
+**The trade, recorded rather than derived.** A heapless thread today still
+releases entities allocated elsewhere, and a releaser-only consumer allocates
+nothing — so memory-hard thread creation is chosen for the invariant, not
+derived from inability. It costs: the heapless releaser's path narrows to the
+named abort edge under sustained full exhaustion; thread registration gains a
+refusable, reportable outcome it did not have; every registered thread holds
+64 KiB it may never use.
+
+**Mechanics that survive unchanged.** One segment's capacity (8160 entries,
+`ESCROW_ENTRIES` as it was), the `BLOCK_KIND_ARENA` stamp that keeps the trace
+and the census out of the block, `POLL_STRIDE` and the sizing argument, the
+poll's refill-drain-fire order, the overflow abort as the funded class's last
+resort. The best-effort fills stay best-effort: the floor alone is mandatory,
+being the one stock that cannot be refilled at a later poll without suspending
+the guarantee between birth and that poll. The lazy draw checks the exit phase
+and aborts for a thread past `ll_thread_exit` instead of drawing a block
+nothing would return.
+
+**Cost.** The escrow's 65 280 bytes — 99.4 % of the crate's 65 680-byte
+zero-initialised TLS image — stand as the measurement that motivated the move;
+what
+the move does to `.tbss`, RSS and the larson respawn churn is S34.8's to
+measure. Thread creation is memory-hard, and the ABI owes `ll_thread_init` a
+status return. A floor block is out of the pool for its thread's life, which
+moves every exact `blocks_out` accounting by one per live thread.
+
+**Document obligations.** `model/gc/cycle/questions.md` clause 3 and
+`runtime/exceptions.md`'s funded row and classification table carry the new
+storage; `model/memory/critical-reserve.md` names the floor's edge beside the
+reserve's; `model/memory/heap-slot-allocation.md`'s slower-once promise gains
+its scope; the collector thread's birth moment and its floor refusal are
+S38.0's to name.
+
 ## 2026-08-28 — a runtime loop carries the poll contract it broke
 
 **Decided (Sage, second round on the entry below), after the consolidation pass

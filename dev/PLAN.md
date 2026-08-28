@@ -224,6 +224,11 @@ for the same reason.
         entries, 65 280 bytes of thread-local per thread, sized on clause 3's
         own poll argument and deliberately extravagant until the ABI writes its
         poll bound down.
+      handoff: *(storage amended 2026-08-28.)* Edmond moved the escrow's
+        storage into the allocator: one pool block issued at init, held for
+        the life, its refusal the thread that never starts; the thread that
+        skipped init draws lazily at first enrol, refusal aborts
+        (`rfc/dev/DECISIONS.md`, "the escrow's floor is allocator-issued").
       handoff: *(record, superseded 2026-08-28.)* This line argued from
         `runtime/exceptions.md` filing `ll_release`'s candidate buffer under
         refusable work, and calling the resulting leak "still the right trade

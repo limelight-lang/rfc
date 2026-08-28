@@ -726,7 +726,11 @@ because `ll_malloc` demanded an explicit `ll_thread_init` first. It
 self-initialises on a cold branch now, exactly as `mi_malloc` does
 (`test rcx,rcx; je _mi_malloc_generic`), and the shim is a direct `#define`.
 The explicit contract remains the documented, faster path for an embedder;
-skipping it is now merely slower once, not undefined.
+skipping it is now merely slower once, not undefined. The once is wider than
+the allocation shim: it covers the one-time escrow floor draw at the thread's
+first enrol, whose refusal aborts
+([../../dev/DECISIONS.md](../../dev/DECISIONS.md), "the escrow's floor is
+allocator-issued").
 
 ## Per-class pools — reserved, not built
 

@@ -673,7 +673,7 @@ where the rows say.
 | `ll_arena_reset` | fixpoint working memory | **on the list** |
 | `dispose` | transitively: user `__destruct`, releases, reentrant stores | decomposes into the rows above |
 | `ll_release` | cycle-collector candidate buffer | funded: escrow, and the poll reports (below) |
-| `ll_thread_init` | the thread heap | deferred: the next allocation reports null |
+| `ll_thread_init` | the escrow floor, the thread heap | the floor is mandatory: a refused draw is the thread that never starts, reported by the status return; the heap stays deferred: the next allocation reports null |
 
 This settles the void-returning half of the list only. The foreign-code
 boundary named above stays on it regardless, for reasons that have
@@ -733,9 +733,12 @@ object whose registration failed does not survive its own creation.
 **Funded, because Edmond ruled the loss out** (2026-08-28,
 [`../dev/DECISIONS.md`](../dev/DECISIONS.md), "an enrolment cannot fail"). An
 enrolment cannot refuse: below the queue's live segment, its two spare
-segments and the per-thread critical reserve sits an escrow — a fixed array in
-the thread's own queue, `const`-constructible and never grown — which takes the
-entry by a store and an increment. So this entry point carries no failure at
+segments and the per-thread critical reserve sits an escrow — one 64 KiB pool
+block the allocator issues at thread init and the thread holds for life; a
+thread whose floor draw refused at init never starts, and a thread that
+skipped init draws its floor lazily at first enrol, where refusal aborts —
+which takes the entry by a store and an increment. So this entry point carries
+no failure at
 all, and the reporting is the next safepoint poll's, from a frame that has one:
 the poll refills, drains the escrow into the queue if any door funded a
 segment, and otherwise collects behind an open gate, waits on the trace token

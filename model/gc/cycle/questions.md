@@ -856,13 +856,20 @@ the first three are what the candidate would have to be given.
    draw sets, so a thread whose fill at init was refused is asked again at
    every poll instead of never.
 
-   **Below the reserve is an escrow, and it cannot refuse** (2026-08-28,
-   [`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md), "an enrolment
-   cannot fail"). A fixed array in the thread's own queue, `const`-constructible
-   and never grown, takes the entry by a store and an increment when the
-   reserve is spent too — so this clause's three prohibitions hold through the
-   last tier and **an enrolment has no store on it that can fail**. The escrow
-   drains into the queue at the first poll any door funds a segment.
+    **Below the reserve is an escrow, and it cannot refuse** (2026-08-28,
+    [`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md), "an enrolment
+    cannot fail"; storage amended the same day, "the escrow's floor is
+    allocator-issued"). The storage is one 64 KiB pool block — the **floor** —
+    the allocator issues at thread init, before the best-effort reserve fills,
+    and the thread holds for its life; the draw's refusal is the thread that
+    never starts. A thread that never ran `ll_thread_init` draws its floor
+    lazily at first enrol, once, through the ordinary door, and that draw's
+    refusal aborts — the funded class's last resort, reached by one more door.
+    A fixed, never-grown array in that block takes the entry by a store and an
+    increment when the reserve is spent too, so this clause's three prohibitions
+    hold through the last tier and **an enrolment has no store on it that can
+    fail**. The escrow drains into the queue at the first poll any door funds a
+    segment.
    **Whether an escrowed entry parks a slot the way a queue entry does is
    open**: clause 7 keys the parking on a queue entry naming the entity, and an
    escrow entry names it without being one. It is sized

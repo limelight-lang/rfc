@@ -335,8 +335,10 @@ being an emergency measure and becomes the ordinary form.
 
 Buffering fires on a decrement that does not reach zero, so a refused
 enrolment is never re-offered: if that decrement was the last external
-release of a garbage cycle, no later collection can find it
-([`../../../runtime/exceptions.md`](../../../runtime/exceptions.md)). A derived
+release of a garbage cycle, no later collection can find it — the cost
+[`../../../runtime/exceptions.md`](../../../runtime/exceptions.md) priced while
+the buffer was refusable, and which it now keeps as a record, Edmond having
+ruled the loss out on 2026-08-28. A derived
 population has the opposite property — it is re-derived every epoch, so a
 miss costs one epoch. This is the strongest recorded argument against
 sourcing candidates from the mutator and it is not a cost but a class of
@@ -807,9 +809,10 @@ entry): a failed growth allocation draws on the runtime's **reserved
 critical memory area**, and the runtime stays out of normal mode until
 every queued root has been walked — the walk is what makes the reserve's
 use bounded. The root is never dropped, which overrides the
-drop-as-known-leak licence of
-[`../../../runtime/exceptions.md`](../../../runtime/exceptions.md) for
-candidate roots. The reserved area's write-up is
+drop-as-known-leak licence [`../../../runtime/exceptions.md`](../../../runtime/exceptions.md)
+then carried for candidate roots — a licence that document has since demoted to
+a record of its own, Edmond having ruled on 2026-08-28 that nothing may be lost
+at any boundary. The reserved area's write-up is
 [`../../memory/critical-reserve.md`](../../memory/critical-reserve.md), written
 2026-08-25 on the twenty-first ruling of that day, and the area's size,
 residence and other customers belong to it.
@@ -852,6 +855,27 @@ the first three are what the candidate would have to be given.
    (clause 6). What the poll asks is the null cell itself rather than a flag a
    draw sets, so a thread whose fill at init was refused is asked again at
    every poll instead of never.
+
+   **Below the reserve is an escrow, and it cannot refuse** (2026-08-28,
+   [`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md), "an enrolment
+   cannot fail"). A fixed array in the thread's own queue, `const`-constructible
+   and never grown, takes the entry by a store and an increment when the
+   reserve is spent too — so this clause's three prohibitions hold through the
+   last tier and **an enrolment has no store on it that can fail**. The escrow
+   drains into the queue at the first poll any door funds a segment.
+   **Whether an escrowed entry parks a slot the way a queue entry does is
+   open**: clause 7 keys the parking on a queue entry naming the entity, and an
+   escrow entry names it without being one. It is sized
+   at one segment's entries, on the same argument this clause makes for two
+   cells — a whole segment cannot fill between two polls at any entry size — and
+   that argument holds only because **every loop keeps the poll contract, the
+   runtime's own included** (2026-08-28,
+   [`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md), "a runtime loop
+   carries the poll contract it broke"). `ll_release_vector`'s count is the
+   caller's and the compiler emits no poll inside it, so that loop polls on its
+   own backedge every half-escrow; without it a container clear enrols without
+   bound. **The escrow's capacity is an edge and the abort behind it is real** —
+   what the poll contract buys is that no ordinary program reaches it.
 
    **The live segment is a cell too.** A thread holds none until its first
    enrolment, which finds no room by construction and takes the overflow path,
@@ -905,7 +929,16 @@ the first three are what the candidate would have to be given.
    collection is legal (Y14) and a dropped root is not (Y6).
 6. **Growth that cannot allocate draws on the reserve.** The thirteenth
    ruling: the enrolment does not drop, the runtime enters reserve mode, and
-   it leaves reserve mode only after every queued root has been walked.
+   it leaves reserve mode only after every queued root has been walked. **The
+   floor under that draw is clause 3's escrow** (2026-08-28): the reserve
+   spent too, the entry still lands, and the report is the poll's — which
+   collects behind an open gate, waits on the token when another thread holds
+   it, and raises memory-exhausted from its own frame when the collection runs
+   and loses. **A poll whose gate is closed does none of the three** — it
+   refills, drains, and carries the entries to the next poll, a closed gate
+   meaning a collection or a teardown is already running. Nothing is dropped at
+   any of those arms, which is Edmond's ruling and the reason this clause has a
+   floor at all.
 7. **A root that dies before it is read is left in the queue and refused at
    the read**, never removed at the death. `rc-trace` removes it, through the
    header index and a swap-remove (`ll-model` `gc.rs`, `forget_candidate`),
@@ -965,8 +998,12 @@ the first three are what the candidate would have to be given.
    safepoint poll that finds the counter moved** from a thread-local
    full-width mirror recorded at the last re-offer; full-width on both sides,
    so a stamp that wraps hides no turnover. At that poll, after clause 3's
-   cells are refilled, the owner links every suspects segment onto its own live
-   queue, one link per segment and no entry copied, and records the counter.
+   cells are refilled and its escrow drained, the owner links every suspects
+   segment onto its own live queue, one link per segment and no entry copied,
+   and records the counter. The order among the poll's three writers of the live
+   queue is refill, drain, splice: the drain writes entries and the splice
+   whole segments, so a splice first would put the drained entries behind a
+   chain the trace has already been offered.
    The poll is the instant rather than the owner's next judgement, because a
    thread whose only garbage is a parked ring has an empty queue, and Y14 fixes
    an in-line collection's scope at that queue: no roots, so no judgement, and
@@ -981,13 +1018,11 @@ the first three are what the candidate would have to be given.
    exact reading. That retention window is up to one epoch and is the widest
    this design carries, wider than clause 7's "until the owner reads it".
 
-**What is still open:** what an overflow does when the critical reserve is
-spent too, which no clause reaches — the thirteenth ruling funded "never
-dropped" out of the reserve and stopped at the reserve running out; what the
-writer and the swapper of clause 2 agree on, so that an entry written while the
+**What is still open:** what the writer and the swapper of clause 2 agree on, so that an entry written while the
 live buffer is being detached lands in exactly one of the two buffers and in
-neither twice; the poll bound clause 3's two cells are
-sized against, which the ABI has not written down; and the reserved critical
+neither twice; the poll bound clause 3's two cells and its escrow are
+sized against, which the ABI has not written down and which since 2026-08-28
+must satisfy `B` ≤ escrow minus stride; and the reserved critical
 area's sizing —
 [`../../memory/critical-reserve.md`](../../memory/critical-reserve.md) exists
 and records that **no** share of it is derivable today, the collector's having
@@ -1112,7 +1147,46 @@ That settles the neighbouring case the ruling's own words reach. A **failed
 enrolment** is also a memory shortage, and it happens inside `ll_release`,
 mid-mutation, so it arms and never fires; the queue draws on the reserve there,
 as the thirteenth ruling has it, and the collection runs at the next clean
-point. The tenth ruling's refusal of YRC's stripe drain therefore narrows
+point.
+
+**What that clean point does was ruled on 2026-08-28**
+([`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md), "an enrolment cannot
+fail"), Edmond having ruled that nothing may be lost. The poll refills the
+cells first, then drains the escrow into the queue as far as the refill made
+room, then picks up its inbox — the cheap memory first, an accelerator's
+finished proposal being where collector-freed memory actually arrives. **The
+arming outlives the drain:** a poll that emptied the escrow still fires if the
+refusal armed it, which is `../strategies.md`'s own rule that the refusal arms
+and the poll fires. It then reads this thread's own entry gate. An open gate
+CASes the trace token: free, the thread takes it and collects in line; held, it
+waits on the word and retries. **That wait is for the right to trace and not
+for memory** — the token is released before any free — and it terminates
+because the token is never held across user code; the thread's own progress
+guarantee is the in-line collection it then runs. **A closed
+gate neither collects nor waits** — the thread carries on to its next poll with
+its entries in escrow, its gate being closed because the machinery that frees
+memory is what holds it. A collection that runs and loses raises
+memory-exhausted from the frame the poll holds, and the escrowed roots survive
+the raise with their bits set.
+
+**The window's edge is ruled, not assumed** (2026-08-28). The boundary between
+two whole releases of a bulk run is **not** the forbidden window: iteration
+`i − 1` has fully returned, its death and destructor with it, and `entities[i]`
+has not been read, which is `../strategies.md`'s "between mutator operations,
+after the current store or teardown has completed". What makes it safe is the
+precondition [`../../memory/bulk-operations.md`](../../memory/bulk-operations.md)
+now states — the caller severs every traced edge to an entry before submitting
+the vector — under which an already-released entry has no surviving edge and an
+unreleased one has a count the vector's hold keeps high, which is the
+conservative skew acquittal already tolerates.
+
+**The obligation that comes with it:** the trace's arena — shadow rows, met
+bitmap, mark stack — **returns at the token's release**, before judgement and
+teardown, so a teardown's own decrements meet a refilled reserve rather than a
+spent one. The readership rule already makes that legal, mark and scan being
+the rows' only readers and the release coming after the last touch of one
+([`../rc-cycle.md`](../rc-cycle.md), "Concurrency"); this ruling makes it
+required. The tenth ruling's refusal of YRC's stripe drain therefore narrows
 rather than reverses: the writer never collects at the enrolment, and what he
 may do at an allocation is what principle 4 already licenses — "a thread short
 of memory may spend its own time collecting".
@@ -1199,6 +1273,12 @@ thread exists — the in-line form is exact by construction and needs no model
 **of its judgement** — its concurrency still does, because every thread parks
 its frees while any trace runs, so the racing slot return below happens under an
 in-line trace as much as under the accelerator.
+
+**Its second obligation, named 2026-08-28.** A gate-closed thread inside a long
+teardown, enrolling across many polls while the pool refuses throughout: the
+mid-run poll refills and drains but fires nothing, so the escrow fills and the
+abort behind it is what the model has to show unreachable — or show reachable,
+which would send the ruling back.
 
 **Its first obligation is named, 2026-08-27.** The model runs a trace
 concurrently with an owner's teardown and with a slot return racing the instant

@@ -332,6 +332,17 @@ the bit clearings. There is one release instant and not one per form, and a code
 path of a collection that touches a shadow row, a bitmap word or a live queue
 after the release store is a defect rather than a reading.
 
+**The release is also when the trace's arena returns** — the shadow rows, the
+met bitmap and the mark stack, before judgement and teardown rather than after
+(2026-08-28, `dev/DECISIONS.md`, "an enrolment cannot fail"). What requires it
+is the enrolment's floor: a teardown's own decrements enrol, and they must meet
+a refilled critical reserve rather than the spent one the collection left. What
+makes it legal is the readership rule below, the rows having no reader after
+the release. Which **fund** the exact test and the re-verify draw from is settled — the
+collector's reserve, as the readership rule below says. What has no name is the
+**vehicle**: the arena was that fund's only allocator and it has gone back at
+the release.
+
 **The release obliges a readership rule.** Mark and scan are the only readers
 and writers of the shadow rows and the met bitmap. The exact test and the
 teardown's re-verify compute `IN` by iterating a component's current fields

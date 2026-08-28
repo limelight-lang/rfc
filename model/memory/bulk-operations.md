@@ -29,11 +29,28 @@ Semantically exactly equal to:
 
 ```c
 ll_gc_checkpoint_ack();             // once, before any death
-for (i in 0..count)
+for (i in 0..count) {
+    if (i && i % POLL_STRIDE == 0)
+        ll_gc_maybe_collect();      // the loop's own poll, on its backedge
     if (ll_release_batch(entities[i]))
         ll_entity_die(entities[i]);
+}
 ll_gc_checkpoint();                 // pickup, after the run
 ```
+
+**The backedge poll is not an optimisation** (2026-08-28,
+[`../../dev/DECISIONS.md`](../../dev/DECISIONS.md), "a runtime loop carries the
+poll contract it broke"). `count` is the caller's and the compiler emits its
+poll only after the call, so without one here a large clear enrols candidates
+without bound and exhausts the queue's whole funding with memory free.
+
+**Precondition, stated because the poll rests on it:** the caller has severed
+every traced edge to an entry before submitting the vector — the vector is the
+entries' last counted holder, and a stack hold is counted rather than traced,
+so frames need no severing. Under it the loop's backedge is a legal fire point:
+the released entries have no surviving edge, and an unreleased one carries a
+count the vector's own hold keeps high, which is the conservative skew a
+collection already tolerates.
 
 *Amended 2026-07-28 with the batched-checkpoint split of
 rc-walk.md ("Batched releases"): ack before the

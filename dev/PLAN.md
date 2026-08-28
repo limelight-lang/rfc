@@ -1,6 +1,6 @@
 # PLAN
 
-Updated: 2026-08-27 · Active: S8 — the clauses the build runs into first
+Updated: 2026-08-28 · Active: S8 — the clauses the build runs into first
 
 **Closed stages are deleted whole** (rule 23.1.3). S1 through S5 went on
 2026-08-25, S6 and S7 on 2026-08-27; what survived each is in
@@ -153,7 +153,8 @@ for the same reason.
         collection, and assert the stale-acquitted ring reclaimed.
       handoff: the ruling adds a third per-thread chain, so the exit obligation
         S8.2 handed the crate grows with it: `ll_thread_exit` drains the
-        suspects buffer beside the inbox and the queue. Its entries hold their
+        suspects buffer beside the inbox, the queue and the escrow
+        (2026-08-28). Its entries hold their
         enrolment bits set and, by this ruling, hold slots and blocks parked, so
         a thread that exits without draining it parks them for the life of the
         process.
@@ -169,7 +170,7 @@ for the same reason.
         `SlotKind`'s `Pointer` variant covers a declared class type, a `string`
         and an `array` in one code, and `PropSlot` carries no target, so the
         evaluable form demotes 0 of 114 classes with live instances.
-- [ ] S8.5 Decide what an overflow does when the critical reserve is spent too
+- [x] S8.5 Decide what an overflow does when the critical reserve is spent too
       done: `dev/DECISIONS.md` records the boundary and Y12 states it, so no
         clause leaves the spent-reserve case to the reader
       tier: T2 · role: —
@@ -185,14 +186,50 @@ for the same reason.
         is a silent permanent miss of exactly the class Y6 refuses. Whatever
         tier is chosen needs a channel compiled into the default build, or it
         needs to say that the miss is silent.
-      handoff: `runtime/exceptions.md` already argues the tier's own case
-        against itself: it files `ll_release`'s candidate buffer under
-        refusable work because the release path holds no frame to raise from,
-        and its own passage on that refusal calls the resulting leak "still the
-        right trade against killing the process". The thirteenth ruling moved
-        the candidate buffer out of that class only as far as the reserve
-        reaches, which is why this boundary is the ruling's edge and not a new
-        question.
+      Edmond 2026-08-28: nothing may be lost. When memory is exhausted the
+        mutator thread either goes into collection itself or waits for the
+        collector to free memory. The terminal tier is refused with the rest,
+        and the question of a record channel goes with it — there is nothing to
+        record.
+      Sage 2026-08-28: the ruling states the outcome, so the mechanism was
+        ruled beside it. Enrolment becomes unfailable — an escrow, a fixed
+        array in the thread's own queue below the reserve — and the thread
+        never stops inside `ll_release`, which is unsound mid-mutation by
+        Y14's own stale-edge argument. Both of Edmond's arms run at the next
+        poll, behind the entry gate; a closed gate neither collects nor waits,
+        the entries being safe in escrow. Final.
+      Sage 2026-08-28 round 2: the consolidation pass found the escrow's sizing
+        argument false for one shape — `ll_release_vector`, a runtime-owned loop
+        over a caller-supplied count with no poll inside it, which a container
+        clear drives — so a large clear reached the abort with memory free. The
+        loop that broke the bound takes the bound: it polls on its own backedge
+        every half-escrow, and the backedge is a legal fire point under a
+        precondition `bulk-operations.md` now states. Three sentences of the
+        first ruling are withdrawn, the token wait's identification with
+        Edmond's second arm among them. Final.
+      handoff: closed 2026-08-28. Y12 clause 3 carries the escrow and clause 6
+        its floor, Y14 carries the poll-side sequence, `model/gc/rc-cycle.md`
+        and `model/memory/critical-reserve.md` carry their halves, and
+        `runtime/exceptions.md` moves `ll_release` from refusable to funded —
+        the refusable category losing its only member and keeping its name.
+      handoff: the second round costs the crate one more thing, and it is a
+        present defect rather than a future one: without the backedge poll a
+        clear of some ninety thousand shared elements aborts with memory free,
+        because nothing refills the two cells or the reserve's eight blocks
+        mid-run. `model/PLAN.md` S34.7 is that repair.
+      handoff: what it costs the crate. `model/PLAN.md` S34.1 shipped the
+        forbidden branch — it undoes the enrolled bit and loses the edge — so
+        the replacement is owed there: the escrow, an infallible `enrol`, the
+        poll's escrow drain, and the deletion of the undo. The escrow is 8160
+        entries, 65 280 bytes of thread-local per thread, sized on clause 3's
+        own poll argument and deliberately extravagant until the ABI writes its
+        poll bound down.
+      handoff: *(record, superseded 2026-08-28.)* This line argued from
+        `runtime/exceptions.md` filing `ll_release`'s candidate buffer under
+        refusable work, and calling the resulting leak "still the right trade
+        against killing the process". Edmond's ruling moved the row to funded
+        and demoted those paragraphs to a record in that document, so the
+        argument is kept for what it cost rather than for what it says.
 - [ ] S8.6 Decide when the shadow arena resets, against the teardown order
       done: `rc-cycle.md`'s teardown order names the instant a collection's
         blocks return, and says where the exact test's collection-private memory
@@ -204,6 +241,18 @@ for the same reason.
         destructors can overflow a queue. Against that, the exact test and the
         re-verify compute `IN` in collection-private memory drawn from the same
         reserve and run after the release, so one arena cannot serve both.
+      handoff: half of this is now ruled and the other half is narrower than it
+        looked. The 2026-08-28 ruling makes the arena's return at the token's
+        release **required** rather than merely legal, because the enrolment's
+        floor needs a teardown to meet a refilled reserve; `rc-cycle.md` and
+        Y14 both say so. The **fund** the exact test draws from is already
+        named — `rc-cycle.md`, "The release obliges a readership rule", says
+        collection-private memory from the collector's reserve, and
+        `model/memory/critical-reserve.md` counts judgement among that
+        reserve's customers. What is left is the **vehicle**: the arena is the
+        only allocator that fund had, and it has gone back at the release, so
+        what the exact test and the re-verify allocate through afterwards is
+        unnamed.
 - [ ] S8.7 Decide what the queue's writer and the buffer's swapper agree on
       done: Y12 clause 2 states the agreement, so that an entry written while
         the live buffer is being detached lands in exactly one of the two

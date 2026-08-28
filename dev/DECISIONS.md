@@ -10,6 +10,144 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-28 — a runtime loop carries the poll contract it broke
+
+**Decided (Sage, second round on the entry below), after the consolidation pass
+found the counterexample.** The escrow keeps its size and its place; what
+changes is who the poll contract binds. `ll_release_vector` is a loop whose
+`count` is the caller's and whose body the compiler never sees inside — it is
+named for "frame teardown, a scope exit, a container clear" — and the compiler
+emits its poll only *after* the call. So the argument the escrow was sized on,
+that a whole segment cannot fill between two polls, is false for exactly that
+shape: `runtime/exceptions.md` justifies it with "any loop has a backedge poll",
+which quantifies over emitted code. **The loop that broke the bound takes on the
+bound**: on its backedge, every `POLL_STRIDE` iterations, it runs the safepoint
+poll itself. The stride is half the escrow, derived rather than invented, so a
+loop obeying it cannot fill the escrow between two of its own polls whatever
+the ABI's bound turns out to be.
+
+**The backedge is a legal fire point and this ruling says so rather than
+assuming it.** Iteration `i − 1` has fully returned, its death and destructor
+with it, and `entities[i]` has not been read — which is
+`model/gc/strategies.md`'s own "between mutator operations, after the current
+store or teardown has completed". What makes it safe is a precondition the
+vector's contract must now state: the caller severs every traced edge to an
+entry before submitting the vector, the vector being the entries' last counted
+holder. That precondition was load-bearing before this ruling — a concurrent
+accelerator can trace at any instant — and what changes is that it is written
+down. Inside a teardown the boundary is not clean and needs no special case:
+`TEARDOWN_DEPTH` closes the entry gate, so the mid-run poll refills and drains
+and fires nothing, which is the reentrancy guard `strategies.md` already
+licenses.
+
+**Three sentences of the entry below are withdrawn.** *"Only a fixed array in
+the thread-local has no edge"* — a fixed array has no **refusal** edge, no
+store on it failing for want of memory, and it has a capacity edge all the
+same; the abort sits on it, and the duty is to keep that edge behind the poll
+contract rather than to deny it. *"Where the thread stops is the next
+compiler-emitted poll"* — inside a bulk run it is the run's own backedge poll,
+and that sentence is what let the counterexample through. *The identification
+of the token wait with Edmond's "wait for the collector to free memory"* — a
+thread that takes the token has waited for another thread's **trace**, and the
+token is released before any free, so it is handed no memory. Edmond's second
+arm decomposes into two mechanisms the design already has: the **inbox pickup**,
+where an accelerator's finished proposal lets this thread free its own condemned
+garbage, which is where collector-freed memory actually arrives; and the token
+wait, which is waiting for the right to trace. The poll's pressured order is
+therefore refill, drain, pickup, then gate and collect. Nothing here discharges
+less than Edmond ruled.
+
+**What it costs.** One compare-and-branch per iteration of the bulk release
+path, and a full poll every 4080 iterations — unmeasured, and no figure is
+offered. A mid-run fire can interleave a pickup's teardowns with the vector's
+own destructor order; the vector promises its entries' relative order and PHP
+promises no destructor instant, so that is admissible.
+
+**What is still true of the edge.** The abort stands behind a conjunction no
+ordinary program produces: the pool refusing across polls, and either a gate
+closed for the whole run or a collection that ran and lost, and then thousands
+of further non-final decrements before the run ends. **Today's crate still
+aborts there**, neither the collection nor the raise being built — the same
+standing the store barrier's abort has. What this ruling removed is the case
+that needed no exhaustion at all: before it, a clear of some ninety thousand
+shared elements aborted with memory free.
+
+**What the ABI is owed, plainly.** `runtime/exceptions.md`'s
+bounded-operations-between-polls clause now binds runtime-owned loops over
+caller-supplied counts as well as emitted code, and the bound **B** it has never
+written must satisfy `B ≤ ESCROW_ENTRIES − POLL_STRIDE`, which is 4080 today.
+
+## 2026-08-28 — an enrolment cannot fail: below the reserve is an escrow, and the poll collects or waits
+
+**Ruled by Edmond**, closing the boundary the thirteenth ruling of 2026-08-25
+stopped at: **nothing may be lost.** When memory is exhausted the mutator
+thread either goes into collection itself or waits for the collector to free
+memory. The drop-with-record tier the Sage had proposed at the spent reserve is
+refused with the rest.
+
+**The mechanism (Sage), because the ruling states the outcome and not the
+machine.** Enrolment becomes **unfailable** and the thread never stops inside
+`ll_release`. Below the live segment, the two spare cells and the critical
+reserve sits a fourth tier that cannot refuse: a fixed **escrow** array in the
+thread's own queue, `const`-constructible, never allocated and never grown, into
+which a refused entry lands by a store and an increment. Clause 3 therefore
+holds through the last tier — no allocation, no lock, no copy — and `enrol` has
+no failure to report.
+
+**Where the thread stops is the next compiler-emitted poll**, which for a
+batched run is the statement boundary after its closing bracket. The poll
+refills first, as it already does, and any door that funds a segment drains the
+escrow through the ordinary write path. With the doors still spent and the
+escrow holding, the poll runs Edmond's two arms behind the entry gate: an open
+gate CASes the trace token and collects in line, or waits on the token when
+another thread holds it — the wait terminating because the token is never held
+across user code. **A closed gate neither collects nor waits**: the thread
+carries on to its next poll with the entries safe in escrow, its gate being
+closed precisely because the machinery that frees memory is what holds it. A
+collection that runs and loses raises memory-exhausted from the frame the poll
+holds, and the escrowed roots survive the raise with their bits set.
+
+**Why not inside `ll_release`.** A collection there is unsound and the design
+already says so: a store lowers the old value's count before it overwrites the
+pointer, and a collection in that window walks the stale edge, subtracts one
+reference twice and frees a live object (Y14). Y14 also already ruled that a
+failed enrolment "arms and never fires" and that the collection runs at the next
+clean point — so what this ruling adds is not the instant but the funding, and
+the escrow is what carries the root from the refusal to the first lawful
+instant. Waiting there is refused twice over: waiting for memory has no
+guarantor when the sleeping thread is the only one that could free any, and a
+release inside a teardown would block inside work a collection may be waiting
+on.
+
+**Rejected: a growable escrow**, which is the `Vec` trap the two reserves
+already paid for — a push that cannot allocate aborts inside the code meant to
+make exhaustion survivable. **Rejected: lending from the log or exception
+reserves**, which makes each customer's worst case the sum of both.
+**Rejected: enlarging the critical reserve**, which moves the boundary without
+removing it; every finite fund has an edge, and only a fixed array in the
+thread-local has none.
+
+**Cost.** The escrow is sized at one segment's entries — 8160 of them, 65 280
+bytes of thread-local per thread — because clause 3's own recorded argument,
+that a whole segment cannot fill between two polls at any entry size, is the
+only written bound available. Those bytes are committed at thread creation
+rather than on first touch: measured in `ll-model` on 2026-08-28, the escrow is
+99.4 % of the crate's zero-initialised TLS image, and that image is what glibc
+allocates and zeroes for every thread it starts. That sits on top of the two spare segments and
+`model/memory/critical-reserve.md`'s 500 KB, and it is deliberately
+extravagant: what would license shrinking it is the ABI's poll bound, unwritten,
+and the enrolment-rate-during-drain measurement the reserve's sizing already
+waits on. The hot path gains nothing — the escrow branch sits after the
+reserve's refusal. Memory-exhausted is reported up to one poll interval after
+the memory ran out, which is the deferral the store barrier's funded
+classification already accepts.
+
+**What is bounded by argument and not by proof:** a gate-closed thread inside a
+long teardown, enrolling across many polls while every door stays spent. No
+written number bounds a teardown's external decrements. Behind it stands the
+same last-resort abort the funded class already keeps
+(`runtime/exceptions.md`), and the verification debt gains the case by name.
+
 ## 2026-08-27 — the suspects buffer is the owner's, and the re-offer is a splice at the epoch's turn
 
 **Decided (Sage), closing Y12 clause 8.** The suspects buffer is one per

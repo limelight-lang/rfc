@@ -75,17 +75,15 @@ cycle no later collection can find, enrolment being edge-triggered — so the
 growth goes to the critical door (`../../dev/DECISIONS.md`, thirteenth entry of
 2026-08-25). The draw is one block, and the in-line collection's own swap draws
 here too, after the pool and after the cells; all three refusing aborts that
-collection before it traces anything. What bounds the total is not the queue's eventual size
+collection before it traces anything. **This door refusing an enrolment does
+not refuse the enrolment**: the escrow below it takes the entry, and "When the
+reserve is spent too" says what happens next. **Reserve mode is entered by the
+draw and not by the escrow**, so a thread that reached the escrow without ever
+drawing is not in it — what that costs the mode's exit condition, which speaks
+of queued roots and not of escrowed ones, is open. What bounds the total is not the queue's eventual size
 but the mode: from the first such draw the runtime is in reserve mode, and it
 leaves reserve mode only when every queued root has been walked, so the queue
-drains while it fills. **What an overflow does when this door refuses too is
-open**, and "When the reserve is spent too" below does not answer for this
-customer: raising memory-exhausted needs a frame, and the enrolment runs inside
-`ll_release`, which has none — the reason
-[../../runtime/exceptions.md](../../runtime/exceptions.md) files the candidate
-buffer under refusable work. The thirteenth ruling funded "never dropped" out
-of the reserve and stopped at the reserve running out
-([../../dev/PLAN.md](../../dev/PLAN.md), S8.5).
+drains while it fills.
 
 **The mutator that cannot collect.** A thread short of memory tries to become
 the tracer, and reads its own entry gate first — the collecting flag and
@@ -175,9 +173,18 @@ The runtime raises memory-exhausted, an ordinary catchable `Throwable` here
 rather than a fatal error, and it is legitimate precisely because everything
 above has already been tried and a collection has run and lost. **This answers
 for the two customers that hold a frame** — the mutator that cannot collect,
-and a collection's working memory, whose abort path raises. The enrolment
-queue's growth holds none, so what it does at this boundary is open and is
-`../../dev/PLAN.md` S8.5. Constructing
+and a collection's working memory, whose abort path raises.
+
+**The enrolment queue holds no frame, and it is funded rather than reported**
+(2026-08-28, [../../dev/DECISIONS.md](../../dev/DECISIONS.md), "an enrolment
+cannot fail"). Below this door sits an escrow in the thread's own queue — a
+fixed array below it takes the entry, so the entry lands whatever happens here.
+The raise is the next safepoint poll's, from a frame that has one, after that
+poll has tried a collection — **and a poll whose entry gate is closed tries
+none**: it neither collects nor waits, the thread carrying its entries to the
+next poll instead, because a closed gate means a collection or a teardown is
+already running and that is the machinery which frees memory. Nothing is
+dropped at any of those arms, which is Edmond's ruling. Constructing
 the exception draws on the exception reserve, which is a different block and is
 never lent to these three.
 

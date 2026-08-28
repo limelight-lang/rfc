@@ -146,7 +146,12 @@ impossible-to-report failure at the store itself.
 
 That conversion needs one contract from the compiler, and it belongs in
 the ABI: **a bounded number of barrier operations between two polls.**
-Any loop has a backedge poll and straight-line code is finite, so the
+**Since 2026-08-28 that clause binds the runtime's own loops as well as
+emitted code** ([`../dev/DECISIONS.md`](../dev/DECISIONS.md), "a runtime loop
+carries the poll contract it broke"): a loop over a caller-supplied count that
+the compiler never sees inside — `ll_release_vector` is the one that found this
+— polls on its own backedge, and the bound the ABI owes must leave the
+enrolment escrow room between two polls. Any loop has a backedge poll and straight-line code is finite, so the
 bound is generous rather than delicate — and the arithmetic has to be
 stated in the ABI document rather than assumed, because it is what the
 reserve is sized from.
@@ -667,7 +672,7 @@ where the rows say.
 | `ll_arena_reserve` | a block, best-effort | deferred: the next `alloc` reports |
 | `ll_arena_reset` | fixpoint working memory | **on the list** |
 | `dispose` | transitively: user `__destruct`, releases, reentrant stores | decomposes into the rows above |
-| `ll_release` | cycle-collector candidate buffer | refusable (below) |
+| `ll_release` | cycle-collector candidate buffer | funded: escrow, and the poll reports (below) |
 | `ll_thread_init` | the thread heap | deferred: the next allocation reports null |
 
 This settles the void-returning half of the list only. The foreign-code
@@ -725,26 +730,48 @@ specified for a constructor that threw: our teardown runs, the user
 destructor does not. No record is ever silently dropped, because an
 object whose registration failed does not survive its own creation.
 
-**Refusable, so there is nothing to report.** Buffering a candidate root
-for the cycle collector can simply not happen, provided the "buffered"
-mark is set only when the entry really went in. Nothing is corrupted and
-nothing dangles; a refusal arms a collection instead. This is a third
-category next to *report* and *raise*, and it is the cheapest of the
-three: **refusable work**. Every operation moved into it is one the
-channel never has to carry. (Implemented in `ll-model` as of
-2026-07-21.)
+**Funded, because Edmond ruled the loss out** (2026-08-28,
+[`../dev/DECISIONS.md`](../dev/DECISIONS.md), "an enrolment cannot fail"). An
+enrolment cannot refuse: below the queue's live segment, its two spare
+segments and the per-thread critical reserve sits an escrow — a fixed array in
+the thread's own queue, `const`-constructible and never grown — which takes the
+entry by a store and an increment. So this entry point carries no failure at
+all, and the reporting is the next safepoint poll's, from a frame that has one:
+the poll refills, drains the escrow into the queue if any door funded a
+segment, and otherwise collects behind an open gate, waits on the trace token
+when another thread holds it, and raises memory-exhausted when the collection
+runs and loses. That is the store barrier's pattern one module up — funded at
+the site, reported at the poll.
 
-Its cost is real and should not be understated. Buffering is
-edge-triggered on a non-zero decrement, so a refused root is not
-re-offered later: if that decrement was the last external release of a
-garbage cycle, no further decrement ever comes and **no future
-collection can find it** — the buffer is the only root set the collector
-has. The armed collection does not recover it either, since the refused
-root is not in the buffer, and arming only fires where the compiler
-emitted a poll. So the refusal converts a collectable cycle into a leak
-that lasts until the thread ends, and it does so exactly when memory is
-scarcest. That is still the right trade against killing the process, but
-it is a leak, not a postponement.
+> **Record, superseded 2026-08-28.** The paragraphs below were this document's
+> answer while the buffer was refusable, and the third category was named for
+> it. They are kept because the cost they price is what the ruling above paid to
+> remove.
+>
+> **Refusable, so there is nothing to report.** Buffering a candidate root
+> for the cycle collector can simply not happen, provided the "buffered"
+> mark is set only when the entry really went in. Nothing is corrupted and
+> nothing dangles; a refusal arms a collection instead. This is a third
+> category next to *report* and *raise*, and it is the cheapest of the
+> three: **refusable work**. Every operation moved into it is one the
+> channel never has to carry. (Implemented in `ll-model` as of
+> 2026-07-21.)
+>
+> Its cost is real and should not be understated. Buffering is
+> edge-triggered on a non-zero decrement, so a refused root is not
+> re-offered later: if that decrement was the last external release of a
+> garbage cycle, no further decrement ever comes and **no future
+> collection can find it** — the buffer is the only root set the collector
+> has. The armed collection does not recover it either, since the refused
+> root is not in the buffer, and arming only fires where the compiler
+> emitted a poll. So the refusal converts a collectable cycle into a leak
+> that lasts until the thread ends, and it does so exactly when memory is
+> scarcest. That is still the right trade against killing the process, but
+> it is a leak, not a postponement.
+
+**The category survives its one member.** *Refusable work* stays beside
+*report* and *raise* for an entry point that earns it later; what it has lost is
+the example it was written from.
 
 The rule the enumeration produces, in the order to try it: **make the
 failure impossible, or make the work refusable, before giving it a

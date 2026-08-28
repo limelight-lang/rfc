@@ -267,9 +267,12 @@ So the trigger splits in two, and only the runtime half is fixed:
 - **Fire (compiler policy).** The collector runs only at a **clean
   point** the compiler chooses: an explicit `ll_gc_collect_cycles`, or a
   `ll_gc_maybe_collect` poll injected at a safepoint (§2) — a statement
-  boundary, an allocation slow path, request end. A reentrancy guard
-  makes any fire point safe even if reached from within teardown (a
-  nested collection is a no-op).
+  boundary, an allocation slow path, request end. **And one the runtime
+  chooses for itself:** the backedge of a bulk loop over a caller-supplied
+  count, which the compiler cannot see inside
+  ([../memory/bulk-operations.md](../memory/bulk-operations.md), 2026-08-28).
+  A reentrancy guard makes any fire point safe even if reached from within
+  teardown (a nested collection is a no-op).
 
 **The policy is the compiler's, outside the runtime model.** *Which*
 signals arm a collection and at what thresholds — candidate count,

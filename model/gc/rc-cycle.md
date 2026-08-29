@@ -229,9 +229,9 @@ The other is inside a **trace**: a thread's frees park while the trace token is
 held by any thread but itself and return when that thread next observes it free,
 which is one load on the slot-return path, because a row is keyed by the slot
 and a reused slot would inherit the dead occupant's met bit and working count.
-No finer per-thread condition is kept, since a trace's closure crosses heap
-partitions and its holder cannot know in advance whose blocks it will touch. A
-slot returns when both windows are shut, and `used` falls at the return rather
+The condition is per thread, and it can be: a trace's closure stays inside the
+blocks of the thread it claimed, so a thread whose blocks no live trace claims
+parks nothing. A slot returns when both windows are shut, and `used` falls at the return rather
 than at the parking — otherwise a block empties with a corpse inside it and goes
 back to the pool. For the in-trace window that return instant is the token's
 release, so a block may go back to the pool while a teardown still runs, which
@@ -316,10 +316,16 @@ notification on the header's weak bit, at step 6.
 
 ## Concurrency
 
-One **trace** at a time in the process — the `amSolo` rule — because the shadow
-rows are one trace's scratch and a second would read the first's decrements. The
-**trace token** is one bit, free or held, entered by CAS from free and released
-by one store with release ordering (`dev/DECISIONS.md`, "the trace token covers the trace alone, and
+One **trace** at a time **per mutator thread**, and the claim is that thread's
+rather than the process's (2026-08-29, `dev/DECISIONS.md`, "a trace stays inside
+the blocks of the thread it claimed"). A trace never reaches another thread's
+blocks, because a transfer leaves no reference behind: the graph arriving in a
+thread holds no reference to an object that stays in the source, so no thread
+names an entity living in another thread's blocks (`dev/DECISIONS.md`, "a
+transfer leaves no reference behind"; [`../classes.md`](../classes.md), the
+lifecycle family). So the rows two collectors touch are disjoint, and several
+collectors run at the same time on different threads. The **trace token** is one word per thread, entered by CAS
+from free and released by one store with release ordering (`dev/DECISIONS.md`, "the trace token covers the trace alone, and
 the accelerator hands off by buffer swap").
 
 **What the token covers, and when it is released.** It covers mark and scan and
@@ -382,10 +388,16 @@ acquitted parks in the owner's suspects buffer until the epoch turns
 which it may do as its queue's one writer. The wait
 graph therefore has one edge kind — a waiter on the token — and no cycle.
 
-While a trace is in flight, every thread's frees park, not only those whose
-blocks it reaches: a closure crosses heap partitions and the holder cannot know
-in advance whose blocks it will touch. That is the floating garbage every
-concurrent collector pays, bounded by one trace.
+While a trace is in flight, the frees of the **traced** thread park, and no
+other thread's do: the closure stays inside the blocks that thread owns. That is
+the floating garbage every concurrent collector pays, bounded by one trace and
+charged to one thread.
+
+**What the claim does not cover is a block that changes threads.**
+`ll-model`'s `abandon_all` nulls a block's owner at thread exit and `adopt`
+gives it to another thread, without a reference crossing anything, and a trace
+may hold rows for that block while it happens. The ordering that closes it is
+owed (`dev/PLAN.md` S8.9).
 
 ## What it trades
 

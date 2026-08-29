@@ -605,6 +605,15 @@ Two rules shape the whole family:
   decides a field needs the hook is the compiler's business and not part
   of the runtime model** — the runtime only sees the generated call.
 
+- **A transfer leaves no reference behind** (Edmond, 2026-08-29,
+  [../dev/DECISIONS.md](../dev/DECISIONS.md), "a transfer leaves no
+  reference behind"). `thread_move` and `thread_clone` require the graph
+  that arrives in the destination thread to hold no reference to an object
+  that stays in the source thread. What crosses is closed: the destination
+  reaches nothing the source still owns. A graph that cannot satisfy it
+  cannot be transferred, and the operation refuses rather than producing a
+  reference across the boundary.
+
 - **A graph copy needs an identity map.** `deep_clone`, `thread_clone`
   and `thread_move` walk a graph that may have cycles and shared nodes,
   so they thread an old→new map (as `unserialize` does), not a plain
@@ -619,11 +628,12 @@ not change the descriptor unless it needs the dynamic path.
 
 **Reserved, semantics not yet decided**: whether `deep_clone`
 copies COW entities (strings, arrays) eagerly or leaves them shared to
-separate on first write; and the ownership model `thread_move` /
-`thread_clone` target (share-nothing deep copy, à la actors, versus
-transfer of ownership with atomic counting). These arrive with
-multi-threading; they are named here so the family is open to them, not
-specified.
+separate on first write. The ownership model of `thread_move` /
+`thread_clone` was open here until 2026-08-29 and is now share-nothing by
+the rule above: the alternative it was weighed against — transfer of
+ownership with atomic counting — leaves a reference across the boundary
+and is refused with it. What still arrives with multi-threading is the
+mechanism, not the choice.
 
 ### dispose — the internal destructor
 

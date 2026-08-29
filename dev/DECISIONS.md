@@ -10,6 +10,91 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-08-29 — a trace stays inside the blocks of the thread it claimed, and the exclusion is per thread
+
+**Ruled by Edmond**, replacing the process-wide rule of the two entries below.
+The unit a collector excludes is **one mutator thread**, never the process. A
+collector works with exactly one thread at a time; several collectors work at
+the same time on different threads.
+
+**Three configurations, and the shadow rows serve all three.** A collection
+inside the mutator thread; one collector for many mutators; several collectors
+beside several mutators. The row scheme was written for the second and read as
+if the other two needed something else. They do not, because of the premise
+below.
+
+**Why a trace cannot reach another thread's blocks.** A transfer leaves no
+reference behind: `thread_move` and `thread_clone` require the graph arriving in
+the destination thread to hold no reference to an object that stays in the
+source, so no thread ever names an entity living in another thread's blocks
+(the entry below, "a transfer leaves no reference behind", and
+[`../model/classes.md`](../model/classes.md), the lifecycle family). The crate
+agrees: a refcount is stored with a plain relaxed store and never a
+read-modify-write, so one thread alone changes a given count. A block belongs to
+one thread's heap (`ll-model` `HeapBlockHeader::owner`), so the blocks two
+collectors touch are disjoint, and with them the block's collector triple, the
+touched list and every row.
+
+*(Premise corrected the same day.* This paragraph first named the crossing
+reference a **borrow** and claimed the trace does not follow one. That was
+wrong: [`../model/memory/static-lifetimes.md`](../model/memory/static-lifetimes.md)
+defines a borrow as a frame-only compile-time state whose obligation is
+within-frame, and anything leaving a frame is stored and counted — so a borrow
+is the shape that *cannot* cross a thread. The conclusion is unchanged; what
+carries it is the transfer rule.)
+
+**What this withdraws.** `amSolo` as a process rule; the trace token as one word
+for the process; and the parking of *every* thread's frees while any trace runs.
+The sentence those three rest on — a trace's closure crosses heap partitions and
+its holder cannot know in advance whose blocks it will touch — is false under
+the borrow guarantee, and it was the premise rather than a finding.
+
+**What replaces them.** Exclusion covers the claimed thread: a second tracer of
+the same thread is refused, a tracer of another thread is not. Frees park on the
+traced thread alone. Row addressing is unchanged — arithmetic from the object's
+address, no key and no owner stamp — because a block under two traces cannot
+arise.
+
+**Cost, and it is an open hole rather than a price.** A cycle whose edges run
+through a borrow is found by no trace on either side: the borrower's trace does
+not follow the borrow, and the lender's counts never carried it. Nothing in
+these documents collects such a cycle today.
+
+**Document obligations.** `model/gc/rc-cycle.md`'s "Concurrency" and its
+in-trace parking paragraph carry the new scope; `ll-model`'s
+`dev/ARCHITECTURE.md` rule 15 and `PLAN.md` S38.1 state the claim per thread
+rather than per process; the borrow hole is owned by a new step.
+
+## 2026-08-29 — a transfer leaves no reference behind
+
+**Ruled by Edmond**, closing what `model/classes.md` had reserved. Moving or
+copying an object into another thread requires the graph that arrives there to
+hold **no reference to an object that stays in the source thread**. What crosses
+is closed: the destination reaches nothing the source still owns. A graph that
+cannot satisfy it is not transferable, and the operation refuses rather than
+producing a reference across the boundary.
+
+**Rejected: transfer of ownership with atomic counting.** `classes.md` had
+carried it beside share-nothing as an open pair. It is what produces the
+reference this rule forbids, and the whole collector rests on the rule: with it,
+no entity is named by a thread other than the one whose blocks hold it, which is
+what lets a trace's claim cover one thread instead of the process (the entry
+above).
+
+**What it closes in the collector.** A Critic round of 2026-08-29 raised three
+hazards that all needed a thread to hold a counted reference into another
+thread's blocks — a foreign last release reaching `free_remote` while a trace
+enumerates the slot, a foreign enrolment of a local entity, two collectors over
+one large entity's row word. This rule forbids the precondition of all three,
+and they close without a per-block claim, a fence on the free path, or an owner
+word in three block populations.
+
+**What it does not close.** Abandonment and adoption move a *block* between
+threads with no reference crossing anything: `abandon_all` nulls the block's
+owner at thread exit and `adopt` gives it to another thread, which can happen
+while a trace holds rows for that block. That hazard survives this rule and is
+owned by a step of its own.
+
 ## 2026-08-28 — the escrow's floor is allocator-issued, and a thread without one never starts
 
 **Ruled by Edmond**, amending the escrow's storage two entries down. The escrow

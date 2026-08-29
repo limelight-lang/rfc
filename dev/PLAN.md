@@ -288,3 +288,62 @@ for the same reason.
         serialised: the trace token is released before any exact test, so
         several owner threads judge, tear down and commit at the same instant,
         and each of them stamps entities of its own on the epoch it reads.
+- [ ] S8.9 Order a block's change of thread against the trace claim
+      done: `model/gc/rc-cycle.md` states what happens when a block leaves its
+        thread while a trace holds rows for it, so that neither a reissued slot
+        nor a recommissioned block is read through a row array of the trace
+        still running
+      tier: T2 · role: Critic
+      handoff: the one hazard the transfer rule does not close, found by the
+        Critic round of 2026-08-29 and confirmed against `ll-model`:
+        `Heap::abandon_all` nulls a block's owner at thread exit and pushes it,
+        live objects and all, onto a process-global list; `Heap::adopt` gives it
+        to another thread and allocates out of its surviving free list. No
+        reference crosses a thread, so the ruling of 2026-08-29 does not reach
+        it, and `src/cycle/row.rs` states the assumption it breaks: "the two
+        readings could differ only if the block changed hands mid-trace, which
+        the trace token forbids". A pool thread running one life per task makes
+        this the ordinary path rather than an edge.
+      handoff: the Sage of 2026-08-29 proposed ordering thread exit against the
+        thread's own claim, which is bounded because the claim is never held
+        across user code, and a claimable estate for blocks whose thread is
+        gone — otherwise a cycle surviving its thread's exit is collectable by
+        nobody. Both are proposals, neither is ruled.
+
+## S9 — The vocabulary
+
+Goal: every word these documents use as a term is a word the field already
+uses for that thing, or is defined here as a new one on purpose.
+
+Ordered by Edmond on 2026-08-29, after `door` was found to be a metaphor with
+269 occurrences in 70 files and no entry anywhere defining it. `escrow` is the
+second of the same kind: a term from law for what allocator and collector
+literature calls an overflow buffer. Both entered through a commit subject and
+spread by agreement with the text already written. No review this project runs
+looks at vocabulary — the consolidation pass checks citations, contradictions
+and unsourced claims, and an invented term trips none of them.
+
+- [ ] S9.1 Build the glossary
+      done: `dev/GLOSSARY.md` lists every word the RFC documents use as a
+        term, and gives for each what it denotes, the established name for
+        that thing in allocator and collector literature, and one of three
+        verdicts — keep, rename to the established name, or define as new
+        because the thing has no established name; the two words already
+        known carry their replacements, `door` → the ordinary allocation
+        path and a draw from the critical reserve, `escrow` → overflow
+        buffer
+      tier: T2 · role: Critic
+      handoff: the audit reads the documents for words used as terms, which
+        is wider than the words the documents define: `door`, `escrow` and
+        `floor` are all used as if defined and none of them is.
+- [ ] S9.2 Rewrite the documents and the crate to the glossary
+      done: no document, identifier or test file name uses a word S9.1
+        marked for rename; the renames land as one commit per repository;
+        `dev/tools/linkcheck.php` is green after the pass
+      tier: T2 · role: —
+      handoff: the counts as of 2026-08-29 — `door` 269 in 70 files,
+        `escrow` 182 in 19, test file names among them
+        (`the_door_that_opens_after_a_refusal.rs`, `the_two_cow_doors.rs`).
+        `ResetWindow::escrow` in `model/src/memory/reset_window.rs` names a
+        different structure, deferred count corrections, and takes a
+        different name from the queue's.

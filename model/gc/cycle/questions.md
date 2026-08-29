@@ -1099,9 +1099,11 @@ And it never crosses threads, which the ladder requires in terms: "the thread
 feeling the pressure is the thread that needs the memory, its parked list and
 its verdicts are thread-local, and no other mutator is paused, signalled, or
 waited on". The scope is therefore this thread's own root **queue**, and that is what is
-bounded: the closure reaching out of it goes wherever the edges lead, across
-heap partitions, which is why every thread parks its frees while any trace runs
-([`../rc-cycle.md`](../rc-cycle.md), "Concurrency"). There is no general heap —
+bounded: the closure reaching out of it stays inside the blocks of the thread
+whose claim the trace holds, so that thread's frees park and no other thread's
+do (2026-08-29, [`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md), "a
+trace stays inside the blocks of the thread it claimed";
+[`../rc-cycle.md`](../rc-cycle.md), "Concurrency"). There is no general heap —
 every block belongs to a thread's heap
 ([`../../../runtime/actors.md`](../../../runtime/actors.md#open-questions)) — so
 the root set is closed rather than truncated.
@@ -1112,10 +1114,14 @@ A background collection reads every thread's entities, so two collections at
 once each decrement what the other captured and each conclude from the other's
 evidence. `rc-walk` had no such field, its counts being real and its
 condemnation collector-private, which is why its ladder could let rung 4 run
-during an open epoch and needed no rule. `rc-cycle` cannot: one **trace**
-exists in the heap at a time — teardowns run concurrently and need no exclusion
-— and whose thread runs the trace is then a question of scheduling
-([`../rc-cycle.md`](../rc-cycle.md), "Concurrency").
+during an open epoch and needed no rule. `rc-cycle` cannot: one **trace** at a time over a
+given thread's graph — teardowns run concurrently and need no exclusion, and
+several collectors run at once on different threads, their rows disjoint
+because a block belongs to one thread's heap and no thread names an entity in
+another's (2026-08-29, [`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md),
+"a trace stays inside the blocks of the thread it claimed";
+[`../rc-cycle.md`](../rc-cycle.md), "Concurrency"). What claims a thread is then
+a question of scheduling.
 
 > **Retired on 2026-08-26 with the handshake that was its reason, and the rule
 > that replaced it was settled on 2026-08-27**
@@ -1277,9 +1283,9 @@ The collector-side free is not among them: it was withdrawn on 2026-08-25 and
 Y5 records the withdrawal, so there is no seam left to model. Deleting the walk's specs retired the
 instrument, not the obligation, and the obligation is owed before a collector
 thread exists — the in-line form is exact by construction and needs no model
-**of its judgement** — its concurrency still does, because every thread parks
-its frees while any trace runs, so the racing slot return below happens under an
-in-line trace as much as under the accelerator.
+**of its judgement** — its concurrency still does, because the traced thread
+parks its frees while its own trace runs, so the racing slot return below
+happens under an in-line trace as much as under the accelerator.
 
 **Its second obligation, named 2026-08-28.** A gate-closed thread inside a long
 teardown, enrolling across many polls while the pool refuses throughout: the

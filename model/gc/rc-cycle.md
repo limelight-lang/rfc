@@ -324,8 +324,9 @@ thread holds no reference to an object that stays in the source, so no thread
 names an entity living in another thread's blocks (`dev/DECISIONS.md`, "a
 transfer leaves no reference behind"; [`../classes.md`](../classes.md), the
 lifecycle family). So the rows two collectors touch are disjoint, and several
-collectors run at the same time on different threads. The **trace token** is one word per thread, entered by CAS
-from free and released by one store with release ordering (`dev/DECISIONS.md`, "the trace token covers the trace alone, and
+collectors run at the same time on different threads. The **trace token** is one word per thread — the scope is the
+2026-08-29 entry's, the mechanics the 2026-08-27 one's — entered by CAS from
+free and released by one store with release ordering (`dev/DECISIONS.md`, "the trace token covers the trace alone, and
 the accelerator hands off by buffer swap").
 
 **What the token covers, and when it is released.** It covers mark and scan and

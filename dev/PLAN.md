@@ -1,6 +1,6 @@
 # PLAN
 
-Updated: 2026-08-28 · Active: S8 — the clauses the build runs into first
+Updated: 2026-08-29 · Active: S8 — the clauses the build runs into first
 
 **Closed stages are deleted whole** (rule 23.1.3). S1 through S5 went on
 2026-08-25, S6 and S7 on 2026-08-27; what survived each is in
@@ -309,6 +309,27 @@ for the same reason.
         across user code, and a claimable estate for blocks whose thread is
         gone — otherwise a cycle surviving its thread's exit is collectable by
         nobody. Both are proposals, neither is ruled.
+- [ ] S8.10 Decide what a cross-thread reference is, and whether a cycle can run through one
+      done: the documents name the form a reference takes when it reaches
+        another thread, or state that none exists and that a cycle therefore
+        cannot span two mutator threads; `rc-cycle.md`'s claim scope cites that
+        answer rather than the transfer rule alone
+      tier: T2 · role: —
+      handoff: Edmond stated on 2026-08-29 that a cycle spanning two mutator
+        threads arises in the general case, when a thread borrows another's
+        object, and that the RFC describes the case. The vocabulary in force
+        does not: `model/memory/static-lifetimes.md` makes a borrow frame-only,
+        anything leaving a frame is stored and counted, `model/classes.md`'s
+        transfer rule forbids a reference left behind, and the ruling of
+        2026-08-26 gives every stack-held reference a counted `+1`. Three
+        readings are open and the step is to pick one — the case is already
+        closed by the transfer rule; the runtime will grow a form the documents
+        have not written; or `ffi.md`'s `#[Borrow]` and `runtime/actors.md`'s
+        shared object are that form and owe the collector a rule.
+      handoff: it is the per-thread claim's own soundness that waits on this.
+        The claim rests on no thread naming an entity in another thread's
+        blocks; a cross-thread reference the trace follows would break it, and
+        one it must not follow needs a written rule saying so.
 
 ## S9 — The vocabulary
 
@@ -316,7 +337,8 @@ Goal: every word these documents use as a term is a word the field already
 uses for that thing, or is defined here as a new one on purpose.
 
 Ordered by Edmond on 2026-08-29, after `door` was found to be a metaphor with
-269 occurrences in 70 files and no entry anywhere defining it. `escrow` is the
+no entry anywhere defining it — 275 occurrences in 70 files across both
+repositories, counted 2026-08-29 with `grep -rio` over `*.md` and `*.rs`. `escrow` is the
 second of the same kind: a term from law for what allocator and collector
 literature calls an overflow buffer. Both entered through a commit subject and
 spread by agreement with the text already written. No review this project runs
@@ -341,8 +363,8 @@ and unsourced claims, and an invented term trips none of them.
         marked for rename; the renames land as one commit per repository;
         `dev/tools/linkcheck.php` is green after the pass
       tier: T2 · role: —
-      handoff: the counts as of 2026-08-29 — `door` 269 in 70 files,
-        `escrow` 182 in 19, test file names among them
+      handoff: the counts as of 2026-08-29, by the grep above — `door` 275 in
+        70 files, `escrow` 189 in 19, test file names among them
         (`the_door_that_opens_after_a_refusal.rs`, `the_two_cow_doors.rs`).
         `ResetWindow::escrow` in `model/src/memory/reset_window.rs` names a
         different structure, deferred count corrections, and takes a

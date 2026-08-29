@@ -55,15 +55,30 @@ traced thread alone. Row addressing is unchanged — arithmetic from the object'
 address, no key and no owner stamp — because a block under two traces cannot
 arise.
 
-**Cost, and it is an open hole rather than a price.** A cycle whose edges run
-through a borrow is found by no trace on either side: the borrower's trace does
-not follow the borrow, and the lender's counts never carried it. Nothing in
-these documents collects such a cycle today.
+**Cost, and it is an open question rather than a price.** Edmond stated the
+same day that a cycle spanning two mutator threads arises in the general case,
+when a thread borrows another's object. The documents in force give that
+crossing reference no name: a borrow is frame-only
+([`../model/memory/static-lifetimes.md`](../model/memory/static-lifetimes.md)),
+a transfer leaves none behind (the entry below), and a stack-held reference
+carries a counted `+1` (2026-08-26, "a local reference always carries a counted
+`+1`"). So the hole cannot be stated as a mechanism here, and what it is —
+whether the vocabulary lacks a form the runtime will have, or the case is
+already closed by the transfer rule — is `dev/PLAN.md` S8.10's.
+
+*(This paragraph first read that a cycle through a borrow is found by no trace
+on either side, which the corrected premise above removes: a borrow that cannot
+cross a thread has no two sides.)*
 
 **Document obligations.** `model/gc/rc-cycle.md`'s "Concurrency" and its
-in-trace parking paragraph carry the new scope; `ll-model`'s
-`dev/ARCHITECTURE.md` rule 15 and `PLAN.md` S38.1 state the claim per thread
-rather than per process; the borrow hole is owned by a new step.
+in-trace parking paragraph carry the new scope; `model/gc/cycle/questions.md`
+Y14 loses the process-wide parking and the one-trace-per-process reading;
+`ll-model`'s `dev/ARCHITECTURE.md` rule 15 states the claim per thread rather
+than per process, and `PLAN.md` S38.1 and S38.4 carry its mechanism — one flag
+per mutator thread, free or held, taken by CAS by the collector that goes to
+judge that mutator, with a mutex to wait on (Edmond, 2026-08-29);
+`dev/PLAN.md` S8.9 owns the block that changes threads and S8.10 the question
+above.
 
 ## 2026-08-29 — a transfer leaves no reference behind
 

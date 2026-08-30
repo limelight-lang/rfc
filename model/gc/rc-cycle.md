@@ -55,6 +55,55 @@ prunes nothing. A 2026-08-25 measurement also found that the median candidate
 root reached all 381 objects in its test heap, which is why an independent
 trace budget remains necessary.
 
+### Aggregate proof fast path
+
+Collection has two scheduling modes:
+
+- **Normal mode** only registers candidates and defers collection to a later
+  consistent point. It does not reclaim a component on the decrement path.
+- **Critical mode**, entered under memory pressure, processes candidates at
+  the first collection-safe point. When the owning mutator proves the aggregate
+  equality against current fields and counts, it proceeds directly to cycle
+  finalization and reclamation rather than deferring the proven set.
+
+A proof retained by normal mode is not a reclamation permit: heap state may
+change before the deferred commit, so the owner must validate it again.
+
+Per-entity shadow counts are not required when the complete visited set can be
+proved unreachable as a whole. For a visited set `S`, current reference counts
+obey
+
+```text
+sum(RC(v) for v in S) = internal_edges(S) + incoming_edges(outside, S).
+```
+
+All terms are non-negative, so equality between the reference-count sum and
+the number of internal counted edges proves that no member has an external
+counted reference. The owner may then pass the whole set to exact validation
+and cycle finalization. Accumulator overflow makes this proof inconclusive; it
+must never be handled as equality.
+
+This proof is sufficient but not necessary. If an unreachable cycle has an
+outgoing edge to an externally reachable object, a traversal that includes
+that object fails the aggregate test even though a collectible subset exists.
+Per-entity shadow counts remain the fallback that can separate that subset.
+
+The aggregate pass also permits a smaller scratch representation:
+
+- one append-only traversal vector, advanced by an index, serves both as the
+  worklist and as the retained component-member list;
+- a visited bitmap prevents duplicate insertion;
+- two checked accumulators hold the reference-count sum and internal-edge
+  count;
+- shadow rows are allocated and populated only if the aggregate proof fails
+  and the collector chooses to search for a collectible subset.
+
+The persistent candidate queue remains logically separate: it records roots
+across collection attempts, whereas the traversal vector contains every member
+discovered by one attempt. An implementation may reuse detached queue storage,
+but only after the owner has established a linearized snapshot; the unresolved
+worker queue-swap protocol does not yet provide that guarantee.
+
 The **acyclic-class filter** excludes a class only when static analysis proves
 that none of its declared slots can contain a reference that closes a cycle.
 All other classes remain cycle-capable by default; runtime history cannot

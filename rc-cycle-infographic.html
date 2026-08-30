@@ -1,0 +1,647 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Limelight rc-cycle — визуальная модель</title>
+  <style>
+    :root {
+      --bg: #07110e;
+      --bg-2: #0a1713;
+      --panel: rgba(16, 35, 29, 0.82);
+      --panel-solid: #10231d;
+      --panel-soft: #142b24;
+      --line: rgba(202, 255, 95, 0.18);
+      --line-strong: rgba(202, 255, 95, 0.42);
+      --lime: #caff5f;
+      --lime-soft: #9ddc47;
+      --mint: #67e8b5;
+      --cyan: #67d8e8;
+      --amber: #ffc75f;
+      --red: #ff776d;
+      --text: #eef8f3;
+      --muted: #9eb7ac;
+      --faint: #688078;
+      --shadow: 0 24px 80px rgba(0, 0, 0, 0.32);
+      --radius: 22px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      min-width: 320px;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 15% 0%, rgba(103, 232, 181, 0.11), transparent 28rem),
+        radial-gradient(circle at 90% 18%, rgba(202, 255, 95, 0.08), transparent 32rem),
+        linear-gradient(180deg, #07110e 0%, #08130f 58%, #050c0a 100%);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.26;
+      background-image:
+        linear-gradient(rgba(202, 255, 95, 0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(202, 255, 95, 0.025) 1px, transparent 1px);
+      background-size: 38px 38px;
+      mask-image: linear-gradient(to bottom, black, transparent 82%);
+    }
+
+    a { color: inherit; }
+    button { font: inherit; }
+    code, .mono {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 0.92em;
+    }
+
+    .shell {
+      width: min(1440px, calc(100% - 40px));
+      margin: 0 auto;
+      position: relative;
+    }
+
+    .topbar {
+      min-height: 74px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 750;
+      letter-spacing: -0.02em;
+    }
+
+    .mark {
+      width: 34px;
+      height: 34px;
+      border: 1px solid var(--line-strong);
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      color: #07110e;
+      background: var(--lime);
+      box-shadow: 0 0 30px rgba(202, 255, 95, 0.22);
+      font-weight: 900;
+    }
+
+    nav { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    nav a {
+      text-decoration: none;
+      color: var(--muted);
+      font-size: 13px;
+      padding: 8px 11px;
+      border-radius: 999px;
+      transition: 160ms ease;
+    }
+    nav a:hover { color: var(--text); background: rgba(202, 255, 95, 0.08); }
+
+    .hero {
+      padding: 86px 0 70px;
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.55fr);
+      gap: 70px;
+      align-items: end;
+    }
+
+    .eyebrow {
+      color: var(--lime);
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      font-size: 12px;
+      font-weight: 800;
+      margin-bottom: 18px;
+    }
+
+    h1 {
+      font-size: clamp(48px, 7vw, 102px);
+      letter-spacing: -0.068em;
+      line-height: 0.92;
+      margin: 0;
+      max-width: 980px;
+      font-weight: 820;
+    }
+
+    h1 span { color: var(--lime); }
+    .lead {
+      max-width: 830px;
+      font-size: clamp(18px, 2vw, 24px);
+      color: var(--muted);
+      margin: 28px 0 0;
+      line-height: 1.45;
+    }
+
+    .hero-card {
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      padding: 24px;
+      background: linear-gradient(145deg, rgba(202, 255, 95, 0.09), rgba(16, 35, 29, 0.72));
+      box-shadow: var(--shadow);
+    }
+    .hero-card .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .12em; }
+    .hero-card .value { font-size: 24px; font-weight: 750; margin: 8px 0 12px; }
+    .hero-card p { margin: 0; color: var(--muted); font-size: 14px; }
+
+    .principles {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+    .principle { padding: 25px 24px; border-right: 1px solid var(--line); }
+    .principle:first-child { padding-left: 0; }
+    .principle:last-child { border-right: 0; }
+    .principle strong { display: block; font-size: 16px; margin-bottom: 5px; }
+    .principle span { color: var(--muted); font-size: 13px; }
+
+    section { padding: 100px 0 20px; scroll-margin-top: 20px; }
+    .section-head {
+      display: grid;
+      grid-template-columns: 0.72fr 1.28fr;
+      gap: 50px;
+      align-items: end;
+      margin-bottom: 42px;
+    }
+    .kicker { color: var(--lime); font-size: 12px; font-weight: 800; letter-spacing: .15em; text-transform: uppercase; }
+    h2 { font-size: clamp(35px, 4.5vw, 64px); line-height: 1; letter-spacing: -.045em; margin: 8px 0 0; }
+    .section-head p { margin: 0; color: var(--muted); font-size: 17px; max-width: 730px; }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: linear-gradient(150deg, rgba(17, 38, 31, .92), rgba(10, 24, 19, .88));
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .flow {
+      padding: 34px;
+      display: grid;
+      grid-template-columns: repeat(7, minmax(120px, 1fr));
+      align-items: center;
+      gap: 12px;
+    }
+    .flow-node {
+      min-height: 138px;
+      padding: 18px 16px;
+      border-radius: 17px;
+      background: var(--panel-soft);
+      border: 1px solid rgba(255,255,255,.07);
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: .18s ease;
+    }
+    .flow-node:hover { transform: translateY(-4px); border-color: var(--line-strong); }
+    .flow-node::after {
+      content: "→";
+      position: absolute;
+      right: -19px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--lime);
+      font-size: 21px;
+      z-index: 2;
+    }
+    .flow-node:last-child::after { display: none; }
+    .flow-node .num { color: var(--lime); font-size: 11px; font-weight: 900; letter-spacing: .12em; }
+    .flow-node strong { font-size: 15px; line-height: 1.25; }
+    .flow-node small { color: var(--muted); line-height: 1.35; }
+    .flow-node.decision { border-color: rgba(255, 199, 95, .28); }
+    .flow-node.final { background: linear-gradient(145deg, rgba(202,255,95,.14), rgba(20,43,36,.9)); }
+
+    .branch-bar {
+      border-top: 1px solid var(--line);
+      padding: 18px 34px;
+      display: flex;
+      gap: 14px 28px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .branch-bar b { color: var(--text); }
+    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 7px; }
+
+    .memory-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 18px;
+    }
+    .zone { padding: 25px; min-height: 520px; }
+    .zone-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 22px; }
+    .zone-head h3 { margin: 0; font-size: 22px; }
+    .tag { font-size: 10px; font-weight: 850; letter-spacing: .11em; color: var(--lime); border: 1px solid var(--line-strong); padding: 5px 8px; border-radius: 999px; }
+    .struct {
+      padding: 16px;
+      margin-bottom: 12px;
+      border-radius: 15px;
+      background: rgba(255,255,255,.035);
+      border: 1px solid rgba(255,255,255,.07);
+    }
+    .struct.hot { border-color: rgba(202,255,95,.3); background: rgba(202,255,95,.055); }
+    .struct.temp { border-color: rgba(103,216,232,.25); }
+    .struct.warn { border-color: rgba(255,199,95,.28); }
+    .struct-title { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+    .struct-title strong { font-size: 14px; }
+    .struct-title code { color: var(--lime); font-size: 11px; }
+    .struct p { color: var(--muted); font-size: 12px; margin: 7px 0 0; }
+    .bits { margin-top: 9px; display: flex; height: 24px; border-radius: 7px; overflow: hidden; border: 1px solid rgba(255,255,255,.08); }
+    .bits span { display: grid; place-items: center; font-size: 9px; font-weight: 800; color: #07110e; }
+    .bits .color { width: 22%; background: var(--cyan); }
+    .bits .count { width: 78%; background: var(--lime); }
+
+    .map-caption {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      color: var(--muted);
+      font-size: 13px;
+      padding: 18px 22px;
+      border: 1px dashed var(--line-strong);
+      border-radius: 15px;
+    }
+    .map-caption .arrow { color: var(--lime); font-size: 22px; }
+
+    .trial-grid { display: grid; grid-template-columns: 1.15fr .85fr; gap: 18px; }
+    .graph-card { padding: 28px; min-height: 520px; }
+    .switcher { display: flex; gap: 8px; margin-bottom: 22px; }
+    .switcher button {
+      border: 1px solid var(--line);
+      background: transparent;
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 9px 13px;
+      cursor: pointer;
+    }
+    .switcher button.active { color: #07110e; background: var(--lime); border-color: var(--lime); font-weight: 750; }
+
+    .graph-stage {
+      min-height: 310px;
+      display: grid;
+      place-items: center;
+      border-radius: 16px;
+      background: radial-gradient(circle, rgba(202,255,95,.055), transparent 64%);
+    }
+    .graph-stage svg { width: 100%; max-width: 600px; height: auto; overflow: visible; }
+    .edge { stroke: var(--lime); stroke-width: 2.2; fill: none; opacity: .68; }
+    .edge.external { stroke: var(--amber); transition: opacity .2s ease; }
+    .node-circle { fill: #15352b; stroke: var(--lime); stroke-width: 2; }
+    .node-ext { fill: #3c3217; stroke: var(--amber); }
+    .node-label { fill: var(--text); font-size: 18px; font-weight: 800; text-anchor: middle; }
+    .node-sub { fill: var(--muted); font-size: 12px; text-anchor: middle; }
+    .dead .edge.external, .dead .external-node { opacity: .12; }
+
+    .equation {
+      margin-top: 16px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    .equation > div { padding: 13px; border-right: 1px solid var(--line); }
+    .equation > div:last-child { border-right: 0; }
+    .equation span { display: block; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .1em; }
+    .equation strong { font-family: "SFMono-Regular", Consolas, monospace; font-size: 15px; }
+
+    .math-card { padding: 28px; }
+    .math-card h3 { margin: 0 0 7px; font-size: 22px; }
+    .math-card > p { color: var(--muted); font-size: 13px; margin: 0 0 22px; }
+    .math-table { width: 100%; border-collapse: collapse; }
+    .math-table th, .math-table td { text-align: left; padding: 13px 10px; border-bottom: 1px solid var(--line); font-size: 13px; }
+    .math-table th { color: var(--faint); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
+    .math-table td:last-child { font-family: "SFMono-Regular", Consolas, monospace; color: var(--lime); }
+    .result {
+      margin-top: 22px;
+      border-radius: 15px;
+      padding: 18px;
+      background: rgba(103,232,181,.07);
+      border: 1px solid rgba(103,232,181,.26);
+    }
+    .result.bad { background: rgba(255,119,109,.07); border-color: rgba(255,119,109,.25); }
+    .result strong { display: block; font-size: 18px; }
+    .result span { color: var(--muted); font-size: 12px; }
+
+    .finalization { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .phase {
+      min-height: 180px;
+      padding: 20px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      position: relative;
+    }
+    .phase::after { content: ""; position: absolute; right: -13px; top: 50%; width: 13px; border-top: 1px solid var(--line-strong); }
+    .phase:nth-child(4)::after, .phase:nth-child(8)::after { display: none; }
+    .phase .step { color: var(--lime); font-size: 11px; font-weight: 900; letter-spacing: .12em; }
+    .phase h3 { font-size: 17px; margin: 12px 0 7px; }
+    .phase p { margin: 0; color: var(--muted); font-size: 12px; }
+    .phase.user { border-color: rgba(255,199,95,.32); }
+    .phase.commit { border-color: rgba(103,232,181,.34); background: rgba(103,232,181,.055); }
+
+    .invariant {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 18px;
+      align-items: center;
+      padding: 22px;
+      border-radius: 18px;
+      background: rgba(202,255,95,.055);
+      border: 1px solid var(--line-strong);
+    }
+    .invariant .shield { width: 48px; height: 48px; border-radius: 15px; display: grid; place-items: center; background: var(--lime); color: #07110e; font-size: 23px; }
+    .invariant strong { display: block; }
+    .invariant span { color: var(--muted); font-size: 13px; }
+
+    .blockers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .blocker { padding: 22px; border-radius: 18px; background: rgba(255,119,109,.045); border: 1px solid rgba(255,119,109,.18); }
+    .blocker .id { color: var(--red); font: 800 11px "SFMono-Regular", monospace; }
+    .blocker h3 { font-size: 17px; margin: 10px 0 7px; }
+    .blocker p { color: var(--muted); font-size: 12px; margin: 0; }
+    .blocker.primary { grid-column: span 2; background: linear-gradient(135deg, rgba(255,119,109,.09), rgba(16,35,29,.82)); }
+
+    footer { margin-top: 100px; padding: 35px 0 60px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; color: var(--faint); font-size: 12px; }
+
+    @media (max-width: 1100px) {
+      .hero { grid-template-columns: 1fr; gap: 34px; }
+      .hero-card { max-width: 620px; }
+      .principles { grid-template-columns: repeat(2, 1fr); }
+      .principle:nth-child(2) { border-right: 0; }
+      .flow { grid-template-columns: repeat(4, 1fr); }
+      .flow-node:nth-child(4)::after { display: none; }
+      .memory-layout { grid-template-columns: 1fr 1fr; }
+      .zone:last-of-type { grid-column: 1 / -1; min-height: auto; }
+      .trial-grid { grid-template-columns: 1fr; }
+      .finalization { grid-template-columns: repeat(2, 1fr); }
+      .phase:nth-child(even)::after { display: none; }
+      .blockers { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    @media (max-width: 700px) {
+      .shell { width: min(100% - 24px, 1440px); }
+      nav { display: none; }
+      .hero { padding-top: 54px; }
+      .principles { grid-template-columns: 1fr; }
+      .principle { border-right: 0; border-bottom: 1px solid var(--line); padding-left: 0; }
+      .principle:last-child { border-bottom: 0; }
+      .section-head { grid-template-columns: 1fr; gap: 20px; }
+      section { padding-top: 74px; }
+      .flow { grid-template-columns: 1fr; }
+      .flow-node { min-height: 112px; }
+      .flow-node::after { content: "↓"; right: 50%; top: auto; bottom: -25px; transform: translateX(50%); }
+      .flow-node:nth-child(4)::after { display: block; }
+      .flow-node:last-child::after { display: none; }
+      .memory-layout { grid-template-columns: 1fr; }
+      .zone:last-of-type { grid-column: auto; }
+      .equation { grid-template-columns: 1fr; }
+      .equation > div { border-right: 0; border-bottom: 1px solid var(--line); }
+      .equation > div:last-child { border-bottom: 0; }
+      .finalization, .blockers { grid-template-columns: 1fr; }
+      .phase::after { display: none; }
+      .blocker.primary { grid-column: auto; }
+      footer { flex-direction: column; gap: 8px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="shell">
+    <div class="topbar">
+      <div class="brand"><span class="mark">L</span> Limelight RFC</div>
+      <nav aria-label="Навигация по инфографике">
+        <a href="#pipeline">Алгоритм</a>
+        <a href="#memory">Структуры</a>
+        <a href="#trial">Trial deletion</a>
+        <a href="#finalize">Finalization</a>
+        <a href="#blockers">Blockers</a>
+      </nav>
+    </div>
+
+    <div class="hero">
+      <div>
+        <div class="eyebrow">Reference-cycle collector · visual model</div>
+        <h1><span>rc-cycle</span><br>изнутри</h1>
+        <p class="lead">Как decrement превращается в кандидата, как shadow counts обнаруживают цикл и почему только owning mutator принимает окончательное решение.</p>
+      </div>
+      <aside class="hero-card">
+        <div class="label">Базовая форма</div>
+        <div class="value">Synchronous · owner-side</div>
+        <p>Collector worker остаётся опциональной оптимизацией и заблокирован нерешёнными concurrency-протоколами.</p>
+      </aside>
+    </div>
+
+    <div class="principles">
+      <div class="principle"><strong>Настоящие RC не трогаются</strong><span>Trial deletion работает только с временными shadow counts.</span></div>
+      <div class="principle"><strong>Queue задаёт кандидатов</strong><span>Non-final decrement — единственное событие регистрации.</span></div>
+      <div class="principle"><strong>Owner валидирует</strong><span>Speculative trace не имеет права освобождать storage.</span></div>
+      <div class="principle"><strong>Порядок finalization жёсткий</strong><span>Weak refs очищаются до первого пользовательского destructor.</span></div>
+    </div>
+  </header>
+
+  <main class="shell">
+    <section id="pipeline">
+      <div class="section-head">
+        <div><div class="kicker">01 · Lifecycle</div><h2>Путь кандидата</h2></div>
+        <p>Hot path делает минимум: уменьшает RC и при необходимости регистрирует адрес. Вся графовая работа откладывается до consistent point.</p>
+      </div>
+
+      <div class="panel">
+        <div class="flow">
+          <div class="flow-node"><span class="num">01</span><strong><code>release(entity)</code></strong><small>Настоящий RC уменьшается.</small></div>
+          <div class="flow-node decision"><span class="num">02</span><strong><code>RC == 0?</code></strong><small>Да → обычный teardown, минуя collector.</small></div>
+          <div class="flow-node decision"><span class="num">03</span><strong>Cycle-capable?</strong><small>Category, kind, acyclic и ownership flags.</small></div>
+          <div class="flow-node"><span class="num">04</span><strong>Candidate bit</strong><small>Test-and-set не допускает дубль.</small></div>
+          <div class="flow-node"><span class="num">05</span><strong>Candidate queue</strong><small>В очередь попадает стабильный адрес.</small></div>
+          <div class="flow-node"><span class="num">06</span><strong>Consistent point</strong><small>Counts и object graph снова согласованы.</small></div>
+          <div class="flow-node final"><span class="num">07</span><strong>Trace → validate</strong><small>Shadow counts, components, exact owner check.</small></div>
+        </div>
+        <div class="branch-bar">
+          <span><i class="dot" style="background:var(--mint)"></i><b>RC = 0</b> → немедленный zero-count teardown</span>
+          <span><i class="dot" style="background:var(--faint)"></i><b>Acyclic / owned</b> → collector не видит объект</span>
+          <span><i class="dot" style="background:var(--lime)"></i><b>Candidate</b> → адрес остаётся зарегистрированным до разрешения</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="memory">
+      <div class="section-head">
+        <div><div class="kicker">02 · Data structures</div><h2>Карта памяти</h2></div>
+        <p>Алгоритм разделяет долгоживущее состояние mutator, настоящий heap и одноразовую trace-память. Это разделение определяет корректность lifetime каждого указателя.</p>
+      </div>
+
+      <div class="memory-layout">
+        <article class="panel zone">
+          <div class="zone-head"><h3>Owning mutator</h3><span class="tag">PERSISTENT</span></div>
+          <div class="struct hot"><div class="struct-title"><strong>Candidate queue</strong><code>entity*</code></div><p>Цепочка 64 KiB segments. Один writer, один tracer под trace token.</p></div>
+          <div class="struct"><div class="struct-title"><strong>Deferred-candidate buffer</strong><code>entity*</code></div><p>Кандидаты с текущей внешней ссылкой ждут смены candidate-age epoch.</p></div>
+          <div class="struct"><div class="struct-title"><strong>Trace token</strong><code>atomic word</code></div><p>Сериализует mark/scan для блоков одного mutator thread.</p></div>
+          <div class="struct"><div class="struct-title"><strong>Weak table</strong><code>side table</code></div><p>Owner очищает все weak cells до запуска <code>__destruct</code>.</p></div>
+          <div class="struct warn"><div class="struct-title"><strong>Reserve + overflow</strong><code>512 KiB</code></div><p>Spare segments → critical reserve → finite overflow buffer.</p></div>
+        </article>
+
+        <article class="panel zone">
+          <div class="zone-head"><h3>Managed heap</h3><span class="tag">AUTHORITATIVE</span></div>
+          <div class="struct hot"><div class="struct-title"><strong>Entity header</strong><code>RC + flags</code></div><p>Настоящий reference count, category, kind, candidate bit, age, weak и destructor flags.</p></div>
+          <div class="struct"><div class="struct-title"><strong>Entity fields</strong><code>Value / ptr</code></div><p>Рёбра object graph. Exact validation перечитывает их на owning thread.</p></div>
+          <div class="struct"><div class="struct-title"><strong>Heap block header</strong><code>256 B</code></div><p>Size class и арифметика адрес → slot. Свободный tail временно указывает на trace state.</p></div>
+          <div class="struct"><div class="struct-title"><strong>Candidate age</strong><code>epoch:2 · age:2</code></div><p>Управляет traversal cutoff, но никогда не отсекает queue root.</p></div>
+        </article>
+
+        <article class="panel zone">
+          <div class="zone-head"><h3>Trace scratch</h3><span class="tag">TEMPORARY</span></div>
+          <div class="struct temp"><div class="struct-title"><strong>Worklist</strong><code>stack&lt;entity*&gt;</code></div><p>Mark/scan frontier для trial-deletion traversal.</p></div>
+          <div class="struct temp"><div class="struct-title"><strong>Shadow rows</strong><code>u32 / slot</code></div><p>Два color bits и 30-bit working count. Saturation — absorbing.</p><div class="bits"><span class="color">2</span><span class="count">30-bit working RC</span></div></div>
+          <div class="struct temp"><div class="struct-title"><strong>Visited bitmap</strong><code>1 bit / 8 slots</code></div><p>Позволяет не zero-fill весь массив touched block.</p></div>
+          <div class="struct warn"><div class="struct-title"><strong>Validation batch</strong><code>components</code></div><p>Должен пережить reset trace arena. Его отдельный allocator/lifetime пока не определён.</p></div>
+        </article>
+
+        <div class="map-caption"><span class="arrow">→</span><span><b>Движение данных:</b> queue даёт roots → trace копирует RC в shadow rows → member lists переходят owner-side validation → heap меняется только во время finalization.</span></div>
+      </div>
+    </section>
+
+    <section id="trial">
+      <div class="section-head">
+        <div><div class="kicker">03 · Trial deletion</div><h2>Цикл как уравнение</h2></div>
+        <p>Trace копирует RC и вычитает только внутренние рёбра. Ненулевой остаток означает текущий внешний hold; ноль для всех members делает компонент кандидатом на точную проверку.</p>
+      </div>
+
+      <div class="trial-grid">
+        <article class="panel graph-card">
+          <div class="switcher" role="group" aria-label="Сценарий графа">
+            <button class="active" data-scenario="live">Есть внешний hold</button>
+            <button data-scenario="dead">Только внутренний цикл</button>
+          </div>
+          <div class="graph-stage" id="graphStage">
+            <svg viewBox="0 0 600 320" role="img" aria-label="Цикл A B и внешний объект X">
+              <defs>
+                <marker id="arrowLime" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#caff5f"/></marker>
+                <marker id="arrowAmber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#ffc75f"/></marker>
+              </defs>
+              <path class="edge" marker-end="url(#arrowLime)" d="M 240 118 C 280 72, 330 72, 370 118"/>
+              <path class="edge" marker-end="url(#arrowLime)" d="M 370 192 C 330 238, 280 238, 240 192"/>
+              <g class="external-node">
+                <path class="edge external" marker-end="url(#arrowAmber)" d="M 115 155 L 188 155"/>
+                <circle class="node-circle node-ext" cx="78" cy="155" r="38"/>
+                <text class="node-label" x="78" y="151">X</text><text class="node-sub" x="78" y="171">external</text>
+              </g>
+              <circle class="node-circle" cx="220" cy="155" r="48"/>
+              <text class="node-label" x="220" y="149">B</text><text class="node-sub" id="bRc" x="220" y="172">RC = 2</text>
+              <circle class="node-circle" cx="390" cy="155" r="48"/>
+              <text class="node-label" x="390" y="149">A</text><text class="node-sub" x="390" y="172">RC = 1</text>
+            </svg>
+          </div>
+          <div class="equation">
+            <div><span>Копирование</span><strong id="copyEq">A=1 · B=2</strong></div>
+            <div><span>Вычесть IN</span><strong>A−1 · B−1</strong></div>
+            <div><span>Shadow result</span><strong id="shadowEq">A=0 · B=1</strong></div>
+          </div>
+        </article>
+
+        <article class="panel math-card">
+          <h3>Shadow accounting</h3>
+          <p>Настоящие counts остаются в entity header и никогда не проходят через временно некорректное состояние.</p>
+          <table class="math-table">
+            <thead><tr><th>Member</th><th>Real RC</th><th>Internal</th><th>RC − IN</th></tr></thead>
+            <tbody>
+              <tr><td><b>A</b></td><td>1</td><td>1</td><td>0</td></tr>
+              <tr><td><b>B</b></td><td id="tableBRc">2</td><td>1</td><td id="tableBResult">1</td></tr>
+            </tbody>
+          </table>
+          <div class="result" id="scenarioResult">
+            <strong>Компонент сейчас жив</strong>
+            <span>B имеет один внешний counted hold. Candidate bit остаётся установленным, root уходит в deferred buffer.</span>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section id="finalize">
+      <div class="section-head">
+        <div><div class="kicker">04 · Owner commit</div><h2>Finalization</h2></div>
+        <p>Это не обычный <code>free()</code>. Порядок защищает от weak-reference resurrection, повторного teardown и пользовательского кода, который создаёт новый внешний hold.</p>
+      </div>
+
+      <div class="finalization">
+        <div class="phase"><span class="step">01</span><h3>Zero-count check</h3><p>Компонент с уже завершённым обычным teardown исключается из batch.</p></div>
+        <div class="phase"><span class="step">02</span><h3>Exact validation</h3><p>Owner перечитывает текущие fields и вычисляет актуальный <code>RC − IN</code>.</p></div>
+        <div class="phase"><span class="step">03</span><h3>Guard +1</h3><p>Каждый member получает временный strong hold против re-entrant teardown.</p></div>
+        <div class="phase"><span class="step">04</span><h3>Weak invalidation</h3><p>Все weak cells всех members очищаются до первого вызова user code.</p></div>
+        <div class="phase user"><span class="step">05 · USER CODE</span><h3><code>__destruct</code></h3><p>Destructor может store, allocate, release или resurrect компонент.</p></div>
+        <div class="phase"><span class="step">06</span><h3>Revalidate</h3><p>Если destructor создал внешний hold, guards снимаются, компонент остаётся жить.</p></div>
+        <div class="phase commit"><span class="step">07</span><h3>Sever edges</h3><p>Internal slots обнуляются; external children временно откладываются.</p></div>
+        <div class="phase commit"><span class="step">08</span><h3>Reclaim</h3><p>Снять guards, вернуть slots, затем release deferred external children.</p></div>
+      </div>
+
+      <div class="invariant">
+        <div class="shield">◆</div>
+        <div><strong>Ownership invariant</strong><span>Только owning mutator может очистить candidate bit, удалить queue entry или вернуть slot для повторного использования.</span></div>
+      </div>
+    </section>
+
+    <section id="blockers">
+      <div class="section-head">
+        <div><div class="kicker">05 · Design debt</div><h2>Что ещё не замкнуто</h2></div>
+        <p>Синхронный owner-side путь — минимальная реализация. Collector worker требует дополнительных протоколов, которые нельзя заменить одной memory-order аннотацией.</p>
+      </div>
+
+      <div class="blockers">
+        <article class="blocker primary"><span class="id">A1 · MEMORY SAFETY</span><h3>Concurrent slot reads</h3><p>Pointer и 16-byte ValueBox slots не имеют безопасного off-thread read protocol. Нужны atomics, seqlock/versioning, barrier snapshot или stop-at-consistent-point.</p></article>
+        <article class="blocker"><span class="id">A2</span><h3>Queue swap</h3><p>Не определён linearization point между worker swap и concurrent registration.</p></article>
+        <article class="blocker"><span class="id">A3</span><h3>Slot reuse</h3><p>Owner-observed token release и worker release store пока задают разные моменты возврата slot.</p></article>
+        <article class="blocker"><span class="id">A4</span><h3>Block migration</h3><p><code>abandon/adopt</code> может передать block, пока старый trace держит его shadow rows.</p></article>
+        <article class="blocker"><span class="id">A5</span><h3>Finite overflow</h3><p>Размер mandatory candidate capacity не выведен из строгого poll bound.</p></article>
+        <article class="blocker primary"><span class="id">A6 · LIFETIME</span><h3>Validation batch переживает trace arena</h3><p>При token release scratch arena сбрасывается, но exact validation всё ещё нужны member lists. Нужна отдельная owner-owned arena или detached allocation.</p></article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="shell">
+    <span>Limelight RFC · rc-cycle visual model</span>
+    <span>Design of record: 2026-08-25 · Infographic: 2026-08-30</span>
+  </footer>
+
+  <script>
+    const buttons = document.querySelectorAll('[data-scenario]');
+    const stage = document.getElementById('graphStage');
+    const bRc = document.getElementById('bRc');
+    const copyEq = document.getElementById('copyEq');
+    const shadowEq = document.getElementById('shadowEq');
+    const tableBRc = document.getElementById('tableBRc');
+    const tableBResult = document.getElementById('tableBResult');
+    const result = document.getElementById('scenarioResult');
+
+    function setScenario(name) {
+      const dead = name === 'dead';
+      buttons.forEach(button => button.classList.toggle('active', button.dataset.scenario === name));
+      stage.classList.toggle('dead', dead);
+      bRc.textContent = dead ? 'RC = 1' : 'RC = 2';
+      copyEq.textContent = dead ? 'A=1 · B=1' : 'A=1 · B=2';
+      shadowEq.textContent = dead ? 'A=0 · B=0' : 'A=0 · B=1';
+      tableBRc.textContent = dead ? '1' : '2';
+      tableBResult.textContent = dead ? '0' : '1';
+      result.classList.toggle('bad', dead);
+      result.querySelector('strong').textContent = dead ? 'Возможный unreachable cycle' : 'Компонент сейчас жив';
+      result.querySelector('span').textContent = dead
+        ? 'Все shadow counts равны нулю. Owning mutator должен выполнить exact validation перед finalization.'
+        : 'B имеет один внешний counted hold. Candidate bit остаётся установленным, root уходит в deferred buffer.';
+    }
+
+    buttons.forEach(button => button.addEventListener('click', () => setScenario(button.dataset.scenario)));
+  </script>
+</body>
+</html>

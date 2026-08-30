@@ -1,8 +1,26 @@
 # Model
 
-Runtime Data Model — describes how PHP-level concepts are represented in memory at a low level.
+Runtime data model: how PHP-level concepts are represented in memory. This
+layer defines object layouts, vtables, dispatch tables, exception structures,
+closures, and related mechanisms. It sits below language semantics and above
+the execution substrate.
 
-This includes object layouts, vtables, method dispatch tables, exception structures, closures, and other language mechanisms. This layer sits below the language semantics but above the VM: it defines *what PHP objects look like in memory*, not how they are executed.
+## Core terminology
+
+- A **value** is a language-level datum. Dynamic values use `ValueBox`; declared
+  immediate types may use an unboxed representation.
+- An **entity** is a managed allocation with an `RcHeader`; objects, strings,
+  arrays, and reference boxes are entity kinds.
+- A **managed reference** participates in reference counting. A raw pointer does
+  not imply ownership or lifetime.
+- The **user destructor** is PHP's `__destruct`. **Teardown** also includes weak
+  reference invalidation and field release; **storage reclamation** returns the
+  allocation for reuse.
+- An **arena** is an allocation region backed by one or more blocks and reclaimed
+  as a unit; it need not occupy one contiguous virtual-address range.
+
+The complete vocabulary and retired-term mapping is in
+[`dev/GLOSSARY.md`](../dev/GLOSSARY.md).
 
 ## Documents
 

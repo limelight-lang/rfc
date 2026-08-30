@@ -110,11 +110,11 @@ owner at thread exit and `adopt` gives it to another thread, which can happen
 while a trace holds rows for that block. That hazard survives this rule and is
 owned by a step of its own.
 
-## 2026-08-28 — the escrow's floor is allocator-issued, and a thread without one never starts
+## 2026-08-28 — the baseline overflow segment is allocator-issued, and a thread without one never starts
 
-**Ruled by Edmond**, amending the escrow's storage two entries down. The escrow
+**Ruled by Edmond**, amending the overflow buffer's storage two entries down. The overflow buffer
 leaves the thread's TLS image: its storage is one 64 KiB pool block — the
-**floor** — the allocator issues at thread init, before the best-effort
+**baseline segment** — the allocator issues at thread init, before the best-effort
 reserve fills, and the thread holds for one init→exit life, returning it after
 the exit drain. The draw's refusal is the thread that never starts, reported
 by `ll_thread_init`'s new status return. The invariant stands on that coupling
@@ -124,11 +124,11 @@ thread whose floor was refused is a thread the runtime never registered.
 **The unregistered thread.** Entity work reaches a thread that never ran
 `ll_thread_init` — self-initialising allocation, releaser-only FFI consumers —
 and that thread has no floor at birth. It draws its floor lazily at first
-enrol, once, through the ordinary door; the draw's refusal aborts, which is
-the funded class's last resort reached by one more door. **Rejected: entity
+enrol, once, through the ordinary allocation path; the draw's refusal aborts, which is
+the funded class's last resort reached by one additional allocation path. **Rejected: entity
 work requires registration.** The enrolled bit is set before the write and the
 undo is deleted, so a violation surfacing at `enrol` cannot continue except by
-abort — the same abort, one door earlier — and the amendment would revoke the
+abort — the same abort, one path earlier — and the amendment would revoke the
 recorded ABI promise that skipping `ll_thread_init` is slower-once rather than
 undefined. **Rejected: a TLS array as the unregistered thread's fallback.** The
 TLS image is what this ruling removes; conditional TLS storage does not exist;
@@ -166,8 +166,8 @@ the guarantee between birth and that poll. The lazy draw checks the exit phase
 and aborts for a thread past `ll_thread_exit` instead of drawing a block
 nothing would return.
 
-**Cost.** The escrow's 65 280 bytes — 99.4 % of the crate's 65 680-byte
-zero-initialised TLS image — stand as the measurement that motivated the move;
+**Cost.** The overflow buffer's 65 280 bytes — 99.4 % of the crate's 65 680-byte
+zero-initialized TLS image — stand as the measurement that motivated the move;
 what
 the move does to `.tbss`, RSS and the larson respawn churn is S34.8's to
 measure. Thread creation is memory-hard, and the ABI owes `ll_thread_init` a
@@ -184,17 +184,17 @@ S38.0's to name.
 ## 2026-08-28 — a runtime loop carries the poll contract it broke
 
 **Decided (Sage, second round on the entry below), after the consolidation pass
-found the counterexample.** The escrow keeps its size and its place; what
+found the counterexample.** The overflow buffer keeps its size and its place; what
 changes is who the poll contract binds. `ll_release_vector` is a loop whose
 `count` is the caller's and whose body the compiler never sees inside — it is
 named for "frame teardown, a scope exit, a container clear" — and the compiler
-emits its poll only *after* the call. So the argument the escrow was sized on,
+emits its poll only *after* the call. So the argument the overflow buffer was sized on,
 that a whole segment cannot fill between two polls, is false for exactly that
 shape: `runtime/exceptions.md` justifies it with "any loop has a backedge poll",
 which quantifies over emitted code. **The loop that broke the bound takes on the
 bound**: on its backedge, every `POLL_STRIDE` iterations, it runs the safepoint
-poll itself. The stride is half the escrow, derived rather than invented, so a
-loop obeying it cannot fill the escrow between two of its own polls whatever
+poll itself. The stride is half the overflow buffer, derived rather than invented, so a
+loop obeying it cannot fill the overflow buffer between two of its own polls whatever
 the ABI's bound turns out to be.
 
 **The backedge is a legal fire point and this ruling says so rather than
@@ -248,7 +248,7 @@ bounded-operations-between-polls clause now binds runtime-owned loops over
 caller-supplied counts as well as emitted code, and the bound **B** it has never
 written must satisfy `B ≤ ESCROW_ENTRIES − POLL_STRIDE`, which is 4080 today.
 
-## 2026-08-28 — an enrolment cannot fail: below the reserve is an escrow, and the poll collects or waits
+## 2026-08-28 — an enrolment cannot fail: below the reserve is an overflow buffer, and the poll collects or waits
 
 **Ruled by Edmond**, closing the boundary the thirteenth ruling of 2026-08-25
 stopped at: **nothing may be lost.** When memory is exhausted the mutator
@@ -259,7 +259,7 @@ refused with the rest.
 **The mechanism (Sage), because the ruling states the outcome and not the
 machine.** Enrolment becomes **unfailable** and the thread never stops inside
 `ll_release`. Below the live segment, the two spare cells and the critical
-reserve sits a fourth tier that cannot refuse: a fixed **escrow** array in the
+reserve sits a fourth tier that cannot refuse: a fixed **overflow buffer** array in the
 thread's own queue, `const`-constructible, never allocated and never grown, into
 which a refused entry lands by a store and an increment. Clause 3 therefore
 holds through the last tier — no allocation, no lock, no copy — and `enrol` has
@@ -267,16 +267,16 @@ no failure to report.
 
 **Where the thread stops is the next compiler-emitted poll**, which for a
 batched run is the statement boundary after its closing bracket. The poll
-refills first, as it already does, and any door that funds a segment drains the
-escrow through the ordinary write path. With the doors still spent and the
-escrow holding, the poll runs Edmond's two arms behind the entry gate: an open
+refills first, as it already does, and either allocation path that funds a segment drains the
+overflow buffer through the ordinary write path. With the allocation paths still spent and the
+overflow buffer holding, the poll runs Edmond's two arms behind the entry gate: an open
 gate CASes the trace token and collects in line, or waits on the token when
 another thread holds it — the wait terminating because the token is never held
 across user code. **A closed gate neither collects nor waits**: the thread
-carries on to its next poll with the entries safe in escrow, its gate being
+carries on to its next poll with the entries safe in the overflow buffer, its gate being
 closed precisely because the machinery that frees memory is what holds it. A
 collection that runs and loses raises memory-exhausted from the frame the poll
-holds, and the escrowed roots survive the raise with their bits set.
+holds, and the buffered roots survive the raise with their bits set.
 
 **Why not inside `ll_release`.** A collection there is unsound and the design
 already says so: a store lowers the old value's count before it overwrites the
@@ -284,13 +284,13 @@ pointer, and a collection in that window walks the stale edge, subtracts one
 reference twice and frees a live object (Y14). Y14 also already ruled that a
 failed enrolment "arms and never fires" and that the collection runs at the next
 clean point — so what this ruling adds is not the instant but the funding, and
-the escrow is what carries the root from the refusal to the first lawful
+the overflow buffer is what carries the root from the refusal to the first lawful
 instant. Waiting there is refused twice over: waiting for memory has no
 guarantor when the sleeping thread is the only one that could free any, and a
 release inside a teardown would block inside work a collection may be waiting
 on.
 
-**Rejected: a growable escrow**, which is the `Vec` trap the two reserves
+**Rejected: a growable overflow buffer**, which is the `Vec` trap the two reserves
 already paid for — a push that cannot allocate aborts inside the code meant to
 make exhaustion survivable. **Rejected: lending from the log or exception
 reserves**, which makes each customer's worst case the sum of both.
@@ -298,36 +298,37 @@ reserves**, which makes each customer's worst case the sum of both.
 removing it; every finite fund has an edge, and only a fixed array in the
 thread-local has none.
 
-**Cost.** The escrow is sized at one segment's entries — 8160 of them, 65 280
+**Cost.** The overflow buffer is sized at one segment's entries — 8160 of them, 65 280
 bytes of thread-local per thread — because clause 3's own recorded argument,
 that a whole segment cannot fill between two polls at any entry size, is the
 only written bound available. Those bytes are committed at thread creation
-rather than on first touch: measured in `ll-model` on 2026-08-28, the escrow is
-99.4 % of the crate's zero-initialised TLS image, and that image is what glibc
+rather than on first touch: measured in `ll-model` on 2026-08-28, the overflow buffer is
+99.4 % of the crate's zero-initialized TLS image, and that image is what glibc
 allocates and zeroes for every thread it starts. That sits on top of the two spare segments and
 `model/memory/critical-reserve.md`'s 500 KB, and it is deliberately
 extravagant: what would license shrinking it is the ABI's poll bound, unwritten,
 and the enrolment-rate-during-drain measurement the reserve's sizing already
-waits on. The hot path gains nothing — the escrow branch sits after the
+waits on. The hot path gains nothing — the overflow buffer branch sits after the
 reserve's refusal. Memory-exhausted is reported up to one poll interval after
 the memory ran out, which is the deferral the store barrier's funded
 classification already accepts.
 
 **What is bounded by argument and not by proof:** a gate-closed thread inside a
-long teardown, enrolling across many polls while every door stays spent. No
+long teardown, enrolling across many polls while every path stays spent. No
 written number bounds a teardown's external decrements. Behind it stands the
 same last-resort abort the funded class already keeps
 (`runtime/exceptions.md`), and the verification debt gains the case by name.
 
-## 2026-08-27 — the suspects buffer is the owner's, and the re-offer is a splice at the epoch's turn
+## 2026-08-27 — the deferred-candidate buffer is the owner's, and the re-offer is a splice at the epoch's turn
 
-**Decided (Sage), closing Y12 clause 8.** The suspects buffer is one per
-mutator thread, beside that thread's enrolment queue and made of the same
+**Decided (Sage), closing Y12 clause 8.** The deferred-candidate buffer is one
+per mutator thread, beside that thread's candidate queue and made of the same
 segments, and the owner is its only writer and its only reader — no atomics,
-and the trace token does not cover it. Parking is the owner's disposition at
-its exact reading: draining a detached buffer it sorts each entry four ways —
-corpse, condemned, not-walked, acquitted — and the acquitted one is appended
-here with its bit still set. **Epoch turnover is the maturation epoch of Y7 and
+and the trace token does not cover it. Moving an entry here is the owner's
+disposition after exact validation: draining a detached buffer, it sorts each
+entry four ways — zero-count, confirmed unreachable, not walked, or currently
+externally referenced — and appends the last kind here with its bit still set.
+**Epoch turnover is the candidate-age epoch of Y7 and
 Y9**, whose counter is process-global and full-width, advanced by a collection's
 commit once every N collections, the epoch field of the header's four-bit
 maturation stamp carrying its low two bits. **The re-offer is the owner's first safepoint poll that finds the
@@ -386,14 +387,14 @@ nothing bounds that mass here or there.
 ## 2026-08-27 — each consumer of a queue segment provisions its own swap
 
 **Decided (Sage), closing Y12 clause 3.** The enrolment queue grows by linking
-whole 64 KiB pool blocks — the only unit both funding doors dispense — and each
+whole 64 KiB pool blocks — the only unit both allocation paths dispense — and each
 of the two consumers that swaps a segment in provisions it through its own
-doors. The **owner** keeps two spare segments in a thread-private inventory of
-two pointer cells, initialised to null without allocating and filled at thread
-init and at every safepoint poll through the ordinary door; an overflow swaps a
+allocation paths. The **owner** keeps two spare segments in a thread-private inventory of
+two pointer cells, initialized to null without allocating and filled at thread
+init and at every safepoint poll through the ordinary allocation path; an overflow swaps a
 cell in, and with both cells null draws the critical reserve and enters reserve
 mode. The **token holder** provisions the trace's swap at the swap itself: a
-collector thread takes a block through its own ordinary door and skips the
+collector thread takes a block through its own ordinary allocation path and skips the
 thread for the round when the pool refuses, while the in-line form asks the
 pool, then its own cells, then its own critical reserve, and aborts before
 tracing when all three refuse. A consumed spare is replenished at the inbox
@@ -498,7 +499,7 @@ periodic round and a mutator's allocation failure are two customers, and only
 the second ever waits — calling the first "the entry gate's load" is what
 produced the contradiction this amends.
 
-**The back door this pins shut.** The gate's inputs are the *thread's own*
+**The back path this pins shut.** The gate's inputs are the *thread's own*
 state. A collecting flag spelled as a global "a collection is running" bit
 would reproduce the rejected reading without naming the token: every trace in
 flight would close every allocator's gate. The gate therefore reads the flag in
@@ -564,7 +565,7 @@ collided with are dead by then.
 
 **The handshake is deleted design-wide, and the accelerator hands off by buffer
 swap.** The Y14 amendment of 2026-08-26 deleted it only from the in-line form,
-while `questions.md` Y5 and `rc-cycle.md`, "What it keeps from `rc-walk`", kept
+while `questions.md` Y5 and `rc-cycle.md`, "Requirements retained from earlier designs", kept
 it alive with no protocol behind it — and any acknowledged rendezvous that
 survived would revive the deadlock the retired non-wait clause named, a
 collection parked on an acknowledgement that rides the waiter's checkpoint.
@@ -591,7 +592,7 @@ the crate's existing collecting flag and `TEARDOWN_DEPTH`, unchanged — and a
 thread whose gate is closed goes down the ladder rather than waiting, since it
 could not collect on taking the token anyway. Gate before wait makes self-wait
 structurally impossible: a trace runs no user code and draws its working memory
-through the reserve door, so no allocation site executes on a thread while that
+through the reserve allocation path, so no allocation site executes on a thread while that
 thread's trace holds the token. The word has three readers: the waiter's CAS
 loop, the entry gate's load, and the slot-return path's load.
 
@@ -756,13 +757,13 @@ the retained path does not have the arithmetic path's measured cost.
 ## 2026-08-26 — the shadow rows are not zeroed greedily; the met flag moves to a group bitmap
 
 **Decided:** one bit per group of eight slots is zeroed instead of the rows, and
-a group's rows are initialised at its first touch. The row becomes two bits of
-colour and thirty of working count, saturating as "conservatively live".
+a group's rows are initialized at its first touch. The row becomes two bits of
+color and thirty of working count, saturating as "conservatively live".
 **Why:** a zero row means "not met", so a per-slot array would arrive zeroed for
 every slot of a touched block. Measured for the 717 MiB case: 41–76 ms to zero
 mapped memory, 178–196 ms from fresh — asked for on the path where an
 allocation has already failed. The bitmap costs 1.4 ms, and untouched pages are
-never materialised.
+never materialized.
 **Rejected:** the chunked form as the cure. On a full trace it writes more than
 the flat array — 762 MiB against 717 — since every chunk is zeroed too; it stays
 the alternative for a traced density below 29 %.
@@ -868,12 +869,12 @@ which a collection frees anything.
 
 ---
 
-## 2026-08-25 (twenty-second) — the cycle colour leaves the header, and the three bits it frees fund the acyclic gate and the ownership mark
+## 2026-08-25 (twenty-second) — the cycle color leaves the header, and the three bits it frees fund the acyclic gate and the ownership mark
 
-**Noticed by Edmond** reading the layout of the nineteenth entry: the colour is
+**Noticed by Edmond** reading the layout of the nineteenth entry: the color is
 not needed any more. It is not, and the reason is the same one that moved the
 shadow count — once mark and scan compute in the collector's side arrays, the
-colour is per-collection state like the working count and belongs beside it.
+color is per-collection state like the working count and belongs beside it.
 That frees bits 4-5. **Bit 3 was already dead:** the GC-state field was
 declared two bits wide for the CAS handoff of `model/gc/heap-design.md`, a
 device for a concurrent marking collector, and the only value any code writes
@@ -890,13 +891,13 @@ at `CANDIDATE_KINDS`' entity-kind granularity, which forfeits what Y3 is for.
 
 ---
 
-## 2026-08-25 (twenty-first) — the critical reserve is the allocator's own block, 500 KB a thread, reached through a second door
+## 2026-08-25 (twenty-first) — the critical reserve is the allocator's own block, 500 KB a thread, reached through a second path
 
 **Decided by Edmond**, closing the item the thirteenth entry opened and the
 BACKLOG carried unwritten: the memory manager takes a block from the operating
 system at thread start and holds it, and work that must not fail is served from
 it. **It belongs to the allocator rather than beside it** — the same allocator
-has two doors, the ordinary one that refuses when it has nothing and the
+has two allocation paths, the ordinary one that refuses when it has nothing and the
 critical one that serves from the held block — which is what makes "ask the
 allocator after it refused" coherent instead of contradictory. **Per thread,
 not process-global**, because two of its three customers are per-thread and
@@ -1237,7 +1238,7 @@ on the most invariant-dense path in the system.
 **What it buys:** `sever_cells` walks an entity's cells through a callback
 that no hand-written cursor can re-enter, and a state machine can.
 
-**Cost:** in Rust a stackless coroutine colours every frame of the chain, so
+**Cost:** in Rust a stackless coroutine colors every frame of the chain, so
 the five sever helpers are rewritten either way; what changes is that the six
 cursor fields stop being written by hand. And the shape decides nothing about
 *when* to suspend — the ceiling's mechanism, the slice's outer boundary
@@ -1449,7 +1450,7 @@ fixpoint, the verdict drain, the synchronous collection, the static-block
 teardown — takes the owner it works on as a parameter and presents that
 owner's context to any user code it runs. The mount is a fallback only where
 the executing actor is the owner by construction, which mutator-path death is,
-the queue being the only door.
+the queue being the only path.
 
 **Supersedes**, in the first entry of this date, the sentence "Nothing is
 installed, swapped or restored when the scheduler mounts an actor": one word
@@ -2042,7 +2043,7 @@ function lives in the runtime, and nothing in the linker compares them, so
 a folding build must carry a stamp of the hash's identity and check it at
 startup. **Still not answered by either arm:** hash flooding. rapidhash
 claims no resistance to key recovery from observed collisions, so the
-table's probe-length backstop remains the only real defence, and it is
+table's probe-length backstop remains the only real defense, and it is
 undesigned.
 
 ### 2026-08-04 — the string hash is chosen when the runtime is built, and defaults to rapidhash v3
@@ -2127,7 +2128,7 @@ mode-bit flip, and no bit moves bytes from inline to out of line. Its job
 is done instead by the ordinary COW rule, which now reads **category,
 then `IS_ESCAPEE`, then the count** — an immortal entity's count is
 pinned at 1 by the retain/release early-outs, so a bare count test would
-have grown an interned literal in place and overwritten its neighbour.
+have grown an interned literal in place and overwritten its neighbor.
 A separating write on a dynamic string produces a **dynamic** copy, so
 an append loop stays linear after it. **Arena survivors:** promotion
 keeps the header where it is and reallocates the payload into the heap,
@@ -2176,7 +2177,7 @@ with neither code nor plan behind it, whereas this has both a plan and
 properties `rc-walk` cannot acquire: marking terminates by
 construction, floating garbage is bounded by one epoch, liveness comes
 from reachability rather than completeness of the counts (the only
-defence against an ARC-elided borrow), and it is the recorded door to
+defense against an ARC-elided borrow), and it is the recorded path to
 deferred reference counting. It is also the only spare collector whose
 failure modes do not overlap `rc-walk`'s. **Cost of keeping it:** a
 design that must be re-derived before use — and one defect found while
@@ -2254,7 +2255,7 @@ now design rules.
   committed-dead with a live weak cell; a drain destructor's
   `WeakRef::get()` there returns a strong reference to it —
   resurrection after commit, or double teardown (DC0 through the
-  front door). Opened by the 2026-07-27 checkpoint move to the death
+  front path). Opened by the 2026-07-27 checkpoint move to the death
   branch, universal since eager death.
 - **Parking is out-of-band.** The in-slot park link at bytes 8-15
   overwrote the class word mid-epoch, under a walker that reads the
@@ -2317,7 +2318,7 @@ cleanup is eager at notification time.
   map expunge (stale entries hold values hostage — javadoc-documented);
   a global Zend-style table (a mutex per create/death).
 - **Cost:** ephemeron entries (value references its own key) are not
-  collected — PHP 8.0–8.2 behaviour, 8.3 parity deferred to BACKLOG.
+  collected — PHP 8.0–8.2 behavior, 8.3 parity deferred to BACKLOG.
 
 ### 2026-07-25 — A safepoint is a moment, not a root map; and rc-walk's checkpoints live in the allocator
 
@@ -2858,7 +2859,7 @@ every confirmed member's weak cell after the exact test passes and before any
 user code runs, and names `gc/rc-walk.md` as the obligation's source.
 `rc-cycle.md` does not restate it, and the deletion would take the only
 written form of an ordering whose violation hands a destructor a strong
-reference to a severed object. `rc-cycle.md` gains a "Cycle teardown"
+reference to a severed object. `rc-cycle.md` gains a "Cycle finalization and reclamation"
 section, transcribed against the running `drain_confirmed` before the code is
 removed, and `weak-references.md` repoints to it.
 

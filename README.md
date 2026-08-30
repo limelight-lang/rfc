@@ -16,9 +16,9 @@ pluggable garbage collection instead of a one-size-fits-all VM heap.
 | Memory categories | Every object lives in a category: request arena, long-lived, immortal, or GC heap. Most objects die with their arena in O(1) and are invisible to the GC | [arenas](model/memory/arenas.md), [arena-reset](model/memory/arena-reset.md) |
 | Static lifetimes | The compiler tracks ownership and moves, Rust-style but with a runtime fallback instead of compile errors. Proven objects get zero refcounting and a scheduled destructor call | [static-lifetimes](model/memory/static-lifetimes.md) |
 | Pluggable GC | The collector is a build-time strategy behind a fixed contract. One strategy is in force, `rc-cycle`: ARC + arenas + on-the-fly cycle collection from a mutator-fed candidate set | [strategies](model/gc/strategies.md), [rc-cycle](model/gc/rc-cycle.md), [heap-design](model/gc/heap-design.md) |
-| Actors | `#[Actor]` classes own their arenas and execute serially; queues are the only door between actors. Collection runs per actor at message boundaries; each actor may bind its own GC | [actors](runtime/actors.md) |
+| Actors | `#[Actor]` classes own their arenas and execute serially; mailboxes are the only communication channel between actors. Collection runs per actor at message boundaries; each actor may bind its own GC | [actors](runtime/actors.md) |
 | Object model | C++-grade dispatch for PHP: inline-trailing vtables, COM-style itables, fat interface references, inline caches that never invalidate | [classes](model/classes.md), [lowering](model/lowering.md), [caches](model/caches.md) |
-| Exceptions | Three channels — table-driven unwinding, an error-return channel, and a non-catchable bailout for fatals — with the **compiler** choosing, not the programmer. The return channel is also the portability floor: it needs no host support, which is what makes the embedded/WASM/JVM modes possible. Design has known open defects, listed in the document | [exceptions](runtime/exceptions.md) |
+| Exceptions | Two channels — table-driven unwinding and an error-return channel — with the **compiler** choosing, not the programmer. The return channel is also the portability baseline: it needs no host support, which is what makes the embedded/WASM/JVM modes possible. The design has known open defects, listed in the document | [exceptions](runtime/exceptions.md) |
 | Values | 16-byte ValueBox for the dynamic world, raw unboxed slots for declared types, COW as a per-object flag | [values](model/values.md), [strings](model/strings.md), [arrays](model/arrays.md) |
 
 ## Document map
@@ -28,7 +28,7 @@ pluggable garbage collection instead of a one-size-fits-all VM heap.
 - [values.md](model/values.md) — ValueBox/unboxed contracts, Optional, `UNINIT`, COW protocol
 - [strings.md](model/strings.md) — string layout, string-as-class, interpolated template class
 - [arrays.md](model/arrays.md) — one `array` class, three storage strategies
-- [arrays-hashtable.md](model/arrays-hashtable.md) — the ordered hash: entry layout, index, deletion, flood defence
+- [arrays-hashtable.md](model/arrays-hashtable.md) — the ordered hash: entry layout, index, deletion, flood defense
 - [classes.md](model/classes.md) — object layout, class descriptors, vtables, itables, property access
 - [lowering.md](model/lowering.md) — the C structures and LLVM IR behind the model
 - [caches.md](model/caches.md) — every cache site, why none carries a replacement policy, and what each does when it fills
@@ -48,6 +48,8 @@ pluggable garbage collection instead of a one-size-fits-all VM heap.
 - [io/](io/README.md), [stdlib/](stdlib/README.md) — placeholders, not yet designed
 - [attributes.md](attributes.md) — the attributes principle (root document)
 - [BACKLOG.md](BACKLOG.md) — deferred work, collected from all RFCs
+- [dev/GLOSSARY.md](dev/GLOSSARY.md) — normative technical vocabulary and
+  context-sensitive replacements for retired terms
 
 ## The key principle
 

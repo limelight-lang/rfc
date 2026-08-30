@@ -87,14 +87,14 @@ mapping onto it has to start from that.
 
 **What is different here from every language above: the programmer does
 not choose the channel — the compiler does.** In the others the choice
-is in the type system, so it is the author's judgement and it is
+is in the type system, so it is the author's choice and it is
 visible. Here `throw` and `catch` mean one thing in the source and the
 compiler selects the lowering. That is the novel part of this design and
 also where its risk sits (see "Risks").
 
 ### Allocation failure is an ordinary exception
 
-**Deliberate deviation from PHP**, and it is the better behaviour:
+**Deliberate deviation from PHP**, and it is the better behavior:
 exceeding the memory limit in PHP is a fatal error that cannot be
 caught, so a request loses everything it was doing. Here it is an
 ordinary `Throwable`, caught by the ordinary rules.
@@ -126,9 +126,9 @@ them can be reasoned about alone. Split them:
    own vectors — and therefore bounded separately, not from here.
 
 **The log reserve protocol.** Filled when the thread is initialized,
-where a refusal already reports (the thread's first allocation returns
-null). Drawn only by the arena's log-segment growth, and only after the
-ordinary path has been refused. **A reserve block never becomes the
+where failure already has a reporting path (the thread's first allocation
+returns null). Used only by arena log-segment growth after ordinary allocation
+has failed. **A reserve block never becomes the
 arena's bump block** — otherwise the next ordinary allocation would eat
 the reserve instead of reporting null, which is the one thing it must
 not do. Log growth carves segments from it with its own cursor, so two
@@ -151,7 +151,7 @@ emitted code** ([`../dev/DECISIONS.md`](../dev/DECISIONS.md), "a runtime loop
 carries the poll contract it broke"): a loop over a caller-supplied count that
 the compiler never sees inside — `ll_release_vector` is the one that found this
 — polls on its own backedge, and the bound the ABI owes must leave the
-enrolment escrow room between two polls. Any loop has a backedge poll and straight-line code is finite, so the
+candidate overflow-buffer capacity required between two polls. Any loop has a backedge poll and straight-line code is finite, so the
 bound is generous rather than delicate — and the arithmetic has to be
 stated in the ABI document rather than assumed, because it is what the
 reserve is sized from.
@@ -193,7 +193,7 @@ matches a user clause.
 
 **`finally` blocks and destructors run on the way out.** This is a
 deliberate deviation from PHP, where `exit()` bypasses `finally`
-entirely, and it is the better behaviour: a `finally` releasing a lock
+entirely, and it is the better behavior: a `finally` releasing a lock
 or closing a handle should not be skipped because the program chose to
 stop. Resources are released by the same mechanism that releases them
 for every other exception.
@@ -274,7 +274,7 @@ or only its runtime changes what we call, not this rule.
 its own — any allocation of its crossing `memory_limit`, a user
 `exit()` — while *our* frames sit between the raise and the enclosing
 `zend_try`. That jump crosses our frames whether we like it or not, and
-the only defence is a `zend_try` at every Zend→ours crossing, which
+the only defense is a `zend_try` at every Zend→ours crossing, which
 costs a setjmp per crossing. Also unaddressed: `EG(exception)` wants a
 real `zend_object`, while our exceptions are arena-allocated with our
 own headers, so the boundary needs a data conversion nobody has
@@ -368,7 +368,7 @@ than merely convenient.
 This is below the language, not part of it. PHP has nothing to say here;
 it is what the function's ABI declares.
 
-A function's error behaviour has three independent parts:
+A function's error behavior has three independent parts:
 
 - **which exception classes travel by return.** Declaring some does not
   forbid the others from unwinding: a function may return `E` and still
@@ -672,8 +672,8 @@ where the rows say.
 | `ll_arena_reserve` | a block, best-effort | deferred: the next `alloc` reports |
 | `ll_arena_reset` | fixpoint working memory | **on the list** |
 | `dispose` | transitively: user `__destruct`, releases, reentrant stores | decomposes into the rows above |
-| `ll_release` | cycle-collector candidate buffer | funded: escrow, and the poll reports (below) |
-| `ll_thread_init` | the escrow floor, the thread heap | the floor is mandatory: a refused draw is the thread that never starts, reported by the status return; the heap stays deferred: the next allocation reports null |
+| `ll_release` | cycle-collector candidate buffer | capacity guaranteed by the overflow buffer; the poll reports later (below) |
+| `ll_thread_init` | initial overflow segment, thread heap | the segment is mandatory: allocation failure prevents the thread from starting and is reported by the status return; heap failure remains deferred to the next allocation |
 
 This settles the void-returning half of the list only. The foreign-code
 boundary named above stays on it regardless, for reasons that have
@@ -700,7 +700,7 @@ stores the copy ([arenas.md](../model/memory/arenas.md), deepCopy at the
 barrier). That copy is an allocation the size of the value, so no
 fixed reserve can fund it — which is the whole reason the paragraph above
 does not cover it. It is also, unlike a lost log record, a failure with a
-sound continuation: refuse, leave the slot and every count untouched,
+sound continuation: fail the store, leave the slot and every count untouched,
 raise memory-exhausted. `ll_store_ptr`, `ll_store_box` and `ll_ref_store`
 therefore return whether the store happened.
 
@@ -708,7 +708,7 @@ The check is **not** in the same position as a factory's null check, and
 the difference matters: an overwriting store is a publish followed by a
 drop of the displaced entity, and the drop is conditional on the publish.
 A factory site has no such pending second half. Emitting the drop after a
-refused publish releases the reference the slot still holds, which
+failed publish releases the reference the slot still holds, which
 dangles it — in a program that is at that moment unwinding a
 memory-exhausted exception and may touch the slot in a `finally` or a
 destructor.
@@ -724,24 +724,24 @@ skips a `__destruct`, which is a semantic break rather than a
 memory-safety one. It is answered by the object lifecycle rather than by
 a channel ([object-lifecycle.md](object-lifecycle.md), "Two
 constructors"). Registration happens once `__construct` has returned
-successfully, so a refused registration raises memory-exhausted at the
+successfully, so failed registration raises memory-exhausted at the
 creation site — and that outcome is byte-for-byte the one already
 specified for a constructor that threw: our teardown runs, the user
 destructor does not. No record is ever silently dropped, because an
 object whose registration failed does not survive its own creation.
 
-**Funded, because Edmond ruled the loss out** (2026-08-28,
-[`../dev/DECISIONS.md`](../dev/DECISIONS.md), "an enrolment cannot fail"). An
-enrolment cannot refuse: below the queue's live segment, its two spare
-segments and the per-thread critical reserve sits an escrow — one 64 KiB pool
-block the allocator issues at thread init and the thread holds for life; a
-thread whose floor draw refused at init never starts, and a thread that
-skipped init draws its floor lazily at first enrol, where refusal aborts —
-which takes the entry by a store and an increment. So this entry point carries
-no failure at
+**Capacity is reserved because candidate loss is not permitted** (2026-08-28,
+[`../dev/DECISIONS.md`](../dev/DECISIONS.md), "an enrolment cannot fail").
+Below the live candidate-queue segment, its two spare segments, and the
+per-thread critical reserve is a lifetime-held overflow buffer: one 64 KiB pool
+block allocated at thread initialization. A thread that cannot allocate this
+initial segment does not start. A thread that skipped initialization allocates
+it lazily at first registration; failure there aborts. The overflow operation
+itself is one store and one increment. This entry point therefore carries no
+failure at
 all, and the reporting is the next safepoint poll's, from a frame that has one:
-the poll refills, drains the escrow into the queue if any door funded a
-segment, and otherwise collects behind an open gate, waits on the trace token
+the poll refills, drains the overflow buffer into the queue if it can allocate a
+segment, and otherwise collects when its entry conditions permit, waits on the trace token
 when another thread holds it, and raises memory-exhausted when the collection
 runs and loses. That is the store barrier's pattern one module up — funded at
 the site, reported at the poll.

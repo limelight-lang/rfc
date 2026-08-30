@@ -443,7 +443,7 @@ why the last is not quoted):
 
 The floor — small working sets, everything cache-resident, pure path length
 — went from ~1.8x to parity. That is 5c's result and it confirms the
-attribution. What remains is memory behaviour, peaking ~1.45x where the live
+attribution. What remains is memory behavior, peaking ~1.45x where the live
 set is in L2/L3 range, which is exactly where larson's default 5000-object
 config sits: **the project's headline benchmark is measured at the worst
 point of the curve.**
@@ -727,9 +727,9 @@ self-initialises on a cold branch now, exactly as `mi_malloc` does
 (`test rcx,rcx; je _mi_malloc_generic`), and the shim is a direct `#define`.
 The explicit contract remains the documented, faster path for an embedder;
 skipping it is now merely slower once, not undefined. The once is wider than
-the allocation shim: it covers the one-time escrow floor draw at the thread's
+the allocation shim: it covers allocation of the initial overflow segment at the thread's
 first enrol, whose refusal aborts
-([../../dev/DECISIONS.md](../../dev/DECISIONS.md), "the escrow's floor is
+([../../dev/DECISIONS.md](../../dev/DECISIONS.md), "the baseline overflow segment is
 allocator-issued").
 
 ## Per-class pools — reserved, not built

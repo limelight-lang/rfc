@@ -20,13 +20,13 @@ flowchart TD
     Y2[Y2 how much later may a destructor run<br/>answered: when death is established] --> Y9
     Y3[Y3 the class filter and its direction<br/>answered: the descriptor cannot express it yet] --> Y7 & Y13
     Y4[Y4 what replaces trial deletion<br/>answered: a shadow count] --> Y5 & Y7
-    Y9[Y9 candidate maturation<br/>answered: age in the epoch stamp] --> Y2 & Y7
+    Y9[Y9 candidate aging<br/>answered: age in the epoch stamp] --> Y2 & Y7
     Y10[Y10 what the enrolment test excludes<br/>answered: proven acyclicity only] --> Y7
     Y11[Y11 two release operations, the compiler choosing<br/>answered: acyclic, owned, or deathless at the site] --> Y6 & Y10
     Y3 --> Y10
     Y5[Y5 what survives from rc-walk<br/>answered: the ownership discipline]
     Y6[Y6 the candidate set is edge-triggered<br/>answered: the buffer grows] --> Y7 & Y12
-    Y7[Y7 what the header must carry<br/>re-answered: the maturation stamp and nothing else]
+    Y7[Y7 what the header must carry<br/>re-answered: the candidate-age stamp and nothing else]
     Y8[Y8 what becomes of rc-walk and its code<br/>answered: unneeded code is deleted]
     Y12[Y12 the root queue<br/>contract written; the candidate fails it] --> Y7 & Y14
     Y13[Y13 traversal aggression<br/>design] --> Y14
@@ -42,7 +42,7 @@ The load-bearing node, and it closed the day it opened. Two papers were
 read, not one: the sliding-view machinery — the barrier, the four
 handshakes, the snoop, the slow-path frequencies — is Levanoni and
 Petrank's (TOPLAS 2006), and the cycle collector over it — the `CRC`, the
-mark/scan/collect passes, the `k + 1` maturation buffers, the root
+mark/scan/collect passes, the `k + 1` age-bucket buffers, the root
 differencing (its §4.2) — is Paz, Bacon, Kolodner, Petrank and Rajan's
 (TOPLAS 2007). "The paper" below names the one whose mechanism is at hand.
 
@@ -92,7 +92,7 @@ a stack reference here is counted like any other, dropping a root is a real
 decrement and is seen; the blanket young-object candidacy and the root
 differencing exist only to compensate for deferred counting. What that
 costs is the candidate set's size — without coalescing it is Bacon–Rajan's
-plain set rather than the paper's `o₀`-only one. Y9's maturation bounds the
+plain set rather than the paper's `o₀`-only one. Y9's candidate aging bounds the
 *tracing* of that set; the enrolment traffic and the buffer footprint
 remain bought, scaled by what the program touched, and no measurement of
 either exists yet — the paper's 40–80 % figure was taken downstream of
@@ -100,7 +100,7 @@ coalescing and does not transfer.
 
 **What survives separation from the barrier** — six pieces, and the sixth
 is `rc-walk`'s, not the papers': the acyclic-class filter and its extension
-to the traversal; the `CRC` shadow count (Y4); candidate maturation (Y9,
+to the traversal; the `CRC` shadow count (Y4); candidate aging (Y9,
 whose mechanism has since moved to the epoch stamp); running mark, scan and
 collect over all candidates at once, which is what makes it linear rather
 than quadratic; the collect stage's discipline of marking members released
@@ -108,7 +108,7 @@ before tearing them down; and the owner-thread exact test of Y5, which is
 the load-bearing one — the papers' own safety mechanism against freeing an
 entity that gained a reference mid-collection is the snooped set, and it
 dies with the barrier, so the exact test is what stands between a white
-verdict and a mutator that has just loaded a member into a counted local.
+validation result and a mutator that has just loaded a member into a counted local.
 That test is also why the collector-side free was withdrawn on 2026-08-25:
 its warrant is the owning thread's hold, which a collector on another thread
 cannot have (Y5). What else dies with the barrier: the
@@ -157,13 +157,14 @@ not ruled, and no document promises one.
 
 ## Y3. The class filter, and which way its default runs  [answered 2026-08-25: demotion by proof; the descriptor cannot express it yet, and the evaluable form demotes nothing]
 
-Edmond's own, 2026-08-25: classes that have held cyclic references are
-suspect, and only they enter the candidate set.
+The initial proposal classified only classes that had previously held cyclic
+references as cycle-capable.
 
 **The direction has to be the other one.** "Has not been in a cycle so far"
 is a fact about a run, and the next request refutes it; a class demoted on
 that evidence loses its cycles for ever, because enrolment is edge-triggered
-(Y6). So a class is **suspect by default** and leaves the set only by proof.
+(Y6). Therefore a class is **cycle-capable by default** and leaves the set only
+by static proof.
 
 **The proof was claimed available today and is not, which the reading of
 2026-08-25 settled.** The claim was that a class whose declared slots cannot
@@ -208,7 +209,7 @@ a change to `src/class.rs`.
 **Edmond confirmed the direction on the map and added the other half:** the
 runtime proves cyclicity, not just the compiler acyclicity. A collection
 that finds a class's instances in a confirmed cycle may stamp the class
-with a flag. The flag runs one way — it strengthens suspicion and never
+with a flag. The flag runs one way — it strengthens candidacy and never
 demotes a class out of the set — and what it feeds is not enrolment but the
 traversal's aggression, node Y13.
 
@@ -235,7 +236,7 @@ own open question.
 > shape Y7 replaced with a hash displacement on 2026-08-25 and that
 > 2026-08-26 replaced in turn. The row is now found by arithmetic from the
 > entity's address — no index, no hash, no field in the header — and the row
-> carries no captured count, because the commit stage judges again rather than
+> carries no captured count, because the commit stage validates again rather than
 > comparing. See [`../rc-cycle.md`](../rc-cycle.md), "Where the shadow count
 > lives", and Y7 below.
 
@@ -256,7 +257,7 @@ different reason, and a better one: it is what lets trial deletion run at all
 without disturbing the counts prompt destruction depends on.
 
 **What it costs:** a second count field per entity, which the paper packs
-with the colour and buffered bits into one 32-bit word plus an overflow hash
+with the color and buffered bits into one 32-bit word plus an overflow hash
 table.
 
 **Where that field lives was settled by Y7 on 2026-08-25, and it is not the
@@ -268,7 +269,7 @@ one: they write nothing into the heap at all, so an aborted collection costs
 zero heap writes.
 
 **Which makes the alternative shape the chosen one after all.** Nim's YRC
-computes the verdict entirely off-heap — Tarjan into a side table, deadness as
+computes the validation result entirely off-heap — Tarjan into a side table, deadness as
 array work over the condensation — and touches the heap only at commit, where
 it rechecks each member's count against the captured value. This design takes
 that residence with one difference: the pointer-to-index map is the header's
@@ -278,13 +279,13 @@ own field rather than a hash, so a lookup is an indexed load.
 
 **The census dies, the ownership discipline survives.** Ruled by Edmond on
 the map: the full-heap walk leaves the design entirely — the collection
-traces from the candidate set alone, and the maturation of Y9 with the
+traces from the candidate set alone, and the candidate aging of Y9 with the
 enrolment gates of Y10 and Y11 bound even that. Phase 1's census and full
 edge build have no successor.
 
 **Only the mutator frees, and that is `rc-walk`'s ruling 5 unnarrowed.** The
-collector judges; every free and every destructor happens on the owning
-thread. The machinery that survives is what makes the judgement usable: the
+collector validates; every free and every destructor happens on the owning
+thread. The machinery that survives is what makes the validation usable: the
 Phase 4 exact test against current fields, the deferred-free parking that keeps
 a slot from being recycled under an identifier in flight, and eager death.
 
@@ -313,7 +314,7 @@ component's counts at a single instant needs the snapshot Y1 refused.
 
 *The second is the weak cell.* Every design here nulls every weak cell naming a confirmed member **before**
 any user code runs — `rc-walk` bound it first and
-[`../rc-cycle.md`](../rc-cycle.md), "Cycle teardown", step 3, carries it now —
+[`../rc-cycle.md`](../rc-cycle.md), "Cycle finalization and reclamation", step 3, carries it now —
 because a
 weak load is the one channel that can hand a destructor a pointer the counted
 world cannot account for. The mechanism that discharges it is a **per-thread**
@@ -327,7 +328,7 @@ act per confirmed component was to post it; every teardown path lived behind
 `drain_confirmed`, reached only from a mutator's checkpoint. That module was
 deleted on 2026-08-26 and is on `archive/pre-rc-cycle`. The withdrawal restores the contract
 the code already keeps. What it does change is where the design's centre of
-gravity sits — the in-line collection of Y14, where judge and owner are one
+gravity sits — the in-line collection of Y14, where validator and owner are one
 thread, is the only shape in which a collection frees anything, so it stops
 being an emergency measure and becomes the ordinary form.
 
@@ -353,14 +354,14 @@ it is node Y12's, where the named SPSC candidate was read first-hand on
 2026-08-25 and rejected: it drops the root when its growth allocation fails,
 which is this node's permanent miss.
 
-## Y7. What the header must carry  [re-answered 2026-08-26: the maturation stamp and nothing else]
+## Y7. What the header must carry  [re-answered 2026-08-26: the candidate-age stamp and nothing else]
 
 > **Amended 2026-08-26, and the amendment is the answer in force.** The
 > collector's way back to a row leaves the header entirely: the row is computed
 > from the address, so the six bits of hash displacement below are not needed
 > and bits 24–31 stay free, the collector reserve taking 20–23. What the
 > header keeps from the collector is the
-> maturation stamp — epoch and age, four bits — because it lives *between*
+> candidate-age stamp — epoch and age, four bits — because it lives *between*
 > collections, where no row exists.
 >
 > With both old collectors deleted the whole word is re-laid: category 0–1,
@@ -388,21 +389,23 @@ which is this node's permanent miss.
 > the moment it first touches the entity" has no writer. The clause was useless
 > where it stood in any case: eager clearing fires only on contact, and the
 > stamp that wraps is exactly the one no trace has touched for four epochs.
-> What bounds the damage is that **acquittal never clears the enrolment bit**:
-> a proven-live root parks in a suspects buffer with its bit set and is
-> re-offered at epoch turnover (Y12, clause 8), so a wrapped stamp, ring-mates
-> matured apart and a wrong dirty proposal each become bounded floating garbage
+> The bound comes from one rule: **validation that finds a current external
+> reference never clears the candidate bit**. The candidate remains in a
+> deferred-candidate buffer with its bit set and is re-offered at epoch
+> turnover (Y12, clause 8). A wrapped stamp, cycle members that reach the age
+> threshold at different times, and an incorrect speculative result therefore
+> become bounded floating garbage
 > rather than a permanent miss
 > ([`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md), "four rulings from
 > the Critic round over `ll-model`'s plan, and what they change here").
 >
 > The text below is kept as the record of how the displacement was reasoned
 > to, and of the two claims — `rc-trace`'s candidate index and `rc-walk`'s
-> condemned byte — whose removal freed the word.
+> confirmed unreachable byte — whose removal freed the word.
 
 *(Record; the accounting below reasons about positions the re-lay of
 2026-08-26 moved — see the note above.)* Under `rc-trace`'s shape the cycle
-collector owns **twenty of the flags word's thirty-two bits**: two for the colour, one for buffered, seventeen
+collector owns **twenty of the flags word's thirty-two bits**: two for the color, one for buffered, seventeen
 for the candidate index (`ll-model` `src/refcount.rs`). Bit 15 is also the
 string's out-of-line bit, safe only because a string never enters the
 buffer, and pinned by a test rather than by construction.
@@ -425,17 +428,17 @@ four ways:
 | bits | field | width |
 |---|---|---|
 | 16-17 | epoch | 2 |
-| 18-19 | maturation age (Y9) | 2 |
+| 18-19 | candidate age (Y9) | 2 |
 | 20-25 | hash displacement | 6 |
 | 26-31 | free | 6 |
 
-Two bits of age is the exact room YRC's promote bound needs, that bound being
+Two bits of age is the exact room YRC's traversal age threshold needs, that bound being
 three. Bit 15 stays the string's out-of-line flag and is **not** taken: it is
 the top bit of byte 5, so claiming it would widen the collector's store past
 the aligned two-byte unit, and a string never enters the candidate set anyway.
 
 **And that is where `CRC` goes: out of the heap.** The shadow count Y4 orders
-is a full `u32` and sixteen bits cannot hold it beside the maturation fields,
+is a full `u32` and sixteen bits cannot hold it beside the candidate-age fields,
 so the count sits in the collector's side table at full width and the header
 carries only the way back to it. Mark and scan then never write a count into
 the heap, so Y4's reason for the shadow — never leaving a count torn where a
@@ -470,7 +473,7 @@ readings the shared bits carried; with the tag gone the fields no longer share.
 What that costs is one wasted row read at an entity's first touch in a
 collection, on a line the probe would have brought in anyway.
 
-**What cannot leave is the maturation stamp**, and the boundary is worth
+**What cannot leave is the candidate-age stamp**, and the boundary is worth
 stating because it is not obvious. The epoch and age live **between**
 collections, and the side table is one collection's working set, drawn from the
 reserve and discarded at its end. The age is read at the start of a later
@@ -481,7 +484,7 @@ collection and covers every mature entity, which is a resident per-entity cost
 
 **The two-bit epoch wraps, and one rule covers it.** *(Record; superseded
 2026-08-26 — see the note at the head of this node.)* Four values means a
-maturation stamp four epochs old reads as current. The collector clears a stamp
+candidate-age stamp four epochs old reads as current. The collector clears a stamp
 whose epoch is not the current one at the moment it first touches the entity,
 which it is doing anyway in order to trace it, so a stale stamp is retired on
 contact and never survives to wrap.
@@ -496,7 +499,7 @@ promotion is a boundary event rather than heap compaction
 ([`../../memory/arena-reset.md`](../../memory/arena-reset.md)).
 
 **What this releases.** `rc-trace`'s seventeen-bit candidate index at bits
-15-31 goes, as the eleventh ruling has it, and `rc-walk`'s condemned byte at
+15-31 goes, as the eleventh ruling has it, and `rc-walk`'s confirmed unreachable byte at
 24-31 was already retired. Between them they are exactly the two claims that
 forced strategy selection to be a build-time feature, since "the two
 collectors claim the same top half of the header flags word" (`ll-model`
@@ -515,11 +518,11 @@ exclusivity has no subject left.
 > answer survived the move.
 
 **The mutator's own byte frees three bits, and they were the missing funding.**
-Edmond, reading the layout on 2026-08-25: the colour is not needed any more.
-It is not, and the reason generalises. The **cycle colour, bits 4-5**, is
+Edmond, reading the layout on 2026-08-25: the color is not needed any more.
+It is not, and the reason generalises. The **cycle color, bits 4-5**, is
 Bacon–Rajan's black/grey/white, and `rc-trace` keeps it in the header because
 its trial deletion runs there; once mark and scan compute in the side arrays,
-the colour is per-collection state exactly like the working count, and it moves
+the color is per-collection state exactly like the working count, and it moves
 with it. Beside it, **bit 3** is already dead: the GC-state field was declared
 two bits wide for the CAS handoff of
 [`../heap-design.md`](../heap-design.md), a device for a concurrent *marking*
@@ -542,7 +545,7 @@ today; it is carried here.
 
 The **acyclic gate** of Y10 takes bit 4. Y10 asks for "a class property read
 from a bit the factory stamps into the header, so the test is already in the
-word the release path loads", and until the colour was freed there was nowhere
+word the release path loads", and until the color was freed there was nowhere
 to put it: bits 0 to 2 have live customers, bit 15 is the string's, and 16 to
 31 are the collector's. The two fallbacks it would otherwise have needed — a
 dereference into the class descriptor's cache line on the release path, or
@@ -585,18 +588,18 @@ mean deleted".
 **What is still evidence-gated:** when the registry's default moves — Y1's
 answer and a measurement, not a preference.
 
-## Y9. Candidate maturation  [answered 2026-08-25: age in the epoch stamp; the counter's residence ruled 2026-08-27]
+## Y9. Candidate age  [answered 2026-08-25: age in the epoch stamp; the counter's residence ruled 2026-08-27]
 
-**Maturation is kept, and its residence is ruled: an age carried in the
-header's stamp, not a carousel of `k + 1` rotating buffers.** The rotating
+**Candidate age is stored in the header stamp, not in `k + 1` rotating
+buffers.** The rotating
 form was Levanoni and Petrank's — only candidates that stayed candidates
 across the last `k` collections are traced, measured there at 40–80 % of
 the candidates their other filters had already passed — and Edmond chose
 YRC's representation of the same idea on the map: a collection's commit
-stamps each proven-live component with the current epoch and an age, the
+stamps each component that currently has an external reference with the current epoch and an age, the
 minimum over the component's members plus one; a later trace reads the age
 back, and a member whose stamp is current and whose age has reached the
-promote bound has its edge pruned for the rest of the epoch instead of
+traversal age threshold has its edge pruned for the rest of the epoch instead of
 being traced again.
 
 **What "pruned" means was read exactly on 2026-08-25, and it is stronger than
@@ -612,7 +615,7 @@ population, 381 of 381, because a service container connects everything to
 everything. Without the prune a single root costs a whole-heap traversal, which
 is the cost `rc-cycle` exists to remove. With it, the mature live core stops
 being descended after the first collection of an epoch, and what remains to
-trace is what changed and its immature neighbours.
+trace is what changed and its immature neighbors.
 
 **The first collection of an epoch is therefore the expensive one**, and
 nothing in the design bounds it. Whether that matters is a measurement nobody
@@ -626,21 +629,21 @@ atomic test-and-set, so an entity sits in exactly one buffer and a repeat
 decrement re-enrols nothing; a start threshold deciding when a collection
 runs at all — YRC's is adaptive, starting at 128 roots and moving by
 outcome, which is the *trigger* lever `rc-trace`'s fixed ten thousand and
-Nim ORC's `rootsThreshold` also pull, distinct from maturation's *which*
-lever; and a separate suspects buffer for stamped survivors, which on
+Nim ORC's `rootsThreshold` also pull, distinct from candidate aging's *which*
+lever; and a separate deferred-candidate buffer for stamped survivors, which on
 YRC's generational bench removed the 56 % of captures that were the same
 survivors re-registering every collection.
 
-**The epoch counter's residence was ruled 2026-08-27** with the suspects
+**The epoch counter's residence was ruled 2026-08-27** with the deferred-candidate
 buffer that reads it ([`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md),
-"the suspects buffer is the owner's, and the re-offer is a splice at the
+"the deferred-candidate buffer is the owner's, and the re-offer is a splice at the
 epoch's turn"): the counter is process-global and full-width, a collection's
 commit advances it once every N collections, and the epoch field of the
-header's four-bit maturation stamp carries its low two bits. A thread compares
+header's four-bit candidate-age stamp carries its low two bits. A thread compares
 it against a full-width local
 mirror, so a stamp that wraps hides no turnover from the re-offer.
 
-**What would answer the rest:** the promote bound `k` — a measurement on a
+**What would answer the rest:** the traversal age threshold `k` — a measurement on a
 real workload, YRC's 3 being the only known value; the advance period `N`,
 where YRC's 64 is likewise the only known value and the two dials are separate;
 and how concurrent commits count `N` on one process-global word, several owner
@@ -678,7 +681,7 @@ the loaded word, and the compiler's removal of the whole test is Y11 — as
 is the object-level exclusion of 2026-08-25, a proven-owned entity never
 entering the roots at all (fourteenth `dev/DECISIONS.md` entry).
 
-**The bit has an address: bit 8**, freed when the cycle colour left the header
+**The bit has an address: bit 8**, freed when the cycle color left the header
 for the collector's side arrays (Y7). It was bit 4 when this was written on
 2026-08-25 and moved with the re-lay of the whole word on 2026-08-26
 ([classes.md](../../classes.md), "Flags layout"). Until then this
@@ -689,10 +692,10 @@ what it still waits on is Y3's declared-target field rather than the layout.
 ## Y11. Two release operations, and the compiler choosing between them  [answered 2026-08-25: acyclic, or deathless at the site]
 
 Edmond, 2026-08-25, and it is the sharpest of the three: the compiler emits
-**two** decrements — a plain one, and one that also enrols a suspect — and
+**two** decrements — a plain one, and one that also enrols a candidate — and
 uses the plain one wherever it can prove the entity is held. His example is
 the horizon's own shape: a reference extracted from a container that is
-itself held cannot orphan a cycle by being dropped, so no suspicion arises.
+itself held cannot orphan a cycle by being dropped, so no candidacy arises.
 
 **Why it matters more than the gates of Y10.** Those gates make the test
 cheap; this removes the test. The candidate branch disappears entirely at
@@ -705,7 +708,7 @@ logic is outside these documents since the scope ruling of 2026-08-23; what
 is ours is the **contract**: two entry points on the release path, what each
 guarantees, and the obligation the cheap one places on its caller. The
 obligation has to be stated as a covering claim rather than as a hint,
-because a wrong use of the cheap operation is not a lost optimisation — it is
+because a wrong use of the cheap operation is not a lost optimization — it is
 a cycle no later collection can find (Y6), the enrolment being edge-triggered.
 That asymmetry is what makes this node a contract question and not a
 performance one.
@@ -737,13 +740,13 @@ proven sites the counting pair itself can go.
 > elision is invisible to the collector rather than the reference being
 > invisible to the counts. That bound is what makes the exact test exact:
 > a covering reference of the "someone else holds it" kind is worthless here,
-> because it may be an edge inside the very component under judgement, and a
+> because it may be an edge inside the very component under validation, and a
 > cycle collector frees at a non-zero count. The compiler's side — which
 > sites qualify, and how a certificate is checked — left these documents with
 > the scope ruling of 2026-08-23; the branch `archive/pre-rc-cycle` holds
 > the text. **How the release path
 knows is answered: bit 9 of the header**, one of the three the
-cycle colour and the dead half of the GC-state field left behind when Y7 was
+cycle color and the dead half of the GC-state field left behind when Y7 was
 laid out. It was bit 5 when written on 2026-08-25 and moved with the re-lay of
 2026-08-26. The mark is tested beside the acyclic gate at bit 8, in the word the
 release path already holds, so an owned entity costs the same test as an
@@ -828,9 +831,9 @@ the first three are what the candidate would have to be given.
    writer; the owner reads its own when it collects in line (Y14). Both are
    readers of the same queue and only one may exist at a time, which the
    token guarantees, because holding it is what makes a thread the tracer.
-   Judgement runs *outside* the token and reads no live queue at all: the
+   Validation runs *outside* the token and reads no live queue at all: the
    holder swaps the live buffer for a spare and traces the detached one, and
-   the owner judges from that detached buffer, which it alone holds. The
+   the owner validates from that detached buffer, which it alone holds. The
    queue stays single-reader across both phases, and the candidate's fatal
    second-reader case never arises.
 3. **The enrolment write never allocates, never locks and never copies**, so
@@ -838,41 +841,41 @@ the first three are what the candidate would have to be given.
    queue's chain and a fresh one becomes live. **The queue is a chain of
    segments**, so nothing is copied and nothing is discarded, and a drain
    reads every segment in it. A **segment is one 64 KiB pool block**, which is
-   the only unit both funding doors dispense; any other size would put a
+   the only unit both allocation paths dispense; any other size would put a
    carving allocator on the exhaustion path. Two consumers swap a segment in —
    the enrolment overflow and the trace, the token holder swapping a thread's
    live buffer out in order to trace it — and **each provisions its own swap**,
-   through its own doors, because the two stand at different instants (ruled
+   through its own allocation paths, because the two stand at different instants (ruled
    2026-08-27, [`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md), "each
    consumer of a queue segment provisions its own swap").
 
    **The owner provisions the overflow**, no reader existing at a non-final
    decrement to have provisioned it. It holds **two spare segments** in a
-   thread-private inventory of two pointer cells, initialised to null without
+   thread-private inventory of two pointer cells, initialized to null without
    allocating, and fills them at thread init and at every safepoint poll
-   through the ordinary door. The overflow swaps a cell in; with both cells
+   through the ordinary allocation path. The overflow swaps a cell in; with both cells
    null it draws the critical reserve and the runtime enters reserve mode
    (clause 6). What the poll asks is the null cell itself rather than a flag a
    draw sets, so a thread whose fill at init was refused is asked again at
    every poll instead of never.
 
-    **Below the reserve is an escrow, and it cannot refuse** (2026-08-28,
+    **Below the reserve is an overflow buffer, and it cannot refuse** (2026-08-28,
     [`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md), "an enrolment
-    cannot fail"; storage amended the same day, "the escrow's floor is
-    allocator-issued"). The storage is one 64 KiB pool block — the **floor** —
+    cannot fail"; storage amended the same day, "the baseline overflow segment is
+    allocator-issued"). The storage is one 64 KiB pool block — the **baseline segment** —
     the allocator issues at thread init, before the best-effort reserve fills,
     and the thread holds for its life; the draw's refusal is the thread that
     never starts. A thread that never ran `ll_thread_init` draws its floor
-    lazily at first enrol, once, through the ordinary door, and that draw's
-    refusal aborts — the funded class's last resort, reached by one more door.
+    lazily at first enrol, once, through the ordinary allocation path, and that draw's
+    refusal aborts — the funded class's last resort, reached by one additional allocation path.
     A fixed, never-grown array in that block takes the entry by a store and an
     increment when the reserve is spent too, so this clause's three prohibitions
     hold through the last tier and **an enrolment has no store on it that can
-    fail**. The escrow drains into the queue at the first poll any door funds a
+    fail**. The overflow buffer drains into the queue at the first poll where either allocation path provides a
     segment.
-   **Whether an escrowed entry parks a slot the way a queue entry does is
+   **Whether an overflow-buffer entry defers slot reuse the way a queue entry does is
    open**: clause 7 keys the parking on a queue entry naming the entity, and an
-   escrow entry names it without being one. It is sized
+   overflow buffer entry names it without being one. It is sized
    at one segment's entries, on the same argument this clause makes for two
    cells — a whole segment cannot fill between two polls at any entry size — and
    that argument holds only because **every loop keeps the poll contract, the
@@ -880,8 +883,8 @@ the first three are what the candidate would have to be given.
    [`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md), "a runtime loop
    carries the poll contract it broke"). `ll_release_vector`'s count is the
    caller's and the compiler emits no poll inside it, so that loop polls on its
-   own backedge every half-escrow; without it a container clear enrols without
-   bound. **The escrow's capacity is an edge and the abort behind it is real** —
+   own backedge every half-buffer of registrations; without it a container clear registers candidates without
+   bound. **The overflow buffer's capacity is an edge and the abort behind it is real** —
    what the poll contract buys is that no ordinary program reaches it.
 
    **The live segment is a cell too.** A thread holds none until its first
@@ -900,7 +903,7 @@ the first three are what the candidate would have to be given.
    what it is for.
 
    **The token holder provisions the trace's swap**, at the moment of the
-   swap. A collector thread takes a block through its own ordinary door and
+   swap. A collector thread takes a block through its own ordinary allocation path and
    skips the thread for the round when the pool refuses; the in-line form,
    which starts at a legal allocation point, asks the pool, then its own
    cells, then its own critical reserve, and aborts before tracing anything
@@ -914,15 +917,15 @@ the first three are what the candidate would have to be given.
    refills the reserve before the pool sees anything
    ([`../../memory/critical-reserve.md`](../../memory/critical-reserve.md)).
    The poll's fill is what covers a thread that has not been traced.
-4. **The already-enrolled bit is set before the queue write and cleared by
-   the owner at the entity's death, and at no other point** (narrowed
-   2026-08-26). Setting it after the write lets a second decrement enrol the
-   same entity twice in the window. Clearing it at the end of a walk is the
-   acquittal the law of 2026-08-26 reserves to the owner on an exact reading
-   ([`../rc-cycle.md`](../rc-cycle.md), "Who judges, and what a trace is
-   worth"), and enrolment is edge-triggered, so a dirty pass that walked the
+4. **The candidate bit is set before the queue write and cleared by the owner
+   only when the entity reaches zero count** (narrowed 2026-08-26). Setting it
+   after the write lets a second decrement register the same entity twice in
+   the window. Clearing it at the end of a trace is a state-reducing transition
+   reserved to the owner after exact validation
+   ([`../rc-cycle.md`](../rc-cycle.md), "Speculative tracing and exact validation"),
+   and registration is edge-triggered, so a speculative trace that walked the
    root and cleared its bit has spent the entity's one enrolment and the ring
-   is unreachable garbage for ever. **A dirty reader marks the entry and
+   is unreachable garbage for ever. **A collector worker marks the entry and
    leaves the bit**, which is what keeps the entity offerable to a later
    exact reading. The bit reserves the entity that examination and the queue
    entry is its evidence, so the bit outlives the entry — and clause 8 is the
@@ -931,13 +934,13 @@ the first three are what the candidate would have to be given.
    entry re-enqueued by the owner out of the detached buffer — the owner being
    its queue's one writer, which is what makes the re-enqueue legal
    (amended 2026-08-27). **So does a root the trace marked and the owner did not
-   judge**: a mark is a proposal and only an exact reading disposes of one, so
+   validate**: a mark is a proposal and only an exact reading disposes of one, so
    an unjudged proposal is re-enqueued exactly as an unwalked root is. A partial
    collection is legal (Y14) and a dropped root is not (Y6).
 6. **Growth that cannot allocate draws on the reserve.** The thirteenth
    ruling: the enrolment does not drop, the runtime enters reserve mode, and
    it leaves reserve mode only after every queued root has been walked. **The
-   floor under that draw is clause 3's escrow** (2026-08-28): the reserve
+   floor under that draw is clause 3's overflow buffer** (2026-08-28): the reserve
    spent too, the entry still lands, and the report is the poll's — which
    collects behind an open gate, waits on the token when another thread holds
    it, and raises memory-exhausted from its own frame when the collection runs
@@ -952,84 +955,85 @@ the first three are what the candidate would have to be given.
    and that index is exactly what Y7 takes away; there is no successor and
    none is wanted, because the read side belongs to whoever holds the
    trace token and a dying mutator may not hold it. The reader applies
-   `rc-walk`'s corpse rule instead: it reads the refcount word first, and an
-   entry whose entity reads zero is **marked a corpse and passed on**, never
+   `rc-walk`'s zero-count-entry check instead: it reads the refcount word first, and an
+   entry whose entity reads zero is **marked a zero-count entity and passed on**, never
    dropped by the reader. Since clause 4's narrowing that entry is the owner's
    only signal that a parked slot may be returned, so a reader that dropped it
    would park the slot for ever
-   ([`../rc-cycle.md`](../rc-cycle.md), "Death while enrolled"); the owner
+   ([`../rc-cycle.md`](../rc-cycle.md), "Zero-count entities pending slot reuse"); the owner
    drops the entry, clears the bit and returns the slot at its exact reading.
    What this costs is a stale entry occupying queue space until the owner
    reads it, which the growth rule already pays for.
 
-8. **An acquitted root is re-offered rather than forgotten** (2026-08-26;
+8. **A candidate with a current external reference is re-offered rather than forgotten** (2026-08-26;
    residence and instant ruled 2026-08-27,
-   [`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md), "the suspects
+   [`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md), "the deferred-candidate
    buffer is the owner's, and the re-offer is a splice at the epoch's turn").
    The bit staying set is only half the backstop: with it set no decrement
-   re-enrols the entity, so an exact acquittal that forgot the root would
-   leave a ring that later becomes garbage with nothing left to name it. A
-   proven-live root therefore parks in a **suspects buffer** with its bit set
-   and is re-offered at epoch turnover, which is what turns ring-mates matured
-   apart, a wrapped stamp (Y7) and a wrong dirty proposal into bounded floating
-   garbage instead of a permanent miss (Y6).
+   registers the entity again. Therefore, exact validation that finds a current
+   external reference must retain the root. The root remains in a
+   **deferred-candidate buffer** with its bit set and is re-offered at epoch
+   turnover. This converts different candidate ages within one cycle, a wrapped
+   stamp (Y7), and an incorrect speculative result into bounded floating garbage
+   instead of a permanent miss (Y6).
 
    **The buffer is one per mutator thread, beside that thread's queue**, a
    chain of the same segments, and the owner is its only writer and its only
    reader. It takes no atomics and the trace token does not cover it, because
-   acquittal is the owner's exact reading in both forms — the in-line commit
-   and the inbox pickup — and the re-offer is a write into the queue, whose one
+   the owner makes this classification after exact validation in both forms —
+   the synchronous commit and the inbox pickup — and re-offer is a write into
+   the queue, whose one
    writer is the owner (clause 1).
 
    **Parking is the owner's disposition at that reading.** Draining a detached
    buffer, the owner sorts each entry four ways: an entry whose entity reads
-   zero drops, its bit clears and its slot returns (clause 7); a condemned
-   component goes to teardown; a root the trace did not walk, or one a dirty
-   pass only marked, is re-enqueued (clause 5); a root the exact test acquitted
-   is appended here. Under the law of 2026-08-26 the park is a reduction of
-   queue state paired with an addition, made by the owner on an exact reading,
-   which is the actor and the instant the law entitles. A dirty pass never
-   parks. The append is funded by the tail segment's free space and then by the
-   ordinary door, and by nothing the pickup itself frees: clause 3 spends those
+   zero is removed, its bit is cleared, and its slot returns (clause 7); a
+   component confirmed as unreachable enters finalization; a root the trace did
+   not walk, or one a speculative trace only marked, is re-enqueued (clause 5);
+   and a root for which exact validation finds a current external reference is
+   appended here. Moving an entry is an owner-only queue transition performed
+   after exact validation. A speculative trace never moves an entry to this
+   buffer. The append uses the tail segment's free space and then the
+   ordinary allocation path, and by nothing the pickup itself frees: clause 3 spends those
    segments in a fixed order — the cells first, the reserve's return after — and
    a segment retained here is one the reserve does not get back. Both refusing
    re-enqueues the root instead, which puts it back on the queue's own funding
    path, cells and then reserve, so what the buffer's growth can cost is a queue
    slot and never a root.
 
-   **Epoch turnover is the maturation epoch of Y7 and Y9**, `rc-walk`'s drain
+   **Epoch turnover is the candidate-age epoch of Y7 and Y9**, `rc-walk`'s drain
    epoch having been deleted with it. The counter is process-global and
    full-width, a collection's commit advances it once every N collections (N is
    Y9's dial, and YRC's 64 is the only known value), and the epoch field of the
-   header's four-bit maturation stamp carries its low two bits. **The re-offer instant is the owner's first
+   header's four-bit candidate-age stamp carries its low two bits. **The re-offer instant is the owner's first
    safepoint poll that finds the counter moved** from a thread-local
    full-width mirror recorded at the last re-offer; full-width on both sides,
    so a stamp that wraps hides no turnover. At that poll, after clause 3's
-   cells are refilled and its escrow drained, the owner links every suspects
+   cells are refilled and its overflow buffer drained, the owner links every deferred-candidate
    segment onto its own live queue, one link per segment and no entry copied,
    and records the counter. The order among the poll's three writers of the live
    queue is refill, drain, splice: the drain writes entries and the splice
    whole segments, so a splice first would put the drained entries behind a
    chain the trace has already been offered.
-   The poll is the instant rather than the owner's next judgement, because a
+   The poll is the instant rather than the owner's next validation, because a
    thread whose only garbage is a parked ring has an empty queue, and Y14 fixes
-   an in-line collection's scope at that queue: no roots, so no judgement, and
+   an in-line collection's scope at that queue: no roots, so no validation, and
    the parked ring is outside the token's coverage where no accelerator reaches
-   it either. Waiting for a judgement would therefore wait for ever, which is
+   it either. Waiting for a validation would therefore wait for ever, which is
    Y6's miss by another road.
 
-   **A suspect that dies while parked keeps its slot parked** until the splice
-   puts its entry back where clause 7's corpse rule reads it. An in-line
-   collection on the pressure path may sweep its own suspects buffer for
-   corpses first, in place, which is lawful because the owner is doing it on an
+   **A candidate that dies while parked keeps its slot parked** until the splice
+   puts its entry back where clause 7's zero-count-entry check reads it. An in-line
+   collection on the pressure path may sweep its own deferred-candidate buffer for
+   zero-count entities first, in place, which is lawful because the owner is doing it on an
    exact reading. That retention window is up to one epoch and is the widest
    this design carries, wider than clause 7's "until the owner reads it".
 
 **What is still open:** what the writer and the swapper of clause 2 agree on, so that an entry written while the
 live buffer is being detached lands in exactly one of the two buffers and in
-neither twice; the poll bound clause 3's two cells and its escrow are
+neither twice; the poll bound clause 3's two cells and its overflow buffer are
 sized against, which the ABI has not written down and which since 2026-08-28
-must satisfy `B` ≤ escrow minus stride; and the reserved critical
+must satisfy `B` ≤ overflow-buffer capacity minus stride; and the reserved critical
 area's sizing —
 [`../../memory/critical-reserve.md`](../../memory/critical-reserve.md) exists
 and records that **no** share of it is derivable today, the collector's having
@@ -1039,9 +1043,9 @@ lost its arithmetic when the header index went.
 
 > **Amended 2026-08-26.** This node asked how far a trace may be cut without
 > breaking the collection. The answer is that it may be cut arbitrarily: the
-> collector produces a shortlist and the owner judges, so a pruned, budgeted or
+> collector produces a validation batch and the owner validates, so a pruned, budgeted or
 > abandoned trace costs recall and never correctness
-> ([`../rc-cycle.md`](../rc-cycle.md), "Who judges"). What stays open is the
+> ([`../rc-cycle.md`](../rc-cycle.md), "Speculative tracing and exact validation"). What stays open is the
 > policy — how much to cut, and the density of a real traced set, which also
 > decides whether the chunked row form is ever taken.
 
@@ -1054,15 +1058,15 @@ not traverse everything at once; this is not yet clear."
 
 **Open on purpose.** The node holds the question so the half-decision is
 not lost; it interacts with Y9's trigger lever (when a collection runs) and
-with maturation (which candidates it traces), and none of the three is the
+with candidate aging (which candidates it traces), and none of the three is the
 same dial.
 
 ## Y14. The collection a mutator runs itself under memory pressure  [answered 2026-08-25; strengthened 2026-08-26: it is the exact form]
 
 > **Amended 2026-08-26.** The in-line collection is not merely admissible, it
 > is the **standard**: run on the owning thread it sees that thread's stack and
-> its own counts, so its judgement is exact and needs no second phase, no
-> verdict list and no handshake. A collector thread is an accelerator that
+> its own counts, so its validation is exact and needs no second phase, no
+> validation batch and no handshake. A collector thread is an accelerator that
 > narrows the owner's list. A mutator that cannot allocate while a collector
 > thread holds the claim — the **trace token**, as it has been named since
 > 2026-08-27 — waits rather than preempting (Edmond, 2026-08-26); waiting is
@@ -1093,11 +1097,11 @@ synchronous collection opens no deferral window, so the memory it frees is
 recyclable at once rather than parked until an epoch closes; in `ll-model` as of 2026-08-25 the
 window had exactly one opener, the concurrent protocol in the since-deleted
 `collector.rs`, and `walk::collect_cycles` was not it. It runs no handshake and
-posts no verdict, because the thread it judges on is the thread that owns what
-it judges, which is the same warrant the Phase 4 exact test already runs on.
+posts no validation result, because validation runs directly on the thread that
+owns the entities. The Phase 4 exact test already relies on the same ownership.
 And it never crosses threads, which the ladder requires in terms: "the thread
 feeling the pressure is the thread that needs the memory, its parked list and
-its verdicts are thread-local, and no other mutator is paused, signalled, or
+its validation results are thread-local, and no other mutator is paused, signalled, or
 waited on". The scope is therefore this thread's own root **queue**, and that is what is
 bounded: the closure reaching out of it stays inside the blocks of the thread
 whose claim the trace holds, so that thread's frees park and no other thread's
@@ -1129,7 +1133,7 @@ a question of scheduling.
 > covers the trace alone, and the accelerator hands off by buffer swap"). The
 > paragraph below argues the refusal to wait from a deadlock against a
 > handshake acknowledgement; the handshake is deleted design-wide, and a
-> collector thread hands its shortlist over by posting a swapped queue buffer
+> collector thread hands its validation batch over by posting a swapped queue buffer
 > to an inbox nobody waits on. In force: the word is the **trace token**, it
 > covers mark and scan and is released at the end of scan before any exact
 > test, so it is never held across user code. A thread whose allocation fails
@@ -1138,20 +1142,20 @@ a question of scheduling.
 > collect on taking the token anyway; otherwise it waits, takes the token and
 > collects. Gate before wait is also why the word needs no holder identity.
 > What survives from the paragraph below is one rung, flushing the thread's own
-> parked memory and signalling pressure: the verdicts it also names went with
-> the second phase ([`../rc-cycle.md`](../rc-cycle.md), "Who judges, and what a
-> trace is worth").
+> parked memory and signalling pressure: the validation results it also names went with
+> the second phase
+> ([`../rc-cycle.md`](../rc-cycle.md), "Speculative tracing and exact validation").
 
 **A thread that finds the token taken does not wait for it.** *(Record;
 retired 2026-08-26 — see the note above.)* It takes the rest
-of the ladder — flush its own parked memory, drain the verdicts it already owes,
+of the ladder — flush its own parked memory, drain the validation results it already owes,
 signal pressure — and then fails honestly. Waiting is what must not happen: the
 running collection may be waiting for this thread's handshake acknowledgement,
 which rides this thread's next checkpoint, so a thread parked on the token
 deadlocks against a collection parked on its acknowledgement.
 
 **Where it fires, and where it must not.** The arm/fire rule of
-[`../strategies.md`](../strategies.md#triggering-arm-vs-fire) already names an
+[`../strategies.md`](../strategies.md#collection-requests-and-triggers) already names an
 allocation slow path as a legal fire point, beside a statement boundary and
 request end, and the rule is a correctness requirement: a store lowers the old
 value's count before it overwrites the pointer, and a collection in that window
@@ -1165,10 +1169,10 @@ point.
 **What that clean point does was ruled on 2026-08-28**
 ([`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md), "an enrolment cannot
 fail"), Edmond having ruled that nothing may be lost. The poll refills the
-cells first, then drains the escrow into the queue as far as the refill made
+cells first, then drains the overflow buffer into the queue as far as the refill made
 room, then picks up its inbox — the cheap memory first, an accelerator's
 finished proposal being where collector-freed memory actually arrives. **The
-arming outlives the drain:** a poll that emptied the escrow still fires if the
+arming outlives the drain:** a poll that emptied the overflow buffer still fires if the
 refusal armed it, which is `../strategies.md`'s own rule that the refusal arms
 and the poll fires. It then reads this thread's own entry gate. An open gate
 CASes the trace token: free, the thread takes it and collects in line; held, it
@@ -1177,9 +1181,9 @@ for memory** — the token is released before any free — and it terminates
 because the token is never held across user code; the thread's own progress
 guarantee is the in-line collection it then runs. **A closed
 gate neither collects nor waits** — the thread carries on to its next poll with
-its entries in escrow, its gate being closed because the machinery that frees
+its entries in the overflow buffer, its gate being closed because the machinery that frees
 memory is what holds it. A collection that runs and loses raises
-memory-exhausted from the frame the poll holds, and the escrowed roots survive
+memory-exhausted from the frame the poll holds, and the buffered roots survive
 the raise with their bits set.
 
 **The window's edge is ruled, not assumed** (2026-08-28). The boundary between
@@ -1191,10 +1195,10 @@ precondition [`../../memory/bulk-operations.md`](../../memory/bulk-operations.md
 now states — the caller severs every traced edge to an entry before submitting
 the vector — under which an already-released entry has no surviving edge and an
 unreleased one has a count the vector's hold keeps high, which is the
-conservative skew acquittal already tolerates.
+conservative skew that an external-reference result already tolerates.
 
 **The obligation that comes with it:** the trace's arena — shadow rows, met
-bitmap, mark stack — **returns at the token's release**, before judgement and
+bitmap, mark stack — **returns at the token's release**, before validation and
 teardown, so a teardown's own decrements meet a refilled reserve rather than a
 spent one. The readership rule already makes that legal, mark and scan being
 the rows' only readers and the release coming after the last touch of one
@@ -1244,7 +1248,7 @@ collection is triggered by memory pressure: freeing an object can require more
 memory". The answer is not to stop asking the allocator but to ask it
 differently: it holds a block taken from the operating system for exactly this,
 and the in-line collection draws its mark stack and its shadow arrays through
-that door ([`../../memory/critical-reserve.md`](../../memory/critical-reserve.md)).
+that path ([`../../memory/critical-reserve.md`](../../memory/critical-reserve.md)).
 What is inadmissible is the ordinary path, which has already refused.
 
 **What it can actually serve.** A freed slot returns to its block's free list
@@ -1283,13 +1287,13 @@ The collector-side free is not among them: it was withdrawn on 2026-08-25 and
 Y5 records the withdrawal, so there is no seam left to model. Deleting the walk's specs retired the
 instrument, not the obligation, and the obligation is owed before a collector
 thread exists — the in-line form is exact by construction and needs no model
-**of its judgement** — its concurrency still does, because the traced thread
+**of its validation** — its concurrency still does, because the traced thread
 parks its frees while its own trace runs, so the racing slot return below
 happens under an in-line trace as much as under the accelerator.
 
 **Its second obligation, named 2026-08-28.** A gate-closed thread inside a long
 teardown, enrolling across many polls while the pool refuses throughout: the
-mid-run poll refills and drains but fires nothing, so the escrow fills and the
+mid-run poll refills and drains but fires nothing, so the overflow buffer fills and the
 abort behind it is what the model has to show unreachable — or show reachable,
 which would send the ruling back.
 
@@ -1299,7 +1303,7 @@ the trace token is taken, because the in-trace parking is decided by one load of
 that word and the boundary case is exactly a return already in flight. Under the
 law the worst outcome there is lost precision rather than a wrong free, and that
 is what the model has to establish rather than assume
-([`../rc-cycle.md`](../rc-cycle.md), "Concurrency" and "Death while enrolled").
+([`../rc-cycle.md`](../rc-cycle.md), "Concurrency" and "Zero-count entities pending slot reuse").
 
 ## Prior art, as of 2026-08-25
 
@@ -1311,7 +1315,7 @@ in devel and in no release. Its source was read first-hand on 2026-08-25
 striped enrolment queues are refused (Y12), while the devices against
 repeated work are taken — the epoch stamp with a per-component age and
 edge pruning (Y9), the already-enrolled bit, the adaptive start threshold,
-the separate suspects buffer for stamped survivors, and the header word
+the separate deferred-candidate buffer for stamped survivors, and the header word
 that doubles as the cell-to-index map with stale collection tags never
 swept. **scheme-rs** implements the paper's concurrent
 Σ/Δ form in Rust inside a real runtime and defers every destructor.

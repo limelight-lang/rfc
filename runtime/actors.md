@@ -69,11 +69,11 @@ value, and null is the legal no-context state, resolving through it.
 
 **That word answers which actor executes here, not which actor owns a piece of
 work**, and on a pool thread the two differ. So an interior path — the arena
-reset's destructor fixpoint, the verdict drain, the synchronous collection, the
+reset's destructor fixpoint, owner-side cycle finalization, the synchronous collection, the
 static-block teardown — takes the owner it works on as a parameter and presents
 that owner's context to any user code it runs. The mount is a fallback only
 where the executing actor is the owner by construction, which mutator-path
-death is, the queue being the only door.
+teardown is, because the mailbox is the only actor communication channel.
 
 **A crossing into foreign code carries nothing.** Neither an epoch mark nor a
 re-entry deposit is specified here; both are obligations on the owner question
@@ -84,11 +84,11 @@ code stands.
 teardown, the one step that runs `__destruct` bodies, which allocate.
 
 Three things stay open. Which per-thread structures are actor state at all —
-the weak table, the park list, the reset window, the drain gates, the journal
+the weak table, the deferred-reuse list, the reset window, the drain gates, the journal
 ring — is bounded by two facts of this document rather than by a ruling, as of
 2026-08-23: an actor's own memory is collected by the actor, at its own message
 boundary, on the thread executing it, so inside an actor there is never a second
-thread to disagree with; and the frees the park list defers are bound to the
+thread to disagree with; and the slot reuse that the deferred-reuse list delays is bound to the
 heap that issued the block, which is a thread's
 (`ll-model` `src/memory/deferred_free.rs`). What is left of the question is the
 weak table's residence, which is node E1
@@ -106,9 +106,9 @@ foreign code.
 2026-08-23 — a copied pointer to memory the actor does not own — and what stays
 undecided is what keeps that memory alive while the actor reads it, and how the
 actor's own collection is kept from following the pointer as one of its own
-edges. The FFI door is the second hole, immediately above.
+edges. Uncontrolled FFI entry is the second hole, immediately above.
 
-## The Queue Is the Only Door
+## The mailbox is the only communication channel
 
 **Decision**: all data transfer between actors (call arguments *and*
 results) goes through mailbox queues. There is no other channel; a
@@ -116,7 +116,7 @@ reference into actor memory never crosses the boundary raw.
 
 - **External call** (`$actor->submit($order)` from outside the actor's
   context) compiles to: pack the message → enqueue → if a result is
-  expected, park the calling fiber; the reply arrives as a message to
+  expected, suspend the calling fiber; the reply arrives as a message to
   the caller and resumes the fiber. Synchronous *appearance*, two queue
   operations underneath.
 - **Internal calls** (self-calls, calls on ordinary objects inside the
@@ -128,10 +128,9 @@ reference into actor memory never crosses the boundary raw.
   structure touched by multiple threads. All other memory in the
   system is serial.
 - The ordinary store barrier gains **no** actor layer: isolation is
-  not enforced per-store; it is enforced by the queue being the only
-  door.
+  not enforced per-store; it is enforced at the mailbox boundary.
 
-### Globals are not a door
+### Globals cannot bypass the mailbox
 
 References into actor memory must not leave through global state
 either: storing into a global variable, a static property, or
@@ -173,8 +172,9 @@ so a deep copy would leave the copied cell's `target` pointing into the
 sender's arena and sharing is reserved for values with no mutable state.
 An object that is the **target** of a weak reference may not be moved:
 the move is a pointer handoff, and the entity would leave while its
-subscription row stays in the sender's table. Pack time reads flag 7,
-`HAS_WEAK_REFERENCES` ([../model/classes.md](../model/classes.md#flags-layout)),
+subscription row stays in the sender's table. Pack time tests
+`HAS_WEAK_REFERENCES` (currently flag bit 12;
+[../model/classes.md](../model/classes.md#flags-layout)),
 and falls back to the deep copy, whose result is a new entity with no
 subscriber. Decided 2026-08-23 ([../dev/DECISIONS.md](../dev/DECISIONS.md)).
 
@@ -217,106 +217,37 @@ copy remains the runtime fallback for what analysis could not prove.
   request arena ([arenas.md](../model/memory/arenas.md)) is the
   special case this design generalizes.
 
-## Per-Actor Collection at Message Boundaries
+## Collection at message boundaries
 
-Between two messages an actor's stack is empty and its state
-consistent: **message boundaries are natural safepoints**. Cycle
-collection for an actor's arenas runs there:
+Between two messages, an actor has no active message frame and its mutable state
+is consistent. A message boundary is therefore a natural **consistent point**
+at which the owning thread may run synchronous collection.
 
-- no poll safepoints inside actor code at all;
-- "pause" means the actor picks up its next message slightly later;
-  other actors never notice (stop-the-actor, not stop-the-world);
-- the collection scope is one actor's arenas, small by construction.
+This observation does not yet define per-actor cycle collection:
 
-The same bet is measured elsewhere. Iso collects each request's objects
-privately, on the premise that object lifetimes are tied to request
-lifetimes and that most objects never leave the request that allocated
-them, and it beats OpenJDK's G1 by 32% and 22% in execution time in a
-modest heap ([Qiu and Blackburn, PLDI 2025](https://www.steveblackburn.org/pubs/papers/iso-pldi-2025.pdf)).
-Its corollary of the Doligez-Leroy-Gonthier invariant applies directly to
-an actor's arena: only the thread that allocated a private object can
-publish it, since no other thread knows the object exists.
+- `rc-cycle` traverses only the cycle-collected heap and treats arena entities as
+  external. A reference cycle entirely inside a long-lived actor arena therefore
+  remains until arena reset under the current design.
+- Candidate queues and trace tokens are per mutator thread, while actors may
+  migrate between pool threads. The RFC does not yet specify how candidate state
+  follows an actor or how it is transferred safely.
+- The deleted `rc-trace` and `rc-satb` designs used actor handshakes and
+  per-actor collector selection. Those mechanisms are historical and are not
+  part of the `rc-cycle` design of record.
 
-This delivers the Erlang pause story through the existing `rc-trace`
-machinery, and shrinks the role of concurrent SATB
-(../model/gc/satb.md) to what remains truly
-shared: the general heap outside any actor.
-
-## The Global Collector Speaks Mailbox
-
-The concurrent general-heap collector (`rc-satb`,
-satb.md) never inspects a running actor. What it
-needs from one is small — the actor's roots into the general heap, and,
-for mark termination, the actor's SATB buffer — and both travel the
-same road as everything else: **a system message in the mailbox**
-(prior art: Pony's ORCA, whose whole GC protocol is actor messages).
-
-- The collector enqueues a handshake message; the actor handles it at
-  its next message boundary — stack empty, state consistent, the moment
-  the actor itself knows is safe — flushing its SATB buffer in the
-  reply. Mark termination = every actor has replied. A parked actor is
-  woken by the message like by any other.
-- Roots travel the same road: the actor's release-at-reset list
-  ([arenas.md](../model/memory/arenas.md)) — an append-only registry of
-  every general-heap reference the arena holds — is **published in the
-  handshake reply** at the message boundary, not read out of the running
-  actor. It over-approximates (a stale entry keeps an object alive one
-  extra cycle) — safe for marking. References created after the reply
-  are covered by allocate-black plus the SATB deletion barrier; mailbox
-  contents are scannable shared structures. This keeps the marker out of
-  a running actor's memory, matching ORCA's message-based protocol
-  (above) and the cooperative-safepoint norm of production concurrent
-  collectors (Go, HotSpot, DLG). **Provisional — the root story is not
-  fully worked out; see [DECISIONS](../dev/DECISIONS.md) (2026-07-24) and
-  re-verify at implementation.**
-- The queue stays the only door — for the collector too: no poll
-  safepoints, no external inspection of a running actor's state.
-
-The residual case is a long message (a batch chewing for minutes): the
-actor reaches no boundary, and mark termination waits on it. The fix is
-not a GC-specific poll but a general **system-signal check** compiled
-into unbounded loops — one mechanism serving GC handshakes,
-cancellation, timeouts, and supervision alike (Open Questions,
-[BACKLOG](../BACKLOG.md)).
-
-## Per-Actor GC Selection
-
-**Decision**: actors may use **different collectors**. The build
-compiles in a *set* of strategies from the registry
-([../model/gc/strategies.md](../model/gc/strategies.md)); each actor
-binds one:
-
-```php
-#[Actor]                          // build's default, e.g. rc-trace
-class Api { ... }
-
-#[Actor(gc: 'none')]              // short-lived: never collect cycles,
-class RequestHandler { ... }      // death resets everything anyway
-
-#[Actor(gc: 'rc-trace', threshold: '64kb')]   // per-actor tuning
-class SessionCache { ... }
-```
-
-What this costs, split by what actually differs:
-
-- **The collector itself is free to vary.** It runs *between*
-  messages, outside any hot path: which routine (none / trace /
-  future variants) and which thresholds are per-actor metadata.
-  Erlang precedent: per-process `min_heap_size`, `fullsweep_after`.
-- **Store-path differences are not free.** A strategy that changes
-  the store barrier or drops refcounting entirely (`nogc`-style
-  actors) would need actor-specialized compilation of shared code
-  (monomorphization) or a uniform store path. Open question below;
-  the first implementation mixes only collectors, not store paths.
+Consequently, this RFC does not currently promise per-actor GC selection. The
+first implementation may run the process-selected `rc-cycle` strategy at a
+message boundary only after the ownership and migration rules above are
+resolved. The blockers are recorded in
+[`dev/ALGORITHM-AUDIT.md`](../dev/ALGORITHM-AUDIT.md), B4, B5, and C3.
 
 ## Interactions
 
 - [arenas.md](../model/memory/arenas.md): the actor is the
   generalized arena owner; "outlives the request" generalizes to
   "outlives the owning context".
-- [strategies.md](../model/gc/strategies.md): strategy selection
-  becomes two-level: build selects the compiled-in set, actors bind
-  per-instance-class from it.
+- [strategies.md](../model/gc/strategies.md): the build selects the active GC
+  strategy; per-actor selection remains unresolved.
 - [static-lifetimes.md](../model/memory/static-lifetimes.md): move
   analysis powers zero-copy sends; `#[Actor]` classes give the
   analysis hard isolation boundaries it can trust.
@@ -339,7 +270,7 @@ What this costs, split by what actually differs:
   payload table and allocation-site selection are owed a re-derivation;
   the GC side of the problem is in
   [../model/gc/domains.md](../model/gc/domains.md).
-- **Sync-call deadlock**: actor A parked awaiting B while B awaits A.
+- **Sync-call deadlock**: actor A blocked awaiting B while B awaits A.
   Cycle detection on the waits-for graph, timeouts, or forbidding
   nested synchronous calls; undecided.
 - **Supervision / links**: actor failure propagation, restart

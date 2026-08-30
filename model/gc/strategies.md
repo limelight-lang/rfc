@@ -88,9 +88,9 @@ Each operation is still composed at build time from up to three layers:
 | RC operations (`retain(new)` in `store`, `release(old)` in `drop`) | ARC | in every RC-based strategy, after compiler pairing elimination |
 | Strategy hook | active strategy | only if the strategy defines one; `rc-cycle` defines none — it enrols on the release path instead |
 
-The slot is still the *only* door through which any strategy observes
+The slot is still the *only store-barrier interface* through which any strategy observes
 reference mutation; splitting the write from the release does not add a
-second door, it separates two things that were always distinct. Strategies
+second interface; it separates two things that were always distinct. Strategies
 with no hook (NoGC, pure RC, stop-the-thread tracing) contribute zero
 instructions.
 
@@ -156,7 +156,7 @@ Strategies consume, not define, the object model:
   drop → memory release). A strategy that proves an object garbage may
   free it directly instead of entering teardown. `rc-cycle` does not:
   its commit stage runs the destructors in a fixed order
-  ([rc-cycle.md](rc-cycle.md), "Cycle teardown"), which is what closes
+  ([rc-cycle.md](rc-cycle.md), "Cycle finalization and reclamation"), which is what closes
   the missing-`__destruct`-for-cyclic-garbage gap earlier strategies
   left open. A strategy that does free directly still owes the
   bookkeeping teardown would have done: above all, dropping the escape
@@ -219,21 +219,22 @@ its predecessors too; point 3 is where this strategy differs from them.
    an FFI handle — is already *counted*, so "referenced from outside" is
    **computed**, `RC − IN > 0` over what the trace reached, never
    scanned. What the trace reaches is not the heap: the candidates come
-   from the mutator, which enrols an entity at a decrement that does not
-   reach zero, and the descent stops at a mature member and at a child
+   from the mutator, which registers an entity after a decrement that does not
+   reach zero, and the descent stops at a member that has reached the traversal
+   age threshold and at a child
    outside the GC heap, and may also be cut by a budget, which is open
    ([rc-cycle.md](rc-cycle.md), `cycle/questions.md` Y9 and Y13).
    Trial deletion runs on shadow rows off the heap, so an abandoned
    trace writes nothing into any entity.
 
-The collector proposes and the owning thread judges. A collection run
-in-line on the owning thread is exact by construction and needs no
-second phase; a collector thread is an accelerator that narrows the owner's
-list, and every *reduction* of state — clearing an enrolment bit,
+The collector worker proposes and the owning thread validates. A collection run
+synchronously on the owning thread is exact by construction and needs no
+second phase; a collector worker narrows the owner's validation batch, and
+every *reduction* of state — clearing a candidate bit,
 dropping a queue entry, returning a slot — is the owner's, on an exact
 reading.
 
-### Triggering: arm vs fire
+### Collection requests and triggers
 
 Cycle collection reads refcounts against the physical object graph and
 frees what the two agree is unreachable. It may therefore run **only
@@ -253,25 +254,25 @@ section argued from the opposite order, which the composition forbids.
 
 So the trigger splits in two, and only the runtime half is fixed:
 
-- **Arm (runtime mechanics).** A decrement that does not reach zero
-  enrols the entity in its thread's root queue; a signal that a
+- **Request (runtime mechanics).** A decrement that does not reach zero
+  registers the entity in its thread's candidate queue; a signal that a
   collection is due sets a *pending* flag. Both run from inside
   `ll_release`, i.e. mid-mutation, so neither **ever runs the
-  collector** — they only record that one is due. The root queue itself
+  collector** — they only record that one is due. The candidate queue itself
   is always maintained, even when no automatic trigger is configured:
-  the collector needs it to know what to trace, and the enrolment is
+  the collector needs it to know what to trace, and registration is
   the design's whole per-operation cost. The runtime keeps one signal of
-  its own and no threshold: an enrolment that cannot grow the queue, or
-  that draws on the reserve, arms the flag
+  its own and no threshold: registration that cannot grow the queue, or
+  that uses the reserve, sets the flag
   ([rc-cycle.md](rc-cycle.md), `cycle/questions.md` Y12).
-- **Fire (compiler policy).** The collector runs only at a **clean
+- **Trigger (compiler policy).** The collector runs only at a **consistent
   point** the compiler chooses: an explicit `ll_gc_collect_cycles`, or a
   `ll_gc_maybe_collect` poll injected at a safepoint (§2) — a statement
   boundary, an allocation slow path, request end. **And one the runtime
   chooses for itself:** the backedge of a bulk loop over a caller-supplied
   count, which the compiler cannot see inside
   ([../memory/bulk-operations.md](../memory/bulk-operations.md), 2026-08-28).
-  A reentrancy guard makes any fire point safe even if reached from within
+  A reentrancy guard makes any trigger point safe even if reached from within
   teardown (a nested collection is a no-op).
 
 **The policy is the compiler's, outside the runtime model.** *Which*
@@ -300,7 +301,7 @@ thread whose allocation fails reads its own gate — the collecting flag and
 `TEARDOWN_DEPTH` — before waiting on the trace token, and a closed gate
 sends it down the pressure ladder instead; and a thread's safepoint poll
 picks up the per-thread inbox in which a collector thread leaves the
-shortlist it traced, that being how the accelerator delivers now that the
+validation batch it traced, that being how the accelerator delivers now that the
 handshake is gone ([rc-cycle.md](rc-cycle.md), "Concurrency").
 
 The allocation slow path is the one fire point the runtime owns

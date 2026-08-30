@@ -46,12 +46,11 @@ into proper RFCs when picked up.
 ## Model — remaining documents
 
 - ~~**The reserved critical memory area**~~ — written 2026-08-25 as
-  [model/memory/critical-reserve.md](model/memory/critical-reserve.md): a block
-  the allocator takes from the OS and holds, 500 KB per mutator thread, reached
-  through a second door, with the enrolment queue's growth, the mutator that
-  cannot collect and a collection's working memory as its three customers.
-  What stays open there is the figure: only the collector's share is derivable
-  today, from Y7's slice bound, and the other two wait on a workload.
+  [model/memory/critical-reserve.md](model/memory/critical-reserve.md): eight
+  64 KiB blocks (512 KiB) per mutator thread, withheld from ordinary allocation.
+  Its three users are candidate-queue growth, a mutator that cannot collect,
+  and collection working memory. The size remains an initial estimate: none of
+  the three shares has a complete workload-derived bound.
 - **The movable array** — a `#[Moved]` class may hold an array field
   (payloads without arrays are not PHP payloads), but an array does not
   declare its element types, so the class graph cannot close over them:
@@ -132,8 +131,8 @@ into proper RFCs when picked up.
   ([weak-references.md](model/weak-references.md)). Zend shipped this
   leak from 8.0 to 8.2 and fixed it in 8.3 by teaching the cycle
   collector to treat a map's key→value edges as conditional on key
-  liveness. Needs the same collector support here (both `rc-trace` and
-  `rc-walk`); until then behaviour matches PHP 8.0–8.2. Revisit when
+  liveness. Needs explicit ephemeron support in `rc-cycle`; until then behavior
+  matches PHP 8.0–8.2. Revisit when
   `WeakMap` itself is built.
 - **Enums** (PHP 8.1) — immortal singletons; mostly falls out of the
   existing model, needs a short document.
@@ -162,14 +161,11 @@ into proper RFCs when picked up.
 Raised by an adversarial review after the object-layout rework. Each
 needs a design decision, deferred deliberately.
 
-- **Torn 16-byte ValueBox read in the concurrent marker (`rc-satb`)** —
-  **resolved 2026-07-22**. A **writing lock** in the ValueBox `flags` byte (bit
-  2): `store_box` on the rc-satb path sets it, writes the payload, then
-  writes the final tag and clears it (release order); the marker skips a
-  slot whose `WRITING` bit is set (safe — the deletion barrier already
-  captured the old value). Single writer, so no CAS — plain
-  release/acquire. One extra store per boxed write, `rc-satb` only. Written
-  into satb.md, [values.md](model/values.md).
+- **Concurrent reads of 16-byte `ValueBox` slots** — the deleted `rc-satb`
+  design used a writer bit and deletion-barrier snapshot, but that protocol was
+  deleted with the collector. `rc-cycle`'s optional collector worker still
+  needs an atomic, versioned, barrier-backed, or consistent-point read protocol;
+  tracked as A1 in [ALGORITHM-AUDIT.md](dev/ALGORITHM-AUDIT.md).
 - **`escape_lose` for a thread-local static block holding an arena
   escapee** — **resolved 2026-07-22**. Static blocks get a **teardown at
   thread exit** (the counterpart of the static initializer): a per-thread
@@ -193,7 +189,7 @@ needs a design decision, deferred deliberately.
   functionality). Correction to the framing: **`thread_move` does not
   copy** — it invokes a special handler on the object that knows how to
   move itself, most likely via an **interface** (the object implements it →
-  that method is called). So its mid-move failure behaviour is whatever
+  that method is called). So its mid-move failure behavior is whatever
   that handler defines, to be designed then; revisit the `thread_move`
   entry of the lifecycle family in [classes.md](model/classes.md)
   accordingly. For `deep_clone` (a genuine copy) the direction is the
@@ -239,7 +235,7 @@ documents** (2026-07-22); what remains open is at the end.
   object, so its C memory is freed by the standard destructor path,
   including arena reset's fixpoint over tracked dying objects
   ([arena-reset.md](model/memory/arena-reset.md) Step 1). Any residual is
-  the general "arena reset runs destructors" behaviour, not FFI.
+  the general "arena reset runs destructors" behavior, not FFI.
 
 **Still open — deferred to the future interop pass, not near-term:**
 
@@ -340,11 +336,11 @@ documents** (2026-07-22); what remains open is at the end.
 - **`?float` niche via non-canonical NaN payloads** — would shrink
   `?float` back to 8 bytes; requires NaN canonicalization on stores;
   considered too subtle for phase 1 ([values.md](model/values.md)).
-- **Deferred RC / LXR-style strategy** — stack deferral, 2-bit
-  saturating counts as a future build strategy reusing the SATB
-  machinery; applies to tier-3 objects only
+- **Deferred RC / LXR-style strategy** — stack deferral and 2-bit saturating
+  counts as a future build strategy. The earlier plan to reuse `rc-satb` is
+  retired; a future proposal must specify its own snapshot/barrier machinery.
+  Applies to tier-3 objects only
   ([static-lifetimes.md](model/memory/static-lifetimes.md),
-  satb.md,
   [gc-research.md](model/gc/gc-research.md)).
 - **Level C non-counting backedges** — compiler-verified ownership
   trees where `#[Backedge]` edges carry no refcount; needs the
@@ -358,20 +354,10 @@ documents** (2026-07-22); what remains open is at the end.
   mailbox backpressure, monomorphization for store-path-divergent
   actors, actor handle representation in the value model
   ([actors.md](runtime/actors.md)).
-- **Mark termination waits on the slowest parked actor** — an actor
-  parked mid-message on I/O reaches no message boundary until the
-  operation completes, so it answers no handshake, and mark termination
-  requires every actor to have replied ([actors.md](runtime/actors.md),
-  satb.md). An actor blocked on a socket for 30 s
-  holds the marking phase for 30 s, and every other actor's SATB buffer
-  grows meanwhile. The system-signal check compiled into unbounded loops
-  does not reach this case: a parked actor executes no loop. Answering
-  the handshake at the park point instead is not free either — the
-  parked actor's stack is non-empty, so its roots would have to be
-  scanned, which is exactly what the message-boundary protocol avoids.
-  Raised 2026-08-12 while writing the execution substrate
-  (`limelight-lang/io`, `design/execution.md`), which is where the wait
-  becomes visible.
+- ~~**Mark termination waits on the slowest blocked actor**~~ — retired with
+  the `rc-satb` actor-handshake design. `rc-cycle` has no such handshake. Actor
+  migration and candidate-state ownership remain open in
+  [actors.md](runtime/actors.md).
 - **Proxy-mediated movability for cold long-lived data** — opt-in: a
   container that knows its contents are cold and long-lived (sessions,
   warm caches) has them wrapped in canonical per-object proxies at
@@ -383,13 +369,14 @@ documents** (2026-07-22); what remains open is at the end.
   rejected-alternatives section of
   [arena-reset.md](model/memory/arena-reset.md); natural companion to
   the explicit pack/optimize operation (below).
-- **SATB epoch trigger and queue overflow policy** — calibrate the
-  candidate-bytes threshold; segment size and marker backpressure
-  (satb.md).
+- ~~**SATB epoch trigger and queue overflow policy**~~ — retired with
+  `rc-satb`; `rc-cycle` trigger and candidate-queue policy live in
+  [strategies.md](model/gc/strategies.md) and
+  [cycle/questions.md](model/gc/cycle/questions.md).
 - **Periodic interruption of unbounded loops (system-signal check)** —
   loops with no provable bound get an iteration guard: a counter in
   the actor context, decrement + branch on the back-edge, on zero peek
-  for system signals (GC handshake, cancellation, timeout,
+  for system signals (cancellation, timeout,
   supervision) and reset — BEAM reduction counting. One general
   mechanism instead of GC-specific polls; counter budget TBD
   ([actors.md](runtime/actors.md)).
@@ -452,7 +439,7 @@ Four things any design has to answer, and none of them are small:
 4. **Footprint is what killed BiBOP.** One block per shape per thread: 500
    classes × 8 threads × 64 KB ≈ 256 MB of half-empty blocks. We have just
    paid for one 170x memory bug (`heap-slot-allocation.md`, fix 7a); this
-   would reintroduce the same failure through the front door. Needs a policy
+   would reintroduce the same failure through the public API. Needs a policy
    — which classes earn a shape, who decides (compiler, PGO, a runtime
    instance counter), and what the fallback to size classes looks like.
 

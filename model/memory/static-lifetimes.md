@@ -135,18 +135,19 @@ is therefore no safer an owner than any other.
 
 ### The chain rule, and the borrow as a use of its anchor
 
-Amended 2026-08-20 by ../gc/gc-horizon.md, which
-extends the rule above rather than replacing it. A heap field covers a
+The deleted GC-horizon analysis introduced the following chain rule; the rule
+is retained here independently of that collector. A heap field covers a
 borrow when the field sits on a **counted path from a root**: the anchor
 is a root by the rule above, every edge from the anchor to the borrowed
 entity is a counted heap edge, and the borrow's live range ends at the
 first point that can break either half.
 
-The extension is sound for the same reason the strict rule is. At any
-drain, a condemned component intersecting the path carries an external
-counted in-edge traceable to the root, so the Phase 4 exact test
-(../gc/rc-walk.md)
-acquits the whole path. The second case above fails not because the
+The extension is sound for the same reason as the strict rule. During exact
+validation, a candidate component that intersects the path carries an external
+counted in-edge traceable to the root, so the whole path is classified as
+externally referenced
+([../gc/rc-cycle.md](../gc/rc-cycle.md), “Speculative tracing and exact
+validation”). The second case above fails not because the
 cover is a field but because `$obj = null` removes the root, leaving the
 path with no counted in-edge from outside — which is why a store to any
 local on the chain ends the coverage.
@@ -155,11 +156,11 @@ local on the chain ends the coverage.
 below and the move rule above are both computed over the borrow's live
 range rather than over the anchor's own last syntactic use; otherwise
 the drop releases the anchor, or the move transfers it, while a borrow
-still leans on it. The points that end the coverage are enumerated in
-../gc/gc-horizon.md: a store to a
-chain local, a store through a may-alias of a path base, a release of a
-class whose purity closure is impure, an unsummarized call, and a
-checkpoint that can drain a verdict.
+still leans on it. The points that end coverage are retained in
+[`../gc/cycle/questions.md`](../gc/cycle/questions.md), Y11: a store to a chain
+local, a store through a may-alias of a path base, a release of a class whose
+destructor-effect closure is impure, an unsummarized call, and a consistent
+point that can run collection.
 
 ## Drop Point Policy
 
@@ -183,8 +184,8 @@ Beyond single-object lifetimes, the compiler classifies the *character
 of reference edges between classes* and feeds it to the cycle
 collector. Cycles are the one thing RC cannot handle
 ([../gc/strategies.md](../gc/strategies.md)); today's runtimes discover
-them by blind runtime heuristics (Zend: every non-zero decrement of any
-object is "suspicious"). Most of that suspicion is statically
+them by conservative runtime heuristics (Zend: every non-zero decrement of any
+object is a possible cycle root). Most of that candidacy is statically
 refutable.
 
 ### Level A — Acyclic classes (safe, ships first)

@@ -227,7 +227,7 @@ entry — and takes the value behind it; with two or more it shares the box, and
 a write through either container is read through the other. Duplication is the
 only event that collapses a reference. Neither `unset` of the binding, nor a
 write through the box, nor a write to a neighbouring element changes the
-element's state, which is measured behaviour rather than a choice: php 8.3.6
+element's state, which is measured behavior rather than a choice: php 8.3.6
 reports the element `reference refcount(1)` after each, and collapses it in
 `zend_array_dup_element`. `escape_copy` is not a duplication and does not
 collapse: the program stores a value across a lifetime boundary there, so the
@@ -309,13 +309,13 @@ reading forbids.)*
 
 ---
 
-## Defence against constructed collisions
+## Defense against constructed collisions
 
 The hash stage recorded the debt and named its owner: neither arm of the seed
 defends against collision flooding, and bounding the worst case is the table's
 job (`ll-model/dev/DECISIONS.md`, 2026-08-04). Rapidhash is in the family for
 which seed-independent universal multicollisions have been published, so the
-defence cannot rest on the hash being unpredictable.
+defense cannot rest on the hash being unpredictable.
 
 **What is counted**, during the insert's own chain walk, against the table's
 current state, with nothing accumulated between operations:

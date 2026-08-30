@@ -2,7 +2,10 @@
 
 ## Concept
 
-Limelight uses arena-based memory allocation. An arena is a contiguous memory region with bump-pointer allocation. Objects allocated in an arena are freed together when the arena is reset or destroyed — no per-object bookkeeping required.
+Limelight uses arena-based memory allocation. An arena is an allocation region
+backed by one or more blocks and large runs, normally using bump-pointer
+allocation. Its allocations are reclaimed together when the arena is reset or
+destroyed, so ordinary arena allocations need no per-object free operation.
 
 The number and types of arenas is not fixed. The architecture supports multiple arenas with different lifetimes and strategies.
 
@@ -50,7 +53,7 @@ anything and its kind is what routes the free — retained, a
 multi-megabyte allocation would reach the 64 KiB block pool at the
 entity's eventual death.
 
-The split is made by a door of its own. `ll_arena_alloc` reaches the
+The split uses a dedicated entry point. `ll_arena_alloc` reaches the
 bump allocator straight from the C ABI, where an entity and a byte
 buffer are the same request, so that entry point keeps refusing the size
 and the entity path is a separate one.
@@ -90,8 +93,8 @@ barrier's micro-operations ([strategies.md](../gc/strategies.md)):
 `store_ptr` / `store_box` publish the new reference and `drop` releases
 the displaced one, each composing the category barrier with the ARC
 operations and, in the `rc-satb` build, the SATB deletion barrier
-(satb.md). One door, split by slot width and by
-new-vs-old, not a second door.
+(satb.md). One store-barrier interface, split by slot width and by
+new-vs-old, not a second interface.
 
 ### The dangerous direction: longer-lived ← shorter-lived
 

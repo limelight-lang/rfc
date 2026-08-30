@@ -1,7 +1,9 @@
-# Domains — rc-walk with more than one mutator
+# Domains — historical multi-mutator proposal
 
-> **Status: proposal**, 2026-07-28. Design ahead of code; nothing here
-> is built. Scope: **threads**. Actors are not solved — see §11.
+> **Status: historical proposal**, 2026-07-28; not part of the design of
+> record. It extends the deleted `rc-walk` collector and has not been reconciled
+> with `rc-cycle`. Nothing here is built. Scope: **threads**. Actors are not
+> solved — see §11.
 >
 > What was tried and discarded on the way, and why, is in
 > [domains-rejected.md](domains-rejected.md).
@@ -73,7 +75,7 @@ Promotion here means **a copy into the GC heap, at the handover**, not
 the lazy promotion the arena reset performs. Reset promotion retains
 the arena *block* instead of moving the object, and a retained block is
 outside the region registry (nobody walks it) and has no free path at
-all — so a guest left there could never be judged and its slot could
+all — so a guest left there could never be validated and its slot could
 never be returned. This is the one place in the model where a copy is
 required.
 
@@ -190,16 +192,16 @@ coordination, and in particular:
   allocated by the adopter can read as mature to it. Open (§11).
 - **No N-ack handshake.** Only a domain itself writes to its own
   entities (I1), so its walk needs an ack from nobody else.
-- **No verdict routing, no owner field, no guest list, no census rows
+- **No validation result routing, no owner field, no guest list, no census rows
   for guests.**
 
-A frozen entity is skipped **totally** — no row, no edges, no verdict —
+A frozen entity is skipped **totally** — no row, no edges, no validation result —
 the same treatment an `FFIBox` gets today, and for the same reason:
 nothing that cannot close a ring is worth walking.
 
 - The **host** meets the slot while enumerating its own blocks, reads
   the moved bit in the header word it has already loaded, and skips.
-  Without the bit it would judge an entity another domain is using: the
+  Without the bit it would validate an entity another domain is using: the
   block is its own, and nothing else in the header says otherwise.
 - The **holder** never loads it: an edge into a block outside its
   snapshot fails the census lookup, which resolves by address alone.
@@ -260,7 +262,7 @@ header and records a row; pass 2 (`walk_edges`) goes to the recorded
 address and loads the **class pointer at +8** to find the fields — and
 performs no header read of its own. That is sound today only because
 nothing writes a slot mid-epoch: local frees park **out of band**, so a
-corpse keeps refcount 0 in bytes 0–7 and its class word intact.
+zero-count entity keeps refcount 0 in bytes 0–7 and its class word intact.
 
 A foreign free breaks it. Linking a slot into the block's cross-thread
 queue writes the "next" pointer into **the slot's own bytes 8–15** —
@@ -277,7 +279,7 @@ it writes the link — teardown drives the count to zero, and only then
 does the free run.
 
 - **Ordering.** The link write is a plain store today, racing pass 2's
-  load — undefined behaviour on every target, not only on AArch64. The
+  load — undefined behavior on every target, not only on AArch64. The
   publishing release must sit on **the link store itself**; the
   `Release` on the queue's CAS orders nothing pass 2 reads. So the
   foreign free path gains one atomic release store: cold, but a
@@ -343,10 +345,10 @@ running over that block. The header is in hand on all three paths.
 4. **B's walk** enumerates `O`, finds the pointer to `X`, and drops the
    edge because block `Z` is not in B's snapshot — *which assumes the
    per-domain enumeration §6 flags as missing; under today's global
-   snapshot `Z` is in it.* `X` is not judged.
+   snapshot `Z` is in it.* `X` is not validated.
 5. **A's walk** enumerates the slot of `X` in `Z`, reads the header,
-   sees the moved bit, skips. `X` is not judged.
-6. Nobody judges `X` — and nothing is lost, because frozen means it can
+   sees the moved bit, skips. `X` is not validated.
+6. Nobody validates `X` — and nothing is lost, because frozen means it can
    never be in a ring.
 7. B drops the last reference: `__destruct` at B, sever at B, then the
    slot to `Z`'s `remote_free`; A reissues it at its next drain, which
@@ -359,10 +361,10 @@ running over that block. The header is in hand on all three paths.
 
 Every case is answered by the same six questions: who **holds** it
 (may reference it, and buries it), who **hosts** it (whose block, who
-reissues), who **walks** it, who may **judge** it, whose executor runs
+reissues), who **walks** it, who may **validate** it, whose executor runs
 the **destructor**, and what stops the slot being reissued mid-walk.
 
-| Case | holder | host | walked / judged by | destructor |
+| Case | holder | host | walked / validated by | destructor |
 |---|---|---|---|---|
 | home-grown entity | A | A | A | A |
 | moved A → B | B | A | nobody — skipped by both | B |
@@ -440,9 +442,9 @@ Conservative, never unsound: the last four rows of the table above.
   guards stores *into* a movable type, not stores *of* a reference to
   one, so the ban needs a check at dispose exit (moved bit and a
   non-zero count) rather than at the store.
-- **A posted verdict whose member then moves.** Rung 4 posts live
+- **A posted validation result whose member then moves.** Rung 4 posts live
   components deliberately; the drain needs a rule (dropping the message
-  on a member's moved bit is the obvious one — the corpse scan already
+  on a member's moved bit is the obvious one — the zero-count-entry scan already
   loads that word).
 - **The drain-exclusivity window** is proven for one mutator
   (drain-window.md); the re-derivation is owed.
@@ -466,8 +468,8 @@ Conservative, never unsound: the last four rows of the table above.
 Not a plan — an inventory, so nobody re-derives it.
 
 - `epoch.rs` — one process-global handshake flag (the first domain to
-  ack lowers it for everyone), one ack counter, one global verdict
-  queue, one outstanding-verdict counter.
+  ack lowers it for everyone), one ack counter, one global validation result
+  queue, one outstanding-validation result counter.
 - `deferred_free.rs` — the deferral window is one process-global bool;
   the parked list is thread-local and flushed by its own thread.
 - `heap.rs::snapshot_entity_blocks` walks the **global** region

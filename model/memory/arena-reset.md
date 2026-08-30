@@ -145,7 +145,7 @@ heterogeneous at death: bump allocation places objects created together
 next to each other, so mass survivors cluster densely (a cache built in
 one loop fills whole blocks) while accidental stragglers sit alone in
 mostly-dead blocks. A single per-arena survival ratio would misjudge
-both. Instead, after the survivor trace, each block is judged by its
+both. Instead, after the survivor trace, each block is validated by its
 escaped bytes (threshold tunable, to be calibrated with real
 workloads):
 
@@ -246,7 +246,7 @@ is evacuated now or carried until its stragglers die; there is no
 Considered: redirect all remembered-set slots to a thin per-survivor
 proxy (one target pointer inside), so that a later move updates one
 pointer and objects stay movable forever — reopening the now-or-never
-door. Arena death is genuinely the one moment proxies could be
+entry point. Arena teardown is the one moment proxies could be
 introduced cleanly: no direct external references exist outside the
 remembered set, so no global read barrier would be needed. Rejected for
 the core path anyway: (1) survivors reference each other directly, so

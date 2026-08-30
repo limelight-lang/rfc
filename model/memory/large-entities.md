@@ -95,7 +95,7 @@ block header of a new kind, the entity starts at `+256`, and field
 access is unchanged because the cells are at the offsets the class
 assigned them. The walker learns one kind and visits **exactly one
 slot** in such a block; that count is the soundness rule of the previous
-section, not an optimisation, so the block's snapshot entry carries
+section, not an optimization, so the block's snapshot entry carries
 `slots = 1` and any striding of it is a defect. The precedent is
 [arena-reset.md](arena-reset.md)'s retained block, which cannot be
 strided either and is enumerated from an explicit index of its
@@ -163,7 +163,8 @@ is the hygiene every recyclable kind gets: a block re-stamped mid-epoch
 loses the identity the queue exists to preserve. For a run it is
 soundness of a stronger sort, because a run is unmapped at free while an
 epoch's snapshot still holds its address, so an unparked free leaves the
-collector reading unmapped memory rather than an intact corpse. It also
+collector reading unmapped memory rather than an intact entity awaiting storage
+reclamation. It also
 raises the queue's declared cost: `deferred_free`'s module doc bounds a
 dropped record at 64 KiB, one block, and a parked run record pins the
 whole run instead — 3.2 MB for the 200 000-property instance measured
@@ -185,17 +186,17 @@ so the population with an entirely new free path is the one that would
 lose them. All three take the new kinds, and `ll_free_large`'s default
 arm gains a `debug_assert` naming the invariant.
 
-**The request arena allocates a large entity through a door of its own,
-and `Arena::alloc` keeps its refusal.** `ll_arena_alloc` reaches
+**The request arena allocates a large entity through a dedicated entry point,
+and `Arena::alloc` retains its size limit.** `ll_arena_alloc` reaches
 `Arena::alloc` straight from the C ABI and cannot tell an entity from a
 byte buffer, which is why the bound lives there at all; a large raw
-arena allocation is what `alloc_body` is for and stays refused on that
-door. Entity allocation gets a separate arena entry point, which
+arena allocation is what `alloc_body` is for and remains unsupported on that
+path. Entity allocation gets a separate arena entry point, which
 `routing::entity_alloc_in`'s arena arm calls: below the payload it bumps
 as today, above it it allocates through the large-entity entry point and
-pushes the run into the arena's large-run log, so an unpromoted corpse
-is freed by the reset with every other run. `Arena::alloc_large` is not
-that door, because it allocates through `ll_alloc` and would stamp the
+pushes the run into the arena's large-run log, so the reset reclaims an
+unpromoted entity's storage with every other run. `Arena::alloc_large` is not
+that entry point, because it allocates through `ll_alloc` and would stamp the
 raw-buffer kind.
 
 **An arena large entity is transferred at the reset, never copied, and
@@ -211,7 +212,7 @@ run registry under its new category. The first of the four displaces
 code that runs today, and its absence is silent, so it is the one that
 owes a test — a promoted large entity whose block is checked against the
 retained registry after the reset. `carry_external_memory` is not the
-door for any of this: it dispatches on what a survivor owns *outside*
+entry point for any of this: it dispatches on what a survivor owns *outside*
 itself and an object answers `None`, so the four rules belong in the
 survivor loop, beside the block stamp they replace.
 
@@ -225,10 +226,10 @@ which was applied uniformly across the categories while the shape was
 undecided. The gate never covered `intern`, which calls `immortal_alloc`
 directly, so interned strings above one block payload exist today.
 
-**All four refusals are lifted, each on its own door.** The two heap
+**All four size restrictions are removed through their respective entry points.** The two heap
 categories and the immortal region lift their arms in `entity_alloc_in`,
 where `slot_limit` gates them; the request arena lifts through the
-entity door named two paragraphs above, while `Arena::alloc` keeps
+entity entry point named two paragraphs above, while `Arena::alloc` keeps
 refusing for the C ABI. `slot_limit` itself stays, because it is still the answer
 to what one *shared* block holds and the first clause of the invariant
 is stated in terms of it.
@@ -360,7 +361,7 @@ selected the layout as well as the semantics, and an oversize string
 needs the combination that bit could not express.
 
 **Designed, not built.** The enumerators' arm for the new kinds, the
-restated leak bound of the park queue, the request arena's entity door
+restated leak bound of the deferred-reuse queue, the request arena's entity entry point
 and its lifted refusal, the reset's four rules for a surviving run, and
 the compiler's warning at `MAX_SMALL`.
 

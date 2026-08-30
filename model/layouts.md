@@ -129,7 +129,7 @@ flags:  0-1    memory category (heap / arena / long-lived / immortal)
         13-14  destructor pending / ran
         15     free
         16-17  epoch          ┐
-        18-19  maturation age │ the collector's
+        18-19  candidate age  │ the collector's
         20-23  reserve        ┘
         24-31  free
 ```

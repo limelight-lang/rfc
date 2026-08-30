@@ -21,7 +21,7 @@ typedef struct RcHeader {
                                  //     [13] DESTRUCTOR_PENDING,
                                  //     [14] DESTRUCTOR_RAN, [15] free
     _Atomic uint8_t  collector;  // +6: bits [16-23] of the same word —
-                                 //     epoch, maturation age, reserve.
+                                 //     epoch, candidate age, reserve.
                                  //     Written by the collector, one byte
                                  //     at a time; never by generated code
     _Atomic uint8_t  reserved;   // +7: bits [24-31], free

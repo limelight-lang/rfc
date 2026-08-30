@@ -1,202 +1,162 @@
-# The critical reserve
+# Critical reserve
 
-The critical reserve is a block the memory manager takes from the operating
-system once and holds, so that work which must not fail can be served after the
-ordinary path has nothing left. It belongs to the allocator rather than sitting
-beside it: **the same allocator has two doors**, and the caller names which one
-it is entitled to. It is **per mutator thread, 500 KB**, and it has three
-customers — the enrolment queue's growth, the mutator whose entry gate is
-closed and must continue anyway, and the working memory a collection uses on
-the thread that runs it, trace and judgement alike.
+> **Status:** design of record. The design currently provisions eight 64 KiB
+> blocks (512 KiB) per mutator thread. This is an initial value, not a
+> workload-derived bound.
 
-The size is Edmond's, set 2026-08-25 (`../../dev/DECISIONS.md`), and it is a
-starting figure rather than a measured one. **No share is derivable today** —
-the one that was lost its arithmetic when the header index went — and the
-section on sizing says what each waits on.
+## Scope
 
-## The two doors
+The critical reserve is memory that the allocator withholds from ordinary
+allocations. It is intended to let a small set of runtime operations make
+progress after the ordinary allocation path returns null. The bounds required
+to prove the current size sufficient remain open.
 
-The ordinary door serves from free lists, blocks and the arena bump, and when
-it has nothing it **refuses** — returns null, which every allocation path here
-already handles. The critical door serves from the held block and refuses only
-when that block is spent too.
+The reserve belongs to the allocator and is private to one mutator thread. It
+is not a separate allocator. Call sites explicitly select either the ordinary
+allocation path or the reserve allocation path.
 
-This is what makes "ask the allocator when the allocator has just refused you"
-a coherent sentence rather than a contradiction: the refusal came from the
-ordinary door, and the critical caller was never asking through it. There is
-one allocator, one place that knows what memory the thread has, and one block
-inside it that ordinary requests cannot reach.
+The reserve has three users:
 
-Two rules keep the doors apart, and both are load-bearing.
+1. mandatory growth of the cycle-candidate queue;
+2. progress by a mutator that cannot start a collection; and
+3. temporary memory used by a collection running for that thread.
 
-**A reserve block never becomes the ordinary path's bump block.** Otherwise the
-next ordinary allocation eats the reserve and the refusal that was supposed to
-report never happens.
-[../../runtime/exceptions.md](../../runtime/exceptions.md#allocation-failure-is-an-ordinary-exception)
-states this for its own log reserve and it holds here for the same reason.
+The exception reserve described in
+[`runtime/exceptions.md`](../../runtime/exceptions.md) is separate and cannot be
+borrowed for these operations.
 
-**Entitlement is a property of the call site, not of the moment.** A caller
-goes through the critical door because it is one of the three below, never
-because memory happens to be short. A path that takes the critical door on
-pressure alone converts the reserve into ordinary memory with extra steps.
+## Allocation paths
 
-## Why it is per thread, and why nothing sits beside it
+The **ordinary allocation path** uses free lists, pool blocks, and arena bump
+allocation. It returns null when it cannot satisfy a request.
 
-The residence follows who can draw at the same instant. Two customers are
-per-thread and concurrent: every thread owns its enrolment queue
-([../gc/cycle/questions.md](../gc/cycle/questions.md), Y12), so several threads
-can need a growth allocation at once, and a thread whose entry gate is closed
-continues on the reserve rather than waiting for the trace token.
+The **reserve allocation path** may consume the protected per-thread blocks. It
+fails only after those blocks are exhausted as well.
 
-The third is per-thread too, and since 2026-08-27 it is no longer exclusive.
-The trace token serializes the **trace** and nothing else, and it is released
-before any exact test, so several owner threads can be judging and tearing down
-at the same instant and each draws for its own working memory
-([../../dev/DECISIONS.md](../../dev/DECISIONS.md), "the trace token covers the
-trace alone, and the accelerator hands off by buffer swap"). A process-global
-block would therefore be a contended residence for a per-thread load, and the
-argument that used to carry this share — one collection at a time, so one
-drawer — is retired with the clause it rested on.
+Two invariants keep the reserve available:
 
-The same split is already in force in `exceptions.md`, on the same principle:
-its exception reserve is process-global because it is drawn only while
-memory-exhausted is being raised, and its log reserve is per mutator thread.
+- A reserve block must never become an ordinary bump-allocation block.
+- Eligibility is determined by the call site, not by current memory pressure.
+  Only the three operations listed in this document may use the reserve path.
 
-## The three customers
+Allowing an arbitrary failed allocation to retry against the reserve would turn
+the reserve into ordinary memory and remove the guarantee it exists to provide.
 
-**The enrolment queue's growth.** A non-final decrement enrols a candidate and
-the queue's live segment fills. The overflow swaps in a spare segment out of a
-thread-private inventory of two pointer cells, which the owner fills at thread
-init and at every safepoint poll through the ordinary door
-([../gc/cycle/questions.md](../gc/cycle/questions.md), Y12 clause 3, ruled
-2026-08-27), so this door is reached only where a poll's refill has already
-been refused. The root is never dropped — a dropped enrolment is a garbage
-cycle no later collection can find, enrolment being edge-triggered — so the
-growth goes to the critical door (`../../dev/DECISIONS.md`, thirteenth entry of
-2026-08-25). The draw is one block, and the in-line collection's own swap draws
-here too, after the pool and after the cells; all three refusing aborts that
-collection before it traces anything. **This door refusing an enrolment does
-not refuse the enrolment**: the escrow below it takes the entry, and "When the
-reserve is spent too" says what happens next. **Reserve mode is entered by the
-draw and not by the escrow**, so a thread that reached the escrow without ever
-drawing is not in it — what that costs the mode's exit condition, which speaks
-of queued roots and not of escrowed ones, is open. What bounds the total is not the queue's eventual size
-but the mode: from the first such draw the runtime is in reserve mode, and it
-leaves reserve mode only when every queued root has been walked, so the queue
-drains while it fills.
+## Why the reserve is per thread
 
-**The mutator that cannot collect.** A thread short of memory tries to become
-the tracer, and reads its own entry gate first — the collecting flag and
-`TEARDOWN_DEPTH`. A closed gate sends it down the ladder, where it draws and
-continues to its next checkpoint; an open one lets it wait on the trace token,
-take it and trace, the wait terminating because the token is never held across
-user code ([`../gc/rc-cycle.md`](../gc/rc-cycle.md), "Concurrency"). The refusal
-to wait that stood here until 2026-08-27 was argued from a handshake
-acknowledgement riding this thread's checkpoint, and the handshake is deleted.
-The draw is bounded by what one thread allocates between two polls, the same
-quantity `exceptions.md` bounds for the log reserve and leaves to the ABI.
+Candidate queues are thread-owned, so several threads may need queue capacity
+at the same time. The trace token serializes only the trace for one owner; it is
+released before exact validation and cycle finalization. Consequently, several
+owners may validate and reclaim components concurrently. A process-global
+reserve would add contention without serializing these consumers.
 
-**A collection's working memory.** The mark stack and the shadow rows live in
-the collection's bump arena of pooled 64 KiB blocks, and the arena asks the
-ordinary door first: the in-line form has been the standard collection since
-2026-08-26, most of its runs begin with no refusal anywhere, and a full trace's
-rows are far beyond any reserve. The critical door is its fallback when the
-ordinary door refuses — on Y14's pressure path that is the first draw, the
-trigger being the refusal itself — and an arena both doors have refused aborts
-the collection rather than the process. Blocks drawn through this door return to
-the reserve at the arena's reset, abort included, so an aborted collection
-leaves the reserve full without waiting for the poll.
+The same ownership rule applies to a mutator that cannot collect: its progress
+budget is local to that thread. See [`rc-cycle.md`](../gc/rc-cycle.md),
+“Concurrency”.
 
-**The suspects buffer is not a fourth customer.** An acquitted root parks in a
-per-thread chain funded by its own tail's free space and then by the ordinary
-door, and deliberately by nothing a pickup frees, so it neither draws here nor
-withholds a block the first customer's return path would have brought back.
-Both of its sources refusing re-enqueues the root into the queue instead, which
-is that first customer again ([../gc/cycle/questions.md](../gc/cycle/questions.md),
-Y12 clause 8).
+## Reserve users
 
-## Sizing
+### Candidate-queue growth
 
-**The collector's share was derivable and is not any more.** The arithmetic
-that stood here ran on Y7's eleven-bit collection index — 2047 entities to a
-slice, a captured and a working count of four bytes each, a pointer stack of
-eight, about 32 KB a slice — and the index was withdrawn on 2026-08-25 with the
-slice bound that depended on it, then refused again on 2026-08-26
-([../../dev/DECISIONS.md](../../dev/DECISIONS.md), "the header carries a hash
-displacement, not an index" and "the shadow count is found by arithmetic from
-the address"). There is no slice and no per-entity captured count now: a row is
-four bytes in a per-block array. **How the rows are funded is settled**
-(2026-08-27, the S33.1 ruling): a bump arena over pooled 64 KiB blocks, ordinary
-door first and this door on refusal, and [../gc/rc-cycle.md](../gc/rc-cycle.md)'s
-page-by-page virtual reservation is amended out, a lazily materialised page
-having no way to report a refusal the abort path could catch. The crate builds
-this reserve as eight pool blocks, 512 KB — this document's figure at block
-granularity. On the pressure path the reserve is the collection's trace budget,
-and exhausting it aborts the collection into the retry-then-raise
-[../../runtime/exceptions.md](../../runtime/exceptions.md) already promises. The
-sixteen-blocks arithmetic that stood here priced an 8-byte row; the row is four
-bytes since the captured count went, so a smallest-class block's rows are 16 KB
-and the reserve funds about thirty such blocks, over a hundred at the mid
-classes — and how far a pruned pressure trace gets inside that is the unmeasured
-number. The other two shares remain not derivable today, and no partition among
-the three customers is built until one is.
+A non-final decrement may register an entity as a cycle candidate. Registration
+is edge-triggered: losing the entry can make a reference cycle permanently
+undiscoverable. Registration has no recoverable failure channel, and no branch
+may silently drop an entry.
 
-**The queue's share is a rate against a duration and nobody has measured it.**
-The question is not how large a thread's enrolment queue becomes but how many
-roots are enrolled while a drain runs, which is the shape `rc-walk` already
-carries for parked memory as `churn rate × epoch duration` and leaves open for
-the same reason: it needs a workload.
+The live segment first swaps in one of two spare segments held by the owning
+thread. Thread initialization and each consistent-point poll try to replenish
+those spares through the ordinary allocation path. If no spare is available,
+queue growth uses the reserve allocation path. See
+[`cycle/questions.md`](../gc/cycle/questions.md), Y12 clause 3.
 
-**The mutator's share follows the poll interval**, which the ABI has not fixed.
-`exceptions.md` states the contract it will need — a bounded number of barrier
-operations between two polls — and that contract sizes this share too.
+If reserve allocation also fails, a lifetime-held **overflow buffer** is the
+last storage tier. One pool block of baseline overflow capacity is allocated at thread
+initialization. A thread that cannot obtain this mandatory block does not
+start. If initialization was skipped, the first candidate registration obtains
+it lazily; failure on that path aborts the process because registration cannot
+be reported to application code. The buffer is finite, and the current RFC does
+not prove that it cannot fill between polls. That correctness blocker is
+recorded in [`../../dev/ALGORITHM-AUDIT.md`](../../dev/ALGORITHM-AUDIT.md), A5.
 
-## Filling, refilling, and leaving reserve mode
+The overflow buffer is not part of “reserve mode”: reserve mode begins when a
+reserve block is actually consumed. Whether overflow-buffer entries must also
+participate in the condition for leaving reserve mode is unresolved.
 
-The block is taken from the operating system when the thread is initialised,
-where a refusal already has somewhere to go: the thread's first allocation
-returns null. It is held for the life of the thread and is never returned to
-the ordinary path. The escrow's floor is the one draw of thread init whose
-refusal has nowhere to go: the thread never starts
-([../../dev/DECISIONS.md](../../dev/DECISIONS.md), "the escrow's floor is
-allocator-issued").
+The deferred-candidate buffer is not a reserve user. It grows from spare space
+in its tail and then through ordinary allocation. If both sources fail, the
+candidate is returned to the live queue.
 
-Refill happens at the safepoint poll the compiler already emits, which runs in
-a Limelight frame, so a refill that fails does the ordinary thing — reclaim,
-collect, retry, and raise memory-exhausted if that also fails.
+### Mutator progress while collection is unavailable
 
-**Reserve mode ends when the roots are walked, not when the block is refilled.**
-The two are different conditions and the walk is the load-bearing one: it is
-what makes the reserve's use bounded rather than a slow slide into a smaller
-and smaller headroom.
+After an allocation failure, a mutator checks its collection-entry conditions:
+the collecting flag and `TEARDOWN_DEPTH`. If collection is permitted, the
+mutator waits for its trace token, acquires it, and runs a synchronous trace. If
+the entry conditions prohibit collection, the mutator uses the reserve to
+continue until its next consistent-point poll.
 
-## When the reserve is spent too
+This use must be bounded by the maximum allocation volume between two polls.
+The ABI does not yet specify that bound, so this share cannot yet be derived.
 
-The runtime raises memory-exhausted, an ordinary catchable `Throwable` here
-rather than a fatal error, and it is legitimate precisely because everything
-above has already been tried and a collection has run and lost. **This answers
-for the two customers that hold a frame** — the mutator that cannot collect,
-and a collection's working memory, whose abort path raises.
+### Collection working memory
 
-**The enrolment queue holds no frame, and it is funded rather than reported**
-(2026-08-28, [../../dev/DECISIONS.md](../../dev/DECISIONS.md), "an enrolment
-cannot fail"). Below this door sits the escrow's floor — one pool block the
-allocator issues at thread init and the thread holds for life — so the entry
-lands whatever happens here. The floor's own edge is the thread that never
-starts; a thread that skipped init draws its floor lazily at first enrol,
-where refusal aborts.
-The raise is the next safepoint poll's, from a frame that has one, after that
-poll has tried a collection — **and a poll whose entry gate is closed tries
-none**: it neither collects nor waits, the thread carrying its entries to the
-next poll instead, because a closed gate means a collection or a teardown is
-already running and that is the machinery which frees memory. Nothing is
-dropped at any of those arms, which is Edmond's ruling. Constructing
-the exception draws on the exception reserve, which is a different block and is
-never lent to these three.
+A trace uses a bump-allocated scratch arena for its worklist, shadow rows, and
+visited bitmaps. The arena tries ordinary allocation first because most collections
+do not begin under memory pressure and a full trace can be much larger than the
+reserve. It falls back to reserve allocation when ordinary allocation fails.
 
-## What this document does not settle
+If both paths fail, the trace aborts and returns all scratch blocks. Blocks
+obtained from the reserve return to it when the trace scratch arena is reset,
+including on abort.
 
-The figure. 500 KB per thread was chosen before any workload existed, and two
-of the three shares cannot be derived until one does. What would settle it is a
-measurement of enrolment traffic during a drain on a real program, the same
-corpus gate several other numbers sit behind.
+The current flat shadow-row layout needs four bytes per slot. At the smallest
+size class, one touched block therefore needs about 16 KiB of rows. A 512 KiB
+reserve can fund roughly thirty such blocks, and more at larger size classes.
+This is a capacity estimate, not a proof that the complete pressure path fits.
+
+## Reserve lifecycle
+
+The allocator obtains the reserve when the mutator thread is initialized and
+holds it for the thread's lifetime. Reserve blocks never return to the ordinary
+allocation path.
+
+A compiler-emitted consistent-point poll replenishes consumed capacity through
+ordinary allocation. If replenishment fails, the normal failure sequence
+applies: reclaim, collect, retry, and then raise the catchable
+memory-exhaustion exception described in
+[`runtime/exceptions.md`](../../runtime/exceptions.md).
+
+Reserve mode ends after every queued cycle candidate has been traced, not merely
+after the allocator replenishes the blocks. This condition
+prevents continued reserve use from silently reducing the protected capacity.
+
+## Exhaustion behavior
+
+For collection working memory or mutator progress, exhaustion aborts the
+current collection attempt and eventually raises memory exhaustion from a
+runtime frame that can report it.
+
+Candidate registration may run without a frame from which to report failure. If
+the reserve path is exhausted, the entry goes to the overflow buffer. The next
+consistent-point poll tries collection before reporting memory exhaustion. A
+poll whose collection-entry conditions are closed neither collects nor waits;
+it carries the entries to a later poll because a collection or teardown is
+already active.
+
+No branch may drop a candidate entry. Filling the overflow buffer reaches the
+current process-abort edge until A5 is resolved.
+
+## Sizing evidence and open questions
+
+The 512 KiB implementation value rounds the original 500 KiB design estimate to
+eight pool blocks. It was chosen before representative workloads existed.
+
+Three measurements are still required:
+
+- candidate-registration rate during a queue drain;
+- the maximum number and size of managed allocations between consecutive
+  consistent-point polls; and
+- the number and occupancy of blocks touched by a pressure-triggered trace.
+
+Those measurements determine whether 512 KiB is sufficient and whether the
+reserve needs fixed sub-budgets for its three users. No partition is specified
+until the measurements exist.

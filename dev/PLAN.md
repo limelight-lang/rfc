@@ -98,9 +98,9 @@ for the same reason.
       Sage 2026-08-27: each consumer provisions its own swap, the either/or of
         the question being right for one consumer each. The owner keeps two
         spare segments in two pointer cells, filled at thread init and at every
-        safepoint poll through the ordinary door, because at a non-final
+        safepoint poll through the ordinary allocation path, because at a non-final
         decrement no reader exists to have provisioned anything; the token
-        holder takes the trace's spare through its own ordinary door at the
+        holder takes the trace's spare through its own ordinary allocation path at the
         swap, standing at no hot path. Accepted on the question asked; the
         terminal tier at the spent reserve, which the ruling volunteered, was
         refused and became S8.5. Final on clause 3.
@@ -109,13 +109,13 @@ for the same reason.
         queue paragraph and `model/gc/rc-cycle.md`'s "Concurrency" carry the
         halves that touch them; the ruling and both refused alternatives are the
         top entry of `dev/DECISIONS.md`. A segment is one 64 KiB pool block,
-        which is what lets either door fund one.
+        which is what lets either allocation path fund one.
       handoff: what it hands the crate. `model/PLAN.md` S34.1 can be built
         against its allocation counter, the overflow being a cell swap and the
         backstop a fixed-array pop. Three obligations come with it: the queue's
         return paths join the critical reserve's return as callers,
         `ll_thread_exit` drains the inbox and the queue beside the reserves, and
-        the spent-reserve tier needs a forced-refusal test naming which door
+        the exhausted-reserve tier needs a forced-failure test naming which allocation path
         refused once S8.5 says what that tier is.
 - [x] S8.3 Decide where the suspects buffer lives
       done: choice and reason in `dev/DECISIONS.md`, and Y12 clause 8 says
@@ -153,7 +153,7 @@ for the same reason.
         collection, and assert the stale-acquitted ring reclaimed.
       handoff: the ruling adds a third per-thread chain, so the exit obligation
         S8.2 handed the crate grows with it: `ll_thread_exit` drains the
-        suspects buffer beside the inbox, the queue and the escrow
+        suspects buffer beside the inbox, the queue and the overflow buffer
         (2026-08-28). Its entries hold their
         enrolment bits set and, by this ruling, hold slots and blocks parked, so
         a thread that exits without draining it parks them for the life of the
@@ -192,22 +192,22 @@ for the same reason.
         and the question of a record channel goes with it — there is nothing to
         record.
       Sage 2026-08-28: the ruling states the outcome, so the mechanism was
-        ruled beside it. Enrolment becomes unfailable — an escrow, a fixed
+        ruled beside it. Enrolment becomes unfailable — an overflow buffer, a fixed
         array in the thread's own queue below the reserve — and the thread
         never stops inside `ll_release`, which is unsound mid-mutation by
         Y14's own stale-edge argument. Both of Edmond's arms run at the next
         poll, behind the entry gate; a closed gate neither collects nor waits,
-        the entries being safe in escrow. Final.
-      Sage 2026-08-28 round 2: the consolidation pass found the escrow's sizing
+        the entries being safe in the overflow buffer. Final.
+      Sage 2026-08-28 round 2: the consolidation pass found the overflow buffer's sizing
         argument false for one shape — `ll_release_vector`, a runtime-owned loop
         over a caller-supplied count with no poll inside it, which a container
         clear drives — so a large clear reached the abort with memory free. The
         loop that broke the bound takes the bound: it polls on its own backedge
-        every half-escrow, and the backedge is a legal fire point under a
+        every half-buffer of registrations, and the backedge is a legal trigger point under a
         precondition `bulk-operations.md` now states. Three sentences of the
         first ruling are withdrawn, the token wait's identification with
         Edmond's second arm among them. Final.
-      handoff: closed 2026-08-28. Y12 clause 3 carries the escrow and clause 6
+      handoff: closed 2026-08-28. Y12 clause 3 carries the overflow buffer and clause 6
         its floor, Y14 carries the poll-side sequence, `model/gc/rc-cycle.md`
         and `model/memory/critical-reserve.md` carry their halves, and
         `runtime/exceptions.md` moves `ll_release` from refusable to funded —
@@ -219,16 +219,16 @@ for the same reason.
         mid-run. `model/PLAN.md` S34.7 is that repair.
       handoff: what it costs the crate. `model/PLAN.md` S34.1 shipped the
         forbidden branch — it undoes the enrolled bit and loses the edge — so
-        the replacement is owed there: the escrow, an infallible `enrol`, the
-        poll's escrow drain, and the deletion of the undo. The escrow is 8160
+        the replacement is owed there: the overflow buffer, an infallible `enrol`, the
+        poll's overflow buffer drain, and the deletion of the undo. The overflow buffer is 8160
         entries, 65 280 bytes of thread-local per thread, sized on clause 3's
         own poll argument and deliberately extravagant until the ABI writes its
         poll bound down.
-      handoff: *(storage amended 2026-08-28.)* Edmond moved the escrow's
+      handoff: *(storage amended 2026-08-28.)* Edmond moved the overflow buffer's
         storage into the allocator: one pool block issued at init, held for
         the life, its refusal the thread that never starts; the thread that
         skipped init draws lazily at first enrol, refusal aborts
-        (`rfc/dev/DECISIONS.md`, "the escrow's floor is allocator-issued").
+        (`rfc/dev/DECISIONS.md`, "the baseline overflow segment is allocator-issued").
       handoff: *(record, superseded 2026-08-28.)* This line argued from
         `runtime/exceptions.md` filing `ll_release`'s candidate buffer under
         refusable work, and calling the resulting leak "still the right trade
@@ -285,7 +285,7 @@ for the same reason.
       tier: T2 · role: Sage
       handoff: the clause-8 ruling of 2026-08-27 gave the counter its residence
         and its reader and left its writer undisciplined. Commits are not
-        serialised: the trace token is released before any exact test, so
+        serialized: the trace token is released before any exact test, so
         several owner threads judge, tear down and commit at the same instant,
         and each of them stamps entities of its own on the epoch it reads.
 - [ ] S8.9 Order a block's change of thread against the trace claim

@@ -73,9 +73,9 @@ single place a future wider string would hook into.
 third physical form would put a branch in every string operation —
 comparison, concatenation, hashing, table lookup, promotion, teardown —
 which is exactly what the two-layout design avoids by keeping `len` and
-`hash` at shared offsets. It would also spend the last free entity kind:
-the kind field is three bits and seven of eight codes are taken
-(`ll-model/src/refcount.rs`, `EntityKind`). When strings beyond 4 GiB
+`hash` at shared offsets. The four-bit entity-kind field has eight assigned
+codes and eight available codes, but assigning another code would not remove
+those hot-path branches (`ll-model/src/refcount.rs`, `EntityKind`). When strings beyond 4 GiB
 are genuinely needed, they arrive as a **separate class the programmer
 chooses** — a stream or a rope — not as a `string` that silently behaves
 differently.
@@ -151,12 +151,12 @@ anyone holding the artifact can read it. That is Java's and PHP's
 position rather than Go's, and it is why the choice is a build option
 rather than a default.
 
-**Neither position is a defence, and the table owes one.** A per-process
+**Neither position is a defense, and the table owes one.** A per-process
 seed raises the cost of hash flooding from reading a constant to mounting
 a timing attack, and no further: rapidhash descends from wyhash and
 claims no resistance to key recovery from observed collisions. Therefore
 **the hash table carries a structural backstop**: a probe-length counter
-with an escape hatch, so worst-case behaviour is bounded without
+with an escape hatch, so worst-case behavior is bounded without
 depending on a secret. Until that exists, this design has no answer to an
 attacker who supplies array keys.
 
@@ -269,7 +269,7 @@ cannot be allocated at all, and such a string is copy-on-write like any
 other. One bit cannot express that combination. `COW` means
 copy-on-write and nothing else: it also decides whether an arena entity
 is counted and whether it is copied or held when it escapes, and a
-string built out of line by size keeps all three behaviours.
+string built out of line by size keeps all three behaviors.
 
 **Code `9` means bytes outside the body, whatever the reason** — a
 compiler proof of single ownership or a size past the slot limit — and

@@ -7,7 +7,7 @@ re-invented; all of it is from 2026-07-28 unless dated otherwise.
 
 ## Whole shapes
 
-**Guests judged by their holder, found through a registration list.**
+**Guests validated by their holder, found through a registration list.**
 The receiving domain would register each arrived subtree, and its walk
 would enumerate its own blocks *plus* trace from that list, so a ring
 between an arrived payload and the receiver's own state stayed inside
@@ -17,15 +17,15 @@ node and drops the root — the node leaves the list but stays live), the
 entries are **not identity-stable** (an entry outlives the entity, the
 slot is recycled, and revalidation by address plus occupancy then walks
 the next tenant), and **re-handover** leaves the entry behind, so two
-domains judge one component and two drains race over the same
+domains validate one component and two drains race over the same
 non-atomic headers.
 
 **Mutable handover** — the moved entity stays ordinary and writable for
 its new holder. This is what the receiver would want, and it is what
 `actors.md` describes. It cannot hold the one rule: a mutable guest
 acquires edges into the holder's objects, so rings pass through it,
-so it must be judged, so it needs a census row from a block outside
-the judge's snapshot — and the judge's exact test then reads counters
+so it must be validated, so it needs a census row from a block outside
+the validator's snapshot — and exact validation then reads counters
 in memory another domain hosts. Everything that made the frozen shape
 cheap disappears at once.
 
@@ -68,8 +68,8 @@ named directly at all, so the box is not an extra layer over a
 reference — it *is* the reference.
 
 **An owner field in the entity header** (a byte in the flags word,
-free since the eager-death amendment) so a verdict could be routed to
-the holder. Unnecessary once the holder is the judge: a walk that
+free since the eager-death amendment) so a validation result could be routed to
+the holder. Unnecessary once the holder is the validator: a walk that
 reaches a guest at all is the holder's, by exclusive presence.
 
 **A hold on a moved entity's memory for as long as it is away.**
@@ -84,7 +84,7 @@ with no release point.
 bumped by non-owner operations, read before and after the test, so a
 drain could tell whether any foreign counted operation happened during
 it (a seqlock over foreign traffic, not over data). Needed only if a
-shared entity can be a member of a condemned component; it cannot,
+shared entity can be a member of a component confirmed as unreachable; it cannot,
 once shared entities are frozen and skipped.
 
 **Sending a dying moved entity home alive**, with the transfer channel
@@ -95,7 +95,7 @@ the holder may still hold — the host would become a second writer of
 those children's counters.
 
 **Refusing to move any class with a destructor.** Simple and complete,
-but it cuts by class rather than by behaviour, and `__destruct` in PHP
+but it cuts by class rather than by behavior, and `__destruct` in PHP
 is usually trivial cleanup unrelated to threads. Replaced by allowing
 `$this` writes during the entity's own teardown and forbidding
 resurrection.

@@ -41,7 +41,7 @@ predicates are mask tests and the enrolment gate is one.
 | 14 | **`DESTRUCTOR_RAN`** — `__destruct` has already run (exactly-once guard) |
 | 15 | Free |
 | 16–17 | Epoch, the collector's own. **Byte 6 has one writer**: epoch, age and reserve share it, and each is written by a byte-wide read-modify-write, so a second writer would lose the first's bits with no wider access anywhere to blame |
-| 18–19 | Maturation age |
+| 18–19 | Candidate age used by the traversal cutoff |
 | 20–23 | Collector reserve |
 | 24–31 | Free |
 
@@ -704,7 +704,7 @@ the same runs — the quiescent tracer, the drain's sever, the arena reset,
 and a concurrent collector — and they differ in how the memory is read,
 not in where the children are. A concurrent walker must read the entity's
 own words atomically, since a plain read racing a mutator store is
-undefined behaviour rather than a torn value, while a descriptor and a
+undefined behavior rather than a torn value, while a descriptor and a
 template shape are immortal and are read plainly by every walker. So the
 stride is written once and parameterized by the reader; each instantiation
 still monomorphizes to a bare loop, and the indirect call the trace never
@@ -1009,7 +1009,7 @@ mid-request is the store barrier's `drop`
   thread, because PHP runs destructors at end of life and their side
   effects must fire. Only the raw memory-free of that final teardown is
   redundant (the OS reclaims the address space regardless); the destructor
-  pass is not skipped, so observable behaviour is unchanged. Actors are the
+  pass is not skipped, so observable behavior is unchanged. Actors are the
   reserved exception above — their static state follows the actor, not the
   thread.
 
@@ -1149,7 +1149,7 @@ All names known at compile time (classes, methods, properties, interfaces) are i
 
 **Decision**: a name string constructed at runtime — `$obj->$name()`, `$obj->{$expr}`, `call_user_func` — is **canonicalized by one comparison at the boundary and never enters the immortal region**. The slow path hashes it, probes `methods` by that hash, and confirms the candidate by length plus `memcmp` against the interned key. On a match the search proceeds with the canonical interned pointer, so every path downstream still compares by pointer; on a miss it goes to `__call` or the error.
 
-**Why not the two options this replaces.** *Interning on first use* makes an append-only, never-freed, process-wide table reachable from attacker-shaped input in a long-lived worker — and in the crate as it stands it is worse than unbounded growth: `immortal_alloc` refuses nothing above one block payload, so `$obj->{str_repeat('a', 100000)}()` would terminate the worker rather than raise. It also puts a global lock on a dispatch path. *Hash-only matching* keeps the table clean but breaks the pointer-equality invariant above in the direction that cannot be detected: two distinct names sharing a 64-bit hash resolve to each other, so `$obj->$a` reads `$b`'s property. Constructed collisions in this hash family are the premise of the array table's own flood defence ([arrays-hashtable.md](arrays-hashtable.md)), so this is a reachable case, not a theoretical one.
+**Why not the two options this replaces.** *Interning on first use* makes an append-only, never-freed, process-wide table reachable from attacker-shaped input in a long-lived worker — and in the crate as it stands it is worse than unbounded growth: `immortal_alloc` refuses nothing above one block payload, so `$obj->{str_repeat('a', 100000)}()` would terminate the worker rather than raise. It also puts a global lock on a dispatch path. *Hash-only matching* keeps the table clean but breaks the pointer-equality invariant above in the direction that cannot be detected: two distinct names sharing a 64-bit hash resolve to each other, so `$obj->$a` reads `$b`'s property. Constructed collisions in this hash family are the premise of the array table's own flood defense ([arrays-hashtable.md](arrays-hashtable.md)), so this is a reachable case, not a theoretical one.
 
 **What it costs**: one `memcmp` on a path that is already the slow path, and no pointer identity for a dynamically built name — a site that dispatches the same constructed name repeatedly pays hash plus `memcmp` every time. Whether such sites are common enough to earn a per-site cache keyed on (class, name) is a question for profiling, not for now.
 

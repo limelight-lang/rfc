@@ -4,12 +4,12 @@ Garbage Collector — automatic reclamation of memory no longer reachable by the
 
 Covers GC algorithms, collection strategies, interaction with the Memory Manager, and the impact on object layout and lifetime.
 
-- [rc-cycle.md](rc-cycle.md) — **the design of record since 2026-08-25, and the only cycle collector**: on-the-fly collection from a mutator-fed candidate set, the shadow rows the trace decrements, the teardown's binding order, and the class filter; nothing built
+- [rc-cycle.md](rc-cycle.md) — **the design of record since 2026-08-25, and the only cycle collector**: decrement-triggered candidate registration, shadow-count trial deletion, exact owner-side validation, ordered finalization, and the acyclic-class filter; nothing built
 - [cycle/](cycle/README.md) — its open questions as a graph, which the work is built on
-- [strategies.md](strategies.md) — the contract every strategy plugs into: the store barrier as micro-operations, the safepoint duties, the non-moving constraint, the registry, and the arm/fire rule
+- [strategies.md](strategies.md) — the contract every strategy plugs into: store-barrier micro-operations, consistent-point duties, the non-moving constraint, the registry, and collection request/trigger rules
 - [heap-design.md](heap-design.md) — cross-strategy decisions: non-moving, the block/line heap
-- [pure-destructors.md](pure-destructors.md) — the purity ladder P0/P1/P2/NR, the transitive closure, and the hand-off drain it makes sound
-- [domains.md](domains.md) — proposal: more than one mutator — one writer per refcount, `#[Moved]` and the frozen handover, `~=`, each domain collecting itself, and the cases
+- [pure-destructors.md](pure-destructors.md) — historical destructor-effect analysis: P0/P1/P2/NR, its transitive closure, and a handoff that must be revalidated against `rc-cycle`
+- [domains.md](domains.md) — historical `rc-walk` proposal for more than one mutator; not reconciled with `rc-cycle`
 - [domains-rejected.md](domains-rejected.md) — every shape and mechanism tried for the above and dropped, with the reason that killed it, and the prior art consulted
 - [gc-research.md](gc-research.md) — research survey (ARC, Zend, Bacon-Rajan, Immix, LXR); §7 superseded by strategies.md
 

@@ -1,74 +1,78 @@
-# rc-cycle — on-the-fly cycle collection from a mutator-fed candidate set
+# `rc-cycle`: decrement-triggered cycle collection
 
-> **Status: design of record since 2026-08-25, nothing built.** The residence of
-> the shadow count, the header's layout and the division of labour between
-> mutator and collector were decided on 2026-08-26 and are below, together with
-> the trace token of 2026-08-27. `rc-trace` and `rc-walk` were deleted on
-> 2026-08-26 — before the first line of `rc-cycle`'s *code*, this document
-> having been written the day before — so until it is built **the runtime
-> collects no cycles at all** and a garbage ring is
-> retained; the old state is reachable as the branch `archive/pre-rc-cycle`. The open questions are a
-> graph: [`cycle/questions.md`](cycle/questions.md).
+> **Status:** design of record since 2026-08-25; not implemented. The runtime
+> does not collect reference cycles until this design is built. The superseded
+> collectors are available on `archive/pre-rc-cycle`. Unresolved design
+> questions are tracked in [`cycle/questions.md`](cycle/questions.md), and
+> implementation blockers found during review are listed in
+> [`../../dev/ALGORITHM-AUDIT.md`](../../dev/ALGORITHM-AUDIT.md).
 
-## What it is
+## Decision summary
 
-**The sliding view is refused, and the papers' own reading is why** (2026-08-25,
-`cycle/questions.md` Y1). The write barrier **is** the snapshot mechanism, so
-there is no barrier-free form of it, and a skipped log entry is a wrong
-collection. The counts here have synchronous customers the log cannot serve —
-the copy-on-write separation test, the `RC − IN` root identity, the exact test,
-prompt count-zero death — which refuses the count-replacing configuration
-outright, and with it the stack scan and the §4.2 root differencing that exist
-only to compensate for deferred counting.
+- A non-final reference-count decrement registers the entity as a cycle
+  candidate. A decrement to zero uses ordinary reference-counted destruction.
+- Trial deletion uses trace-local shadow counts and does not modify live
+  reference counts.
+- Candidate age prunes traversal edges at a traversal age threshold. The rule
+  never applies to a candidate-queue root.
+- An acyclic-class filter prevents instances that cannot participate in a
+  reference cycle from entering the candidate queue.
+- A collector worker may produce a speculative validation batch, but only the
+  owning mutator performs exact validation and reclamation.
+- The trace token serializes tracing of one mutator thread's blocks and live
+  candidate queue. Different owners may be traced concurrently.
 
-**What is taken instead is the paper's candidate economy over Bacon–Rajan, with
-the counts left alone.** Three parts.
+The terminology in this document follows
+[`dev/GLOSSARY.md`](../../dev/GLOSSARY.md).
 
-- **The candidate set comes from the mutator.** A garbage cycle can arise only
-  from a decrement that does not reach zero, so the entities that saw one are
-  the only ones worth examining, and a decrement to zero is freed by plain
-  counting and never reaches the collector.
-- **Trial deletion runs on a shadow count**, off the heap. Mark and scan
-  decrement a working count in a side row and leave the real count untouched, so
-  nothing a destructor depends on is ever in a torn state — and an aborted
-  collection costs **zero heap writes**.
-- **Candidates mature by age**, carried in the header's epoch stamp, and the age
-  prunes an **edge** rather than delaying a root: a member whose stamp is the
-  current epoch and whose age has reached the promote bound is read as an opaque
-  live external, and the traversal does not descend into it. The prune is
-  evaluated on the target of an edge and never on a root taken from the queue,
-  or a ring whose own root had matured would go uncollected until its epoch
-  turned. This is what makes a trace cheaper than the closure it starts from,
-  which is the whole economy: measured 2026-08-25, the subgraph reachable from a
-  median candidate root is the entire object population, 381 of 381. It bounds
-  nothing in the first collection after an epoch turns over, when every stamp is
-  stale, and it is not the only bound — a trace may also be cut by a budget
-  ([`cycle/questions.md`](cycle/questions.md), Y9 and Y13).
+## Candidate registration and trial deletion
 
-Beside them stands the class filter: a class whose declared slots cannot hold a
-reference to a kind that can close a ring cannot be a cycle member, and its
-instances never enter the set. A class is **suspect by default** and leaves the
-set only by proof, never by a run's history.
+The design keeps synchronous reference counts. Snapshot algorithms based on a
+deferred write log are unsuitable here because copy-on-write separation,
+`RC - IN`, exact validation, and prompt count-zero destruction all require the
+current count. A missed log entry could also make collection unsound.
 
-## Who judges, and what a trace is worth
+The algorithm therefore combines ordinary reference counting with the
+candidate mechanism from Bacon and Rajan:
 
-**The collector produces a shortlist of suspects, not a verdict** (Edmond,
-2026-08-26). Garbage is monotone: to obtain a reference to an object the mutator
-must read a slot that already points at it, so a ring whose every referrer is
-inside itself cannot be reached from outside and cannot be resurrected. A
-verdict of "garbage" therefore cannot be overturned by anything the mutator
-does. What can overturn it is an error of the trace, and there is exactly one
-source of error: **staleness**.
+- **Candidate registration.** A reference cycle can become unreachable only
+  after a decrement that does not reach zero. The mutator registers entities
+  that observe such a decrement. Entities whose count reaches zero are
+  destroyed immediately and do not enter the candidate queue.
+- **Shadow-count trial deletion.** Mark and scan copy each visited reference
+  count into a side row and subtract internal edges from that shadow count. The
+  live count is never modified, so aborting a trace requires no heap rollback.
+- **Age-based pruning.** The entity header stores candidate age. When a
+  non-root target has the current epoch stamp and has reached the traversal age
+  threshold, the traversal treats it as an opaque external live reference. The
+  rule applies only to edge targets, never to queue roots; otherwise a reference
+  cycle at the threshold could be skipped until the epoch changes. A trace
+  may also stop at an explicit budget. See `cycle/questions.md`, Y9 and Y13.
 
-**The counts are not blind, and this is a compiler guarantee** (Edmond,
-2026-08-26). An entity named by a local variable or held anywhere on the stack
-carries a counted `+1`, so every root the trace needs is in the counts and no
-reference is invisible to them. Elision of a retain/release pair is confined to
-a region in which no collection can fire — the enclosed region contains no
-call, no store, no release and no checkpoint (`ll-model` `dev/DECISIONS.md`,
-"The set's bound") — so the gap an elision opens is one no collector can
-observe. A dirty pass may therefore read a count that has changed since; it
-cannot read a count that was never taken.
+The age rule is a performance policy, not a completeness guarantee. In the
+first collection after an epoch change, every stamp is stale and the rule
+prunes nothing. A 2026-08-25 measurement also found that the median candidate
+root reached all 381 objects in its test heap, which is why an independent
+trace budget remains necessary.
+
+The **acyclic-class filter** excludes a class only when static analysis proves
+that none of its declared slots can contain a reference that closes a cycle.
+All other classes remain cycle-capable by default; runtime history cannot
+change that classification.
+
+## Speculative tracing and exact validation
+
+A collector worker produces a **validation batch**, not a final reachability
+decision. An unreachable reference cycle cannot acquire a new external
+reference: the mutator would first need an existing path through which to read
+one of its members. However, an off-thread trace may combine fields and counts
+from different instants. Its result is therefore only a proposal for the owner.
+
+The compiler must count every reference held in a local variable or stack slot.
+Retain/release elimination is allowed only inside a region in which collection
+cannot start: the region contains no call, store, release, or consistent-point
+poll. This ensures that exact validation cannot overlook a stack-held
+reference.
 
 Written the other way round the danger is concrete, and it is what the
 guarantee rules out. Take `$node = $ring->head` with the retain elided against
@@ -79,46 +83,42 @@ memory. Refcounting alone never has this problem, because it frees only at
 zero; a cycle collector frees at a non-zero count, which is why the covering
 obligation has to be the counted `+1` and not "someone else holds it".
 
-Two consequences, and they are the design's licence.
+Trace precision affects cost and latency, not safety: a missed cycle remains
+eligible for a later collection. A trace may therefore stop at an age boundary,
+at its work budget, or after scratch allocation fails. This statement assumes a
+memory-safe protocol for concurrent slot reads; that protocol is currently an
+open blocker, as recorded in `dev/ALGORITHM-AUDIT.md`.
 
-**The trace's precision is a cost, not a correctness property.** A component
-proposed and rejected costs the owner time; a garbage ring missed is found by a
-later collection. So the trace may be pruned by age, bounded by a budget,
-abandoned mid-way under memory pressure, or run over an inconsistent snapshot of
-the counts — none of it can make a verdict wrong. This is the freedom
-`cycle/questions.md` Y13 was looking for.
+Only the owning mutator performs **exact validation**. It re-reads current
+fields on its own thread and calculates the component's current internal edge
+counts.
 
-**Soundness rests entirely on the exact judgement, and that judgement is the
-owner's.** The owner re-reads the current fields on its own thread, so the
-staleness a dirty pass is exposed to cannot arise there.
+The **ownership invariant** applies to every state-reducing transition:
+clearing the candidate bit, removing a queue entry, and returning a slot for
+reuse are owner-only operations based on exact state. A speculative trace may
+add a candidate result but must not perform any of those transitions. Exact
+validation that finds an external reference also leaves the candidate bit set
+and re-offers the root; the bit is cleared only when the entity dies. See
+`cycle/questions.md`, Y12 clauses 4 and 8.
 
-**The law, and it is load-bearing.** Every *reduction* of state — clearing the
-enrolment bit, dropping a queue entry, returning a slot — is the owner's, and
-only on an exact reading. A dirty pass may add suspicion and nothing else. The
-bit is narrower still since 2026-08-26: an exact acquittal does not clear it
-either, and it falls only at the entity's death, the acquitted root being
-re-offered instead ([`cycle/questions.md`](cycle/questions.md), Y12, clauses 4
-and 8).
-Without the law an acquittal leaks a ring forever: take a ring A↔B with an
-external X→B. The trace captures `RC(B) = 2`, subtracts the one internal edge,
-reads 1 and acquits B as live from outside. Meanwhile X releases B — not to
-zero, and B's bit is already set, so no re-enrolment happens. The ring is now
-wholly dead, and if the acquittal cleared B's bit no decrement will ever come
-again.
+Clearing the bit after a live result would leak a cycle permanently. Consider a
+cycle A↔B with an external X→B. A trace captures `RC(B) = 2`, subtracts the
+internal edge, and finds one external reference. If X then releases B, B does
+not reach zero. Without the retained candidate bit and re-offer, no later
+decrement would register the now-unreachable cycle.
 
-**A collection run in-line on the owning thread is exact by construction**
-(Edmond, 2026-08-26). The thread's own stack is visible, and the counts are
-changed by the same thread that reads them, so the snapshot is consistent and
-the law is satisfied trivially — the owner is the reader and the reading is
-exact. There is no verdict list, no handshake, no confirmation and nothing to
-wait for. **The in-line form is therefore the standard, and a collector thread
-is an accelerator that narrows the owner's list.**
+**Synchronous collection is exact by construction.** The owning mutator can see
+its own stack and is the only thread changing the counts it validates. It does
+not need a result handoff or confirmation step. Synchronous collection is the
+required implementation; collector workers are an optional optimization that
+reduce the owner's validation work.
 
 ## Where the shadow count lives
 
-**In a per-block array, one row per slot, found by arithmetic from the address**
-— no hash, no key, and no field in the entity header. Decided 2026-08-26 after
-measuring three forms.
+Each touched heap block has a temporary array with one shadow row per slot. The
+trace derives the row from the entity address; it needs no hash table, key, or
+entity-header field. This layout was selected on 2026-08-26 after measuring
+three alternatives.
 
 The entity heap is already block-structured, so the address carries the answer:
 the block is `p & !BLOCK_MASK`, and the slot is
@@ -136,65 +136,61 @@ ordinary probe. On a 12 GiB heap of classes 32/64/128/256 at half occupancy the
 rows cost 717 MiB against the hash's 2.0–4.0 GiB — the hash's upper figure being
 what its doubling costs when 94 million rows land just past a load factor of 0.7.
 
-**The formula does not cover every population of the GC heap, so the trace
-dispatches on the block's kind** — it holds the block header before it can reach
-any row, so the dispatch is free. An ordinary entity block goes by arithmetic. A
+The formula does not cover every population of the cycle-collected heap, so the
+trace dispatches on the block kind after loading its header. An ordinary entity
+block uses the arithmetic lookup. A
 **retained** block — promoted arena survivors, filled by a bump allocator, mixed
 sizes, no stride — goes by binary search over the occupancy index, so
 `memory/retained.rs` outlives the deletion of `rc-walk` that built it. A **large
 entity** holds one row in its own block header's free tail. An arena block is
 never entered: the descent stops at any child outside the GC heap and treats it
-as an external live reference, because a ring through the arena is broken by the
-arena's own reset.
+as an external live reference, because a reference cycle through the arena is
+broken by the arena's own reset.
 
 **A large entity's block kind does not say which heap it belongs to, and the
 category is what does** (found while building the dispatch, 2026-08-27). An
 arena entity past one block payload is allocated by the same allocator a heap
 one is and carries the same block kind, so a dispatch that took the kind for
-proof would descend into an arena entity — and a component condemned through it
-would be freed by the teardown and again by the arena's reset, which still holds
-the run in its log. The other two populations need no such test: an entity block
+proof would descend into an arena entity. A component confirmed as unreachable
+through it would be freed by finalization and again by the arena's reset, which
+still holds the run in its log. The other two populations need no such test: an entity block
 and a retained block hold entities of the collected heap alone. Promotion
 rewrites a surviving run's category in place and deliberately leaves its kind
 unchanged, so the category is the word that is right on both sides of a reset.
 
-**The rows are not zeroed greedily.** A zero row means "not met in this
-collection", so a per-slot array would have to arrive zeroed — and that is paid
-for every slot of a touched block rather than for the ones visited. Measured for
-the 717 MiB case: 41–76 ms to zero already-mapped memory, 178–196 ms to
-first-touch fresh memory, and it is asked for on the path where an allocation
-has already failed. So the "met" flag leaves the row for a **bitmap of one bit
-per group of eight slots**, and only the bitmap and the touched group are
-zeroed: 1.4 ms instead, and the rows are funded per touched block rather than
-per heap. The collection's arena bump-allocates a block's `slots × 4` rows with
-their met bitmap at the block's first touch, unzeroed, from pooled 64 KiB
-blocks — the ordinary door while it serves, the critical door of
-[`../memory/critical-reserve.md`](../memory/critical-reserve.md) when it has
-refused — so the footprint follows the touched-block list and the zeroing
-follows the trace, while a block the trace never enters costs nothing. The
-page-by-page virtual reservation that stood here is withdrawn (2026-08-27): a
-page that fails to materialise cannot report a refusal, and on the path that
-runs because memory is short the failure would be the process's death rather
-than the collection's abort, so growth is an allocation that can return null and
-a refused growth aborts the collection, which returns every block it holds. What
-the bump form pays for that is the whole row array of a sparsely touched block —
-up to 16 KB for one traced entity at the smallest class — which is the
-twenty-fourth entry's old objection back at half its size, accepted and bounded
-by the touched-block list. The row is then two bits of colour and thirty of
-working count, with saturation reading as "external references exist,
-conservatively live".
+**Rows are initialized lazily.** A zero row would otherwise have to mean “not
+visited in this collection”, forcing initialization of every slot in a touched
+block. In the 717 MiB case, eager initialization took 41–76 ms for already
+mapped memory and 178–196 ms on first touch. The selected layout stores visited
+state in a bitmap with one bit per eight-slot group and initializes only the
+bitmap and visited groups; the same benchmark took 1.4 ms.
+
+At a block's first visit, the trace scratch arena bump-allocates `slots × 4`
+bytes of rows plus the visited bitmap from pooled 64 KiB blocks. It uses the
+ordinary allocation path first and the reserve path from
+[`critical-reserve.md`](../memory/critical-reserve.md) after ordinary allocation
+fails. Allocation returns null on failure, allowing the trace to abort and
+return all scratch blocks. The rejected virtual-reservation alternative could
+instead fault while materializing a page and could not report that failure to
+the trace.
+
+This layout allocates the complete row array for each touched block, even if the
+trace visits only one slot: up to 16 KiB at the smallest size class. The cost is
+bounded by the number of touched blocks. Each row contains two color bits and a
+30-bit working count.
 
 **Saturation is absorbing, and that is a rule for every stage that touches a
-row** (2026-08-27). A saturated count is a floor rather than a total — "at
+row** (2026-08-27). A saturated count is a lower bound rather than a total — "at
 least 2^30 − 1 references", the trace having no room to say how many — so
-subtracting an internal edge leaves it saturated and no scan may condemn it.
+subtracting an internal edge leaves it saturated and the scan must classify it
+as conservatively live.
 Without the rule the entity above the field is the one the collector is most
 likely to free wrongly: a refcount of 2^31 meets at the bound, and a trace that
 finds 2^30 internal edges walks the row to zero while a billion external
 references stand. That heap is 16 GiB at the smallest size class, which is a
 large machine rather than an impossible one. The alternative — a wider row —
-was refused with the row's own width, and the alternative of a second word for
-"exact or floor" is the captured count this design does not keep.
+was rejected with the row's width, and a second word for “exact or lower bound”
+would reintroduce the captured count this design deliberately omits.
 
 **The chunked form is the recorded alternative, not the choice**: rows in groups
 of eight behind a two-byte directory entry per group. It wins only where the
@@ -203,80 +199,74 @@ crossing is `1 − 1/√2` — and it costs a further dependent load on every ed
 a full trace it writes *more* than the flat array, 762 MiB against 717, because
 every chunk is zeroed at first use too.
 
-## Death while enrolled
+## Zero-count entities pending slot reuse
 
-An entity can reach count zero while a queue entry still names it, and the entry
-cannot be withdrawn: the index that made withdrawal possible under `rc-trace` is
-deleted with the rest of its machinery.
+An entity can reach a zero reference count while a candidate-queue entry still
+contains its address. The current design has no index with which to remove that
+entry immediately.
 
-**Death splits in two.** Everything user code can observe happens at once, on
-the mutator: weak cells are cleared first, then `__destruct` runs, then children
-are released. What is deferred is only the slot: it stays parked while a queue
-entry names it, with the header readable — count zero, enrolment bit still set.
+The owning mutator still performs all observable teardown at once: it
+invalidates weak references, invokes `__destruct`, and releases child fields.
+Only storage reuse is delayed. The slot remains readable with count zero and
+the candidate bit set until the owner removes every outstanding identifier.
 
-**The owner un-parks, per the law.** A dirty reader of the queue may mark an
-entry as a corpse and pass it on; clearing the bit and returning the slot belong
-to the exact judgement. That closes the window in which `ll_release` has
-published the zero but the death path has not yet begun, during which a slot
-returned by a reader could be handed back out under a running destructor.
+A collector worker may label the queue entry as a zero-count entry, but it must
+not clear the candidate bit or return the slot. Owner-only reuse prevents the
+slot from being allocated to a new entity while the old entity's destructor is
+still running.
 
-**Two parkings, with different windows.** The one above is between collections,
-and its widest form is a corpse whose entry has been parked in the suspects
-buffer of [`cycle/questions.md`](cycle/questions.md), Y12 clause 8: the entry is
-not read again until the epoch turns, so the slot stays parked that long unless
-an in-line collection sweeps the buffer for corpses first.
-The other is inside a **trace**: a thread's frees park while the trace token is
-held by any thread but itself and return when that thread next observes it free,
-which is one load on the slot-return path, because a row is keyed by the slot
-and a reused slot would inherit the dead occupant's met bit and working count.
-The condition is per thread, and it can be: a trace's closure stays inside the
-blocks of the thread it claimed, so a thread whose blocks no live trace claims
-parks nothing. A slot returns when both windows are shut, and `used` falls at the return rather
-than at the parking — otherwise a block empties with a corpse inside it and goes
-back to the pool. For the in-trace window that return instant is the token's
-release, so a block may go back to the pool while a teardown still runs, which
-is correct: the rows it could have collided with are dead by then.
+Two conditions can delay reuse:
 
-**Enrolment requires the GC-heap category**, which the release path gets for
-free: category zero, kind below eight, class not acyclic, ownership not proven
-and not already enrolled are all "these bits are zero", so the whole gate is one
-`flags & 0x723 == 0`. Without the category clause an arena entity in the queue
-outlives an arena reset and the corpse rule reads the count of the slot's next
-occupant.
+1. A queue or deferred-candidate-buffer entry still names the entity. Such an
+   entry may remain until the candidate epoch changes, unless a synchronous
+   collection removes zero-count entries earlier.
+2. A trace token protects scratch rows indexed by slot. Reusing a slot before
+   the trace stops accessing those rows could associate the previous entity's
+   visited bit and shadow count with the new occupant.
 
-## Cycle teardown
+The owner must return a slot only after both conditions are false, and block
+occupancy must decrease at that return rather than at zero-count teardown. The
+exact owner/worker handoff that establishes this instant is unresolved; the
+previous text gave incompatible owner-observed and token-release instants. See
+`dev/ALGORITHM-AUDIT.md`, issue A3.
 
-**The order below is binding.** It holds in the in-line form and in the
-accelerated one, and no later rewrite of the commit stage may reorder it. It is
-written here because it cannot be re-derived from the counts: every step but
-the first exists to close a window that the exact test does not see, and each
-window was found by a defect rather than by reasoning. The text is transcribed
-from `rc-walk`'s commit stage — `collect_cycles` and `drain_confirmed` in
-`ll-model`'s `walk.rs` — before that code is deleted.
+Candidate registration applies only to the cycle-collected heap category. The
+fast-path gate combines category zero, a cycle-capable entity kind, an eligible
+class, unproven ownership, and a clear candidate bit as
+`flags & 0x723 == 0`. Without the category test, an arena reset could reuse a
+slot while a stale queue entry still names it.
 
-The teardown runs on the owning thread, on a component the owner has confirmed.
+## Cycle finalization and reclamation
 
-1. **The exact test, per component, opening with the corpse rule.** A member
-   that reads count zero died ordinarily since it was proposed — its teardown
-   is complete and its slot parked — and the component is dropped whole before
-   any field is traced or any guard written. A dropped component carries no
-   duties: acquittal leaves nothing to clean.
+The owning mutator runs the following sequence for each component that exact
+validation confirms as unreachable. The order is normative and applies to both
+synchronous collection and batches proposed by a collector worker. Reordering
+the steps can expose a weak reference, run teardown twice, or reclaim storage
+while user code still holds a reference.
 
-2. **Guard every member of every confirmed component**, `+1` each, before any
-   user code runs. A release from inside any destructor then stops at a guard
-   instead of at zero, so no member starts an ordinary death inside the
-   teardown. The guard is needed on a single thread; it has nothing to do with
-   concurrency.
+1. **Check for zero-count members, then validate the component.** If any member
+   already has count zero, ordinary reference-counted teardown has completed
+   and its slot is awaiting reuse. Remove that component from the current
+   validation batch before tracing fields or adding guard references. The
+   disposition of other candidate roots in such a component is unresolved; see
+   `dev/ALGORITHM-AUDIT.md`, issue B1.
+
+2. **Add a guard reference to every member of every confirmed component**
+   (`+1` each) before any user code runs. A release from inside any destructor
+   then stops at a guard
+   instead of at zero, so no member starts ordinary zero-count teardown during
+   cycle finalization. Guard references prevent re-entrant teardown; they are
+   not a concurrency mechanism.
 
 3. **Null every weak cell naming any confirmed member — all members of all
    confirmed components, before the first destructor.** A weak load is the one
    channel that can hand a destructor a reference the counts do not account
    for. Per-member nulling interleaved with per-member teardown is what this
-   forbids: in a condemned ring A↔B, `B::__destruct` would load the cell naming
-   A, receive a strong reference, and A's slot would be freed under it. CPython
+   forbids: in an unreachable cycle A↔B, `B::__destruct` would load the cell
+   naming A, receive a strong reference, and A's slot would be freed under it. CPython
    closes the same window in PEP 442, and Zend nulls at the top of
    `zend_object_std_dtor` for the same reason
-   ([`../weak-references.md`](../weak-references.md), "Cycle death").
+   ([`../weak-references.md`](../weak-references.md), "Death notification").
 
 4. **Run each pending `__destruct` exactly once.** User code may store,
    release, allocate or resurrect; a store retains normally. The kind gate here
@@ -284,17 +274,18 @@ The teardown runs on the owning thread, on a component the owner has confirmed.
    it — a lazy entity carries a class pointer, and its destructor would
    otherwise never run.
 
-5. **Re-verify with the guard discounted** (`RC − 1 = IN`), and only when a
-   destructor ran **anywhere** — one flag for the whole commit, not one per
+5. **Repeat exact validation with the guard discounted** (`RC − 1 = IN`), but
+   only when a destructor ran **anywhere** — one flag for the whole commit, not one per
    component, so the skip owes nothing to any reasoning about what a destructor
-   in one component can reach in another. Without the discount the guards
-   themselves acquit every component and nothing is ever freed. A component
-   that fails the re-verify is abandoned: the guards come off through the
-   counted release, and the survivors carry true counts with their destructors
-   behind them.
+   in one component can reach in another. Without the discount, guard
+   references make every component appear externally reachable. When
+   revalidation finds an external reference, remove the guards through counted
+   release and retain the surviving entities with their destructors already
+   invoked.
 
-   This step is what the shortlist framing does not remove. Garbage is monotone
-   only while no reference to the component exists outside it, and step 4 hands
+   This step remains necessary even when a collector worker produced the
+   validation batch. Unreachability is monotonic only while no reference to the
+   component exists outside it, and step 4 hands
    user code `$this` — a reference the teardown itself created.
 
 6. **Sever, un-guard, then drop the deferred external children.** Severing
@@ -307,140 +298,129 @@ The teardown runs on the owning thread, on a component the owner has confirmed.
    barrier's drop settles an arena escapee's hold count exactly as member
    teardown would have.
 
-**Two consequences, accepted rather than engineered away.** A component
-acquitted at step 5 keeps its nulled cells: nulling is irrevocable, and a
-resurrected object's weak references stay null, which is where this design
-diverges from PHP's. And a weak cell that a destructor creates on a condemned
-member during step 4 is not covered by step 3; it is cleared by the free-time
-notification on the header's weak bit, at step 6.
+Two consequences are part of the specified behavior. A component retained at
+step 5 keeps its invalidated weak references; unlike PHP, this design does not
+restore them after resurrection. A weak reference created during step 4 is not
+covered by step 3, so the storage-reclamation notification clears it at step 6.
 
 ## Concurrency
 
-One **trace** at a time **per mutator thread**, and the claim is that thread's
-rather than the process's (2026-08-29, `dev/DECISIONS.md`, "a trace stays inside
-the blocks of the thread it claimed"). A trace never reaches another thread's
-blocks, because a transfer leaves no reference behind: the graph arriving in a
-thread holds no reference to an object that stays in the source, so no thread
-names an entity living in another thread's blocks (`dev/DECISIONS.md`, "a
-transfer leaves no reference behind"; [`../classes.md`](../classes.md), the
-lifecycle family). So the rows two collectors touch are disjoint, and several
-collectors run at the same time on different threads. The **trace token** is one word per thread — the scope is the
-2026-08-29 entry's, the mechanics the 2026-08-27 one's — entered by CAS from
-free and released by one store with release ordering (`dev/DECISIONS.md`, "the trace token covers the trace alone, and
-the accelerator hands off by buffer swap").
+At most one trace may run for a given mutator thread. A per-thread **trace
+token** enforces this rule: the tracer acquires it with compare-and-swap and
+releases it with a release store. Different mutator threads have different
+tokens, so their traces may run concurrently only if their reachable blocks are
+disjoint.
 
-**What the token covers, and when it is released.** It covers mark and scan and
-the reading of the live root queues that feed them. Its holder releases it at
-the end of scan — after the last touch of any shadow row, any met-bitmap word
-and any live queue, and **before the exact test of any component**. Everything
-after that store runs untokened: the corpse rule, the guards, the weak-cell
-nulling, the destructors, the re-verify, the sever, the frees, the slot returns,
-the bit clearings. There is one release instant and not one per form, and a code
-path of a collection that touches a shadow row, a bitmap word or a live queue
-after the release store is a defect rather than a reading.
+The intended disjointness proof assumes that transferring an object leaves no
+reference in the source thread and that no thread points into another thread's
+blocks. That proof is currently incomplete for block adoption, moved objects,
+actor sharing, and FFI entry. These are correctness prerequisites, not optional
+optimizations; see `dev/ALGORITHM-AUDIT.md`, issues A4, B3, B4, and C3.
 
-**The release is also when the trace's arena returns** — the shadow rows, the
-met bitmap and the mark stack, before judgement and teardown rather than after
-(2026-08-28, `dev/DECISIONS.md`, "an enrolment cannot fail"). What requires it
-is the enrolment's floor: a teardown's own decrements enrol, and they must meet
-a refilled critical reserve rather than the spent one the collection left. What
-makes it legal is the readership rule below, the rows having no reader after
-the release. Which **fund** the exact test and the re-verify draw from is settled — the
-collector's reserve, as the readership rule below says. What has no name is the
-**vehicle**: the arena was that fund's only allocator and it has gone back at
-the release.
+The token covers mark, scan, and reads of the live candidate queue. The tracer
+releases it after its final access to any shadow row, visited bitmap, or live
+queue and before exact validation. Zero-count-entry handling, guard references,
+weak-reference invalidation, destructors, revalidation, edge severing, storage
+reclamation, slot return, and candidate-bit clearing all run without the token.
+Any access to trace scratch data after release is a defect.
 
-**The release obliges a readership rule.** Mark and scan are the only readers
-and writers of the shadow rows and the met bitmap. The exact test and the
-teardown's re-verify compute `IN` by iterating a component's current fields
-against the component's own member list, in collection-private memory from the
-collector's reserve, never through the shared rows. Without that clause the rows
-would outlive the token that protects them and the release instant would be a
-lie.
+The trace scratch arena is also reset at token release so that finalization can
+use a replenished critical reserve. This creates an unresolved lifetime
+requirement: exact validation and revalidation still need component membership
+data after the trace arena is gone, but no allocator or ownership transfer for
+that data is specified. See `dev/ALGORITHM-AUDIT.md`, issue A6.
 
-**Gate before wait.** A thread whose allocation fails reads its own entry gate
-first — the collecting flag and `TEARDOWN_DEPTH` — and goes down the pressure
-ladder when the gate is closed, because it could not collect on taking the token
-anyway. Otherwise it waits on the token (Edmond, 2026-08-26), takes it and
-collects. The wait terminates because the token is never held across user code:
-a trace is synchronous, runs no destructor and draws its working memory through
-the reserve door, so it asks nothing of another thread and takes no user lock.
-Gate before wait is also what makes a thread waiting on its own token
-impossible, which is why the word carries no holder identity.
+Mark and scan are the only readers and writers of shadow rows and visited
+bitmaps. Exact validation and teardown revalidation must compute `IN` by
+iterating current fields against a retained component-member list; they must not
+read released trace rows.
 
-A collector thread that finds the token held retries in a later round, naming no
-thread; one that finds a thread's inbox unconsumed skips that thread for this
-round. The candidates keep their bits, so both skips cost nothing.
+**Check collection eligibility before waiting.** After allocation failure, a
+thread reads its collecting flag and `TEARDOWN_DEPTH`. If either prohibits
+collection, the thread follows the memory-pressure fallback instead of waiting
+for a token it cannot use. Otherwise it waits, acquires the token, and traces.
+A trace runs no user code, takes no user lock, and releases the token before
+destructors, so this wait is intended to be bounded.
 
-**How a collector thread's shortlist reaches an owner.** The token holder swaps
-a thread's live queue buffer for a spare and traces the detached buffer, marking
-entries; at the release it posts the marked buffer to a per-thread inbox of
-capacity one, and the owner reads it at its own checkpoint. **The spare is the
-holder's own**, taken through its ordinary door at the swap, and a refusal
-there skips that thread for the round; the in-line form asks the pool, then the
-owner's two spare cells, then the owner's critical reserve, and aborts before
-tracing when all three refuse ([cycle/questions.md](cycle/questions.md), Y12
-clause 3). Nothing waits on the
-pickup. At it the owner disposes of every entry four ways — a corpse's slot
-returns, a condemned component goes to teardown, a root the trace did not walk
-or marked and the owner did not judge is re-enqueued, and one the exact test
-acquitted parks in the owner's suspects buffer until the epoch turns
-([cycle/questions.md](cycle/questions.md), Y12 clauses 5, 7 and 8) — all of
-which it may do as its queue's one writer. The wait
-graph therefore has one edge kind — a waiter on the token — and no cycle.
+A collector worker that finds the token held or the owner's result inbox full
+skips that owner until a later round. Candidate bits remain set.
 
-While a trace is in flight, the frees of the **traced** thread park, and no
-other thread's do: the closure stays inside the blocks that thread owns. That is
-the floating garbage every concurrent collector pays, bounded by one trace and
-charged to one thread.
+### Worker-to-owner handoff
 
-**What the claim does not cover is a block that changes threads.**
-`ll-model`'s `abandon_all` nulls a block's owner at thread exit and `adopt`
-gives it to another thread, without a reference crossing anything, and a trace
-may hold rows for that block while it happens. The ordering that closes it is
-owed (`dev/PLAN.md` S8.9).
+A collector worker swaps the owner's live candidate-queue buffer for a spare,
+traces the detached buffer, and posts the marked buffer to a capacity-one
+per-thread inbox at token release. The owner processes it at a
+consistent-point poll. Nothing waits for pickup.
 
-## What it trades
+The worker obtains its spare through ordinary allocation; failure skips that
+owner for the round. Synchronous collection tries the pool, the owner's two
+spare segments, and then the critical reserve. If all three fail, it aborts
+before tracing. See `cycle/questions.md`, Y12 clause 3.
 
-`rc-walk` was built on one constraint — the mutator does no per-operation work
-for the collector — and paid for it with a full census every epoch: every slot
-of every entity block read, and the graph of the whole mature population built,
-whether or not anything changed. `rc-cycle` pays instead for naming the
-candidates at the decrement that creates them.
+The queue swap is not yet linearized against concurrent candidate registration.
+Until that protocol is defined, a worker can lose or duplicate an entry. This
+blocks the collector-worker optimization; see `dev/ALGORITHM-AUDIT.md`, issue
+A2.
 
-**The candidate machinery of `rc-trace` costs at most 0.4 ns** on a
-retain-and-release pair that does not reach zero, and 0.4 is the instrument's
-floor rather than a measurement. **A walked entity costs 32–41 ns an epoch as a
-singleton and 72–108 ns in a chain.** Dividing the walk's cost by the candidate
+At pickup, the owner handles each entry in one of four ways:
+
+- return storage for a zero-count entity when slot reuse is safe;
+- finalize a component confirmed as unreachable;
+- requeue an entry that was not traced or not validated; or
+- move a candidate that currently has an external reference to the
+  deferred-candidate buffer until the epoch changes.
+
+The owner is the sole writer for all of these queue transitions.
+
+While a trace is active, its owner defers reuse of released slots. Other threads
+need not do so only if the block-disjointness prerequisite above holds.
+
+`ll-model`'s `abandon_all` can clear a block's owner at thread exit, after which
+`adopt` assigns the block to another thread. A trace may still hold rows for the
+block while this happens. Block migration therefore requires explicit ordering
+against the old owner's trace token; this remains open in `dev/PLAN.md` S8.9.
+
+## Cost model
+
+The superseded `rc-walk` design avoided per-operation mutator work but required
+a full heap census each epoch. It read every entity-block slot and built the
+graph of the complete aged population whether or not it had changed.
+`rc-cycle` instead pays the smaller cost of registering a candidate at the
+decrement that creates it.
+
+The candidate-registration machinery measured at no more than 0.4 ns on a
+retain-and-release pair that does not reach zero; 0.4 ns is the instrument's
+resolution limit rather than a measured duration. A traced entity costs
+32–41 ns per epoch as a singleton and 72–108 ns in a chain. Dividing the
+trace's cost by the candidate
 cost's *upper* bound gives the smallest crossover the evidence permits: at least
 80 non-final decrements per live entity per epoch for the singleton shape and at
-least 180 for the chain. No ordinary program approaches either.
+least 180 for the chain. Whether representative programs approach either
+crossover remains a workload measurement.
 
-**And the counts stay real, which keeps destruction prompt.** Because no count
-is deferred or coalesced, an entity whose count reaches zero dies then and there
-with its destructor. Only genuine cyclic garbage waits, and it waits under every
-design including today's.
+Reference counts remain current, which keeps zero-count teardown prompt. Because
+no count is deferred or coalesced, an entity whose count reaches zero begins
+teardown immediately. Only unreachable reference cycles wait for collection.
 
-## What it keeps from `rc-walk`
+## Requirements retained from earlier designs
 
-The expensive half of concurrency is settled and is not re-derived here: the
-exact test against current fields on the owning thread, the deferred-free
-parking that keeps a slot from being recycled under an identifier in flight,
-eager death, and the occupancy index of retained blocks. **Settled, not
-standing** — of the four, only the occupancy index is code today
-(`ll-model` `memory/retained.rs`); the rest went with `rc-walk` on 2026-08-26
-and are rebuilt against these paragraphs. `rc-walk`'s handshake
-is **not** among them. It was deleted design-wide on 2026-08-27, an acknowledged
-rendezvous being what a thread waiting on the trace token would deadlock
-against, and a collector thread hands its shortlist over by buffer swap instead
-("Concurrency").
+Four requirements originated in the earlier collector work: exact owner-side
+validation against current fields, deferred slot reuse while an identifier is
+in flight, prompt zero-count teardown, and the occupancy index for retained
+blocks. Only the occupancy index exists in code today
+(`ll-model` `memory/retained.rs`); the other three must be implemented for this
+design.
 
-**Ruling 5 stands whole: the collector judges and only the mutator frees.** The
-exact test is sound only because the owning thread holds the entity while it
-reads its current fields, and the weak table is per thread, so a collector
-cannot null the weak cells naming a dying entity before user code runs.
+The old mutator handshake is not retained. It could deadlock with a mutator
+waiting on its trace token. Collector workers instead use the buffer handoff
+described under “Concurrency”.
 
-## What replaces the walk
+Only the owning mutator validates and reclaims a component. Exact validation is
+sound only when the owning thread stabilizes the entity while reading its
+current fields. The weak-reference table is also per thread, so a collector
+worker cannot invalidate weak references before user teardown runs.
+
+## Removed full-census structures
 
 The census and the full edge build of Phase 1. Everything that made them
 expensive — `slot_rows` at four bytes a slot written before anything is read,

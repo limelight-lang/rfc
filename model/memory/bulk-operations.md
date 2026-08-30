@@ -38,7 +38,7 @@ for (i in 0..count) {
 ll_gc_checkpoint();                 // pickup, after the run
 ```
 
-**The backedge poll is not an optimisation** (2026-08-28,
+**The backedge poll is not an optimization** (2026-08-28,
 [`../../dev/DECISIONS.md`](../../dev/DECISIONS.md), "a runtime loop carries the
 poll contract it broke"). `count` is the caller's and the compiler emits its
 poll only after the call, so without one here a large clear enrols candidates
@@ -70,7 +70,7 @@ code since the same day, pinned by a regression in that shape.*
   behind one call boundary.
 - What the single call buys beyond the batched pair: code size at cold
   exits (one call, not 2·N), and the runtime's freedom to prefetch the
-  next header while tearing the current entity — an optimisation the
+  next header while tearing the current entity — an optimization the
   per-call form cannot express. Neither is committed until measured.
 
 ## Cell reservation

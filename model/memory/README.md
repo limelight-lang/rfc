@@ -8,7 +8,7 @@ Covers memory regions, allocation strategies, arena/pool design, and the interfa
 
 - [arenas.md](arenas.md) — memory categories, request/long-lived arenas, the cross-arena category barrier
 - [arena-reset.md](arena-reset.md) — deferred promotion: the escapee registry, evacuation (not built) vs block retention at arena death
-- [critical-reserve.md](critical-reserve.md) — the block the allocator takes from the OS and holds: two doors, 500 KB per thread, and the three paths that must not fail (enrolment growth, the mutator that cannot collect, a collection's working memory)
+- [critical-reserve.md](critical-reserve.md) — the 512 KiB per-thread reserve withheld from ordinary allocation for candidate-queue growth, progress by a mutator that cannot collect, and collection working memory; workload-derived bounds remain open
 - [large-entities.md](large-entities.md) — an entity past its category's packing unit: the two-clause invariant, the dynamic string layout for bytes, one block-aligned allocation per entity for cells, the run registry
 - [buffers.md](buffers.md) — growable buffers: per-category growth, memory-pressure modes, the dedicated `BLOCK_KIND_BUFFER` reclaim strategy
 - [static-lifetimes.md](static-lifetimes.md) — compiler-tracked ownership and moves: the tier ladder, drop-point policy, relationship analysis (acyclic classes, `#[Backedge]` cycle shapes)

@@ -101,7 +101,7 @@ runs where the target lives, and every notification site below runs on
 the owning thread, which under `rc-cycle` is the design's own rule rather
 than a property of one collector: the collector proposes and the owner
 tears down, so every free and every destructor happens where the entity
-lives ([gc/rc-cycle.md](gc/rc-cycle.md), "What it keeps from `rc-walk`"). Zend's single table in
+lives ([gc/rc-cycle.md](gc/rc-cycle.md), "Requirements retained from earlier designs"). Zend's single table in
 `EG(weakrefs)` is the same structure made global because the engine is
 single-threaded; globalizing it here would buy a mutex on every
 create and death. Consequence: the thread-exit teardown that already
@@ -177,23 +177,24 @@ committed, its cell reads null before any user code can run.**
 - **Cycle death** — the teardown notifies every confirmed member
   **after the exact test passes and before any user code runs**, the
   binding obligation of [gc/rc-cycle.md](gc/rc-cycle.md), "Cycle
-  teardown", step 3 (ruled 2026-07-26; the after-the-exact-test half
-  is load-bearing because a trace proposes a shortlist that may be
+  finalization and reclamation", step 3 (ruled 2026-07-26; the
+  after-the-exact-test half
+  is load-bearing because a trace proposes a validation batch that may be
   stale and only the owner's exact test confirms a member, so nulling
   before it could clear the cells of a live object. CPython's PEP 442
   is the same move). Displaced map values go onto the teardown's
   existing deferred-drop queue (the one already deferring severed
   external children), never inline. Two consequences are accepted,
   not accidental:
-  - *Nulling is irrevocable.* The teardown's re-verify can acquit a
-    member its destructor resurrected — that object lives on with its
+  - *Nulling is irrevocable.* Revalidation can find that a destructor
+    resurrected a member — that object lives on with its
     cell nulled, its map entries gone, and the queued value drops
     still executing. CPython behaves identically (weakrefs to a cyclic
     isolate are cleared even if a finalizer resurrects it); Zend does
     not (it notifies only at actual free), so this is a **known,
     deliberate divergence from PHP** — the price of the teardown's
     safety argument, which holds only in the counted world.
-  - *A destructor can re-create weak state* on a condemned member
+  - *A destructor can re-create weak state* on a member confirmed as unreachable
     (`WeakReference::create($this)`, a map insert): bit 12 was cleared,
     so nothing stops it. The safety net is the free itself — the
     sever-and-free path frees members through the ordinary dispose,
@@ -201,7 +202,7 @@ committed, its cell reads null before any user code can run.**
     free-time clear is **load-bearing, part of this design**, and its
     displaced map values also go onto the deferred queue — the
     sever-to-free window must stay free of user code
-    ([gc/rc-cycle.md](gc/rc-cycle.md), "Cycle teardown", step 6).
+    ([gc/rc-cycle.md](gc/rc-cycle.md), "Cycle finalization and reclamation", step 6).
 - **Arena reset** — arena objects die with the pages, skipping
   teardown, so reset walks the arena's weak list (populated by row
   creation, above): for each entry **whose category still reads
@@ -255,7 +256,7 @@ decidable from the class where the class is closed. Decided 2026-08-23
 [../runtime/actors.md](../runtime/actors.md#message-payload-discipline)).
 
 **Open: where the weak table lives when an actor migrates.** The queue is not
-the door that shape uses, so the question the message path answers is not this
+the transfer mechanism that shape uses, so the question the message path answers is not this
 one. It was node E1 of `rc-walk`'s question graph, which was deleted with that
 collector on 2026-08-26, and it has had no node since: it is carried here, by
 this lead-in, and the candidates and their call-site costs are enumerated by
@@ -287,7 +288,7 @@ positive forever: no death, no notification, entry never removed.
 This is not an eager-vs-lazy question — a cycle collector must treat
 the map's key-to-value edges as conditional on key liveness, which is
 exactly the special `WeakMap` support Zend's GC gained in PHP 8.3
-after shipping the leak for three years. Deferred: behaviour matches
+after shipping the leak for three years. Deferred: behavior matches
 PHP 8.0–8.2, logged in [../BACKLOG.md](../BACKLOG.md).
 
 ## Runtime-internal only

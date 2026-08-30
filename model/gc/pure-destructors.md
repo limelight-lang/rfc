@@ -1,18 +1,20 @@
-# Pure destructors and the hand-off drain
+# Destructor effect classes and deferred finalization
+
+> **Status: historical analysis with partially built P0 paths.** The analysis
+> predates `rc-cycle` and originally depended on the deleted `rc-walk` and
+> GC-horizon designs. Its effect classes remain useful, but its collector
+> handoff is not part of the design of record: `rc-cycle` requires the owning
+> mutator to validate and reclaim components. Any future use of P1, P2, or NR
+> must be revalidated against `rc-cycle`.
 
 ## Scope
 
-The classification of a class by what its destructor may do, and what
-each class of destructor lets the runtime skip. It owns the purity
-ladder (P0, P1, P2, NR), the transitive closure that turns a body-level
-tier into a class-level verdict, the hand-off drain that the closure
-makes sound, and the trust class the resulting bit belongs to. The
-collector's protocol is rc-walk.md; this document changes
-none of it, and only says which of its steps a component may skip.
+This document classifies classes by the effects their user destructors may
+perform and asks which runtime work each class could omit. The P0/P1/P2/NR
+ladder and its transitive closure describe destructor effects, not functional
+purity. Collector-specific sections below are retained as design history.
 
-Two other designs read the verdict as an instrument.
-gc-horizon.md uses it twice — for the release horizon
-and for the checkpoint condition — and the drop-point policy of
+The drop-point policy of
 [static-lifetimes.md](../memory/static-lifetimes.md#drop-point-policy)
 already splits on destructor presence, which is the P0 row of the ladder
 under another name.
@@ -27,7 +29,7 @@ under another name.
 > repository's `dev/design/pure-destructors.md`, which stays as the
 > working note and now points here.
 
-## The design philosophy this is judged by
+## Design criteria
 
 Stated by Edmond, 2026-08-18: the collector may do more work — that is
 acceptable; the mutator strives to do nothing beyond the program's own
@@ -35,29 +37,22 @@ code. Unreachable at 100 %, so every mechanism below is weighed by the
 mutator-side cost it leaves, and a design that spends collector cycles
 to remove mutator cycles wins the tie.
 
-## The verdict, first
+## Conclusions
 
 Three parts, in decreasing certainty.
 
-1. **The runtime side of the proposal is already built.** The runtime
-   tracks destructor absence per class (`CLASS_HAS_DESTRUCTOR`) and per
-   instance (`DESTRUCTOR_PENDING`), registers nothing at construction
-   for a destructor-less class, frees destructor-less whites raw in the
-   rc-trace collector, and skips Phase 4's re-verify whenever no
-   destructor ran. Purity as a compile-time fact widens those paths; it
-   does not invent them.
+1. **Some P0 mechanisms existed in the audited 2026-08-18 runtime.** It tracked
+   destructor absence per class (`CLASS_HAS_DESTRUCTOR`) and per instance
+   (`DESTRUCTOR_PENDING`). The deleted collectors also had P0 fast paths; those
+   paths are historical evidence, not current implementation.
 2. **"Reclaimed by the collector itself", read literally — the collector
    doing everything on its own evidence — is unsound.** Purity removes
    user code from the drain, but none of the five owner-bound races
-   below comes from user code: the exact test, the corpse rule, the
+   below comes from user code: the exact test, the zero-count-entry check, the
    guard writes and the weak nulling read and write state only the owner
    may touch. That prologue is irreducibly the mutator's.
-3. **Purity makes the hand-off drain sound.** The prologue stays where
-   today's whole drain already runs — on the mutator, at its own
-   checkpoint, so no external stop and no collision with the principle
-   that forbids stopping the mutator from outside
-   (rc-walk.md)
-   — and everything after it can move to the collector once the residual
+3. **The old analysis found a conditional handoff shape.** Its prologue stayed
+   on the mutator and moved later work to a collector once the residual
    duties are resolved and the tail bound is chosen: after the exact
    test, the guards and the weak nulling, no mutator action can reach an
    all-pure component or mint a path to it, so the collector severs it
@@ -74,8 +69,8 @@ What freeing becomes, per case:
 |---|---|---|
 | ordinary zero-count death, any impure class | dispose, then free | unchanged |
 | ordinary zero-count death, P0 class | guard retain and release, two further header loads and three branches in `ll_default_dispose`, then free | specialized dispose: that phase removed (buildable today, no compiler) |
-| condemned component with an NR or impure member | the whole drain on the mutator | unchanged |
-| condemned component, every member P0 — or P2 under the order ruling | the whole drain on the mutator | the prologue on the mutator; sever and memory return on the collector |
+| component confirmed as unreachable with an NR or impure member | the whole drain on the mutator | unchanged |
+| component confirmed as unreachable, every member P0 — or P2 under the order ruling | the whole drain on the mutator | the prologue on the mutator; sever and memory return on the collector |
 
 ## The purity ladder
 
@@ -96,7 +91,7 @@ pure reads are unobservable, and any output channel makes the class NR.
 ### Purity is transitive
 
 **Edmond's ruling, 2026-08-18.** The rows above grade one destructor
-body; the class-level verdict joins the body's tier with a closure. A
+body; the class-level classification joins the body's tier with a closure. A
 destructor is pure only when its own body qualifies and every destructor
 reachable through the death cascade qualifies too: the classes every
 counted field can hold, their fields' classes, and so on to the closure.
@@ -146,20 +141,23 @@ the transitive ruling the same holds for the whole cascade rather than
 only the component's members: nothing a pure teardown reaches can
 resurrect anything.
 
-## What is already built
+## Historical implementation state
 
-- Construction is free for P0: generated code emits
+The following observations are from the 2026-08-18 audit. Collector-specific
+paths were deleted with `rc-trace` and `rc-walk` on 2026-08-26.
+
+- Construction was free for P0: generated code emitted
   `ll_object_constructed` only where the class has a destructor, and the
   call returns immediately otherwise (`model/src/object.rs`).
-- rc-trace frees whites raw — no dispose, no guards — once nothing in
+- `rc-trace` freed white candidates raw — no dispose, no guards — once nothing in
   the white set owes a destructor (`model/src/gc.rs`, the white-free
   arm).
-- The drain and the synchronous walk skip the guard-discounted re-verify
+- The drain and synchronous walk skipped guard-discounted revalidation
   when no destructor ran (`model/src/walk.rs`, `any_destructor_ran`).
-- The arena reset logs only destructor-bearing instances, so a P0 corpse
-  costs the reset's destructor fixpoint nothing
+- The arena reset logged only destructor-bearing instances, so a P0 zero-count
+  entity cost the reset's destructor fixpoint nothing
   ([arena-reset.md](../memory/arena-reset.md#step-1--validate-trace-destruct-a-fixpoint-loop));
-  a corpse that is a weak target still costs its cell nulling in the
+  a zero-count entity that is a weak target still costs its cell nulling in the
   reset's weak pass.
 
 ## P0 gains available without compiler work
@@ -186,10 +184,10 @@ for a reason purity does not touch.
 1. **The exact test reads current counts.** Counts are plain non-RMW
    fields under a single-writer contract; only the owner reads them
    race-free and current, and the test's trace reads plainly — against a
-   running mutator that is undefined behaviour, not staleness.
-2. **The corpse rule needs atomicity with releases.** Off-thread, a
+   running mutator that is undefined behavior, not staleness.
+2. **The zero-count-entry check needs atomicity with releases.** Off-thread, a
    member can die between the collector's read and its guard write — the
-   guard is written into a corpse's header and teardown runs twice.
+   guard is written into a zero-count entity's header and teardown runs twice.
 3. **Guard and unguard are whole-word header stores.** They race the
    mutator's narrow count stores as a lost update; the channel that
    keeps this reachable is `ll_weakref_get`'s retain, until the cells are
@@ -209,14 +207,14 @@ for a reason purity does not touch.
 The heap itself is not the blocker: cross-thread free exists
 (`Heap::free_remote`), and parking for the owner is the deferred-free
 queue's existing shape. The hand-back channel is the missing piece: the
-verdict protocol runs in one direction today, and a component the
+validation result protocol runs in one direction today, and a component the
 mutator returns to the collector needs the other.
 
 ## The hand-off drain
 
 The target mechanism under the philosophy: the mutator runs the prologue
 at its own checkpoint and hands the component to the collector; the
-collector does the rest. Scope: condemned components only — an ordinary
+collector does the rest. Scope: components confirmed as unreachable only — an ordinary
 zero-count death of a pure object is unchanged. Eligible is a component
 whose every member is runtime-P0 after the compiler's erasure, or P2
 under the specified-order ruling, P2 destructor calls running in the
@@ -225,7 +223,7 @@ the unchanged whole drain: NR destructors do I/O, and the hand-off buys
 nothing worth extending its soundness argument over them.
 
 > **Amended 2026-08-23: the mutator frees.** Edmond restated ruling 5 —
-> the collector walks and judges, suspects go to the mutator, and the
+> the collector walks and validates, candidates go to the mutator, and the
 > mutator frees what it confirms (`../../dev/DECISIONS.md`). The hand-off
 > below moves the sever and the physical release to the collector, which
 > that ruling no longer permits. The section stays as the record of the
@@ -243,7 +241,7 @@ visit. That delay is a cost of the design, accepted by ruling on
 flowchart TD
     subgraph M ["mutator, at one checkpoint visit"]
         A["prologue, four steps in one visit:
-        corpse rule + exact test + guards + weak nulling
+        zero-count-entry check + exact test + guards + weak nulling
         (any P2 destructor calls run here, last),
         then the component is handed to the collector"]
         E["external children released at a later
@@ -302,7 +300,7 @@ while the prologue stays one visit — sound by the same unobservability
 argument and needing no hand-back channel, but leaving the tail on the
 mutator, a cost under the stated philosophy.
 
-The cost has a name in both forms: the verdict stays outstanding until
+The cost has a name in both forms: the validation result stays outstanding until
 the tail completes, so the component holds the epoch open longer, and
 deferred memory is unbounded in epoch duration
 (`model/dev/RC_WALK_CRITICAL_REVIEW.md`). A completion bound — a
@@ -359,15 +357,15 @@ per-epoch metadata.
 mechanically orthogonal, birth-side against death-side, no shared state;
 they share the compiler-proof delivery channel and the Phase D gate.
 
-**With GC horizon** (gc-horizon.md): the transitive
-verdict is that design's instrument in two places — the release horizon
+**With the deleted GC-horizon design:** the transitive effect classification
+was that design's instrument in two places — the release horizon
 reads it per released class, and the checkpoint condition reads it over
-the condemned set's downward closure. Because the closure is what both
+the confirmed-unreachable set's downward closure. Because the closure is what both
 need, a change to what "pure" means moves both horizon kinds with it.
 
 **With the arena reset**
 ([arena-reset.md](../memory/arena-reset.md#step-1--validate-trace-destruct-a-fixpoint-loop)):
-P0 corpses already cost zero; what the compile-time bit adds is skipping
+P0 zero-count entities already cost zero; what the compile-time bit adds is skipping
 the dirty re-trace that today over-triggers on allocation by a
 destructor that only touched its own dying fields, and fixpoint
 convergence in fewer passes for strictly pure destructors (unmeasured).
@@ -415,7 +413,7 @@ this runtime already honours and must keep for everything impure.
    owner TLS — prove the raw pure path owes nothing there, or route it
    back), journal attribution (records are written to the wrong thread's
    ring — acceptable or not), and the hand-back channel itself, a second
-   direction the verdict protocol does not have today.
+   direction the validation result protocol does not have today.
 3. **What bounds an open tail?** The deadline on the collector's tail —
    and in the sliced fallback the per-checkpoint budget — against the
    parked-memory currency of epoch duration; which rung of the pressure

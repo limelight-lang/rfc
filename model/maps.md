@@ -14,7 +14,7 @@ slots over a dense array of 32-byte entries in insertion order. Its shape
 does not change. One field's encoding does, and the section "The key word
 gains a tag, for every owner" says exactly which readers move with it.
 
-The class descriptor and its behaviour pointers are
+The class descriptor and its behavior pointers are
 [classes.md](classes.md). The value representation is
 [values.md](values.md). The arena rules a key crosses are
 [memory/arenas.md](memory/arenas.md).
@@ -239,7 +239,7 @@ its identity number, and no key bytes are read. The salt is a keyed hash
 of the storage address under the per-process key rather than the plain
 hash of it the array draws today, whose own note concedes that addresses
 recycle across resets and that under `hash-folding` the seed inside it is
-a build constant. With that one change rung one is a complete defence for
+a build constant. With that one change rung one is a complete defense for
 the two kinds whose identity is exact: an integer or object flood needs
 bucket collisions, bucket choice needs the salt, and the salt needs the
 key.
@@ -305,7 +305,7 @@ rebuild them away, so the chain would be heritable one copy to the next.
 schedule, and not by the chunk the source holds. Taking the source's slot
 count was tried and withdrawn (`dev/DECISIONS.md` in the crate, "a copy
 sizes its storage by its own replay"): it was meant to keep apart buckets
-that a narrower mask merges, and a mask cannot supply that defence.
+that a narrower mask merges, and a mask cannot supply that defense.
 Identities that differ are scattered by the copy's own salt whatever the
 width; identities that agree collide at every width and are what the
 equal-identity trigger answers; and where the salt is known — the oracle
@@ -318,7 +318,7 @@ salt is drawn from a storage address under the per-process key, and
 addresses recycle: a copy freed and a copy made again in its place can
 draw the same number, and a timing oracle recovers a salt in any case,
 which is what [strings.md](strings.md) concedes in "Neither position is a
-defence". So the scattering above is what makes the replay's exemption
+defense". So the scattering above is what makes the replay's exemption
 cheap in the ordinary case, while what makes it bounded in the adversarial
 one is rung three itself: the next admission into that chain is refused.
 
@@ -328,7 +328,7 @@ collisions no attacker can aim without the key. A `Map`'s ladder is
 therefore rung one, a flag-only second firing, and rung three — which for
 object keys is reachable only by an attacker with address control the
 threat model does not grant. One rung plus a terminal refusal is an
-honest defence. One rung over a salt that is a public function of one
+honest defense. One rung over a salt that is a public function of one
 recyclable address, which is what the crate draws today, was not.
 
 ---
@@ -344,7 +344,7 @@ in for it, and the strings design reserves it as the long-hash key.
 It is a prerequisite rather than an improvement. `MapMixed`'s array-key
 identity cannot be defined without it, and the repriced salt cannot be
 drawn without it. Until it exists, under `hash-folding` every rebuild the
-ladder performs is aimable and rung three is the only real defence. This
+ladder performs is aimable and rung three is the only real defense. This
 design ships behind the key, not in front of it.
 
 Four smaller obligations follow it, all in the array's table: the
@@ -410,8 +410,8 @@ makes the key a computed root, and a ring closing through it is never
 collected — the exact failure the hook exists to prevent, reached by
 tagging instead of by omitting. The **raw word** it records must not be
 masked, because Phase 3 re-reads the cell and compares it against that
-value verbatim; masking it would fail every re-check and acquit every
-component touching a map.
+value verbatim; masking it would fail every re-check and make every component
+touching a map appear externally referenced.
 
 **A fifth word was refused.** The entry is 32 bytes, which is what puts
 its per-element cost at parity with `zend_array` 7.3+, and a fifth word
@@ -446,7 +446,7 @@ because a lookup runs under a live iterator on a shared table, and the
 content walk allocates. So hashing a probe is the map method's work, the
 table receives a number, and a refusal to hash raises before the table is
 touched. A lookup with an array probe can therefore still raise inside a
-`foreach` over the same map, and that is the accepted behaviour: the
+`foreach` over the same map, and that is the accepted behavior: the
 table is untouched when it happens, so the iterator remains valid and the
 map is unchanged. The constraint the table states is honoured rather than
 relocated.
@@ -518,7 +518,7 @@ and an object, are respectively refused and not descended into. So the
 walk is over a finite directed acyclic graph, and the association makes
 it linear in that graph rather than in its paths. The association is
 consulted **on entry** and filled on entry, so it is a visited set as
-well as a sharing optimisation; the acyclicity argument makes the two
+well as a sharing optimization; the acyclicity argument makes the two
 coincide, and reading it on exit alone would turn any breach of that
 argument into a hang rather than a wrong answer.
 

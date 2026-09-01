@@ -150,7 +150,7 @@ deferral, and what would reverse it is stated in "Open".
 
 A PHP array key is `int|string`, and a numeric string is canonicalised to an
 integer before it reaches the table (`$a["1"]` and `$a[1]` are one key, while
-`$a["011"]` stays a string). The canonicalisation test therefore sits in front of
+`$a["011"]` stays a string). The canonicalization test therefore sits in front of
 every string-key operation and belongs in the cost of one, not in a footnote.
 
 **A string key's position** comes from the hash cached in the string header at
@@ -335,7 +335,7 @@ keep firing forever, or would need an O(n) recomputation on every delete.
 **When it fires**: on insertion only. The insert path already holds exclusive
 ownership after separation, may allocate, and may raise. A lookup may do none of
 those: `isset()` must not acquire an out-of-memory raise, must not reallocate
-storage under a live iterator or an element reference, and has no synchronisation
+storage under a live iterator or an element reference, and has no synchronization
 on a table two threads read. Insert-only firing is sufficient because the trigger
 prevents the pathological state from existing, so lookups are bounded as a
 consequence rather than by a check of their own.

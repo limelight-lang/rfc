@@ -41,7 +41,7 @@ class Timeval {
 }
 ```
 
-An `#[FFI]` class is an **unmanaged entity** ([zero-abstraction.md](zero-abstraction.md)):
+An `#[FFI]` class describes a **headerless FFI value** ([zero-abstraction.md](zero-abstraction.md)):
 no `RcHeader`, no class pointer, C field order and alignment, invisible
 to the GC. Its type exists only at compile time; a reference to it is
 meaningful only where the compiler statically knows the type. The class

@@ -579,7 +579,7 @@ participant in unwinding with ordinary tables. This is how C++
 predictable, never-taken branch rather than a flag check.
 
 If a case is ever found where an exception must genuinely originate
-inside Rust, it is analysed on its own. The principle is not weakened to
+inside Rust, it is analyzed on its own. The principle is not weakened to
 accommodate it in advance.
 
 ### Destructors never propagate

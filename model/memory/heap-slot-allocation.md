@@ -526,7 +526,7 @@ point; the next alloc drains it and it crosses the full line again
 immediately. Churn **doubles**, and the rate swamps the per-event saving.
 
 The rule this gives: **the event rate dominates the per-event cost.** Do not
-optimise a churn operation without checking what it does to how often churn
+optimize a churn operation without checking what it does to how often churn
 happens.
 
 ### What churn actually costs — a bitmap over blocks buys nothing
@@ -723,7 +723,7 @@ One real unfairness did surface: mimalloc-bench reaches mimalloc with
 `#define CUSTOM_MALLOC mi_malloc`, a direct call, while our shim wrapped
 both calls in an init check running on every malloc *and* every free —
 because `ll_malloc` demanded an explicit `ll_thread_init` first. It
-self-initialises on a cold branch now, exactly as `mi_malloc` does
+self-initializes on a cold branch now, exactly as `mi_malloc` does
 (`test rcx,rcx; je _mi_malloc_generic`), and the shim is a direct `#define`.
 The explicit contract remains the documented, faster path for an embedder;
 skipping it is now merely slower once, not undefined. The once is wider than

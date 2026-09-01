@@ -2,7 +2,7 @@
 
 **Key principle.** Limelight adds **zero new keywords and zero new
 syntax** to PHP. Every Limelight capability enters the language through
-native PHP 8 attributes. A Limelight program is, syntactically, a valid
+standard PHP 8 attributes. A Limelight program is, syntactically, a valid
 PHP program.
 
 ---
@@ -76,7 +76,7 @@ MonkeyType applies runtime-observed types to Python source.
 4. **The ecosystem already votes for this.** PHP's de-facto extension
    surface has been docblock annotations for a decade
    (`@template` generics in Psalm/PHPStan). Limelight promotes the
-   pattern from comments to native attributes, from advisory to
+   pattern from comments to standard attributes, from advisory to
    compiler-enforced and codegen-driving.
 
 ## Attribute registry (current)
@@ -87,7 +87,7 @@ MonkeyType applies runtime-observed types to Python source.
 | `#[Backedge]` | declared **and** inferred | cycle shapes (Level B) | [model/memory/static-lifetimes.md](model/memory/static-lifetimes.md) |
 | ownership conventions (borrows / takes / escapes per parameter) | inferred | move analysis across signatures | [model/memory/static-lifetimes.md](model/memory/static-lifetimes.md) |
 | acyclicity (`ACYCLIC` class bit) | inferred | cycle-candidate filtering (Level A) | [model/memory/static-lifetimes.md](model/memory/static-lifetimes.md) |
-| `#[FFI]` | declared | zero-abstraction entities: no header, no ARC, owner-bound or wrapper lifetime; freeing via the class's own `__destruct` | [model/memory/zero-abstraction.md](model/memory/zero-abstraction.md) |
+| `#[FFI]` | declared | headerless FFI values: no header, no ARC, lifetime bound to an anchor or wrapper; freeing via the class's own `__destruct` | [model/memory/zero-abstraction.md](model/memory/zero-abstraction.md) |
 | `#[Region]`, `#[Region(gc:, threshold:, shared:)]` | declared | instance-owned (or class-shared) arenas with their own GC binding; the memory half of an actor | [model/memory/regions.md](model/memory/regions.md) |
 | generics (`#[Template]`-family, vocabulary aligned with Psalm/PHPStan) | declared | parametric types without new syntax | future RFC (backlog) |
 

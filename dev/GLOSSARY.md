@@ -1,5 +1,9 @@
 # RFC terminology
 
+> **Status: draft for `dev/PLAN.md` S9.1.** The canonical table is normative
+> for new text; the deprecated and context-sensitive sections are migration
+> input. S9.1 closes only after the active RFC set has been checked against it.
+
 This glossary defines the vocabulary used by the normative RFCs. Its purpose is
 to keep implementation terms precise and to prevent a local metaphor from
 acquiring several incompatible meanings. Ordinary English uses of a word are
@@ -19,75 +23,119 @@ not terms and are outside this glossary.
 5. RFC requirements use **must**, **must not**, **should**, and **may** in their
    usual normative senses. Historical decisions use the past tense instead.
 
-## Terms to use
+## Canonical terms
 
-| Term | Meaning in Limelight | Established equivalent | Verdict |
-|---|---|---|---|
-| accelerator | Optional collector thread that performs a speculative trace and sends results to the owning mutator | concurrent collector worker | Rename to **collector worker** |
-| actor | Serial execution context with isolated mutable state and a mailbox | actor | Keep |
-| arena | Region whose allocations normally share a bulk lifetime | region / arena | Keep |
-| candidate | Entity enrolled after a non-final decrement because it may belong to a reference cycle | cycle candidate | Keep; use **cycle candidate** at first mention |
-| candidate age | Number of collection epochs used by the traversal-pruning policy | age stamp | Keep; replaces *maturation age* |
-| class filter | Static analysis that proves instances of a class cannot participate in a reference cycle | acyclic-type filter | Rename to **acyclic-class filter** |
-| clean point | Point between mutator operations at which slots and reference counts agree | consistent state / quiescent point | Rename to **consistent point**; do not imply a stop-the-world safepoint |
-| collection arena | Bump arena containing one trace's temporary rows, bitmaps, and worklist | tracing scratch arena | Rename to **trace scratch arena** |
-| component | Candidate subgraph tested as a unit | candidate component | Keep |
-| corpse | Entity whose reference count reached zero while a queue or trace still retains its slot identity | zero-count entity pending reclamation | Rename; name the exact lifecycle state |
-| critical door | Allocation that may consume the protected per-thread reserve | reserve allocation path | Rename |
-| critical reserve | Memory withheld from ordinary allocations for bounded operations that must remain possible after allocation failure | emergency / failure reserve | Keep; it is defined by the RFC |
-| dirty pass / dirty reader | Off-thread traversal that may observe mutually inconsistent counts and edges | concurrent speculative trace | Rename to **speculative trace** / **collector worker** as appropriate |
-| door | An allocation path, API entry point, communication channel, or barrier operation, depending on the document | none; the metaphor is ambiguous | Rename according to the actual concept |
-| enrolment | Edge-triggered insertion of an entity into the cycle-candidate queue | candidate registration | Rename to **candidate registration** |
-| enrolment bit | Header bit that prevents duplicate candidate registration | buffered / candidate bit | Rename to **candidate bit** |
-| entity | Runtime allocation with a Limelight entity header and managed lifetime | heap object | Keep as a project-specific umbrella term; define at first use |
-| escrow | Last-resort queue segment used when the normal queue and reserve allocation cannot accept a mandatory candidate | overflow buffer | Rename to **overflow buffer** |
-| exact judgement / exact test | Owner-thread validation that current external reference count is zero for every member of a candidate component | validation / trial-deletion validation | Rename to **exact validation** |
-| floor | Mandatory initial capacity or a conservative lower bound, depending on context | baseline capacity / lower bound | Rename according to the actual concept; retain only the mathematical use |
-| guard | Temporary `+1` reference applied before cycle finalization so recursive release cannot start ordinary destruction | temporary strong reference / guard reference | Keep as **guard reference** |
-| in-line collection | Collection performed synchronously by the owning mutator | mutator-assisted / synchronous collection | Rename to **synchronous collection** |
-| judge / judgement | Decide whether a candidate component is currently unreachable | validate / validation | Rename |
-| law | Required owner-only state transition rule | ownership invariant | Rename |
-| live | Reachable through an external counted reference, or conservatively treated as such | live | Keep |
-| mature candidate | Candidate whose age reaches the traversal-pruning threshold | candidate at the traversal age threshold | Rename; avoid generational-GC *mature* and *promotion* |
-| mutator | Thread executing application code and changing the object graph | mutator | Keep |
-| ordinary door | Allocation that cannot consume the critical reserve | ordinary allocation path | Rename |
-| park a slot | Delay slot reuse while a queue entry or trace can still identify the old occupant | defer slot reuse | Rename |
-| parked actor / fiber | Actor or fiber not currently runnable while it waits | blocked / suspended actor or fiber | Rename according to scheduler state |
-| promote bound | Candidate age at which traversal treats a non-root target as opaque and live | traversal age threshold | Rename |
-| acquit | Exact validation finds an external reference, so the component is not collectable in this run | retain / classify as live | Rename |
-| condemn | Exact validation confirms a component is unreachable | confirm as unreachable / select for reclamation | Rename |
-| refusal | Rejected design, failed allocation, denied insertion, or capacity result | none; four concepts were conflated | Rename contextually to **rejection**, **allocation failure**, **denial**, or **capacity limit** |
-| ring | Strong-reference cycle | reference cycle | Rename except in compact examples after the term has been established |
-| shortlist | Components proposed by a speculative trace for owner validation | validation batch | Rename to **validation batch** |
-| shadow count | Trace-local working copy of an entity's reference count | trial reference count | Keep; define storage and saturation behavior |
-| suspects buffer | Per-thread list that delays reconsideration of candidates rejected by exact validation | deferred-candidate buffer | Rename |
-| teardown | Ordered destruction and reclamation of an unreachable component | cycle finalization / reclamation | Keep for the complete ordered procedure; use **reclamation** for memory return alone |
-| trace | Trial-deletion traversal over cycle candidates using shadow counts | trial-deletion trace | Keep; qualify at first use |
-| trace claim | Ownership of one mutator thread's trace state | trace-token ownership | Rename |
-| trace token | Per-mutator synchronization word that serializes traces over that mutator's blocks and queues | per-owner trace lock/token | Keep; the non-blocking acquisition protocol is project-specific |
-| verdict | Result of exact validation | validation result | Rename |
-| ValueBox | Limelight's 16-byte tagged dynamic value representation | tagged value | Keep as a project-specific type name |
-| death / destructor | Previously used for count zero, `__destruct`, field teardown, weak invalidation, and storage return | lifecycle phases | Rename each occurrence to **zero-count teardown**, **user destructor**, **field teardown**, **weak-reference invalidation**, or **storage reclamation** |
-| met bit / bitmap | Records whether a trace initialized the shadow row or group | visited bit / bitmap | Rename |
-| root queue | Queue of decrement-triggered cycle candidates, not a set of stack or global tracing roots | possible-root buffer / candidate queue | Rename to **candidate queue** |
-| scalar | Sometimes used for integers, floats, booleans, nullable pointers, or all PHP scalar types | immediate / non-pointer value | Rename according to representation; PHP strings are scalar types too |
-| pure destructor | Destructor classified by which teardown effects may be deferred; some classes still write fields | destructor effect class | Rename the ladder; reserve **pure** for code with no observable side effects |
-| zero-abstraction type | Headerless FFI value whose runtime layout matches its foreign representation | layout-transparent FFI type | Rename |
-| native | Used for machine code, standard PHP syntax, the machine stack, and FFI code | none; overloaded | Use **machine code**, **standard PHP**, **machine stack**, or **foreign code** |
+Only this table defines terms that new normative text may use without a local
+definition.
 
-## Context-sensitive replacements
+| Term | Meaning in Limelight |
+|---|---|
+| actor | Serial execution context with isolated mutable state and a mailbox |
+| arena | Region whose allocations normally share a bulk lifetime |
+| cycle candidate | Header-bearing entity registered after a non-final decrement because it may belong to a reference cycle |
+| candidate age | Saturating age assigned to a retained candidate component at exact-validation commit: the minimum current member age plus one, scoped by a separate epoch stamp |
+| acyclic-class filter | Static proof that instances of a class cannot participate in a reference cycle |
+| consistent point | Point between mutator operations at which slots and reference counts agree; not a stop-the-world safepoint |
+| trace scratch arena | Per-trace bump arena containing temporary rows, initialization bitmaps, and worklist segments |
+| candidate component | Candidate subgraph tested as one unit |
+| collector worker | Optional thread that performs speculative tracing and sends a validation batch to the owning mutator |
+| critical reserve | Per-mutator memory withheld from ordinary allocation for bounded operations that must remain possible after allocation failure |
+| candidate registration | Edge-triggered insertion of an entity into the candidate pipeline after a non-final decrement |
+| candidate bit | Header bit that prevents duplicate candidate registration while the candidate pipeline retains the entity's identity |
+| entity | Managed allocation beginning with a Limelight entity header |
+| overflow buffer | Bounded, lifetime-funded storage that retains mandatory candidate registrations when no queue segment can be acquired |
+| exact validation | Owner-thread check that current member reference counts are fully explained by component-internal edges and guard references |
+| guard reference | Temporary `+1` strong reference that prevents recursive zero-count teardown during cycle finalization |
+| synchronous collection | Collection performed by the owning mutator |
+| live | Reachable through an external counted reference, or conservatively treated as such |
+| mutator | Thread executing application code and changing the object graph |
+| traversal age threshold | Candidate age at which a non-root trace target is treated as opaque and live for the current epoch |
+| deferred slot reuse | Delay between teardown and allocator reuse while a queue entry or trace can still identify the old occupant |
+| validation batch | Components proposed by a speculative trace for owner-thread exact validation |
+| shadow count | Trace-local working copy of an entity's reference count, with explicitly defined saturation behavior |
+| deferred-candidate buffer | Per-mutator buffer that delays reconsideration of candidates retained by exact validation |
+| cycle finalization | Ordered guard, weak-reference invalidation, user destructor invocation, revalidation, severing, and reclamation of a validated unreachable component |
+| trace | Trial-deletion traversal over cycle candidates using shadow counts; qualify it at first use |
+| trace token | Per-mutator synchronization word that serializes traces over that mutator's blocks and candidate state |
+| validation result | Result of exact validation, distinct from a speculative trace proposal |
+| ValueBox | Limelight's 16-byte tagged dynamic value representation |
+| zero-count transition | Reference-count change that reaches zero and triggers teardown |
+| user destructor | PHP `__destruct` method |
+| field/resource teardown | Runtime release of an entity's owned fields and internal resources |
+| weak-reference invalidation | Nulling weak references before storage can be reclaimed |
+| storage reclamation | Return of storage to its allocator or operating system |
+| row-initialization bitmap | Bitmap recording which groups of shadow rows have been initialized in the current trace |
+| candidate queue | Queue of decrement-triggered cycle candidates; not a set of stack or global tracing roots |
+| headerless FFI value | Unmanaged foreign-layout value with no Limelight entity header; its exact ABI layout is specified separately |
+| collision-defense state | Hash-table state selecting ordinary indexing, salted rebuild, keyed-hash escalation, or terminal admission denial |
+| admission denial | Non-memory failure to admit a new hash-table key after collision defenses are exhausted |
 
-Several old words cannot be replaced mechanically:
+## Deprecated terms
 
-- *refused design* becomes *rejected design*; *allocation refused* becomes
-  *allocation failed* or *returned null*; *operation refused* names its actual
-  error result.
+These terms are recorded so existing text can be migrated. Their presence in
+this table does not approve them for new normative prose.
+
+| Deprecated term | Replacement |
+|---|---|
+| accelerator | collector worker |
+| class filter | acyclic-class filter |
+| clean point | consistent point |
+| collection arena | trace scratch arena |
+| corpse | zero-count entity pending reclamation, or the exact lifecycle state |
+| critical door | reserve allocation path |
+| dirty pass / dirty reader | speculative trace / collector worker, according to subject |
+| enrolment / enrolment bit | candidate registration / candidate bit |
+| escrow | overflow buffer |
+| exact judgement / exact test | exact validation |
+| in-line collection | synchronous collection |
+| judge / judgement | validate / validation |
+| law | ownership invariant |
+| mature candidate | candidate at the traversal age threshold |
+| ordinary door | ordinary allocation path |
+| park a slot | defer slot reuse |
+| parked actor / fiber | blocked or suspended actor/fiber, according to scheduler state |
+| promote bound | traversal age threshold |
+| acquit | retain after exact validation / classify as externally referenced |
+| condemn | validate as unreachable / select for reclamation |
+| ring, when it means a graph | reference cycle |
+| shortlist | validation batch |
+| suspects buffer | deferred-candidate buffer |
+| trace claim | trace-token ownership |
+| verdict | validation result |
+| death / destructor, when unqualified | zero-count transition, user destructor, field/resource teardown, weak-reference invalidation, or storage reclamation |
+| met bit / bitmap | row-initialization bitmap |
+| root queue | candidate queue |
+| pure destructor | named destructor effect class; reserve *pure* for no observable side effects |
+| zero-abstraction type/entity | headerless FFI value; specify C layout or ABI compatibility separately |
+
+## Context-sensitive words
+
 - *door* becomes *allocation path*, *entry point*, *mailbox*, *channel*, or
-  *store-barrier form*, depending on what is being described.
-- *floor* remains valid for a mathematical lower bound. For provisioned memory,
-  use *baseline capacity*, *initial segment*, or the exact byte count.
-- *claim* remains ordinary English when it means an assertion in prose. For
-  synchronization, use *acquire the trace token* or *trace-token ownership*.
+  *store-barrier form*, according to the operation.
+- *refusal* becomes *rejected design*, *allocation failure*, *admission
+  denial*, *unsupported placement*, or *capacity limit*.
+- *floor* remains valid for a mathematical lower bound. Provisioned memory is
+  *baseline capacity*, an *initial segment*, a *queue base block*, or an exact
+  byte count.
+- *owner* must be qualified in cross-module contracts: *containing entity*,
+  *owning mutator*, *block owner*, *lifetime anchor*, or *unique-ownership
+  proof*.
+- *dispose* and *drop* may remain ABI or source identifiers. Prose names the
+  operation they perform: usually *user destructor invocation*, *field/resource
+  teardown*, or *storage reclamation*.
+- *teardown* must be qualified where more than one lifecycle protocol is in
+  scope: *ordinary object teardown*, *field/resource teardown*, *thread-exit
+  teardown*, or *cycle finalization*. It never means storage reclamation alone.
+- *scalar* names a PHP scalar type only where that type set is intended.
+  Representation text uses *immediate value*, *non-pointer value*, or the exact
+  primitive type.
+- *native* becomes *machine code*, *standard PHP*, *machine stack*, or
+  *foreign code*, according to context.
+- *flood ladder*, *rung*, and *trigger* become *collision-defense state*, the
+  exact threshold (*chain-length threshold* or *equal-hash threshold*), the
+  selected rebuild, or *admission denial*.
+- *claim* remains ordinary English for an assertion. Synchronization uses
+  *acquire the trace token* or *trace-token ownership*.
 
 ## Spelling and style
 

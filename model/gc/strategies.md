@@ -182,7 +182,7 @@ event with no live stack, outside any strategy
 |---|---|---|---|---|
 | `nogc` | bump allocation, never frees | leaks | none | benchmarks baseline; short scripts |
 | `rc` | ARC + arenas | **leaks cycles** | none | short CLI where cycles don't accumulate |
-| `rc-cycle` **(in force)** | ARC + arenas + on-the-fly cycle collection from a mutator-fed candidate set | collected **once built**; until then a garbage ring is retained | enrolment on the release path, price bounded at ~0.4 ns a pair | the design of record since 2026-08-25, being built — see [rc-cycle.md](rc-cycle.md) |
+| `rc-cycle` **(in force)** | ARC + arenas + on-the-fly cycle collection from a mutator-fed candidate set | collected **once built**; until then an unreachable reference cycle is retained | candidate registration on the release path, price bounded at ~0.4 ns a pair | the design of record since 2026-08-25, being built — see [rc-cycle.md](rc-cycle.md) |
 
 `nogc` is what the echo compiler ships today; `rc` is approximately
 elephc's model; `rc-cycle` is the Zend architecture done right
@@ -289,11 +289,12 @@ signal enabled the runtime never fires on its own — collection is then
 purely explicit — which is a legitimate configuration (its cost is
 retained cycles, the caller's call to make).
 
-The runtime therefore exposes only mechanism: enrolment on the release
-path (arm), `ll_gc_collect_cycles` (fire now), `ll_gc_maybe_collect`
+The runtime therefore exposes only mechanism: candidate registration on the
+release path (arm), `ll_gc_collect_cycles` (fire now), `ll_gc_maybe_collect`
 (fire if armed), the entry gate and the reentrancy guard behind it, the
 inbox pickup at a safepoint, and the GC-heap allocation slow path, which
-collects in-line on a refusal rather than reporting one. No triggering
+collects synchronously after allocation failure rather than reporting it
+without first attempting collection. No triggering
 policy lives in the model.
 
 **The entry gate and the inbox are `rc-cycle`'s, added 2026-08-27.** A
@@ -301,8 +302,8 @@ thread whose allocation fails reads its own gate — the collecting flag and
 `TEARDOWN_DEPTH` — before waiting on the trace token, and a closed gate
 sends it down the pressure ladder instead; and a thread's safepoint poll
 picks up the per-thread inbox in which a collector thread leaves the
-validation batch it traced, that being how the accelerator delivers now that the
-handshake is gone ([rc-cycle.md](rc-cycle.md), "Concurrency").
+validation batch it traced. That is how the collector worker delivers now that
+the handshake is gone ([rc-cycle.md](rc-cycle.md), "Concurrency").
 
 The allocation slow path is the one fire point the runtime owns
 outright, because it is the point at which not collecting is a failure
@@ -317,6 +318,6 @@ thread to its next checkpoint ([rc-cycle.md](rc-cycle.md),
 `heap-design.md` carried a lock-free CAS handoff and a deferred-free bit
 whose races exist only when the mutator runs during a collection cycle. They
 were written for a GC-state field in the header that no strategy in force
-has, and they go with that field. `rc-cycle` parks a freed slot instead, on
+has, and they go with that field. `rc-cycle` defers reuse of a freed slot on
 two windows of different widths ([rc-cycle.md](rc-cycle.md), "Death while
 enrolled").

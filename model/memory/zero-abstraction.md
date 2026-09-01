@@ -1,4 +1,4 @@
-# Zero-Abstraction Objects: `#[FFI]`
+# Headerless C-layout FFI values: `#[FFI]`
 
 ## Motivation
 
@@ -24,7 +24,7 @@ class Timeval {
 
 ## Definition
 
-An `#[FFI]` class is an **unmanaged entity**:
+An `#[FFI]` class describes a **headerless FFI value**:
 
 - **No `RcHeader`, no class pointer.** The common-header rule of
   [classes.md](../classes.md) applies to *managed* entities only; an

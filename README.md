@@ -1,7 +1,7 @@
 # Limelight RFC
 
 Design documents for **Limelight**: a compiled runtime for PHP with a
-memory-first architecture. PHP source compiles through LLVM to native
+memory-first architecture. PHP source compiles through LLVM to machine
 code; memory is managed by arenas, compiler-tracked ownership, and
 pluggable garbage collection instead of a one-size-fits-all VM heap.
 
@@ -13,7 +13,7 @@ pluggable garbage collection instead of a one-size-fits-all VM heap.
 
 | Pillar | Idea | RFC |
 |---|---|---|
-| Memory categories | Every object lives in a category: request arena, long-lived, immortal, or GC heap. Most objects die with their arena in O(1) and are invisible to the GC | [arenas](model/memory/arenas.md), [arena-reset](model/memory/arena-reset.md) |
+| Memory categories | Every managed entity lives in a category: request arena, long-lived, immortal, or GC heap. Most entities are reclaimed with their arena in O(1) and are invisible to the GC | [arenas](model/memory/arenas.md), [arena-reset](model/memory/arena-reset.md) |
 | Static lifetimes | The compiler tracks ownership and moves, Rust-style but with a runtime fallback instead of compile errors. Proven objects get zero refcounting and a scheduled destructor call | [static-lifetimes](model/memory/static-lifetimes.md) |
 | Pluggable GC | The collector is a build-time strategy behind a fixed contract. One strategy is in force, `rc-cycle`: ARC + arenas + on-the-fly cycle collection from a mutator-fed candidate set | [strategies](model/gc/strategies.md), [rc-cycle](model/gc/rc-cycle.md), [heap-design](model/gc/heap-design.md) |
 | Actors | `#[Actor]` classes own their arenas and execute serially; mailboxes are the only communication channel between actors. Collection runs per actor at message boundaries; each actor may bind its own GC | [actors](runtime/actors.md) |
@@ -55,7 +55,7 @@ pluggable garbage collection instead of a one-size-fits-all VM heap.
 
 **[Attributes are the language surface](attributes.md).** Limelight
 adds zero new keywords and zero new syntax to PHP. Every capability
-(actors, GC hints, generics) enters through native PHP 8 attributes
+(actors, GC hints, generics) enters through standard PHP 8 attributes
 under the `Limelight\` namespace, and the compiler's whole-program
 analysis materializes its findings back into source as the same
 attributes. A Limelight program is, syntactically, a valid PHP program.

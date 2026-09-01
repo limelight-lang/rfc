@@ -346,15 +346,18 @@ looks at vocabulary — the consolidation pass checks citations, contradictions
 and unsourced claims, and an invented term trips none of them.
 
 - [ ] S9.1 Build the glossary
-      done: `dev/GLOSSARY.md` lists every word the RFC documents use as a
-        term, and gives for each what it denotes, the established name for
-        that thing in allocator and collector literature, and one of three
-        verdicts — keep, rename to the established name, or define as new
-        because the thing has no established name; the two words already
-        known carry their replacements, `door` → the ordinary allocation
-        path and a draw from the critical reserve, `escrow` → overflow
-        buffer
+      done: `dev/GLOSSARY.md` separates canonical terms from deprecated and
+        context-sensitive words; every term states what it denotes and its
+        established equivalent, then carries an independently checkable
+        keep/rename/project-specific verdict; every deprecated term has a
+        literal replacement, and every project-specific verdict explains why
+        no established term denotes the same thing
       tier: T2 · role: Critic
+      progress 2026-09-01 — the glossary is structurally split and its
+        candidate-age, lifecycle, FFI, hash-table and ownership entries were
+        corrected after a Sage audit. It remains a draft: the active RFC set
+        still has to be checked term by term, and the established-equivalent
+        evidence and explicit verdicts restored, before this step closes.
       handoff: the audit reads the documents for words used as terms, which
         is wider than the words the documents define: `door`, `escrow` and
         `floor` are all used as if defined and none of them is.

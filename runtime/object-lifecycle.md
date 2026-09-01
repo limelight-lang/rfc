@@ -152,7 +152,7 @@ The three phases are the shape every class's `dispose` has.
 Triggered when the refcount reaches zero (or the cycle collector proves
 the object garbage).
 
-### Phase 1 — Pre-destructor: `__destruct`
+### Phase 1 — User destructor: `__destruct`
 
 The only phase visible to PHP code.
 
@@ -169,7 +169,7 @@ The only phase visible to PHP code.
   again, phase 1 is *skipped* (the bit is set) and teardown proceeds to
   phase 2.
 
-### Phase 2 — Real destructor: drop
+### Phase 2 — Field and resource teardown: `drop`
 
 Runtime-level teardown, invisible to PHP:
 

@@ -635,17 +635,18 @@ ownership with atomic counting — leaves a reference across the boundary
 and is refused with it. What still arrives with multi-threading is the
 mechanism, not the choice.
 
-### dispose — the internal destructor
+### `dispose` — the runtime teardown entry
 
 **Decision**: each class carries a pointer to `dispose(obj)`, a
-compiler-generated **internal** destructor. Every class has one, even
+compiler-generated runtime object-teardown entry. Every class has one, even
 without a user `__destruct`. It releases the counted fields in
 straight-line code — release slot 1, release slot 2, … — frees internal
 resources, and calls the user `__destruct` when the class has one.
 
 `dispose` is not `__destruct`. `__destruct` is the optional,
-side-effecting, resurrection-capable PHP destructor; `dispose` is the
-mandatory internal teardown that *invokes* it. The collector, holding a
+side-effecting, resurrection-capable user destructor; `dispose` is the
+mandatory orchestrator that invokes it and, if the object was not
+resurrected, performs field/resource teardown. The collector, holding a
 dead object, does `obj->class->dispose(obj)` — one indirect call into
 specialized code, the teardown analog of the factory. This is the
 `__dispose` named in "Deferred" as part of the metaclass model, made

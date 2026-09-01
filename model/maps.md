@@ -44,7 +44,7 @@ the address is not yet stable under every reset.
 
 The border is not how many kinds each admits. It is where equality comes
 from. An object key is equal by address, so `Map` has no key kind to
-dispatch on, no numeric-string canonicalisation, no string-key ownership,
+dispatch on, no numeric-string canonicalization, no string-key ownership,
 and one shape of counted child. An array key is equal by content, which
 is what brings in a content hash and a recursive walk, and `MapMixed`
 pays for that alone. This is the shape `SplObjectStorage` has; it falls

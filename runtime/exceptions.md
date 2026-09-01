@@ -730,51 +730,40 @@ specified for a constructor that threw: our teardown runs, the user
 destructor does not. No record is ever silently dropped, because an
 object whose registration failed does not survive its own creation.
 
-**Capacity is reserved because candidate loss is not permitted** (2026-08-28,
+#### Candidate registration
+
+Candidate loss is not permitted (2026-08-28,
 [`../dev/DECISIONS.md`](../dev/DECISIONS.md), "an enrolment cannot fail").
-Below the live candidate-queue segment, its two spare segments, and the
-per-thread critical reserve is a lifetime-held overflow buffer: one 64 KiB pool
-block allocated at thread initialization. A thread that cannot allocate this
-initial segment does not start. A thread that skipped initialization allocates
-it lazily at first registration; failure there aborts. The overflow operation
-itself is one store and one increment. This entry point therefore carries no
-failure at
-all, and the reporting is the next safepoint poll's, from a frame that has one:
-the poll refills, drains the overflow buffer into the queue if it can allocate a
-segment, and otherwise collects when its entry conditions permit, waits on the trace token
-when another thread holds it, and raises memory-exhausted when the collection
-runs and loses. That is the store barrier's pattern one module up — funded at
-the site, reported at the poll.
+Registration therefore has the following contract:
 
-> **Record, superseded 2026-08-28.** The paragraphs below were this document's
-> answer while the buffer was refusable, and the third category was named for
-> it. They are kept because the cost they price is what the ruling above paid to
-> remove.
->
-> **Refusable, so there is nothing to report.** Buffering a candidate root
-> for the cycle collector can simply not happen, provided the "buffered"
-> mark is set only when the entry really went in. Nothing is corrupted and
-> nothing dangles; a refusal arms a collection instead. This is a third
-> category next to *report* and *raise*, and it is the cheapest of the
-> three: **refusable work**. Every operation moved into it is one the
-> channel never has to carry. (Implemented in `ll-model` as of
-> 2026-07-21.)
->
-> Its cost is real and should not be understated. Buffering is
-> edge-triggered on a non-zero decrement, so a refused root is not
-> re-offered later: if that decrement was the last external release of a
-> garbage cycle, no further decrement ever comes and **no future
-> collection can find it** — the buffer is the only root set the collector
-> has. The armed collection does not recover it either, since the refused
-> root is not in the buffer, and arming only fires where the compiler
-> emitted a poll. So the refusal converts a collectable cycle into a leak
-> that lasts until the thread ends, and it does so exactly when memory is
-> scarcest. That is still the right trade against killing the process, but
-> it is a leak, not a postponement.
+1. Each thread holds one 64 KiB overflow block for its lifetime, in addition
+   to the live candidate-queue segment, two spare segments, and the critical
+   reserve.
+2. Thread initialization allocates the overflow block. If it cannot, the
+   thread does not start. A thread that skipped initialization allocates the
+   block on first registration; failure on that path aborts the process.
+3. Appending to an available overflow block is one store and one increment and
+   has no application-visible failure channel.
+4. The next safepoint poll first tries to replenish queue capacity and drain
+   the overflow block. Draining does not clear the pending collection signal.
+   The poll then reads the collection-entry gate. If the gate is closed, it
+   neither collects nor waits and carries the entries to a later poll. If the
+   gate is open, it acquires the trace token or waits for its current owner to
+   release it, then collects. It raises memory exhaustion only if that
+   collection and its allocation retry fail.
 
-**The category survives its one member.** *Refusable work* stays beside
-*report* and *raise* for an entry point that earns it later; what it has lost is
-the example it was written from.
+The overflow block is finite. The RFC does not yet prove that it cannot fill
+between polls; this is correctness blocker A5 in
+[`../dev/ALGORITHM-AUDIT.md`](../dev/ALGORITHM-AUDIT.md).
+
+**Historical note.** Candidate registration was previously classified as
+refusable work. That design was superseded because registration is
+edge-triggered: refusing the last external decrement can make a cycle
+permanently undiscoverable. The decision record preserves the rejected design
+and its rationale.
+
+The broader category *refusable work* remains available for future entry
+points, but candidate registration is not a member of it.
 
 The rule the enumeration produces, in the order to try it: **make the
 failure impossible, or make the work refusable, before giving it a

@@ -59,7 +59,7 @@ miss those. So step 1 iterates to a fixpoint:
    arena-category entities — no strategy traces them — so no dedicated
    flag bit is spent; the mark is cleared when a survivor is promoted (its
    flags are rewritten there anyway, see Step 2 retention).
-3. Run pre-destructors (`__destruct`) for tracked dying objects
+3. Run user destructors (`__destruct`) for tracked dying objects
    ([object-lifecycle.md](../../runtime/object-lifecycle.md)) that are
    not escaped and not yet destructed (the `DESTRUCTOR_RAN` flag is the
    exactly-once guard). Destructors go through the normal barrier, so new

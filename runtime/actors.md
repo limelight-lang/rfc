@@ -211,7 +211,7 @@ copy remains the runtime fallback for what analysis could not prove.
   (tier analysis may still stack-allocate tier-1 objects).
 - **Actor death = arena reset.** O(1) reclamation via the existing
   machinery ([arena-reset.md](../model/memory/arena-reset.md)):
-  tracked pre-destructors run, escaped survivors are promoted, blocks
+  tracked user destructors run, escaped survivors are promoted, blocks
   return to the global pool.
 - **A request is a degenerate actor**: one message, then death. The
   request arena ([arenas.md](../model/memory/arenas.md)) is the

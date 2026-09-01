@@ -15,11 +15,13 @@ The reserve belongs to the allocator and is private to one mutator thread. It
 is not a separate allocator. Call sites explicitly select either the ordinary
 allocation path or the reserve allocation path.
 
-The reserve has three users:
+The reserve has two defined users and one reserved use whose call-site contract
+is still open:
 
 1. mandatory growth of the cycle-candidate queue;
-2. progress by a mutator that cannot start a collection; and
-3. temporary memory used by a collection running for that thread.
+2. temporary memory used by a collection running for that thread; and
+3. progress by a mutator that cannot start a collection, once the eligible
+   operations and their bounds have been specified.
 
 The exception reserve described in
 [`runtime/exceptions.md`](../../runtime/exceptions.md) is separate and cannot be
@@ -37,7 +39,7 @@ Two invariants keep the reserve available:
 
 - A reserve block must never become an ordinary bump-allocation block.
 - Eligibility is determined by the call site, not by current memory pressure.
-  Only the three operations listed in this document may use the reserve path.
+  Only operations explicitly allowed below may use the reserve path.
 
 Allowing an arbitrary failed allocation to retry against the reserve would turn
 the reserve into ordinary memory and remove the guarantee it exists to provide.
@@ -91,11 +93,15 @@ candidate is returned to the live queue.
 After an allocation failure, a mutator checks its collection-entry conditions:
 the collecting flag and `TEARDOWN_DEPTH`. If collection is permitted, the
 mutator waits for its trace token, acquires it, and runs a synchronous trace. If
-the entry conditions prohibit collection, the mutator uses the reserve to
-continue until its next consistent-point poll.
+the entry conditions prohibit collection, ordinary application allocation must
+not retry against the reserve.
 
-This use must be bounded by the maximum allocation volume between two polls.
-The ABI does not yet specify that bound, so this share cannot yet be derived.
+The design intends to let a bounded set of runtime progress operations continue
+until the next consistent-point poll. The ABI does not yet identify those
+operations or bound their maximum allocation volume. Until it does, no call
+site is eligible under this category. Defining the allowlist, the routing of
+each eligible allocation, and the between-poll bound is an open blocker; the
+reserved capacity for this category cannot yet be derived.
 
 ### Collection working memory
 
@@ -125,9 +131,16 @@ applies: reclaim, collect, retry, and then raise the catchable
 memory-exhaustion exception described in
 [`runtime/exceptions.md`](../../runtime/exceptions.md).
 
-Reserve mode ends after every queued cycle candidate has been traced, not merely
-after the allocator replenishes the blocks. This condition
-prevents continued reserve use from silently reducing the protected capacity.
+The exit predicate for reserve mode is not yet specified. Replenishing consumed
+blocks is necessary but not sufficient: candidates may still exist in the live
+queue, a detached or in-flight segment, the validation handoff, or the
+lifetime-held overflow buffer. The RFC does not yet define a registration
+generation or another mechanism by which the owner can observe completion
+across all of these representations.
+
+Until the pending set and its completion observer are defined, leaving reserve
+mode is an open blocker. An implementation must not infer an exit condition
+from an empty live queue or from replenished reserve capacity alone.
 
 ## Exhaustion behavior
 

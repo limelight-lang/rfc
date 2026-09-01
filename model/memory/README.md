@@ -12,7 +12,7 @@ Covers memory regions, allocation strategies, arena/pool design, and the interfa
 - [large-entities.md](large-entities.md) — an entity past its category's packing unit: the two-clause invariant, the dynamic string layout for bytes, one block-aligned allocation per entity for cells, the run registry
 - [buffers.md](buffers.md) — growable buffers: per-category growth, memory-pressure modes, the dedicated `BLOCK_KIND_BUFFER` reclaim strategy
 - [static-lifetimes.md](static-lifetimes.md) — compiler-tracked ownership and moves: the tier ladder, drop-point policy, relationship analysis (acyclic classes, `#[Backedge]` cycle shapes)
-- [zero-abstraction.md](zero-abstraction.md) — `#[FFI]` entities: no header, no ARC; owner-bound lifetime or `FFIBox` attachment, borrowed string/array views
+- [zero-abstraction.md](zero-abstraction.md) — headerless `#[FFI]` values: no header, no ARC; owner-bound lifetime or `FFIBox` attachment, borrowed string/array views
 - [ffi.md](ffi.md) — pure C structures: the mandatory owner model, field/type mapping (where `string` is a C string), `FFIBox` attachment, the attribute catalog
 - [regions.md](regions.md) — `#[Region]`: instance-owned arenas with a per-region GC binding; the allocator class (custom allocation/free/traversal); the memory half of an actor
 - [arc-optimizations.md](arc-optimizations.md) — refcount elimination strategies (partly superseded by static-lifetimes.md)

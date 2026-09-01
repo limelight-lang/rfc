@@ -37,7 +37,7 @@ class RequestScratch { ... }
   by its owner's drop), its arenas reset through the standard
   discipline ([arena-reset.md](arena-reset.md),
   [object-lifecycle.md](../../runtime/object-lifecycle.md)): tracked
-  pre-destructors, promotion of escaped survivors, blocks back to the
+  user destructors, promotion of escaped survivors, blocks back to the
   pool.
 - **Per-region GC binding**: the region binds a collector from the
   build's compiled-in strategy set, with its own thresholds, exactly
@@ -64,7 +64,7 @@ class TrieNode {                     // all nodes of all tries live
   outside and only its contents live inside). This is the slab/pool
   idiom: many small objects of one type co-located for cache density.
 - **Lifecycle**: the region keeps a live-instance count. When it drops
-  to zero, the region resets (tracked pre-destructors run, blocks
+  to zero, the region resets (tracked user destructors run, blocks
   return to the pool). An explicit `pack()`/`reset()` API for shedding
   content earlier is the same open question as for per-instance
   regions.

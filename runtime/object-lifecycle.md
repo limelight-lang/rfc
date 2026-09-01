@@ -3,8 +3,8 @@
 ## Scope
 
 The runtime implementation of object creation and destruction: the `new`
-path, and the three-phase teardown of pre-destructor (`__destruct`), real
-destructor (drop), memory release. Reference implementation sketches in
+path, followed by user destruction, field and resource teardown, and storage
+reclamation. Reference implementation sketches in
 Rust per [implementation-language.md](implementation-language.md); object
 layout per [classes.md](../model/classes.md).
 
@@ -138,19 +138,30 @@ pub extern "C" fn ll_object_constructed(ctx: *mut LLContext, obj: *mut Object) -
 
 ---
 
-## Teardown: Three Phases
+## Teardown: three phases
 
-Teardown is the class's compiler-generated **`dispose`**
+Ordinary zero-count teardown uses the class's compiler-generated **`dispose`**
 ([classes.md](../model/classes.md), "dispose — the internal
-destructor"), the counterpart of the factory. The collector or the
-release path holds a bare object and calls `obj->class->dispose(obj)` —
-one indirect call into straight-line code. `dispose` does **not** read
+destructor"), the counterpart of the factory. The release path holds a bare
+object and calls `obj->class->dispose(obj)` — one indirect call into
+straight-line code. `dispose` does **not** read
 `prop_layout` at runtime; the releases below are emitted per class,
 slot by slot. Only the GC reads layout as data, through `traced_runs`.
-The three phases are the shape every class's `dispose` has.
+Every class's `dispose` follows the same order:
 
-Triggered when the refcount reaches zero (or the cycle collector proves
-the object garbage).
+1. invoke `__destruct` once, if construction completed;
+2. if the object was not resurrected, invalidate weak references and release
+   fields and resources;
+3. reclaim storage according to its memory category.
+
+Resurrection is an early return between steps 1 and 2. No summary of
+`dispose` may reorder or omit that boundary.
+
+This path is triggered when the refcount reaches zero. Cycle finalization does
+not call `dispose` independently for each member: it performs the equivalent
+obligations through a component-wide protocol that invalidates every weak cell
+before the first destructor
+([rc-cycle.md](../model/gc/rc-cycle.md), "Cycle finalization and reclamation").
 
 ### Phase 1 — User destructor: `__destruct`
 
@@ -200,7 +211,7 @@ Decided entirely by the memory category bits:
 // this for Foo's specific counted slots — there is no `refcounted_slots()`
 // walk at runtime; the compiler knew the slots and emitted the releases.
 fn Foo__dispose(obj: *mut Object) {
-    // Phase 1: pre-destructor, exactly once, resurrection-aware.
+    // Phase 1: user destructor, exactly once, resurrection-aware.
     // The test is the object's own DESTRUCTOR_PENDING flag, not the class:
     // a class may declare __destruct while this object never completed
     // construction, and such an object must not run it.
@@ -220,7 +231,8 @@ fn Foo__dispose(obj: *mut Object) {
     // free it, and then phase 3 would free it again.
     forget_candidate(obj);
 
-    // Phase 2: drop, emitted per counted slot (Foo has, say, two).
+    // Phase 2: field and resource teardown, emitted per counted slot
+    // (Foo has, say, two).
     // A holder going away is a `lose` for every request-arena escapee it
     // referenced — the same event as the store barrier's `drop` on an
     // overwrite. Heap children fall through to the ordinary release.

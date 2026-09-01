@@ -117,20 +117,25 @@ reference: the mutator would first need an existing path through which to read
 one of its members. However, an off-thread trace may combine fields and counts
 from different instants. Its result is therefore only a proposal for the owner.
 
-The compiler must count every reference held in a local variable or stack slot.
-Retain/release elimination is allowed only inside a region in which collection
-cannot start: the region contains no call, store, release, or consistent-point
-poll. This ensures that exact validation cannot overlook a stack-held
-reference.
+**Stack-reference invariant:** every reference live in a local variable or
+stack slot at a collection point contributes to the entity's reference count.
+Retain/release elimination is therefore allowed only in a region where
+collection cannot start. Such a region contains no call, store, release, or
+consistent-point poll.
 
-Written the other way round the danger is concrete, and it is what the
-guarantee rules out. Take `$node = $ring->head` with the retain elided against
-`$ring->head` as the covering reference, then `$ring = null`. The covering
-reference is an edge *inside* the ring, so the trace subtracts it, the ring
-reads as internally balanced, and `$node` would be left pointing at freed
-memory. Refcounting alone never has this problem, because it frees only at
-zero; a cycle collector frees at a non-zero count, which is why the covering
-obligation has to be the counted `+1` and not "someone else holds it".
+Without this invariant, the following execution is unsafe:
+
+1. `$node = $ring->head` is compiled with its retain elided because
+   `$ring->head` is treated as the covering reference.
+2. `$ring = null` removes the external reference to the ring.
+3. The collector subtracts `$ring->head` as an internal edge and concludes
+   that the component is internally balanced.
+4. The collector reclaims the ring while `$node` still points into it.
+
+Ordinary refcounting frees only at zero and does not expose this case. A cycle
+collector may reclaim an internally balanced component whose members have
+non-zero counts. The covering obligation must therefore be an actual counted
+`+1`, not merely the knowledge that another edge exists.
 
 Trace precision affects cost and latency, not safety: a missed cycle remains
 eligible for a later collection. A trace may therefore stop at an age boundary,

@@ -152,17 +152,21 @@ Strategies consume, not define, the object model:
 - `RcHeader` flags and refcount ([object-lifecycle.md](../../runtime/object-lifecycle.md))
 - the class's `traced_runs` — the list of `(offset, count)` pointer and
   ValueBox runs — for tracing object children ([classes.md](../classes.md))
-- the three-phase teardown (`__destruct` with resurrection check →
-  drop → memory release). A strategy that proves an object garbage may
-  free it directly instead of entering teardown. `rc-cycle` does not:
-  its commit stage runs the destructors in a fixed order
+- the lifecycle obligations represented by generated teardown. Ordinary
+  zero-count `dispose` runs `__destruct` with a resurrection check, then
+  invalidates weak references, releases fields and resources, and finally
+  reclaims storage. A strategy that proves an object garbage may bypass the
+  generated `dispose` entry point, but it may not omit those obligations. It
+  must also decrement the escape hold-count of every request-arena entity
+  referenced by the dead holder.
+
+  Ordering is protocol-specific. `rc-cycle` invalidates weak references for
+  the entire confirmed component before it runs the first destructor, then
+  performs the remaining obligations through its component commit protocol
   ([rc-cycle.md](rc-cycle.md), "Cycle finalization and reclamation"), which is what closes
   the missing-`__destruct`-for-cyclic-garbage gap earlier strategies
-  left open. A strategy that does free directly still owes the
-  bookkeeping teardown would have done: above all, dropping the escape
-  hold-count of every request-arena entity the dead holder referenced,
-  since arena entities are invisible to the trace and nothing else will do
-it.
+  left open. Arena entities are invisible to the trace, so no later collector
+  pass can repair omitted escape bookkeeping.
 
 ---
 

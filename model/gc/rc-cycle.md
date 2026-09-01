@@ -194,8 +194,8 @@ The formula does not cover every population of the cycle-collected heap, so the
 trace dispatches on the block kind after loading its header. An ordinary entity
 block uses the arithmetic lookup. A
 **retained** block — promoted arena survivors, filled by a bump allocator, mixed
-sizes, no stride — goes by binary search over the occupancy index, so
-`memory/retained.rs` outlives the deletion of `rc-walk` that built it. A **large
+sizes, no stride — goes by binary search over its survivor list, which the
+block's own header names (next section). A **large
 entity** holds one row in its own block header's free tail. An arena block is
 never entered: the descent stops at any child outside the GC heap and treats it
 as an external live reference, because a reference cycle through the arena is
@@ -252,6 +252,45 @@ density of traced slots in touched blocks stays below 29 % — the analytic
 crossing is `1 − 1/√2` — and it costs a further dependent load on every edge. On
 a full trace it writes *more* than the flat array, 762 MiB against 717, because
 every chunk is zeroed at first use too.
+
+## The survivor list of a retained block
+
+A retained block is a former arena block whose survivors were promoted in
+place. Its header's collector line carries, beside the shadow pointer, the
+address and length of a sorted array of its survivors' addresses, and one
+64-bit count word: live survivors in the low half, pinned payloads in the
+high half. The arena's reset writes the array and the two words on the thread
+that owns the arena, clears the whole collector line first — a block retained,
+returned and retained again would otherwise carry a stale array address — and
+publishes them with the release store that stamps the block's kind. A trace
+reading the list acquire-loads the address; on x86 both are plain moves. The
+array lives in memory the arena already holds: the retained block's own tail
+when the list fits below its last object, otherwise the reset's current block,
+which is then retained as the holder of that list, and only when neither has
+room a block drawn from the memory manager. A null address is a block retained
+for a payload alone, and the trace treats an edge into it as an external live
+reference. The process-wide registry that once held these lists served
+`rc-walk`'s census of every block; nothing in this design enumerates retained
+blocks, so no such table exists (`ll-model`, `dev/DECISIONS.md`, "a retained
+block's survivor list lives in the arena's own memory").
+
+A retained block is on no thread's list. Thread exit neither abandons nor
+adopts it: its survivors die by counting from whichever thread releases them,
+and the last death returns the block. The count word is decremented
+atomically for that reason — `ll_free` is an ABI entry and cannot be made
+owner-only — and the value the decrement returns says whether the caller holds
+the last count and returns the block. Both halves reaching zero is the whole
+condition; two separate words could not answer it without a lock.
+
+A block that holds survivor lists returns when its last list and its last
+survivor are gone, whichever comes later. A list dies before its block does,
+in the same operation that returns the block it describes, so no list ever
+names a returned block.
+
+The quiescent enumerator of the collected heap — the test-only walk that
+visits every slot — finds retained blocks by their kind in the region scan and
+reads the list from the header without a lock; the quiescent-mutator contract
+it already states is what makes the read sound.
 
 ## Zero-count entities pending slot reuse
 
@@ -460,10 +499,11 @@ teardown immediately. Only unreachable reference cycles wait for collection.
 
 Four requirements originated in the earlier collector work: exact owner-side
 validation against current fields, deferred slot reuse while an identifier is
-in flight, prompt zero-count teardown, and the occupancy index for retained
-blocks. Only the occupancy index exists in code today
-(`ll-model` `memory/retained.rs`); the other three must be implemented for this
-design.
+in flight, prompt zero-count teardown, and a survivor list for retained
+blocks. Only the survivor list exists in code today, as the process-wide
+registry of `ll-model`'s `memory/retained.rs`, which "The survivor list of a
+retained block" replaces with a list the block's own header names; the other
+three must be implemented for this design.
 
 The old mutator handshake is not retained. It could deadlock with a mutator
 waiting on its trace token. Collector workers instead use the buffer handoff

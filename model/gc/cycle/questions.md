@@ -905,10 +905,12 @@ the first three are what the candidate would have to be given.
    **The token holder provisions the trace's swap**, at the moment of the
    swap. A collector thread takes a block through its own ordinary allocation path and
    skips the thread for the round when the pool refuses; the in-line form,
-   which starts at a legal allocation point, asks the pool, then its own
-   cells, then its own critical reserve, and aborts before tracing anything
-   when all three refuse — a partial collection is legal (Y14) and a dropped
-   root is not (Y6).
+   which starts at a legal allocation point, first takes its workspace — one
+   block the thread holds from its first collection, drawn through the ordinary
+   allocation path alone and refused only by the pool — and then asks the pool,
+   its own cells and its own critical reserve for the swap, aborting before
+   tracing anything when a refusal reaches the end of whichever list it is on —
+   a partial collection is legal (Y14) and a dropped root is not (Y6).
 
    **A consumed spare is replenished by the buffer that comes back.** At the
    inbox pickup the owner drains the detached segments, disposes of each entry
@@ -1197,10 +1199,12 @@ the vector — under which an already-released entry has no surviving edge and a
 unreleased one has a count the vector's hold keeps high, which is the
 conservative skew that an external-reference result already tolerates.
 
-**The obligation that comes with it:** the trace's arena — shadow rows, met
-bitmap, mark stack — **returns at the token's release**, before validation and
-teardown, so a teardown's own decrements meet a refilled reserve rather than a
-spent one. The readership rule already makes that legal, mark and scan being
+**The obligation that comes with it:** the blocks the trace's arena drew for
+shadow rows, met bitmap and mark stack — **return at the token's release**,
+before validation and teardown, so a teardown's own decrements meet a refilled
+reserve rather than a spent one. The thread's workspace is outside the
+obligation and stays with the thread: it never held reserve memory, so releasing
+it would refill nothing. The readership rule already makes that legal, mark and scan being
 the rows' only readers and the release coming after the last touch of one
 ([`../rc-cycle.md`](../rc-cycle.md), "Concurrency"); this ruling makes it
 required. The tenth ruling's refusal of YRC's stripe drain therefore narrows

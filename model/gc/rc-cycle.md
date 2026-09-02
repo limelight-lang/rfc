@@ -220,11 +220,13 @@ state in a bitmap with one bit per eight-slot group and initializes only the
 bitmap and visited groups; the same benchmark took 1.4 ms.
 
 At a block's first visit, the trace scratch arena bump-allocates `slots × 4`
-bytes of rows plus the visited bitmap from pooled 64 KiB blocks. It uses the
-ordinary allocation path first and the reserve path from
-[`critical-reserve.md`](../memory/critical-reserve.md) after ordinary allocation
-fails. Allocation returns null on failure, allowing the trace to abort and
-return all scratch blocks. The rejected virtual-reservation alternative could
+bytes of rows plus the visited bitmap. The first such bytes come out of the
+thread's workspace, one 64 KiB block held from its first collection to its exit
+([`critical-reserve.md`](../memory/critical-reserve.md), "Collection working
+memory"); past it the arena draws further pooled 64 KiB blocks, the ordinary
+allocation path first and the reserve path after ordinary allocation fails.
+Allocation returns null on failure, allowing the trace to abort and return every
+block it drew, the workspace staying with the thread. The rejected virtual-reservation alternative could
 instead fault while materializing a page and could not report that failure to
 the trace.
 

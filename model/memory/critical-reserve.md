@@ -106,13 +106,23 @@ reserved capacity for this category cannot yet be derived.
 ### Collection working memory
 
 A trace uses a bump-allocated scratch arena for its worklist, shadow rows, and
-visited bitmaps. The arena tries ordinary allocation first because most collections
-do not begin under memory pressure and a full trace can be much larger than the
-reserve. It falls back to reserve allocation when ordinary allocation fails.
+visited bitmaps. The arena opens over one block the thread already holds, its
+**workspace**, and grows past it. Growth tries ordinary allocation first because
+most collections do not begin under memory pressure and a full trace can be much
+larger than the reserve. It falls back to reserve allocation when ordinary
+allocation fails.
 
-If both paths fail, the trace aborts and returns all scratch blocks. Blocks
-obtained from the reserve return to it when the trace scratch arena is reset,
-including on abort.
+The workspace itself has one allocation path, the ordinary one. A thread draws
+it at its first collection and keeps it until the thread exits; the arena's
+reset rewinds the bump over it rather than returning it, so every collection
+after the first opens on memory the thread already has. A refused workspace draw
+is a collection that does not start. Reserve allocation may never fund it,
+because a reserve block held for the life of a thread is a reserve spent as
+ordinary memory.
+
+If both paths fail during growth, the trace aborts and returns every block it
+drew. Blocks obtained from the reserve return to it when the trace scratch arena
+is reset, including on abort.
 
 The current flat shadow-row layout needs four bytes per slot. At the smallest
 size class, one touched block therefore needs about 16 KiB of rows. A 512 KiB

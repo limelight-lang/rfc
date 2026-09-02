@@ -16,6 +16,7 @@ No product code lives here — this is the specification, see
 - **Decisions (why, dated)** → [DECISIONS.md](DECISIONS.md)
 - **Project conventions (branches, commits, PRs)** → [WORKFLOW.md](WORKFLOW.md)
 - **Plan: stages, steps, review roles** → [PLAN.md](PLAN.md)
+- **Vocabulary: canonical, deprecated and context-sensitive terms, each with its established equivalent and verdict** → [GLOSSARY.md](GLOSSARY.md)
 - **Pitfalls already hit** → [POSTMORTEM.md](POSTMORTEM.md)
 - **Diagrams / schemas** → [design/](design/)
 - **Repository utilities** → [tools/](tools/README.md) — `linkcheck.php`

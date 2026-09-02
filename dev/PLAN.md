@@ -361,6 +361,39 @@ and unsourced claims, and an invented term trips none of them.
       handoff: the audit reads the documents for words used as terms, which
         is wider than the words the documents define: `door`, `escrow` and
         `floor` are all used as if defined and none of them is.
+      progress 2026-09-02 — rebuilt on `work/s9-1`: 92 canonical entries in
+        nine tables, each with what it denotes, its established equivalent
+        with a source, and a keep or project-specific verdict (12 of the
+        latter, each with its reason); 45 deprecated rows, one sense and one
+        literal replacement each; 20 context-sensitive words, each with the
+        rule that selects the replacement. The four entries `model` S41.7
+        waited on: storage a carry left in its source block is *promoted in
+        place* (`PromotedInPlace`); the journal's thread without a ring is an
+        *unjournaled thread* (`Window::Unjournaled`); `ResetWindow::escrow` is
+        the *deferred increment* list and `credits` the *deferred decrement*
+        list, `park_large` is a *deferred free* and `CORPSE_WALKS` counts
+        walks over *torn-down entities*; the sweep-list sense of enrolment is
+        *attachment to the touched list*, and the end-of-scan sweep is a
+        *clear*. Every citation was checked against its heading by script, and
+        `dev/tools/linkcheck.php` passes. Open: the Critic round.
+      progress 2026-09-02, first Critic round — nine findings, all taken, two
+        with a different remedy than proposed. Two of the four entries above
+        change: storage a carry left in its source block is a *pinned payload*
+        (`Pinned` replaces both `Refused` carry variants), because *promoted
+        in place* is the entity's category rewrite in `rc-cycle.md` and
+        `weak-references.md` and *pinned* is what `arena-reset.md`,
+        `rc-cycle.md` and `retained::pin` already call the storage outcome;
+        the journal's thread without a ring is a *never-journaled thread*
+        (`Window::NeverJournaled`), because *unjournaled* also describes the
+        closed thread whose records `Window::Lost` counts. The deferred
+        increment, deferred decrement, deferred free and touched-list entries
+        stand. Outside the four: *release-at-reset list* is canonical and
+        *release log* deprecated; *carry*, *transfer* and *collision defense*
+        have rows; crate paths read `ll-model/…`; five literature attributions
+        were dropped or reworded, none of them checkable inside the
+        repository. Now 96 canonical rows, 46
+        deprecated, 20 context-sensitive, 13 project-specific. Open: the
+        second Critic round.
 - [ ] S9.2 Rewrite the documents and the crate to the glossary
       done: no document, identifier or test file name uses a word S9.1
         marked for rename; the renames land as one commit per repository;

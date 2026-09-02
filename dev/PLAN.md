@@ -361,6 +361,21 @@ and unsourced claims, and an invented term trips none of them.
       handoff: the audit reads the documents for words used as terms, which
         is wider than the words the documents define: `door`, `escrow` and
         `floor` are all used as if defined and none of them is.
+      progress 2026-09-02 — rebuilt on `work/s9-1`: 92 canonical entries in
+        nine tables, each with what it denotes, its established equivalent
+        with a source, and a keep or project-specific verdict (12 of the
+        latter, each with its reason); 45 deprecated rows, one sense and one
+        literal replacement each; 20 context-sensitive words, each with the
+        rule that selects the replacement. The four entries `model` S41.7
+        waited on: storage a carry left in its source block is *promoted in
+        place* (`PromotedInPlace`); the journal's thread without a ring is an
+        *unjournaled thread* (`Window::Unjournaled`); `ResetWindow::escrow` is
+        the *deferred increment* list and `credits` the *deferred decrement*
+        list, `park_large` is a *deferred free* and `CORPSE_WALKS` counts
+        walks over *torn-down entities*; the sweep-list sense of enrolment is
+        *attachment to the touched list*, and the end-of-scan sweep is a
+        *clear*. Every citation was checked against its heading by script, and
+        `dev/tools/linkcheck.php` passes. Open: the Critic round.
 - [ ] S9.2 Rewrite the documents and the crate to the glossary
       done: no document, identifier or test file name uses a word S9.1
         marked for rename; the renames land as one commit per repository;

@@ -597,6 +597,25 @@ cannot use, while the reverse costs nothing.
         the node carries that guarantee and lowering has to keep it. Two
         parameter modes come with this: `comptime`, evaluated during
         compilation, and `var`, a mutable capture.
+      progress 2026-09-03, `types/ownership.md` and `types/projection.md` —
+        ownership is a capability system and it needs somewhere to live.
+        Six aspects: `own` the right to destruct, `read`, `write`, `shared`
+        for parallel access across threads, `split` for sub-ownership,
+        `inspect` to see identity without data; `mut` is `write` without
+        `shared`, and the weakening rules are given. `managed` is a seventh
+        mode: a container owns the resource, transfer is not checked, and the
+        lifetime follows the owner. The compiler models a *slot* — a
+        representation of a resource that belongs to a scope and carries its
+        current aspects, so `let b = a` makes a second reference to one slot
+        and passing it by `own` empties the slot and invalidates both names.
+        Under the ruling that HIR keeps the whole logical semantics, slots and
+        aspects reach HIR and erase below it. Projection turns out to be two
+        things: a declaration (a binary-compatible view type over a base type,
+        distinct for the type system, able to weaken nullability and access)
+        and an operation (viewing a value through one); the document's own
+        examples section is empty. Stale document, noted: `ownership.md` makes
+        `&T` bidirectional and `&T?` out, while the audit of the same day
+        rules `&T` read-only, `&mut T` read/write and `&out T` write-only.
       progress 2026-09-03, from reading `efen/docs` — three findings the step
         starts from. A call has one node and three kinds of target: a concrete
         symbol, an interface method reached through a VTBL, and a contract

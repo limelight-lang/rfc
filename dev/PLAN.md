@@ -450,14 +450,20 @@ cannot use, while the reverse costs nothing.
         taken from the interface, and PHP's `elseif` chain and `array()`.
         `guard` does not collapse into `if` with a negation, because its
         binding scopes over the rest of the function.
-- [ ] S10.2 Draw the erasure line through Efen's abstractions
+- [ ] S10.2 Draw the erasure line — below HIR, not above it
       done: `hir/erasure.md` carries a row for every abstraction in
         `efen/docs` — contracts, typestate, refinement types, code regions,
         metafunctions, interfaces, classes, structs, strategies, ownership,
-        effects — each with the verdict "reaches HIR" or "erased before it"
-        and the reason; an abstraction whose verdict waits on another step is
-        marked open and names that step
+        effects — each saying how HIR holds it and what lowering does with it;
+        an abstraction HIR cannot hold is marked so with the reason, and one
+        whose row waits on another step is marked open and names that step
       tier: T2 · role: Critic
+      Reframed 2026-09-03 on Edmond's ruling: HIR keeps the logical semantics
+        of Efen whole, and only notation is dropped. The erasure line
+        therefore runs between HIR and lowering, not between the frontend and
+        HIR. A contract disappearing from the binary is not a contract
+        disappearing from HIR. The step's old question — "reaches HIR or is
+        erased before it" — was the wrong fork and is retired.
       progress 2026-09-03, from `meta/aspect.md` — an ordering constraint the
         step has to respect. An aspect adds methods, properties, contracts and
         interfaces to its target and changes how the compiler resolves an
@@ -467,12 +473,16 @@ cannot use, while the reverse costs nothing.
         names a large invalidation unit for the orchestrator: editing an
         aspect invalidates every class that uses it, as editing a module's
         `use` list invalidates every call in that module.
-      progress 2026-09-03, verdicts the step can already write down. Erased:
+      progress 2026-09-03, what the step can write down, corrected the same
+        day under the reframing above. Present in HIR and erased below it:
         contracts, and with them function signatures, which `functions.md`
-        calls a kind of contract that exists only at compile time. Expanded
-        before HIR and therefore absent from it: aspects and decorators, both
-        of which generate members. Surviving: interfaces as vtables,
-        strategies, and the attributes of a declaration — `@packed` and
+        calls a kind of contract existing only at compile time. Superseded
+        here: an earlier version of this line said contracts are erased and
+        aspects absent from HIR. Aspects and decorators generate members, so
+        the class HIR describes is the expanded one, and whether HIR also
+        records that a member came from an aspect is the sharpest question the
+        reframing creates. Present as themselves: interfaces, strategies, and
+        the attributes of a declaration — `@packed` and
         `@bigEndian` mean nothing to HIR but the lowering needs them, so a
         declaration node carries its attributes untouched. A symbol record
         needs four visibility levels, one of them file-scoped: `public`,
@@ -553,8 +563,11 @@ cannot use, while the reverse costs nothing.
         changes the dispatch environment of a scope and nothing else
         reproduces it. A strategy assigned to a variable of interface type is
         a value of its own — a vtable with no receiver. Call arguments are
-        positional by the time they reach HIR, and carry a spread marker for
-        `sum(...nums)`. Assigning a struct is one node with value semantics:
+        bound to their parameters when they reach HIR and not flattened to
+        positions — corrected 2026-09-03, the binding is meaning and the order
+        of writing is notation — and they carry a spread marker for
+        `sum(...nums)`. A default value stays with the parameter while the
+        call records an absent argument, which settles the small fork below. Assigning a struct is one node with value semantics:
         copy-on-write is a guarantee of the language, and its machinery is
         inserted at lowering. Open, and small: whether a default parameter
         value is filled at the call site or held by the callee — the first

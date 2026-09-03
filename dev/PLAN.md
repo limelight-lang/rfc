@@ -456,12 +456,18 @@ cannot use, while the reverse costs nothing.
         sits in the pass pipeline and makes every pass declare which side of
         that point it runs on; states the symbol record of a generic
         definition and the rule by which an instantiation becomes a symbol
-        only when monomorphisation creates it
+        only when monomorphisation creates it; and states what the type of an
+        expression inside a generic body is before substitution, and at which
+        stage every type in HIR becomes determined
       tier: T2 · role: Critic
       Monomorphisation runs after HIR, not before — Edmond's ruling of
         2026-09-03. It analyses a generic body once instead of once per
         instantiation, and it leaves a backend that has generics of its own
         able to consume HIR unexpanded.
+      HIR carries generic entities, so a type inside a generic body stays
+        symbolic until substitution — Edmond, 2026-09-03, held over for its
+        own discussion. Until that discussion happens, no other step may
+        assume a type in HIR is concrete.
 - [ ] S10.5 Decide how HIR names what lies outside the function
       done: `hir/references.md` states the form of a reference to a symbol in
         another unit and the rule for a name resolved later; the case of a
@@ -472,6 +478,16 @@ cannot use, while the reverse costs nothing.
         lowers onto it and the MLIR construct it lowers to; a node missing
         either is marked open rather than shipped
       tier: T2 · role: Critic
+      progress 2026-09-03, from reading `efen/docs` — three findings the step
+        starts from. A call has one node and three kinds of target: a concrete
+        symbol, an interface method reached through a VTBL, and a contract
+        requirement on a type parameter, which is a static call whose target
+        monomorphisation supplies. Properties add no node: a computed property
+        reads through the same node as a field, and `willSet`/`didSet` expand
+        at lowering, because the declaration says which it is. Projection is a
+        node of its own and is not a cast — a cast may convert, a projection
+        guarantees the bytes stay put, and it is the mechanism by which a class
+        is allocated in one allocator and initialised without a copy.
 - [ ] S10.7 Break the vocabulary on two cases
       done: `hir/cases.md` writes Efen's strategies and PHP's `&` references
         as sequences of S10.6 nodes and adds none; a case that needs a new

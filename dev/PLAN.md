@@ -457,6 +457,14 @@ cannot use, while the reverse costs nothing.
         the PHP forms belong to the poorer language and prove nothing about
         Efen. Until that discussion happens this list is a candidate list, not
         a verdict.
+      progress 2026-09-03 — `hir/shape.md` exists and carries sections 1 and
+        2: what HIR is (a typed tree, post-resolution, neutral to
+        representation, reached by user code, written against Efen) and what
+        it is not (a CFG in SSA, a lowered form, a union of languages, an
+        erased form, private to the compiler). Written gradually at Edmond's
+        request. Still missing from the step: what HIR drops, names, types,
+        slots, spans, the two functions written out by hand, and the open
+        questions. `hir/README.md` does not exist yet.
 - [ ] S10.2 Draw the erasure line — below HIR, not above it
       done: `hir/erasure.md` carries a row for every abstraction in
         `efen/docs` — contracts, typestate, refinement types, code regions,

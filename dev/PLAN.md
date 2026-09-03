@@ -438,6 +438,18 @@ cannot use, while the reverse costs nothing.
         the rejected alternatives and the reason; one Efen function and one
         PHP function are written out by hand in the chosen shape
       tier: T2 · role: Critic
+      progress 2026-09-03, from `efen/docs` — what the step already knows.
+        HIR is a tree, not a graph: it keeps the flow of the language and
+        drops the notation, so `if`, `switch`, loops, `try`, `guard` and
+        `defer` stay nodes and no basic block appears. Names are already
+        resolved: a name is a key into the symbol database, and a package and
+        module are parts of that key rather than nodes. Sugar that collapses
+        to one node, collected as the test of "no tie to syntax": the two
+        parameter syntaxes (signature and `param` in the body), the
+        paren-less statement call, named arguments, an omitted parameter list
+        taken from the interface, and PHP's `elseif` chain and `array()`.
+        `guard` does not collapse into `if` with a negation, because its
+        binding scopes over the rest of the function.
 - [ ] S10.2 Draw the erasure line through Efen's abstractions
       done: `hir/erasure.md` carries a row for every abstraction in
         `efen/docs` — contracts, typestate, refinement types, code regions,
@@ -455,6 +467,17 @@ cannot use, while the reverse costs nothing.
         names a large invalidation unit for the orchestrator: editing an
         aspect invalidates every class that uses it, as editing a module's
         `use` list invalidates every call in that module.
+      progress 2026-09-03, verdicts the step can already write down. Erased:
+        contracts, and with them function signatures, which `functions.md`
+        calls a kind of contract that exists only at compile time. Expanded
+        before HIR and therefore absent from it: aspects and decorators, both
+        of which generate members. Surviving: interfaces as vtables,
+        strategies, and the attributes of a declaration — `@packed` and
+        `@bigEndian` mean nothing to HIR but the lowering needs them, so a
+        declaration node carries its attributes untouched. A symbol record
+        needs four visibility levels, one of them file-scoped: `public`,
+        `internal`, `private`, `api`. Held: effects on a function
+        (`fn f() in LoggerEffect`) — `context-and-effects.md` is unread.
 - [ ] S10.3 Decide the value model
       done: `hir/values.md` lists the value kinds, maps each to a construct in
         `model/values.md`, and shows PHP's dynamic value as one of them
@@ -504,6 +527,20 @@ cannot use, while the reverse costs nothing.
         node of its own and is not a cast — a cast may convert, a projection
         guarantees the bytes stay put, and it is the mechanism by which a class
         is allocated in one allocator and initialised without a copy.
+      progress 2026-09-03, second reading — strategies, structs, functions.
+        A call has a fourth kind of target: an object from one place and a
+        vtable from another, which is what a dynamic strategy applied with
+        `using` produces. `using` is a node by the same test as `guard`: it
+        changes the dispatch environment of a scope and nothing else
+        reproduces it. A strategy assigned to a variable of interface type is
+        a value of its own — a vtable with no receiver. Call arguments are
+        positional by the time they reach HIR, and carry a spread marker for
+        `sum(...nums)`. Assigning a struct is one node with value semantics:
+        copy-on-write is a guarantee of the language, and its machinery is
+        inserted at lowering. Open, and small: whether a default parameter
+        value is filled at the call site or held by the callee — the first
+        duplicates an expression that may have effects, the second needs a
+        notion of a missing argument.
 - [ ] S10.7 Break the vocabulary on two cases
       done: `hir/cases.md` writes Efen's strategies and PHP's `&` references
         as sequences of S10.6 nodes and adds none; a case that needs a new

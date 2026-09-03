@@ -45,14 +45,6 @@ the steps below).
 - The purity ladder's four open questions are carried in
   `model/gc/pure-destructors.md` as open items, unresolved in the code
   repository (`model/dev/design/pure-destructors.md` there).
-- How a PHP class maps onto an Efen class. The memory model is settled — a PHP
-  object is an Efen ARC object — and so is the dispatch default, but the rest is
-  not: `__get`/`__set`/`__call` intercept names that were never declared, which a
-  computed property cannot do; `protected` is missing from Efen's canonical
-  visibility list while PHP needs it; late static binding has no counterpart;
-  PHP traits attach in the class body with their own conflict rules while Efen
-  strategies attach per module; dynamic properties exist only under a
-  dictionary-shaped aspect.
 - Closure and fiber/generator layouts are unspecified anywhere in this
   repository. The case book that reported the holes went with the horizon on
   2026-08-26; the holes did not.
@@ -718,3 +710,12 @@ cannot use, while the reverse costs nothing.
         as sequences of S10.6 nodes and adds none; a case that needs a new
         node reopens S10.6 and names the node it asked for
       tier: T2 · role: Critic → Sage
+- [ ] S10.8 Map the PHP class model onto Efen's
+      done: `hir/php-classes.md` carries a row for every difference between the
+        two class models, and every row states either a verdict with its date
+        and where the decision is recorded, or what that verdict waits on
+      tier: T2 · role: Critic
+      Split out of a fog line on 2026-09-03, at Edmond's word that these are
+        decided one at a time rather than together. A fog line cannot hold that:
+        it carries no criterion and no owner per item, while a table closes row
+        by row and leaves the others untouched.

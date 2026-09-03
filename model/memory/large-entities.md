@@ -174,7 +174,7 @@ to be restated where the old one is written.
 
 **The free path dispatches on the kind, and three neighbouring
 functions need the same arms.** The pooled kind returns its block to the
-pool; the run kind calls `std::alloc::dealloc` with the run's layout,
+pool; the run kind unmaps the run at the size its commissioning recorded,
 and its registry entry is removed before either. `ll_free_large`'s
 default arm ignores an unknown kind silently, so a missing arm there is
 a leak nothing reports; `ll_usable_size` answers 0 for an unknown kind,
@@ -203,7 +203,7 @@ raw-buffer kind.
 the reset needs four more rules to do it.** Today a survivor's block is
 stamped `BLOCK_KIND_RETAINED` and indexed in `retained.rs`
 (`promote.rs`), unconditionally, which for a run means the block later
-reaches `give_block_back` and a multi-megabyte OS allocation is pushed
+reaches `release_emptied` and a multi-megabyte OS allocation is pushed
 onto the 64 KiB block free list. So: a survivor whose block carries a
 large-entity kind is not stamped retained; it is not entered into the
 retained index; it leaves the arena's large-run log through
@@ -236,19 +236,30 @@ is stated in terms of it.
 
 ## The registry of runs
 
-**A table of its own, holding one address per run.** A run's occupant
-index has length one and is computed (`block + 256`), so an entry stores
-the block address and nothing else: an ordered set behind a mutex, keyed
-the way `retained.rs` keys its map, by the block's own address.
+**A registry of its own, and it is threaded through the runs.** A run's
+occupant index has length one and is computed (`block + 256`), so an entry
+is the block address and nothing else — which means the entry fits in the
+run's own header line. The registry is a doubly linked list whose nodes are
+the run headers: two link words in the header, a head behind a mutex, and
+the mutex rather than the block's kind is what publishes the links. A run
+is linked after its mapping exists and unlinked before that mapping goes
+back to the operating system, so **the list is exactly the runs between an
+allocation's return and the unmap in its free**. A run whose mapping exists
+but whose allocation has not returned is not in it, which is why an
+enumerator over this list requires a quiescent mutator.
+
+The links are doubly rather than singly threaded because a free removes an
+arbitrary run: with one link, every free would walk the live runs under a
+process-global lock to find the predecessor.
 
 Extending `retained.rs` was the alternative, and its three differences
 all fall in the same place. A retained entry carries a shared occupant
 vector and two counters, `live` and `payloads`, while a run entry
 carries neither. A retained entry dies when both counters reach zero,
 while a run entry dies with its single entity. Most of all, the two ends
-of life diverge: `retained::give_block_back` re-stamps the block to
+of life diverge: `retained::release_emptied` re-stamps the block to
 `BLOCK_KIND_FREE` and hands it to the block pool, whereas a run must
-reach `dealloc` and must never reach the pool.
+reach the operating system and must never reach the pool.
 
 That last difference is a branch somewhere in any design, and neither
 placement is free. A shared table would put it on the entry, in the
@@ -257,19 +268,24 @@ block or leaks a run. A separate table puts it at the reset's survivor
 loop, which must test a survivor's block kind before stamping it
 retained. The separate table is chosen because the run's identity is
 known at the reset and nowhere else — `retained.rs` sees only an address
-and a count, and by the time `give_block_back` runs, the fact that this
+and a count, and by the time `release_emptied` runs, the fact that this
 block came from `alloc` rather than the pool is unrecoverable. The
 price is that the branch is a deletion rather than an addition: the
 stamp is unconditional today, so omitting the test is silent, which is
 why that rule and not the registration is the one covered by a test.
 
-What the new table copies is `retained.rs`'s contract rather than its
-code, in three rules. The snapshot clones the addresses out under the
-lock and the caller walks them without it, so no visitor runs while the
-mutex is held. The entry is removed strictly before the memory leaves,
+The registry keeps three rules of its own. The snapshot clones the
+addresses out under the lock and the caller walks them without it, so no
+visitor runs while the mutex is held. The entry is removed strictly before the memory leaves,
 because both enumerators dereference a registered address without
 checking that the block still exists. A removal that falls inside a
 collection epoch parks with the free it belongs to.
+
+**Ruled out: a table beside the runs.** An ordered set or a map keyed by
+the block address is a second lifetime to keep, and it is kept on the wrong
+path: a run is freed inside a cycle collection's close, where an allocation
+is refused outright, so a table both takes memory to insert an entry and
+gives memory back to remove one. The words the list needs are in the mapping the run already owns.
 
 **Ruled out: entering runs into the block pool's region registry.** That
 registry records regions the pool carved, which are never unmapped, and

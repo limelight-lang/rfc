@@ -450,6 +450,13 @@ cannot use, while the reverse costs nothing.
         taken from the interface, and PHP's `elseif` chain and `array()`.
         `guard` does not collapse into `if` with a negation, because its
         binding scopes over the rest of the function.
+      Held over 2026-09-03, at Edmond's word: which of those forms really are
+        only notation. The test is one question — another way of writing the
+        same abstraction, or a different abstraction — but the answers are not
+        obvious. `|>` fixes an evaluation order as well as naming a call, and
+        the PHP forms belong to the poorer language and prove nothing about
+        Efen. Until that discussion happens this list is a candidate list, not
+        a verdict.
 - [ ] S10.2 Draw the erasure line — below HIR, not above it
       done: `hir/erasure.md` carries a row for every abstraction in
         `efen/docs` — contracts, typestate, refinement types, code regions,

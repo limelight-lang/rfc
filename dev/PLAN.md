@@ -1,14 +1,24 @@
 # PLAN
 
-Updated: 2026-08-29 · Active: S8 — the clauses the build runs into first
+Updated: 2026-09-03 · Active: S8 — the clauses the build runs into first; S10 — the HIR vocabulary
 
 **Closed stages are deleted whole** (rule 23.1.3). S1 through S5 went on
 2026-08-25, S6 and S7 on 2026-08-27; what survived each is in
 `dev/DECISIONS.md` and in the question graphs, and a number is never reissued.
 
-Destination, as amended 2026-08-23: the collector design of record is
-readable here as a question graph — thirty questions about the collector and
-the runtime, each with what would answer it, bounded by Edmond's rulings.
+Destination, as amended 2026-09-03: the design of record for the runtime and
+for the toolchain's language-neutral layer is readable here — the collector as a
+question graph, and HIR as a vocabulary in which every node names what lowers
+onto it and what it lowers to.
+
+**The 2026-08-23 destination is retired and its words are kept so the change is
+visible:** "the collector design of record is readable here as a question
+graph — thirty questions about the collector and the runtime, each with what
+would answer it, bounded by Edmond's rulings". It named the collector alone,
+which was the whole of the work then. `amber` was founded on 2026-09-03 to hold
+HIR (`limelight-lang/php`, `dev/DECISIONS.md`, same date) and its design is
+written here, so the file now carries a stage that does not touch the
+collector.
 
 **The old destination is retired and the words are kept so the change is
 visible:** "the GC horizon algorithm is readable in this repository as a case
@@ -405,3 +415,65 @@ and unsourced claims, and an invented term trips none of them.
         `ResetWindow::escrow` in `model/src/memory/reset_window.rs` names a
         different structure, deferred count corrections, and takes a
         different name from the queue's.
+
+## S10 — The HIR vocabulary
+
+Goal: a set of HIR nodes that Efen lowers onto, that PHP lowers onto as the
+poorer case, and that a backend lowers further without inventing a runtime
+`model` does not describe.
+
+Done when: every node names the Efen construct that lowers onto it and the MLIR
+construct it lowers to; every Efen abstraction carries a verdict on whether it
+reaches HIR or is erased before it; and both cases of S10.7 are written without
+adding a node.
+
+Ordered by Edmond on 2026-09-03, when `amber` was founded to hold HIR. The
+vocabulary is designed against Efen rather than against PHP: Efen is
+PHP-compatible and strictly richer, so a set built for PHP first is one Efen
+cannot use, while the reverse costs nothing.
+
+- [ ] S10.1 Decide the shape of HIR
+      done: `hir/shape.md` states whether HIR is a control-flow graph or a
+        tree, what a unit is, and whether values are in SSA form, each with
+        the rejected alternatives and the reason; one Efen function and one
+        PHP function are written out by hand in the chosen shape
+      tier: T2 · role: Critic
+- [ ] S10.2 Draw the erasure line through Efen's abstractions
+      done: `hir/erasure.md` carries a row for every abstraction in
+        `efen/docs` — contracts, typestate, refinement types, code regions,
+        metafunctions, interfaces, classes, structs, strategies, ownership,
+        effects — each with the verdict "reaches HIR" or "erased before it"
+        and the reason; an abstraction whose verdict waits on another step is
+        marked open and names that step
+      tier: T2 · role: Critic
+- [ ] S10.3 Decide the value model
+      done: `hir/values.md` lists the value kinds, maps each to a construct in
+        `model/values.md`, and shows PHP's dynamic value as one of them
+      tier: T2 · role: Critic
+- [ ] S10.4 Design generics in HIR
+      done: `hir/generics.md` states the form of a type parameter, of a
+        constraint and of an instantiation site; names where monomorphisation
+        sits in the pass pipeline and makes every pass declare which side of
+        that point it runs on; states the symbol record of a generic
+        definition and the rule by which an instantiation becomes a symbol
+        only when monomorphisation creates it
+      tier: T2 · role: Critic
+      Monomorphisation runs after HIR, not before — Edmond's ruling of
+        2026-09-03. It analyses a generic body once instead of once per
+        instantiation, and it leaves a backend that has generics of its own
+        able to consume HIR unexpanded.
+- [ ] S10.5 Decide how HIR names what lies outside the function
+      done: `hir/references.md` states the form of a reference to a symbol in
+        another unit and the rule for a name resolved later; the case of a
+        call that precedes its declaration is written out
+      tier: T2 · role: Critic
+- [ ] S10.6 Write the first operation set
+      done: `hir/operations.md` lists every node with the Efen construct that
+        lowers onto it and the MLIR construct it lowers to; a node missing
+        either is marked open rather than shipped
+      tier: T2 · role: Critic
+- [ ] S10.7 Break the vocabulary on two cases
+      done: `hir/cases.md` writes Efen's strategies and PHP's `&` references
+        as sequences of S10.6 nodes and adds none; a case that needs a new
+        node reopens S10.6 and names the node it asked for
+      tier: T2 · role: Critic → Sage

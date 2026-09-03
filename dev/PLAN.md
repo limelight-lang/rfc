@@ -45,6 +45,12 @@ the steps below).
 - The purity ladder's four open questions are carried in
   `model/gc/pure-destructors.md` as open items, unresolved in the code
   repository (`model/dev/design/pure-destructors.md` there).
+- Whether the PHP frontend is a full dialect of Efen or a separate consumer of
+  the ABI in `amber`. Both shapes are alive in the tree: `efen/docs/efen/dialects.md`
+  gives a `DialectCompiler` that declares `compile(ast: TypedAST) -> IR`, which is
+  this same IR, while `limelight-lang/php` and `amber` were founded on the second
+  shape. The first hands PHP Efen's type system; the second leaves it an
+  independent consumer of a contract.
 - Closure and fiber/generator layouts are unspecified anywhere in this
   repository. The case book that reported the holes went with the horizon on
   2026-08-26; the holes did not.

@@ -484,6 +484,17 @@ cannot use, while the reverse costs nothing.
         structs, and the layout of a union, in the compiler's hands with
         observable behaviour preserved. A verdict of "reaches HIR" therefore
         never carries a layout with it.
+      progress 2026-09-03, a dependency edge that runs against the calls.
+        `in X` is part of a function's signature and the compiler infers it
+        along the call graph: `funcA` inherits the requirement `EnvA` because
+        it calls `funcB`, and `isolated` is the attribute that cuts the edge.
+        So the symbol database stores the required contexts of every function,
+        the inference is interprocedural, and adding `%a` to a leaf changes
+        the requirement set of every caller transitively and invalidates them
+        all. The module context record grows with it: imports, the strategies
+        a module `use`s, and the static effect binding of
+        `with { Logger: FileLogger }` and `use MyApp with { … }` — one record,
+        three kinds of content, one invalidation unit.
 - [ ] S10.3 Decide the value model
       done: `hir/values.md` lists the value kinds, maps each to a construct in
         `model/values.md`, and shows PHP's dynamic value as one of them
@@ -563,6 +574,18 @@ cannot use, while the reverse costs nothing.
         partial initialisation rather than only a user-facing feature.
         Reference kinds are three and belong in the type tree: `&T` read-only,
         `&mut T` read/write, `&out T` write-only.
+      progress 2026-09-03, `context-and-effects.md` — the unification holds
+        for scopes and not for the receiver. `with C { }`, `override C(…) { }`,
+        `without { }` and `using s { }` all bind implementations over a scope
+        and none of them is reducible to other nodes, so all four are nodes of
+        one family. That the receiver arrives the same way stays a guess: only
+        the internal-IR sketch writes `in Self`, and no normative document
+        does. `%` is not a node — the compiler rewrites `%db.execute(q)` into
+        an explicit context access before HIR, and what it becomes depends on
+        the same contract/interface split as everywhere: an effect declared as
+        a contract is replaced at compile time and erased, one declared as an
+        interface is resolved through a vtable. The file's own TODO sits on
+        exactly that line.
 - [ ] S10.7 Break the vocabulary on two cases
       done: `hir/cases.md` writes Efen's strategies and PHP's `&` references
         as sequences of S10.6 nodes and adds none; a case that needs a new

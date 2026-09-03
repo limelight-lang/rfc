@@ -38,6 +38,9 @@ how HIR holds the abstraction, and what lowering does with it.
 | Visibility | On the symbol record, four levels, `private` file-scoped | Erased; it constrains linkage while it lasts |
 | Typestate | States are declarations inside a class, a struct or an interface and may carry their own fields; a signature carries `Before >> After` beside its contexts and its `throws`; refinement uses the existing `is` and `switch` and adds no node | Erased once the check passes. The per-state fields still reach lowering, because what a state holds is what has to be laid out |
 | Code region | A `region` node carrying its properties — `preserve` is the only one so far — and the guarantees it makes over named slots | Erased. It emits no code; it constrains what lowering is allowed to see |
+| Enum | A declaration with its variants; a variant may carry associated values, positional or named, and the enum may declare a raw base type. Constructing a variant is a node, and `.north` where the type is known is notation for `Direction.north` | Layout is the compiler's, including how a discriminant is stored |
+| Union | A set of variants, and only their semantics. The audit of 2026-09-03 leaves the physical form — a fixed tagged union, an indirection, or another optimisation — entirely to the compiler | Layout, with observable behaviour preserved |
+| Pattern | Patterns are nodes of their own: a binding, a literal, a range, a tuple, a variant with its associated values, a wildcard, and a `where` condition on any of them. They nest, so `.redirect(url, permanent: true)` is a variant pattern holding a binding and a literal | Tests and branches |
 | Generator | `generator` is a declaration kind; `yield` is a node that hands a value out and receives one when the generator resumes; a generator may also `return` a final value | A state machine, or the coroutines of `io`. The choice belongs to the compiler |
 | Dialect, extension | Nothing. An extension dialect declares a `transform` into base Efen, so the base form is what reaches HIR; `use dialect X` and `with dialect X { }` govern parsing and do not survive it — unlike `with` for a context, which governs execution | Nothing |
 | Dialect, inline | **Open.** `toml { }`, `json { }` and `sql { }` are expressions with an inferred type and a compile-time check. Whether HIR records that a value came from such a block, or only the value, is undecided | — |
@@ -50,7 +53,6 @@ No row is written for these, because writing one would mean guessing. Each names
 the document that decides it, all under `efen/docs/efen`:
 
 - refinement types — `types/refinement-types.md`
-- enums and unions — `types/enum.md`
 - optional and `null` — `types/optional.md`
 - type aliases — `type-aliases.md`
 - tuples, dictionaries, collections, strings, constants — `types/`

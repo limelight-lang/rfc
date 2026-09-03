@@ -465,6 +465,16 @@ cannot use, while the reverse costs nothing.
         request. Still missing from the step: what HIR drops, names, types,
         slots, spans, the two functions written out by hand, and the open
         questions. `hir/README.md` does not exist yet.
+      progress 2026-09-03, later — `hir/shape.md` is 292 lines and carries
+        sections 1, 2, 4, 5, 6, 7, 8 and 9. The `done:` condition above is met:
+        the document states that HIR is a tree and not a control-flow graph in
+        SSA, names the rejected forms with a reason for each, says a function
+        is the unit and a module's context a record in the database, and
+        section 8 writes out one Efen function and one PHP function by hand in
+        an illustrative notation. Not marked closed, because section 3 — what
+        HIR drops — is still a placeholder waiting on the discussion Edmond
+        held over, and closing the step would leave that debt with no owner
+        (rule 23.1.2а). `hir/README.md` still does not exist.
 - [ ] S10.2 Draw the erasure line — below HIR, not above it
       done: `hir/erasure.md` carries a row for every abstraction in
         `efen/docs` — contracts, typestate, refinement types, code regions,

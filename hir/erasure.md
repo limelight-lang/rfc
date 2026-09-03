@@ -50,6 +50,8 @@ how HIR holds the abstraction, and what lowering does with it.
 | Dialect, extension | Nothing. An extension dialect declares a `transform` into base Efen, so the base form is what reaches HIR; `use dialect X` and `with dialect X { }` govern parsing and do not survive it — unlike `with` for a context, which governs execution | Nothing |
 | Dialect, inline | **Open.** `toml { }`, `json { }` and `sql { }` are expressions with an inferred type and a compile-time check. Whether HIR records that a value came from such a block, or only the value, is undecided | — |
 | Dialect, full | Not an abstraction of HIR: it is a frontend. `DialectCompiler` declares `parse`, `typeCheck` and `compile(ast: TypedAST) -> IR`, and that IR is this one | — |
+| Superpolymorphism | A declaration feature: a class may declare an interface as a property (`interface drawable: Drawable`), which makes the class implement that interface and delegates every call to whatever the property currently holds. No new node — the call is the interface dispatch already described, and assigning to the property assigns a strategy value | An indirect call through the property rather than through the class's own table |
+| Disposable | A modifier on a binding, carried on the slot: `let disposable file = …` states that the resource is released when the binding leaves scope, provided its type implements `Disposable`. It is meaning, not notation, because it changes what happens at every exit | Lowering places the `dispose()` calls on the exit paths, as it does for `defer`, and `own` decides the same thing for a resource without the interface |
 | Package, module, namespace | Parts of a symbol key. A module also owns a record: its imports, the strategies it enables, its static effect bindings | Linkage and deployment |
 
 ## Not read yet
@@ -60,5 +62,3 @@ the document that decides it, all under `efen/docs/efen`:
 - refinement types — `types/refinement-types.md`
 - type aliases — `type-aliases.md`
 - tuples, dictionaries, collections, strings, constants — `types/`
-- disposable — `disposable.md`
-- superpolymorphism — `superpolymorphism.md`

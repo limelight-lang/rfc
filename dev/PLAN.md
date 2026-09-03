@@ -580,6 +580,23 @@ cannot use, while the reverse costs nothing.
         absent from the audit: `enum Visibility` here reads `Public, Private,
         Protected, Internal` while `functions.md` names `public, internal,
         private, api`.
+      progress 2026-09-03, `compile-time/metafunctions.md` — a fragment of HIR
+        is a value of the language. Efen has no raw code injection at all
+        ("весь код проходит через inline closure"), which settles the audit's
+        conflict 21 against `decorators.md`, and puts `CodeBlock.parse(code:
+        String)` from `compile-time/index.md` in doubt, since parsing code
+        from a string is that same raw injection. Generation goes through
+        `InlineClosure`, and it is first class: a parameter (`code:
+        InlineClosure`), a type with its own parameters and result (`body:
+        inline (T, Int) -> Void`), callable inside another closure, and
+        spliced into one with `$code`. So HIR must be representable as a
+        typed, composable value, and a `meta fn` is a declaration kind beside
+        `fn`. Hygiene is a guarantee rather than a convention: the closure
+        cannot bind a name into the calling scope and cannot change a
+        surrounding variable except through an explicit `var` parameter, so
+        the node carries that guarantee and lowering has to keep it. Two
+        parameter modes come with this: `comptime`, evaluated during
+        compilation, and `var`, a mutable capture.
       progress 2026-09-03, from reading `efen/docs` — three findings the step
         starts from. A call has one node and three kinds of target: a concrete
         symbol, an interface method reached through a VTBL, and a contract

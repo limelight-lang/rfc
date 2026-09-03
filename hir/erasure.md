@@ -4,6 +4,13 @@ Status: draft, step S10.2. The rows below cover the documents read so far; the
 list at the end names what has not been read, so the gap is visible rather than
 guessed at.
 
+Two rows come from documents that carry the banner "проект спецификации":
+typestate and code regions have no grammar and no compiler check yet, so their
+rows describe an intent rather than a mechanism. `types/typestate.md` also says
+transitions on an exception are out of scope for the first version, while the
+audit of 2026-09-03 already proposes a syntax for them (`throws IOError >>
+Closed`); the two have not been reconciled.
+
 The line runs **between HIR and lowering**, not between the frontend and HIR.
 HIR keeps the logical semantics of Efen whole, so an abstraction that disappears
 from the binary does not disappear from HIR. Each row therefore says two things:
@@ -29,6 +36,8 @@ how HIR holds the abstraction, and what lowering does with it.
 | Projection | Two things: a declaration (a binary-compatible view type) and an operation (viewing a value through it) | Nothing. Binary compatibility is the point: a projection costs no code |
 | Metadata | On declarations, as written | Erased unless `markForRuntime` marked the key to travel |
 | Visibility | On the symbol record, four levels, `private` file-scoped | Erased; it constrains linkage while it lasts |
+| Typestate | States are declarations inside a class, a struct or an interface and may carry their own fields; a signature carries `Before >> After` beside its contexts and its `throws`; refinement uses the existing `is` and `switch` and adds no node | Erased once the check passes. The per-state fields still reach lowering, because what a state holds is what has to be laid out |
+| Code region | A `region` node carrying its properties — `preserve` is the only one so far — and the guarantees it makes over named slots | Erased. It emits no code; it constrains what lowering is allowed to see |
 | Package, module, namespace | Parts of a symbol key. A module also owns a record: its imports, the strategies it enables, its static effect bindings | Linkage and deployment |
 
 ## Not read yet
@@ -36,9 +45,7 @@ how HIR holds the abstraction, and what lowering does with it.
 No row is written for these, because writing one would mean guessing. Each names
 the document that decides it, all under `efen/docs/efen`:
 
-- typestate — `types/typestate.md`
 - refinement types — `types/refinement-types.md`
-- code regions — `code-regions.md`
 - enums and unions — `types/enum.md`
 - optional and `null` — `types/optional.md`
 - type aliases — `type-aliases.md`

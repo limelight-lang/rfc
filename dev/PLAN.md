@@ -446,6 +446,15 @@ cannot use, while the reverse costs nothing.
         and the reason; an abstraction whose verdict waits on another step is
         marked open and names that step
       tier: T2 · role: Critic
+      progress 2026-09-03, from `meta/aspect.md` — an ordering constraint the
+        step has to respect. An aspect adds methods, properties, contracts and
+        interfaces to its target and changes how the compiler resolves an
+        abstraction's components, so the member list of a class does not
+        follow from its own source. HIR is therefore built after aspects are
+        expanded, and the symbol database stores the expanded shape. This also
+        names a large invalidation unit for the orchestrator: editing an
+        aspect invalidates every class that uses it, as editing a module's
+        `use` list invalidates every call in that module.
 - [ ] S10.3 Decide the value model
       done: `hir/values.md` lists the value kinds, maps each to a construct in
         `model/values.md`, and shows PHP's dynamic value as one of them
@@ -468,6 +477,13 @@ cannot use, while the reverse costs nothing.
         symbolic until substitution — Edmond, 2026-09-03, held over for its
         own discussion. Until that discussion happens, no other step may
         assume a type in HIR is concrete.
+      Efen has two kinds of generic, one erased and one monomorphised —
+        Edmond, 2026-09-03, also held over. The division is written nowhere:
+        the whole corpus mentions it twice, in `generics.md` §Ограничения
+        ("рефлексия ограничена из-за type erasure") and in `meta/aspect.md`
+        line 86 ("это генерик с мономорфизацией"), and neither says how a
+        declaration picks its kind or what `as? T` does in the erased one.
+        This step cannot close until that ruling exists.
 - [ ] S10.5 Decide how HIR names what lies outside the function
       done: `hir/references.md` states the form of a reference to a symbol in
         another unit and the rule for a name resolved later; the case of a

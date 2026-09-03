@@ -2,8 +2,6 @@
 
 Status: draft, step S10.1. Sections 1, 2, 4, 5, 6 and 7 are written. Section 3
 waits on a discussion Edmond has held over, and section 9 lists what is open.
-Section 8, the two functions written out by hand, is not yet here; it is the
-condition on which the step closes.
 
 ## 1. What HIR is
 
@@ -168,6 +166,89 @@ required member, and a metafunction reports an error from inside a fragment it
 generated. None of them has anywhere to point without a span, and the fragment
 case is the hard one: a span has to survive being spliced from one `InlineClosure`
 into another.
+
+## 8. Two functions written out
+
+The notation below is for reading. It is not a syntax anyone types and not a
+serialisation format; the normative form of HIR is the data structure in
+`amber`, and this rendering exists so a person can check the shape by eye.
+`s1`, `s2` name slots (section 6), and the bracketed words after a slot are the
+ownership aspects it holds at that point.
+
+### Efen
+
+```efen
+fn readFile(path: String?) {
+    guard let path = path else { return }
+    let file = File.open(path)
+    defer { file.close() }
+    process(file)
+}
+```
+
+```
+fn App::Files::readFile
+  param  path : String?                  -> s1  [read]
+  result void
+  body block
+    guard
+      bind    path = unwrap ref s1       -> s2  [read]   scope: rest of block
+      else    block
+                return
+    bind file = call                     -> s3  [own read write]
+           target   Std::Io::File::open
+           arg      path = ref s2
+    defer
+      block
+        call
+          target   Std::Io::File::close
+          receiver ref s3
+    call
+      target App::Files::process
+      arg    file = ref s3
+```
+
+Three things to read off it. `guard` and `defer` are nodes and neither is
+rewritten into anything else: the binding made by `guard` states the scope it
+governs, and `defer` states nothing about where it will run, because deciding
+that is lowering's work. Every target is a key, so the tree says which `close`
+it means without knowing where that source file is. And the slot, not the name,
+carries the aspects: `path` is read-only, the handle `file` is owned.
+
+### PHP
+
+```php
+function greet(string $name): string {
+    if ($name === '') {
+        return 'Hello, guest';
+    }
+    return 'Hello, ' . $name;
+}
+```
+
+```
+fn App::Greeting::greet
+  param  name : String                   -> s1  [read]
+  result String
+  body block
+    if
+      condition call
+                  target Php::Op::identical
+                  arg    left  = ref s1
+                  arg    right = literal ""
+      then block
+             return literal "Hello, guest"
+    return call
+             target Php::Op::concat
+             arg    left  = literal "Hello, "
+             arg    right = ref s1
+```
+
+The pair makes the rule of section 1 concrete. PHP contributes no node: `===`
+and `.` are calls, and what makes them PHP is the target they name, not the
+shape of the tree. PHP's peculiarities arrive in HIR as **symbols**, resolved
+against a library that implements them, and a peculiarity with no symbol to
+resolve to is a gap in Efen rather than a missing node here.
 
 ## 9. What is open
 

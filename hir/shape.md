@@ -1,8 +1,9 @@
 # The shape of HIR
 
 Status: draft, step S10.1. Sections 1, 2, 4, 5, 6 and 7 are written. Section 3
-waits on a discussion Edmond has held over. Section 8, the two functions written
-out by hand, and section 9, the open questions, are not yet here.
+waits on a discussion Edmond has held over, and section 9 lists what is open.
+Section 8, the two functions written out by hand, is not yet here; it is the
+condition on which the step closes.
 
 ## 1. What HIR is
 
@@ -167,3 +168,44 @@ required member, and a metafunction reports an error from inside a fragment it
 generated. None of them has anywhere to point without a span, and the fragment
 case is the hard one: a span has to survive being spliced from one `InlineClosure`
 into another.
+
+## 9. What is open
+
+Each line names the question and where it is settled. A question with no owner
+is a question nobody answers, so none is left without one.
+
+**Held over by Edmond, not to be reopened unasked.**
+
+- Which surface forms are only notation, and therefore which of the candidates
+  in section 3 collapse.
+- What a type means inside a generic body, and which of Efen's two generic
+  strategies applies to an instantiation. Step S10.4 cannot close before this.
+
+**Owned by step S10.6, the operation set.**
+
+- Whether HIR records that a member came from an aspect. An aspect adds methods,
+  properties, contracts and interfaces, so the class HIR describes is the
+  expanded one; whether the origin of a member is meaning or bookkeeping is
+  exactly the question "the whole logical semantics" raises.
+- Whether the receiver arrives as a context. `memory/classes-internal.md` writes
+  a method as `fn init(x, y) -> Self in Self`, the same `in` that carries an
+  effect, but no normative document says so.
+
+**Owned by `amber`, and recorded in its `dev/DECISIONS.md`.**
+
+- Whether HIR is persisted between runs or rebuilt for each compilation.
+- Whether a language may contribute passes of its own.
+- Where the line falls between a pass over HIR and a pass over MLIR.
+
+**Holes in Efen itself, to be closed there and not worked around here.**
+
+- A contract standing in a result position needs a runtime container, and its
+  name and syntax are undecided.
+- `CodeBlock.parse(code: String)` in the compile-time API is raw code injection,
+  which `compile-time/metafunctions.md` forbids outright. One of the two has to
+  give way.
+- `enum Visibility` offers `Public, Private, Protected, Internal` while
+  `functions.md` names `public, internal, private, api`. The symbol record needs
+  one list, and `private` there is file-scoped.
+- `types/ownership.md` still describes `&T` as bidirectional and `&T?` as out,
+  which the audit of 2026-09-03 replaced.

@@ -45,6 +45,14 @@ the steps below).
 - The purity ladder's four open questions are carried in
   `model/gc/pure-destructors.md` as open items, unresolved in the code
   repository (`model/dev/design/pure-destructors.md` there).
+- How a PHP class maps onto an Efen class. The memory model is settled — a PHP
+  object is an Efen ARC object — and so is the dispatch default, but the rest is
+  not: `__get`/`__set`/`__call` intercept names that were never declared, which a
+  computed property cannot do; `protected` is missing from Efen's canonical
+  visibility list while PHP needs it; late static binding has no counterpart;
+  PHP traits attach in the class body with their own conflict rules while Efen
+  strategies attach per module; dynamic properties exist only under a
+  dictionary-shaped aspect.
 - Closure and fiber/generator layouts are unspecified anywhere in this
   repository. The case book that reported the holes went with the horizon on
   2026-08-26; the holes did not.

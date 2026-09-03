@@ -529,6 +529,19 @@ cannot use, while the reverse costs nothing.
         structs, and the layout of a union, in the compiler's hands with
         observable behaviour preserved. A verdict of "reaches HIR" therefore
         never carries a layout with it.
+      progress 2026-09-03 — `hir/erasure.md` exists and carries 23 rows, each
+        saying how HIR holds an abstraction and what lowering does with it.
+        Covered: contract, interface, class, struct, strategy in both forms,
+        aspect, attribute, metafunction and `InlineClosure`, generics,
+        context, effect, ownership and slots, projection, metadata,
+        visibility, typestate, code region, optional, enum, union, pattern,
+        generator, the three kinds of dialect, superpolymorphism, disposable,
+        and package/module/namespace. Two rows rest on drafts that carry the
+        banner "проект спецификации" (typestate, code regions) and one is
+        read only in part (`types/optional.md`), and the document says so.
+        Still unread, named at the end of it: refinement types, type aliases,
+        and the collection side of `types/` — tuples, dictionaries,
+        collections, strings, constants.
       progress 2026-09-03, a dependency edge that runs against the calls.
         `in X` is part of a function's signature and the compiler infers it
         along the call graph: `funcA` inherits the requirement `EnvA` because

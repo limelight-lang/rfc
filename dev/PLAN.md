@@ -478,6 +478,12 @@ cannot use, while the reverse costs nothing.
         needs four visibility levels, one of them file-scoped: `public`,
         `internal`, `private`, `api`. Held: effects on a function
         (`fn f() in LoggerEffect`) — `context-and-effects.md` is unread.
+      progress 2026-09-03, after the audit — representation-neutrality is a
+        rule of the language and not only a choice of ours. The audit's
+        §Решения после аудита puts the physical placement of objects and
+        structs, and the layout of a union, in the compiler's hands with
+        observable behaviour preserved. A verdict of "reaches HIR" therefore
+        never carries a layout with it.
 - [ ] S10.3 Decide the value model
       done: `hir/values.md` lists the value kinds, maps each to a construct in
         `model/values.md`, and shows PHP's dynamic value as one of them
@@ -500,13 +506,15 @@ cannot use, while the reverse costs nothing.
         symbolic until substitution — Edmond, 2026-09-03, held over for its
         own discussion. Until that discussion happens, no other step may
         assume a type in HIR is concrete.
-      Efen has two kinds of generic, one erased and one monomorphised —
-        Edmond, 2026-09-03, also held over. The division is written nowhere:
-        the whole corpus mentions it twice, in `generics.md` §Ограничения
-        ("рефлексия ограничена из-за type erasure") and in `meta/aspect.md`
-        line 86 ("это генерик с мономорфизацией"), and neither says how a
-        declaration picks its kind or what `as? T` does in the erased one.
-        This step cannot close until that ruling exists.
+      Efen has two kinds of generic, one erased and one monomorphised, and
+        `efen/docs/DOCUMENTATION-AUDIT.md` (2026-09-03, §Решения после
+        аудита) rules how they are chosen: the compiler picks the strategy by
+        default, the programmer may demand a particular one, and a demand the
+        compiler cannot satisfy is a compile error. The kind is therefore not
+        a property of the declaration, which settles the shape of this step:
+        HIR carries a generic so that either outcome stays possible, and it
+        carries the demand as a constraint the monomorphisation pass checks
+        and can fail on.
 - [ ] S10.5 Decide how HIR names what lies outside the function
       done: `hir/references.md` states the form of a reference to a symbol in
         another unit and the rule for a name resolved later; the case of a
@@ -541,6 +549,20 @@ cannot use, while the reverse costs nothing.
         value is filled at the call site or held by the callee — the first
         duplicates an expression that may have effects, the second needs a
         notion of a missing argument.
+      progress 2026-09-03, a unification to test before the node list is
+        written. `memory/classes-internal.md` sketches the compiler's own view
+        of a class: the method becomes `fn init(x, y) -> Self in Self`, so the
+        receiver arrives through the same `in` notation that carries an effect
+        in `fn f() in LoggerEffect`. If that holds, a method call, an effect
+        and `using` are one mechanism — a context supplied to a call — and
+        `using` is a context binding over a scope rather than a node about
+        strategies. `context-and-effects.md` decides it, and the audit reports
+        two TODOs and a muddled `without` in that file. The same document
+        shows projections modelling the states of a half-built object (`Raw`,
+        `NonInit`), which makes projection the compiler's own device for
+        partial initialisation rather than only a user-facing feature.
+        Reference kinds are three and belong in the type tree: `&T` read-only,
+        `&mut T` read/write, `&out T` write-only.
 - [ ] S10.7 Break the vocabulary on two cases
       done: `hir/cases.md` writes Efen's strategies and PHP's `&` references
         as sequences of S10.6 nodes and adds none; a case that needs a new

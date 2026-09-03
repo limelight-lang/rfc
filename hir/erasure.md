@@ -38,6 +38,10 @@ how HIR holds the abstraction, and what lowering does with it.
 | Visibility | On the symbol record, four levels, `private` file-scoped | Erased; it constrains linkage while it lasts |
 | Typestate | States are declarations inside a class, a struct or an interface and may carry their own fields; a signature carries `Before >> After` beside its contexts and its `throws`; refinement uses the existing `is` and `switch` and adds no node | Erased once the check passes. The per-state fields still reach lowering, because what a state holds is what has to be laid out |
 | Code region | A `region` node carrying its properties — `preserve` is the only one so far — and the guarantees it makes over named slots | Erased. It emits no code; it constrains what lowering is allowed to see |
+| Generator | `generator` is a declaration kind; `yield` is a node that hands a value out and receives one when the generator resumes; a generator may also `return` a final value | A state machine, or the coroutines of `io`. The choice belongs to the compiler |
+| Dialect, extension | Nothing. An extension dialect declares a `transform` into base Efen, so the base form is what reaches HIR; `use dialect X` and `with dialect X { }` govern parsing and do not survive it — unlike `with` for a context, which governs execution | Nothing |
+| Dialect, inline | **Open.** `toml { }`, `json { }` and `sql { }` are expressions with an inferred type and a compile-time check. Whether HIR records that a value came from such a block, or only the value, is undecided | — |
+| Dialect, full | Not an abstraction of HIR: it is a frontend. `DialectCompiler` declares `parse`, `typeCheck` and `compile(ast: TypedAST) -> IR`, and that IR is this one | — |
 | Package, module, namespace | Parts of a symbol key. A module also owns a record: its imports, the strategies it enables, its static effect bindings | Linkage and deployment |
 
 ## Not read yet
@@ -50,7 +54,5 @@ the document that decides it, all under `efen/docs/efen`:
 - optional and `null` — `types/optional.md`
 - type aliases — `type-aliases.md`
 - tuples, dictionaries, collections, strings, constants — `types/`
-- generators — `generators.md`
 - disposable — `disposable.md`
-- dialects — `dialects.md`
 - superpolymorphism — `superpolymorphism.md`

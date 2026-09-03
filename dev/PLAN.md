@@ -580,12 +580,17 @@ cannot use, while the reverse costs nothing.
         and none of them is reducible to other nodes, so all four are nodes of
         one family. That the receiver arrives the same way stays a guess: only
         the internal-IR sketch writes `in Self`, and no normative document
-        does. `%` is not a node — the compiler rewrites `%db.execute(q)` into
-        an explicit context access before HIR, and what it becomes depends on
-        the same contract/interface split as everywhere: an effect declared as
-        a contract is replaced at compile time and erased, one declared as an
-        interface is resolved through a vtable. The file's own TODO sits on
-        exactly that line.
+        does. Reading through `%` is a node of its own, and not a field
+        access: a context is not a variable of the function but is found in
+        the environment a `with` bound further up. Resolution says which
+        context and which member `%db` names, the node keeps saying "read
+        `db` from `Environment`", and the choice between substituting an
+        implementation (an effect declared as a contract) and a vtable lookup
+        (one declared as an interface) belongs to lowering, like every other
+        choice of representation. The file's own TODO sits on that split.
+        Corrected 2026-09-03: an earlier line here said the compiler rewrites
+        `%` before HIR. The document says it rewrites `%` into an explicit
+        context access and says nothing about when.
 - [ ] S10.7 Break the vocabulary on two cases
       done: `hir/cases.md` writes Efen's strategies and PHP's `&` references
         as sequences of S10.6 nodes and adds none; a case that needs a new

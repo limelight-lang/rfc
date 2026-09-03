@@ -493,7 +493,11 @@ cannot use, while the reverse costs nothing.
         `@bigEndian` mean nothing to HIR but the lowering needs them, so a
         declaration node carries its attributes untouched. A symbol record
         needs four visibility levels, one of them file-scoped: `public`,
-        `internal`, `private`, `api`. Held: effects on a function
+        `internal`, `private`, `api`. The first exact row of this table comes
+        from `compile-time/index.md` rather than from reasoning: metadata
+        carries `markForRuntime(key)` and `isMarkedForRuntime(key)`, so
+        metadata is erased below HIR unless it is marked to travel. Held:
+        effects on a function
         (`fn f() in LoggerEffect`) — `context-and-effects.md` is unread.
       progress 2026-09-03, after the audit — representation-neutrality is a
         rule of the language and not only a choice of ours. The audit's
@@ -551,8 +555,31 @@ cannot use, while the reverse costs nothing.
 - [ ] S10.6 Write the first operation set
       done: `hir/operations.md` lists every node with the Efen construct that
         lowers onto it and the MLIR construct it lowers to; a node missing
-        either is marked open rather than shipped
+        either is marked open rather than shipped; and every method of the
+        compile-time API in `efen/docs/efen/compile-time/index.md` is answered
+        from the nodes, or the gap is written down
       tier: T2 · role: Critic
+      progress 2026-09-03, `compile-time/index.md` — the declaration list
+        already exists, written from the other side. That API is reflection
+        plus builders over exactly the entities HIR must hold: `Module`,
+        `Class`, `Interface`, `Struct`, `Aspect`, `Strategy`, `Method`,
+        `Property`, `Type`, `Parameter`, `Attribute`, `Metadata`,
+        `SourceLocation`, `CodeBlock`, `Expression`. It gives the step a
+        sharper acceptance test than inventing nodes: a node earns its place
+        when the matching call can be answered from it — `getOwnMethods`
+        against `getMethods(inherited: true)` needs the inheritance edge,
+        `hasGetter`/`getGetter` needs a computed property to keep its
+        accessor, `getContracts` needs contracts present rather than erased.
+        A source location is part of that contract and not a diagnostic
+        convenience: `getSourceLocation()` is public API on a class, a method
+        and a property. Compile-time code writes as well as reads —
+        `ClassBuilder` adds methods, properties, interfaces and aspects and
+        changes modifiers, while `Expression.call/literal/variable` and
+        `CodeBlock.parse` construct expressions — so HIR is a structure user
+        code reaches, not a private stage of a pipeline. Noted in passing and
+        absent from the audit: `enum Visibility` here reads `Public, Private,
+        Protected, Internal` while `functions.md` names `public, internal,
+        private, api`.
       progress 2026-09-03, from reading `efen/docs` — three findings the step
         starts from. A call has one node and three kinds of target: a concrete
         symbol, an interface method reached through a VTBL, and a contract

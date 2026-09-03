@@ -1,6 +1,10 @@
 # The erasure line
 
-Status: draft, step S10.2. The rows below cover the documents read so far; the
+Status: draft, step S10.2. The rows below cover the documents read so far, and one of them is read only
+in part: `types/optional.md` was read to its binding sections and then by its
+section list, so `??`, `?.`, `!`, the implicitly unwrapped form and `map`/
+`flatMap` are named there without their detail. The rows below cover the
+documents read so far; the
 list at the end names what has not been read, so the gap is visible rather than
 guessed at.
 
@@ -38,6 +42,7 @@ how HIR holds the abstraction, and what lowering does with it.
 | Visibility | On the symbol record, four levels, `private` file-scoped | Erased; it constrains linkage while it lasts |
 | Typestate | States are declarations inside a class, a struct or an interface and may carry their own fields; a signature carries `Before >> After` beside its contexts and its `throws`; refinement uses the existing `is` and `switch` and adds no node | Erased once the check passes. The per-state fields still reach lowering, because what a state holds is what has to be laid out |
 | Code region | A `region` node carrying its properties — `preserve` is the only one so far — and the guarantees it makes over named slots | Erased. It emits no code; it constrains what lowering is allowed to see |
+| Optional | `T?` is a type and `null` the absent value. A plain value assigned to an optional is wrapped by an explicit node, because the wrap is an operation even where the source writes nothing. Binding through `if let` and `guard let` unwraps into a new slot. The document also declares `??`, optional chaining `?.`, forced unwrap `!` and an implicitly unwrapped form; each is an operation and so a node, and chaining short-circuits inside the expression rather than expanding into nested conditionals | The layout of an optional — a niche, a flag, a pointer — is the compiler's |
 | Enum | A declaration with its variants; a variant may carry associated values, positional or named, and the enum may declare a raw base type. Constructing a variant is a node, and `.north` where the type is known is notation for `Direction.north` | Layout is the compiler's, including how a discriminant is stored |
 | Union | A set of variants, and only their semantics. The audit of 2026-09-03 leaves the physical form — a fixed tagged union, an indirection, or another optimisation — entirely to the compiler | Layout, with observable behaviour preserved |
 | Pattern | Patterns are nodes of their own: a binding, a literal, a range, a tuple, a variant with its associated values, a wildcard, and a `where` condition on any of them. They nest, so `.redirect(url, permanent: true)` is a variant pattern holding a binding and a literal | Tests and branches |
@@ -53,7 +58,6 @@ No row is written for these, because writing one would mean guessing. Each names
 the document that decides it, all under `efen/docs/efen`:
 
 - refinement types — `types/refinement-types.md`
-- optional and `null` — `types/optional.md`
 - type aliases — `type-aliases.md`
 - tuples, dictionaries, collections, strings, constants — `types/`
 - disposable — `disposable.md`

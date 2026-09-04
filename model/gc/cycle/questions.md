@@ -294,10 +294,11 @@ a slot from being recycled under an identifier in flight, and eager death.
 covers the trace alone, and the accelerator hands off by buffer swap"). An
 acknowledged rendezvous is what a thread waiting on the trace token would
 deadlock against — the collection parked on an acknowledgement that rides the
-waiter's own checkpoint — so the delivery it performed is done by buffer swap
-instead: the token holder swaps a thread's live queue buffer for a spare, traces
-the detached one, and at the token's release posts it to a per-thread inbox of
-capacity one that nobody waits on. The rest of the list is untouched, and the
+waiter's own checkpoint — so the delivery it performed is done by detachment
+instead: the token holder takes a thread's live queue chain, traces it, and at
+the token's release posts it to a per-thread inbox of capacity one that nobody
+waits on. The ruling's own word was *swap*, and the swap became a two-word
+detach on 2026-09-04 (Y12 clause 2); the delivery it describes is unchanged. The rest of the list is untouched, and the
 in-line form never used the handshake at all.
 
 **The two-sided form was permitted for one day and withdrawn.** The ninth
@@ -758,7 +759,7 @@ sites the compiler could not prove.
 a proof — the enrolling form everywhere, which is what the crate does
 today.
 
-## Y12. The root queue: written by the mutator, read behind it by the collector  [contract written 2026-08-25; the named candidate does not meet it; clauses 3 and 8 ruled 2026-08-27]
+## Y12. The root queue: written by the mutator, read behind it by the collector  [contract written 2026-08-25; the named candidate does not meet it; clauses 3 and 8 ruled 2026-08-27; clauses 2 and 3 amended 2026-09-04 against the built queue]
 
 Filed by Edmond on the map, 2026-08-25. Candidates come from the release
 path itself, so the enrolment write lands on the hottest path in the
@@ -832,22 +833,48 @@ the first three are what the candidate would have to be given.
    readers of the same queue and only one may exist at a time, which the
    token guarantees, because holding it is what makes a thread the tracer.
    Validation runs *outside* the token and reads no live queue at all: the
-   holder swaps the live buffer for a spare and traces the detached one, and
-   the owner validates from that detached buffer, which it alone holds. The
-   queue stays single-reader across both phases, and the candidate's fatal
-   second-reader case never arises.
+   holder **detaches** the active chain by moving two words, its head segment
+   and that segment's fill, and leaves the write position empty, which is the
+   state a thread holds before its first registration; the next registration
+   finds no room by construction and takes the growth path. The detach asks no
+   allocation path, so it cannot be refused and answers nothing (amended
+   2026-09-04; `ll-model`, `dev/DECISIONS.md`, "the detach of a candidate chain
+   draws no segment"). The owner validates from the detached chain, which it
+   alone holds, and **disposes of it rather than restoring it**: the severing
+   inside the teardown releases the live children of a confirmed member, each
+   release registers a candidate, and the first of them installs a fresh segment
+   in the write position the detach emptied. The disposition therefore takes the
+   batch and gives its segments back, and a restore over a refilled lane is a
+   checked error in every build — one that yields on an unwind alone, where the
+   batch keeps its chain and its roots keep candidate bits with no record behind
+   them (`ll-model`, `dev/DECISIONS.md`, "the restore's refusal is the ordinary
+   teardown, and it yields on an unwind"). The queue stays single-reader across both phases, and the
+   candidate's fatal second-reader case never arises.
+
+   The chain's bound is the head's own fill, every segment behind the head
+   holding a full segment's entries, which is so because a segment leaves the
+   write position only when it is full. That
+   is a property of a single mover: a detacher on a second thread reads a fill
+   the writer is about to reset, and what the two agree on at that instant is
+   what this clause still owes ([`../../../dev/PLAN.md`](../../../dev/PLAN.md),
+   S8.7). The in-line form refuses the second reader by construction, one thread
+   running at most one trace.
 3. **The enrolment write never allocates, never locks and never copies**, so
    the overflow path is a pointer swap: the filled segment is linked into the
    queue's chain and a fresh one becomes live. **The queue is a chain of
    segments**, so nothing is copied and nothing is discarded, and a drain
    reads every segment in it. A **segment is one 64 KiB pool block**, which is
    the only unit both allocation paths dispense; any other size would put a
-   carving allocator on the exhaustion path. Two consumers swap a segment in —
-   the enrolment overflow and the trace, the token holder swapping a thread's
-   live buffer out in order to trace it — and **each provisions its own swap**,
-   through its own allocation paths, because the two stand at different instants (ruled
-   2026-08-27, [`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md), "each
-   consumer of a queue segment provisions its own swap").
+   carving allocator on the exhaustion path. Each consumer that swaps a segment in
+   provisions it through its own allocation paths (ruled 2026-08-27,
+   [`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md), "each consumer of a
+   queue segment provisions its own swap"), and **of the two consumers that
+   ruling named only the enrolment overflow is left**. The trace was the second
+   until 2026-09-04: its swap protected against a dropped root, which no
+   registration can suffer since the overflow buffer below, and it cost a pool
+   request at the front of every collection — worst on the collection an
+   allocation failure started, which would take a block from the tier its own
+   rows need before drawing a single row. The detach of clause 2 replaces it.
 
    **The owner provisions the overflow**, no reader existing at a non-final
    decrement to have provisioned it. It holds **two spare segments** in a
@@ -876,14 +903,16 @@ the first three are what the candidate would have to be given.
    **Whether an overflow-buffer entry defers slot reuse the way a queue entry does is
    open**: clause 7 keys the parking on a queue entry naming the entity, and an
    overflow buffer entry names it without being one. It is sized
-   at one segment's entries, on the same argument this clause makes for two
+   at one segment's entries less the control line the same block carries —
+   8,152 of them, the block's 65,280-byte payload less the 64 bytes of the
+   owner's queue state — on the same argument this clause makes for two
    cells — a whole segment cannot fill between two polls at any entry size — and
    that argument holds only because **every loop keeps the poll contract, the
    runtime's own included** (2026-08-28,
    [`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md), "a runtime loop
    carries the poll contract it broke"). `ll_release_vector`'s count is the
    caller's and the compiler emits no poll inside it, so that loop polls on its
-   own backedge every half-buffer of registrations; without it a container clear registers candidates without
+   own backedge every half-buffer of registrations, 4,076 of them; without it a container clear registers candidates without
    bound. **The overflow buffer's capacity is an edge and the abort behind it is real** —
    what the poll contract buys is that no ordinary program reaches it.
 
@@ -893,24 +922,27 @@ the first three are what the candidate would have to be given.
    empty-queue case needs no separate arm.
 
    Two cells cover the two consumptions a single interval between polls can
-   hold: one overflow, and one in-line collection whose own request to the pool
-   was refused, which then takes a cell. An accelerator's swap takes none,
-   provisioning its own. Two overflows in one interval would need a whole
+   hold: one overflow, and the first registration after a collection, which
+   finds the write position the detach left empty and takes the growth path. An
+   accelerator's trace takes none, detaching rather than swapping. Two overflows
+   in one interval would need a whole
    segment — 65 280 bytes of entries — to fill between two polls, which the
    ABI's bound on operations between two polls excludes at any entry size; that
    bound is unwritten, so the exclusion is an argument and not yet a
    guarantee. Beyond the two, the critical reserve is what answers, which is
    what it is for.
 
-   **The token holder provisions the trace's swap**, at the moment of the
-   swap. A collector thread takes a block through its own ordinary allocation path and
-   skips the thread for the round when the pool refuses; the in-line form,
-   which starts at a legal allocation point, first takes its workspace — one
-   block the thread holds from its first collection, drawn through the ordinary
-   allocation path alone and refused only by the pool — and then asks the pool,
-   its own cells and its own critical reserve for the swap, aborting before
-   tracing anything when a refusal reaches the end of whichever list it is on —
-   a partial collection is legal (Y14) and a dropped root is not (Y6).
+   **The trace provisions its rows, not a segment.** The in-line form starts at
+   a legal allocation point and first takes its workspace, one block the thread
+   holds from its first collection, drawn through the ordinary allocation path
+   alone and refused only by the pool; rows past that block come from the pool
+   first and the critical reserve second, and a refusal at the end of that list
+   aborts the collection before it draws a row — a partial collection is legal
+   (Y14) and a dropped root is not (Y6). A collector thread draws its own
+   workspace and its own rows on the same terms, and skips the thread for the
+   round when the pool refuses. Only a thread's *first* collection can be
+   refused for want of a workspace; every window after it opens on memory in
+   hand.
 
    **A consumed spare is replenished by the buffer that comes back.** At the
    inbox pickup the owner drains the detached segments, disposes of each entry
@@ -933,7 +965,7 @@ the first three are what the candidate would have to be given.
    entry is its evidence, so the bit outlives the entry — and clause 8 is the
    other half, without which the reservation is never redeemed.
 5. **A root the trace did not walk stays enrolled**, its bit uncleared and its
-   entry re-enqueued by the owner out of the detached buffer — the owner being
+   entry re-enqueued by the owner out of the detached chain — the owner being
    its queue's one writer, which is what makes the re-enqueue legal
    (amended 2026-08-27). **So does a root the trace marked and the owner did not
    validate**: a mark is a proposal and only an exact reading disposes of one, so
@@ -1031,9 +1063,9 @@ the first three are what the candidate would have to be given.
    exact reading. That retention window is up to one epoch and is the widest
    this design carries, wider than clause 7's "until the owner reads it".
 
-**What is still open:** what the writer and the swapper of clause 2 agree on, so that an entry written while the
-live buffer is being detached lands in exactly one of the two buffers and in
-neither twice; the poll bound clause 3's two cells and its overflow buffer are
+**What is still open:** what the writer and the detacher of clause 2 agree on,
+so that an entry written while the chain is being detached lands in exactly one
+of the two and in neither twice; the poll bound clause 3's two cells and its overflow buffer are
 sized against, which the ABI has not written down and which since 2026-08-28
 must satisfy `B` ≤ overflow-buffer capacity minus stride; and the reserved critical
 area's sizing —
@@ -1202,10 +1234,18 @@ conservative skew that an external-reference result already tolerates.
 **The obligation that comes with it:** the blocks the trace's arena drew for
 shadow rows, met bitmap and mark stack — **return at the token's release**,
 before validation and teardown, so a teardown's own decrements meet a refilled
-reserve rather than a spent one. The thread's workspace is outside the
+reserve rather than a spent one. This is the pressure path's obligation alone,
+and a collection off the safepoint poll carries the opposite rule: it keeps its
+rows through the teardown and reads them where this one reads a list (ruled
+2026-09-03, [`../rc-cycle.md`](../rc-cycle.md), "Concurrency"). What the
+teardown here reads instead is written before the blocks go: the sweep that
+nulls the touched blocks' shadow pointers harvests the unreachable rows into a
+fixed region of the thread's workspace, and what does not fit keeps its
+candidate bit for the next trace. The thread's workspace is outside the
 obligation and stays with the thread: it never held reserve memory, so releasing
-it would refill nothing. The readership rule already makes that legal, mark and scan being
-the rows' only readers and the release coming after the last touch of one
+it would refill nothing. The readership rule already makes that legal: on this path the rows are
+read by mark, by scan and by the sweep that harvests out of them, and by nothing
+after the blocks go
 ([`../rc-cycle.md`](../rc-cycle.md), "Concurrency"); this ruling makes it
 required. The tenth ruling's refusal of YRC's stripe drain therefore narrows
 rather than reverses: the writer never collects at the enrolment, and what he

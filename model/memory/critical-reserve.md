@@ -124,6 +124,19 @@ If both paths fail during growth, the trace aborts and returns every block it
 drew. Blocks obtained from the reserve return to it when the trace scratch arena
 is reset, including on abort.
 
+One fixed region stands in front of the bump inside the workspace, and it draws
+on nothing: the first 1,024 records of the deferred-reuse list, so a trace that
+withholds fewer slots than that asks no allocation path at all
+([`../gc/rc-cycle.md`](../gc/rc-cycle.md), "Zero-count entities pending slot
+reuse"). A second region takes the same shape and the same bytes when the free
+path stops carrying that list: it is where a collection an allocation failure
+started harvests its unreachable rows before returning its blocks, and it is
+what that collection's teardown reads in place of a component-member list. Its
+capacity is unchosen. What the post-trace validation storage of
+[`../../dev/ALGORITHM-AUDIT.md`](../../dev/ALGORITHM-AUDIT.md) A6 adds to this
+reserve's bound is zero either way, both regions being part of a block the
+thread already holds.
+
 The current flat shadow-row layout needs four bytes per slot. At the smallest
 size class, one touched block therefore needs about 16 KiB of rows. A 512 KiB
 reserve can fund roughly thirty such blocks, and more at larger size classes.

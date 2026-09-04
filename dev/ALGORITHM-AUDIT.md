@@ -221,3 +221,54 @@ until FFI and sharing close every route for cross-thread managed pointers.
 
 The remaining issues above require design decisions and must not be closed by
 editorial substitution.
+
+## Resolutions since the audit
+
+Each entry names the ruling that closed a clause, where the ruling is recorded,
+and where the specification states it. The issue rows above are left as they
+were written on 2026-08-30.
+
+**A3, for the in-line collection (2026-09-03).** The free path tests the two
+conditions in order and only one of them writes anything down. A slot whose
+entity still has a candidate-queue entry is recorded nowhere, that entry naming
+the slot already; a slot freed
+while the thread's own trace is open waits for that trace's close and returns
+through the ordinary free path once its last row is gone. Block occupancy
+decreases at that return. The withheld fact costs no allocation: its first 1,024
+records stand in a fixed region of the thread's collection workspace, and past
+that it fits in the dead slot itself, which is what Edmond's ruling of the same
+day put there in place of a growing list. A thread runs at most one trace at a
+time, which is what proves no trace of its own can address a returned slot; the
+generation or handoff protocol is still owed for a collector worker.
+`model/gc/rc-cycle.md`, "Zero-count entities pending slot reuse"; `ll-model`,
+`dev/DECISIONS.md`, "the withheld returns' first 1,024 records are the
+workspace's second region" and "under memory starvation a collection ends itself
+and gives back everything".
+
+**A4, first clause (2026-09-04, ruled by Edmond).** A thread does not exit while
+any trace holds rows over its blocks: it waits, collects, retires its queue and
+only then hands its heap over, so `abandon_all` and `adopt` never run under a
+live trace. The second clause stands open — what that last collection could not
+take keeps its candidate bit and is a bounded leak with no collector, and an
+estate a worker could claim is refused until the accelerator exists.
+`model/gc/rc-cycle.md`, "Concurrency"; `ll-model`, `dev/DECISIONS.md`, "a thread
+waits for the trace, collects, and then exits".
+
+**A6, for the in-line collection (2026-09-03, ruled by Edmond).** When the arena
+goes back depends on why the collection ran. Off the safepoint poll it does not
+go back before the teardown, which reads the shadow rows directly and needs no
+member list at all. Started by an allocation failure, the collection harvests
+the unreachable rows into a fixed region of the thread's workspace, returns
+every block, and runs the teardown off that region. The membership data draws
+nothing: the region is part of a block the thread holds from its first
+collection to its exit, so what it adds to the critical-reserve bound is zero,
+and the trace's rows past that block draw the pool and then the reserve as
+before. Whether a worker's trace may hold its arena the same way is open.
+`model/gc/rc-cycle.md`, "Concurrency"; `ll-model`, `dev/DECISIONS.md`, "the
+member list is the pressure path's alone".
+
+**A2, restated (2026-09-04).** The swap this issue names is now a detach: the
+tracer moves two words, the head segment and its fill, and draws nothing
+(`cycle/questions.md`, Y12 clause 2). The issue itself is unchanged — the two
+words are ones the writer is about to write, and their linearization against a
+concurrent registration is still owed.

@@ -232,10 +232,15 @@ is evacuated now or carried until its stragglers die; there is no
   bounded by the straggler's own lifetime — under steady load the
   retained blocks form a bounded stationary population, not unbounded
   accretion. (With line recycling dropped, the block is reclaimed
-  whole rather than by lines: an index counts what holds it — its live
-  occupants and the payloads a refused carry pinned it for — and the
-  last of them to die hands the block to the pool. Deliberately not
-  Immix.) Only unpredictably long-lived stragglers keep blocks
+  whole rather than by lines: a count word on the block's collector line
+  counts what holds it — its live occupants in the low half, and in the
+  high half both the payloads a refused carry pinned it for and the
+  survivor lists of *other* blocks written into this one's tail — and
+  the last of them to die hands the block to the pool. Deliberately not
+  Immix. What the reset writes onto that line, and in what order it
+  publishes the list, the length and the count, is
+  [`../gc/rc-cycle.md`](../gc/rc-cycle.md), "The survivor list of a
+  retained block".) Only unpredictably long-lived stragglers keep blocks
   forever — exactly the ones sparse-block evacuation exists for.
 - **Phasing**: retention is the safe default and the whole of the first
   implementation — no copying, no identity machinery, no reference

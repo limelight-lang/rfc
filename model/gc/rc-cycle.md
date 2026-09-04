@@ -102,7 +102,7 @@ The persistent candidate queue remains logically separate: it records roots
 across collection attempts, whereas the traversal vector contains every member
 discovered by one attempt. An implementation may reuse detached queue storage,
 but only after the owner has established a linearized snapshot; the unresolved
-worker queue-swap protocol does not yet provide that guarantee.
+worker detach protocol does not yet provide that guarantee.
 
 The **acyclic-class filter** excludes a class only when static analysis proves
 that none of its declared slots can contain a reference that closes a cycle.
@@ -260,13 +260,46 @@ every chunk is zeroed at first use too.
 A retained block is a former arena block whose survivors were promoted in
 place. Its header's collector line carries, beside the shadow pointer, the
 address and length of a sorted array of its survivors' addresses, and one
-64-bit count word: live survivors in the low half, pinned payloads in the
-high half. The arena's reset writes the array and the two words on the thread
-that owns the arena, clears the whole collector line first — a block retained,
-returned and retained again would otherwise carry a stale array address — and
-publishes them with the release store that stamps the block's kind. A trace
-reading the list acquire-loads the address; on x86 both are plain moves. The
-array lives in memory the arena already holds: the retained block's own tail
+64-bit count word: live survivors in the low half, and in the high half the
+payloads the block is pinned for, the survivor lists of other blocks standing in
+it, and the count the reset holds of its own while it establishes the
+occupants.
+
+The reset writes the array and the two words on the thread that owns the arena,
+and does not publish them in one instant. Retention clears the whole collector
+line and then stamps the block's kind, which publishes zeros; a block retained,
+returned and retained again would otherwise carry a stale array address.
+Retention is unconditional for a block that holds a survivor, and a block held
+for a pinned payload alone is stamped in the same pass, because a payload freed
+inside the reset must route to the retained arm by its kind. A block that
+becomes the holder of *another* block's list is stamped later, when that list is
+placed. The array is written after the fixpoint and published by a release store
+of its own,
+the length first and the address after it. The count word is published last, by
+an increment whose release half covers the address; published before the list,
+it would let a decrement that reaches zero on another thread land between the
+two stores, read a null address, and return the block without spending the hold
+the list has on its holder. A trace reading the list acquire-loads the address
+and reads the length behind it, both plain moves on x86; the count word's own
+writes are locked read-modify-writes — one per retained block at the reset, one
+per pin, and one per death. Every list is placed, and its holder retained and pinned, before any
+block's count is read, so a holder whose own survivors all died inside the reset
+cannot answer empty while a later block's list is still to land in its tail
+(`ll-model`, `dev/DECISIONS.md`, "the reset places every survivor list before it
+reads any count").
+
+Between the kind's store and the count's, the low half reads zero while the kind
+already routes a free to the retained arm, and two mechanisms cover that window.
+The reset holds one count of its own per block it pins, from the pin until the
+occupant counts are established, and spends it after. Its own window absorbs a
+free that finds the low half at zero, keying on the count rather than on the
+list's presence, so a block published without a list still counts its deaths. A
+block whose survivors all died inside the reset is therefore returned by the
+reset itself, through an arm that asserts the count reads zero, rather than by a
+last death that never comes (`ll-model`, `dev/DECISIONS.md`, "the reset holds a
+pin of its own, and releases it after the index is real").
+
+The array lives in memory the arena already holds: the retained block's own tail
 when the list fits below its last object, otherwise the reset's current block,
 which is then retained as the holder of that list, and only when neither has
 room a block drawn from the memory manager. A null address is a block retained
@@ -320,10 +353,34 @@ Two conditions can delay reuse:
    visited bit and shadow count with the new occupant.
 
 The owner must return a slot only after both conditions are false, and block
-occupancy must decrease at that return rather than at zero-count teardown. The
-exact owner/worker handoff that establishes this instant is unresolved; the
-previous text gave incompatible owner-observed and token-release instants. See
-`dev/ALGORITHM-AUDIT.md`, issue A3.
+occupancy decreases at that return rather than at zero-count teardown.
+
+In the in-line form the free path tests the two conditions in that order, and
+only one of them writes anything down. A slot whose entity still has a
+candidate-queue entry is recorded nowhere, the entry naming the slot already,
+and the disposal of that entry is what returns it. A slot freed while the
+thread's own trace is open is appended to the trace's **deferred-reuse list**,
+which the trace's close replays through the ordinary free path once its last
+row is gone, so the two conditions may clear in either order. That list is a
+fixed region of the thread's collection workspace holding 1,024 records, and it
+asks no allocation path (`ll-model`, `dev/DECISIONS.md`, "the withheld returns'
+first 1,024 records are the workspace's second region").
+
+**The free path asks no allocation path past that region either.** The fact a
+slot's return is withheld fits in the dead slot itself, so the list, the block
+it once drew past 1,024 records and the process end behind that draw all go
+(Edmond, 2026-09-03; `ll-model`, `dev/DECISIONS.md`, "under memory starvation a
+collection ends itself and gives back everything", and `PLAN.md` S43, which is
+where the crate replaces the list it carries today). What answers a refusal
+instead is the collection: one that cannot carry on with the memory it holds
+winds itself down, sweeps its rows, replays what it has already withheld and
+returns every block, the critical reserve included. In that regime no collector
+is needed, each thread freeing its own memory by counting.
+
+A thread runs at most one trace at a time, so no old or newly started trace of
+its own can address a replayed slot. Establishing the same instant for a
+collector worker still needs the generation or handoff protocol issue A3 asks
+for; that half is open. See `dev/ALGORITHM-AUDIT.md`, issue A3.
 
 Candidate registration applies only to the cycle-collected heap category. The
 fast-path gate combines category zero, a cycle-capable entity kind, an eligible
@@ -408,27 +465,69 @@ disjoint.
 
 The intended disjointness proof assumes that transferring an object leaves no
 reference in the source thread and that no thread points into another thread's
-blocks. That proof is currently incomplete for block adoption, moved objects,
-actor sharing, and FFI entry. These are correctness prerequisites, not optional
-optimizations; see `dev/ALGORITHM-AUDIT.md`, issues A4, B3, B4, and C3.
+blocks. Block adoption is ordered against the trace by the exit rule at the end
+of this section. The proof is still incomplete for moved objects, actor sharing
+and FFI entry. These are correctness prerequisites, not optional optimizations;
+see `dev/ALGORITHM-AUDIT.md`, issues B3, B4, and C3.
 
 The token covers mark, scan, and reads of the live candidate queue. The tracer
-releases it after its final access to any shadow row, visited bitmap, or live
-queue and before exact validation. Zero-count-entry handling, guard references,
-weak-reference invalidation, destructors, revalidation, edge severing, storage
-reclamation, slot return, and candidate-bit clearing all run without the token.
-Any access to trace scratch data after release is a defect.
+releases it at the end of scan, before exact validation and before the first
+destructor, on both paths. Everything after the release — zero-count-entry
+handling, guard references, weak-reference invalidation, destructors,
+revalidation, edge severing, storage reclamation, slot return, and candidate-bit
+clearing — runs without the token. What the release ends is the right to trace
+and not the life of the rows: reading a row whose block has gone back is a
+defect on either path, and reading one whose block has not is what the ordinary
+path's teardown does.
 
-The trace scratch arena is also reset at token release so that finalization can
-use a replenished critical reserve. This creates an unresolved lifetime
-requirement: exact validation and revalidation still need component membership
-data after the trace arena is gone, but no allocator or ownership transfer for
-that data is specified. See `dev/ALGORITHM-AUDIT.md`, issue A6.
+**When the arena goes back depends on why the collection ran.** A collection
+off the safepoint poll keeps its rows: the arena is not reset before the
+teardown, and the guards, the weak nulling, the destructors, the sever and the
+frees read the shadow rows directly, so there is no component-member list at
+all and nothing is allocated to hold one. A collection an allocation failure
+started gives its memory back first, because the destructors it is about to run
+allocate and there is nothing to allocate from: the sweep that nulls the
+touched blocks' shadow pointers writes the unreachable rows into a fixed region
+of the thread's workspace, every block then goes back, and the teardown runs off
+that region. The region's capacity is fixed and never grows; entities past it
+keep their candidate bits and stand in the queue for the next trace, which under
+pressure follows immediately, on the memory the first teardown returned
+(`ll-model`, `dev/DECISIONS.md`, "the member list is the pressure path's
+alone"). This answers `dev/ALGORITHM-AUDIT.md` issue A6 for the in-line
+collection: on the ordinary path the arena is not gone, and on the pressure path
+the membership data is a bounded region of memory the thread already holds.
+Whether a worker's trace may hold its arena the same way is open with the
+accelerator.
 
-Mark and scan are the only readers and writers of shadow rows and visited
-bitmaps. Exact validation and teardown revalidation must compute `IN` by
-iterating current fields against a retained component-member list; they must not
-read released trace rows.
+**The ordinary path's teardown runs inside its own trace**, and three things
+follow from that. Every slot the teardown frees waits for the window's close
+rather than returning at the free. The releases the sever performs are non-final
+decrements, so the live children of a member register as candidates in the
+operation that frees them, and the collection therefore **disposes of** its
+detached chain — takes the batch and gives its segments back — instead of
+restoring it into a write position the severing has already refilled; a restore
+over a refilled lane is a checked error in every build. And a collection that
+cannot carry on with the memory it holds ends itself and returns every block,
+the critical reserve included, which is the answer to a refusal rather than a
+process end (`ll-model`, `dev/DECISIONS.md`, "the restore's refusal is the
+ordinary teardown, and it yields on an unwind" and "under memory starvation a
+collection ends itself and gives back everything").
+
+The readership rule narrows with it. Mark and scan remain the only **writers**
+of a shadow row. The readers are mark and scan, the sweep that harvests on the
+pressure path, and on the ordinary path the owner's own teardown after the
+release. Nothing else reads them, the in-line form having no second tracer.
+What a worker may do here is open twice over: whether its trace may hold its
+arena through a teardown the way an owner's does (`ll-model`,
+`dev/DECISIONS.md`, "the member list is the pressure path's alone, and the
+surplus is a second trace", which leaves that to the accelerator), and whether
+it may acquire an owner's token while that owner's teardown is still reading
+rows, which no ruling has reached.
+
+Exact validation and teardown revalidation compute `IN` by iterating current
+fields against the component's members: on the ordinary path the rows the
+collection kept, on the pressure path the harvested list. Neither may read a row
+whose block has gone back.
 
 **Check collection eligibility before waiting.** After allocation failure, a
 thread reads its collecting flag and `TEARDOWN_DEPTH`. If either prohibits
@@ -442,20 +541,25 @@ skips that owner until a later round. Candidate bits remain set.
 
 ### Worker-to-owner handoff
 
-A collector worker swaps the owner's live candidate-queue buffer for a spare,
-traces the detached buffer, and posts the marked buffer to a capacity-one
-per-thread inbox at token release. The owner processes it at a
-consistent-point poll. Nothing waits for pickup.
+A collector worker detaches the owner's active candidate chain — two words, the
+head segment and its fill — traces it, and posts the marked chain to a
+capacity-one per-thread inbox at token release. The owner processes it at a
+consistent-point poll. Nothing waits for pickup. The detach draws no segment and
+cannot be refused, so a collection is never stopped at its front by an
+allocation; the lane it leaves empty is the state a thread holds before its
+first registration, and the next registration takes the growth path
+(`cycle/questions.md`, Y12 clause 2).
 
-The worker obtains its spare through ordinary allocation; failure skips that
-owner for the round. Synchronous collection tries the pool, the owner's two
-spare segments, and then the critical reserve. If all three fail, it aborts
-before tracing. See `cycle/questions.md`, Y12 clause 3.
+What a trace does need is rows. The worker draws its own workspace and its own
+scratch blocks through ordinary allocation, and skips that owner for the round
+when the pool refuses. Synchronous collection tries the pool and then the
+critical reserve, and aborts before drawing a row if both fail. See
+`cycle/questions.md`, Y12 clause 3.
 
-The queue swap is not yet linearized against concurrent candidate registration.
-Until that protocol is defined, a worker can lose or duplicate an entry. This
-blocks the collector-worker optimization; see `dev/ALGORITHM-AUDIT.md`, issue
-A2.
+The detach is not yet linearized against concurrent candidate registration: it
+moves two words the writer is about to write, and until that protocol is
+defined a worker can lose or duplicate an entry. This blocks the collector-worker
+optimization; see `dev/ALGORITHM-AUDIT.md`, issue A2, and `dev/PLAN.md` S8.7.
 
 At pickup, the owner handles each entry in one of four ways:
 
@@ -470,10 +574,29 @@ The owner is the sole writer for all of these queue transitions.
 While a trace is active, its owner defers reuse of released slots. Other threads
 need not do so only if the block-disjointness prerequisite above holds.
 
-`ll-model`'s `abandon_all` can clear a block's owner at thread exit, after which
-`adopt` assigns the block to another thread. A trace may still hold rows for the
-block while this happens. Block migration therefore requires explicit ordering
-against the old owner's trace token; this remains open in `dev/PLAN.md` S8.9.
+**A thread does not exit while any trace holds rows over its blocks.** It
+waits, collects, retires its queue and only then hands its heap over, so
+`ll-model`'s `abandon_all`, which clears a block's owner, and `adopt`, which
+assigns the block to another thread, never run under a live trace. The
+collection precedes the queue's retirement because the queue is its root set
+(`ll-model`, `dev/DECISIONS.md`, "a thread waits for the trace, collects, and
+then exits", ruled 2026-09-04).
+
+**What bounds that wait differs by path, and the ruling was written against the
+shorter one.** On the pressure path the rows go back before the first
+destructor, so the exiting thread waits only for a trace, which runs no user
+code and takes no user lock. On the ordinary path the rows are held across the
+teardown, so it waits behind that teardown's destructors as well. Nothing
+unbounded stands behind a destructor by rule, but nothing bounds one either.
+
+What that last collection could not take — a component whose destructor threw,
+or one a refusal ended — keeps its candidate bit, and once its blocks are
+adopted no thread will register it again. That residue is a bounded leak with
+no collector. An estate a worker could claim, which would make that worker the
+component's owning mutator, is refused until the accelerator exists and is
+revisited then against the measured residue, so the second clause of
+`dev/ALGORITHM-AUDIT.md` issue A4 stands open where the first is closed
+(`dev/PLAN.md` S8.9).
 
 ## Cost model
 
@@ -502,14 +625,14 @@ teardown immediately. Only unreachable reference cycles wait for collection.
 Four requirements originated in the earlier collector work: exact owner-side
 validation against current fields, deferred slot reuse while an identifier is
 in flight, prompt zero-count teardown, and a survivor list for retained
-blocks. Only the survivor list exists in code today, as the process-wide
-registry of `ll-model`'s `memory/retained.rs`, which "The survivor list of a
-retained block" replaces with a list the block's own header names; the other
-three must be implemented for this design.
+blocks. Only the survivor list exists in code today, and in the form this
+document specifies: a list the block's own header names, no process-wide table
+naming retained blocks (`ll-model`, `memory/retained.rs`). The other three must
+be implemented for this design.
 
 The old mutator handshake is not retained. It could deadlock with a mutator
-waiting on its trace token. Collector workers instead use the buffer handoff
-described under “Concurrency”.
+waiting on its trace token. Collector workers instead use the detached-chain
+handoff described under “Concurrency”.
 
 Only the owning mutator validates and reclaims a component. Exact validation is
 sound only when the owning thread stabilizes the entity while reading its

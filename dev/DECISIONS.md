@@ -10,6 +10,144 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-09-04 — a thread waits for the trace, collects, and then exits
+
+**Ruled by Edmond**, in `ll-model` (`dev/DECISIONS.md`, same heading) and carried
+here because it binds the design and not one crate. A thread does not exit while
+any trace holds rows over its blocks, its own or a worker's: it waits, collects,
+retires its queue and only then hands its heap over, so `abandon_all` and `adopt`
+never run under a live trace. The collection precedes the queue's retirement
+because the queue is its root set.
+
+**Why.** The wait is bounded for the reason the wait after allocation failure is:
+a trace runs no user code and takes no user lock. Collecting before exit needs no
+new structure and costs one collection bounded by the thread's own live set.
+
+**Rejected.** Handing the estate to a collector worker, which costs an ownership
+transfer of blocks, queue entries and candidate bits, puts user code on the
+collector thread, and leaves the single-threaded runtime leaking; revisited at
+the accelerator against a measured residue. And the leak alone, which a pool
+thread pays once per task.
+
+**Cost.** Destructors run on a thread that is winding down. What the last
+collection could not take keeps its candidate bit and is a bounded leak with no
+collector, which is the second clause of `ALGORITHM-AUDIT.md` A4 and stays open.
+
+## 2026-09-04 — the overflow buffer holds 8,152 entries and the stride is 4,076
+
+**Measured against the built crate**, and recorded because two entries below
+state 8160 and 4080 and are left as the records they are. A segment holds 8,160
+entries, the whole 65,280-byte payload of a pool block. The overflow buffer
+holds **8,152**: it stands in the queue's base block behind the 64 bytes of the
+owner's queue state. `POLL_STRIDE` is half the buffer, **4,076**, so the bound
+`B` a loop must satisfy is 8,152 − 4,076 = 4,076 rather than the 4080 the older
+entry computes (`ll-model`, `src/cycle/queue.rs`, `SEGMENT_CAPACITY`,
+`OVERFLOW_CAPACITY`, `POLL_STRIDE`).
+
+**Why it drifted.** The buffer was a thread-local array when the figure was
+written, and it took the whole payload; Edmond moved it into an allocator-issued
+block on 2026-08-28, which put the control line in front of it and cost eight
+entries.
+
+## 2026-09-03 — the collection detaches the candidate chain and swaps nothing
+
+**Ruled in `ll-model`** by the stage's Sage gate (`dev/DECISIONS.md`, "the detach
+of a candidate chain draws no segment") and carried into Y12 clauses 2 and 3.
+**It amends two entries below**: "each consumer of a queue segment provisions
+its own swap", whose second consumer this removes, and "the trace token covers
+the trace alone, and the accelerator hands off by buffer swap", whose mechanism
+is now a detached chain rather than a swapped buffer. A
+collection takes the whole active chain by moving two words, the head segment and
+its fill, and leaves the write position empty, which is the state a thread holds
+before its first registration. It asks no allocation path, so it cannot be
+refused.
+
+**Why the swap went.** Y12's swap was written on 2026-08-27, before the overflow
+buffer: the refusal it provisioned against was a dropped root, and since
+2026-08-28 no registration can drop one. It therefore protected nothing and cost
+a pool request at the front of every collection — worst on the collection an
+allocation failure started, which would take a block from the tier its own rows
+need before drawing a single row.
+
+**Cost.** The lane the detach leaves empty sends the next registration down the
+growth path, which the poll's two spare cells fund. What a writer and a detacher
+on two threads agree on is not settled by this and stays with S8.7 and
+`ALGORITHM-AUDIT.md` A2.
+
+## 2026-09-03 — the arena's return depends on why the collection ran
+
+**Ruled by Edmond** in `ll-model` (`dev/DECISIONS.md`, "the member list is the
+pressure path's alone, and the surplus is a second trace"). A collection off the
+safepoint poll keeps its rows: the arena is not reset before the teardown, which
+reads the shadow rows directly, so there is no component-member list and nothing
+is allocated to hold one. A collection an allocation failure started gives its
+memory back first: the sweep harvests the unreachable rows into a fixed region of
+the thread's workspace, every block goes back, and the teardown runs off that
+region.
+
+**Why the two differ.** The destructors of a pressure-started collection allocate
+and there is nothing to allocate from, so its blocks must go back before they
+run. The ordinary collection is under no such duty and pays nothing to keep what
+it already has.
+
+**It reverses three clauses of "the trace token covers the trace alone", below**,
+for the ordinary path only: mark and scan are the rows' only *writers* rather
+than their only readers, since the teardown reads them; the exact test iterates
+current fields against those rows rather than against a member list in memory
+from the collector's reserve; and a block's `used` no longer falls at the token's
+release, the rows it might collide with being alive at that instant.
+
+**Cost.** The region's capacity is fixed and never grows; entities past it keep
+their candidate bits and stand in the queue for the next trace, which under
+pressure follows immediately. This answers `ALGORITHM-AUDIT.md` A6 for the in-line
+collection and adds zero to the critical-reserve bound, the workspace being drawn
+once through the ordinary path. Whether a worker may hold its arena the same way
+is open.
+
+## 2026-09-03 — a withheld slot return asks no allocation path
+
+**Ruled in `ll-model`**, the first half under its Sage gate ("the withheld
+returns' first 1,024 records are the workspace's second region") and the second
+by Edmond the same day ("under memory starvation a collection ends itself and
+gives back everything"). A slot freed while the thread's own trace is open waits
+for that trace's close and returns through the ordinary free path once its last
+row is gone; block occupancy decreases there. A slot whose entity still has a
+candidate-queue entry is recorded nowhere: the entry names it already.
+
+**Where the withheld fact lives.** The first 1,024 records stand in a fixed
+region of the collection workspace, so a trace draws nothing for them. Past that
+the fact fits in the dead slot itself, which is what Edmond's ruling puts there
+instead of a growing list, and with the list go the block it drew, the reserve
+draw behind it and the process end behind that. The crate carries the list until
+`ll-model` `PLAN.md` S43 replaces it.
+
+**What answers a refusal instead.** A collection that cannot carry on with the
+memory it holds ends itself: it sweeps its rows, replays what it has already
+withheld and returns every block, the critical reserve included. In that regime
+no collector is wanted, each thread freeing its own memory by counting.
+
+**Cost.** This answers `ALGORITHM-AUDIT.md` A3 for the in-line collection alone;
+a collector worker still needs the generation or handoff protocol.
+
+## 2026-09-02 — a retained block's survivor list is not published in one instant
+
+**Ruled in `ll-model`** (`dev/DECISIONS.md`, "the reset places every survivor list
+before it reads any count, publishes in two instants, and returns an empty block
+through an arm of its own"), and stated here because the trace reads what the
+reset publishes. Retention clears the collector line and stamps the block's kind,
+which publishes zeros; the array is written after the fixpoint and published by a
+release store of its own, the length first and the address after it; the count
+word is published last, by an increment whose release half covers the address.
+Between the kind's store and the count's, the reset's own pin and its window's
+absorb are what keep a survivor's death in that gap from underflowing the count.
+
+**Why the count goes last.** Published before the list, it lets a decrement that
+reaches zero on another thread land between the two stores, read a null address,
+and return the block without spending the hold the list has on its holder.
+
+**Cost.** Every list must be placed, and its holder retained and pinned, before
+any block's count is read, so the reset makes two passes where one would do.
+
 ## 2026-08-29 — a trace stays inside the blocks of the thread it claimed, and the exclusion is per thread
 
 **Ruled by Edmond**, replacing the process-wide rule of the two entries below.

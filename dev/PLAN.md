@@ -1,6 +1,6 @@
 # PLAN
 
-Updated: 2026-09-03 · Active: S8 — the clauses the build runs into first; S10 — the HIR vocabulary
+Updated: 2026-09-04 · Active: S8 — the clauses the build runs into first; S10 — the HIR vocabulary
 
 **Closed stages are deleted whole** (rule 23.1.3). S1 through S5 went on
 2026-08-25, S6 and S7 on 2026-08-27; what survived each is in
@@ -234,6 +234,12 @@ for the same reason.
         entries, 65 280 bytes of thread-local per thread, sized on clause 3's
         own poll argument and deliberately extravagant until the ABI writes its
         poll bound down.
+      handoff: *(figures amended 2026-09-04.)* The built overflow buffer holds
+        **8,152** entries, not 8160: it stands in the base block's
+        65,280-byte payload behind the 64 bytes of the owner's queue state, and
+        `POLL_STRIDE` is half of it, **4,076** (`ll-model`,
+        `src/cycle/queue.rs`, `OVERFLOW_CAPACITY` and `POLL_STRIDE`). 8160 is a
+        segment's capacity, which is the whole payload and remains right.
       handoff: *(storage amended 2026-08-28.)* Edmond moved the overflow buffer's
         storage into the allocator: one pool block issued at init, held for
         the life, its refusal the thread that never starts; the thread that
@@ -245,7 +251,7 @@ for the same reason.
         against killing the process". Edmond's ruling moved the row to funded
         and demoted those paragraphs to a record in that document, so the
         argument is kept for what it cost rather than for what it says.
-- [ ] S8.6 Decide when the shadow arena resets, against the teardown order
+- [x] S8.6 Decide when the shadow arena resets, against the teardown order
       done: `rc-cycle.md`'s teardown order names the instant a collection's
         blocks return, and says where the exact test's collection-private memory
         comes from once they have
@@ -261,18 +267,44 @@ for the same reason.
         release **required** rather than merely legal, because the enrolment's
         floor needs a teardown to meet a refilled reserve; `rc-cycle.md` and
         Y14 both say so. The **fund** the exact test draws from is already
-        named — `rc-cycle.md`, "The release obliges a readership rule", says
+        named — `dev/DECISIONS.md`, "The release obliges a readership rule, and
+        the rule is what makes it legal", says
         collection-private memory from the collector's reserve, and
         `model/memory/critical-reserve.md` counts judgement among that
         reserve's customers. What is left is the **vehicle**: the arena is the
         only allocator that fund had, and it has gone back at the release, so
         what the exact test and the re-verify allocate through afterwards is
         unnamed.
+      handoff: closed 2026-09-04 on Edmond's ruling of 2026-09-03, taken in
+        `ll-model` and carried here; no Sage of this repository was called. The
+        instant is not one instant. A collection off the poll keeps its rows
+        through the teardown, which reads them directly and needs no member list
+        or allocator at all; a collection an allocation failure started harvests
+        the unreachable rows into a fixed region of the thread's workspace,
+        returns every block, and runs the teardown off that region.
+        `model/gc/rc-cycle.md`, "Concurrency", carries both, and
+        `dev/DECISIONS.md` records the ruling.
+      handoff: the token's release does not move with the arena. It still
+        precedes the first destructor on both paths; what narrows is the
+        readership rule, the owner reading its own rows after the release on the
+        ordinary path while mark and scan stay the only writers. Whether a
+        worker may acquire the token while an owner's teardown is still reading
+        those rows is the accelerator's, and `ll-model`'s ruling leaves it
+        there.
+      handoff: what the held rows carry with them is stated in
+        `model/gc/rc-cycle.md` beside the ruling — the teardown's frees wait for
+        the window's close, the sever's non-final decrements register the live
+        children of a member, so the detached chain is disposed of rather than
+        restored, and a collection that cannot carry on ends itself and returns
+        every block. All three are ruled in `ll-model` on 2026-09-03; what is
+        not is the instant the window closes, which S36.7 builds.
 - [ ] S8.7 Decide what the queue's writer and the buffer's swapper agree on
       done: Y12 clause 2 states the agreement, so that an entry written while
-        the live buffer is being detached lands in exactly one of the two
-        buffers and in neither twice, and so does a whole segment spliced onto
-        the chain at a re-offer poll
+        the chain is being detached lands in exactly one of the detached chain
+        and the lane the writer keeps, and in neither twice, and so does a whole
+        segment spliced onto the chain at a re-offer poll
+        *(criterion amended 2026-09-04: the swap it named became a two-word
+        detach, so there is no second buffer for an entry to land in)*
       tier: T2 · role: Sage
       handoff: clause 2 says the holder swaps the live buffer for a spare and
         traces the detached one, and clause 1 says the owner is the only
@@ -287,6 +319,15 @@ for the same reason.
         all run on the one thread, and that step's criterion is met by refusing
         a second reader by construction. What it blocks is the accelerator,
         where a second thread swaps the word for the first time.
+      handoff: *(the swapper is a detacher, 2026-09-04.)* The swap this step was
+        written against is gone: a collection moves two words, the head segment
+        and its fill, leaves the write position empty and draws nothing
+        (`dev/DECISIONS.md`, "the collection detaches the candidate chain and
+        swaps nothing"; Y12 clause 2). The step stands, and its question is now
+        narrower and sharper — the fill the detacher moves is a cell the writer
+        is about to reset, so the two words are read while one of them may be
+        written. `ll-model`'s queue states the same bound as a property of
+        today's single mover rather than of the structure.
 - [ ] S8.8 Decide how concurrent commits advance the epoch counter
       done: Y9 states who writes the process-global counter, how "every N
         collections" is counted when several owners commit at once, and what
@@ -319,6 +360,19 @@ for the same reason.
         across user code, and a claimable estate for blocks whose thread is
         gone — otherwise a cycle surviving its thread's exit is collectable by
         nobody. Both are proposals, neither is ruled.
+      handoff: the first proposal was ruled by Edmond on 2026-09-04 and is
+        carried into `model/gc/rc-cycle.md`, "Concurrency", and
+        `dev/DECISIONS.md`: a thread waits for the trace, collects, retires its
+        queue and only then hands its heap over, so neither `abandon_all` nor
+        `adopt` runs under a live trace. That is the first clause of
+        `dev/ALGORITHM-AUDIT.md` A4.
+      handoff: the step stays open on the second clause. What the exiting
+        thread's own collection could not take — a component whose destructor
+        threw, or one a refusal ended — keeps its candidate bit, and once its
+        blocks are adopted no thread will register it again. The estate that
+        would collect it is refused until the accelerator exists and is
+        revisited there against the measured residue, so today that residue is a
+        bounded leak with no collector.
 - [ ] S8.10 Decide what a cross-thread reference is, and whether a cycle can run through one
       done: the documents name the form a reference takes when it reaches
         another thread, or state that none exists and that a cycle therefore

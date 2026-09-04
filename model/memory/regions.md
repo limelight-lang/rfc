@@ -19,7 +19,7 @@ A class declared `#[Region]` owns arenas, exactly like an actor owns
 arenas ([../../runtime/actors.md](../../runtime/actors.md)):
 
 ```php
-#[Region(gc: 'rc-trace', threshold: '1mb')]
+#[Region(gc: 'rc-cycle', threshold: '1mb')]
 class RouteIndex {
     private array $trie = [];        // lives in this region's arena
     ...

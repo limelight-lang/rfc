@@ -104,9 +104,10 @@ When a slot is claimed from a block that was the reserve (`used` goes
 0 → 1), `empty_reserve[ci]` is cleared — the block is active again, not
 a spare.
 
-This bounds the extra resident cost to at most one empty 32 KB block
-per size class (≤ 32 classes × 32 KB ≈ 1 MB high-water in the fully
-degenerate case) while eliminating the instant-return/instant-refill
+This bounds the extra resident cost to at most one empty block per size
+class: at the 32 KB block of the time, ≤ 32 classes × 32 KB ≈ 1 MB
+high-water in the fully degenerate case, and twice that since Fix 6
+doubled `BLOCK_SIZE`. It eliminates the instant-return/instant-refill
 cycle for the common case of one class briefly going idle.
 
 Same logic applies on both the same-thread free path (`free_local`)

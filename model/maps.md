@@ -218,8 +218,8 @@ integer's identity is its value and an object's is its id, so for those
 two equal identity means the same key, which is an overwrite and never an
 entry in the walk. **The counter therefore counts an entry only when its
 tag equals the incoming key's.** Counting any non-integer key, as the
-array's table does today, is what lets eight equal-content arrays fire
-the string escalation.
+array's table did before the tag test, is what let eight equal-content
+arrays fire the string escalation.
 
 **The identities, from birth.** An integer indexes by value, a string by
 its cached hash, an object by its rotated id, and an array by a **keyed**

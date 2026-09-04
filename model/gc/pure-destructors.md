@@ -104,9 +104,8 @@ unnecessary for the whole teardown, and every child destructor runs
 unconditionally to completion. The compiler obligation is a closed-world
 closure over the field-type graph — the same discipline, and the same
 failure modes (a subclass opening the set, `mixed`, an array of unknown
-element class), as the acyclic flag
-(rc-walk.md); any edge the
-analysis cannot close makes the class impure.
+element class), as the acyclic flag; any edge the analysis cannot close
+makes the class impure.
 
 A consequence for the hand-off: the external children of a pure
 component are inside the closure, so the owner's release batch runs no
@@ -129,8 +128,8 @@ scalars; P2 writes only nulls; NR forbids by proof the escape of any
 address reachable through `$this` — a member's address included, which
 is why the obligation is wider than escape analysis of the receiver
 alone. Weak cells are nulled before any destructor runs
-(rc-walk.md, the weak
-obligation of 2026-07-26), closing the one non-store channel.
+([rc-cycle.md](rc-cycle.md), "The owning mutator runs the following
+sequence", step 3), closing the one non-store channel.
 
 A P2 destructor's own-slot stores preserve the exact test's equality
 term by term: displacing an in-component child moves `rc` and `indeg`
@@ -303,12 +302,13 @@ mutator, a cost under the stated philosophy.
 The cost has a name in both forms: the validation result stays outstanding until
 the tail completes, so the component holds the epoch open longer, and
 deferred memory is unbounded in epoch duration
-(`model/dev/RC_WALK_CRITICAL_REVIEW.md`). A completion bound — a
+(`dev/RC_WALK_CRITICAL_REVIEW.md` in `ll-model`, deleted 2026-08-26 and
+readable on `archive/pre-rc-cycle`). A completion bound — a
 deadline on the collector's tail, a per-checkpoint slice budget in the
 fallback — is part of this design rather than an option on it; the
 number is the tail-bound question below. **The requirement moved to
-gc/rc-walk.md, "Deferred physical release, and when an epoch
-ends", on 2026-08-24**: it survives this section's amendment, since it binds
+gc/rc-walk.md, "Deferred physical release, and when an epoch ends", on
+2026-08-24, and is readable there on `archive/pre-rc-cycle`**: it survives this section's amendment, since it binds
 whoever does the work, and this section is a record.
 
 ## The trust model: a soundness-bearing bit
@@ -332,8 +332,8 @@ impure.
 
 ## Composition
 
-**With unique ownership**
-(rc-walk.md):
+**With unique ownership** (rc-walk.md, "Unique ownership: one owning
+slot and no count", on `archive/pre-rc-cycle`):
 a unique entity of a P0 class dies at its owning slot's overwrite with
 no teardown protocol left but its children's releases; add "no counted
 fields" and the overwrite is literally a plain store plus a parked free
@@ -352,8 +352,8 @@ class — never walked, never drained, dying at zero through a plain free
 and parked while an epoch is open — and it shrinks the census and the
 per-epoch metadata.
 
-**With the birth count**
-(rc-walk.md):
+**With the birth count** (rc-walk.md, "The birth count: a known
+in-degree is written at allocation", on `archive/pre-rc-cycle`):
 mechanically orthogonal, birth-side against death-side, no shared state;
 they share the compiler-proof delivery channel and the Phase D gate.
 
@@ -417,8 +417,9 @@ this runtime already honours and must keep for everything impure.
 3. **What bounds an open tail?** The deadline on the collector's tail —
    and in the sliced fallback the per-checkpoint budget — against the
    parked-memory currency of epoch duration; which rung of the pressure
-   ladder (rc-walk.md)
-   forces completion.
+   ladder forces completion. The ladder was `rc-walk`'s and went with it
+   on 2026-08-26; the design in force collects in line when a GC-heap
+   allocation fails ([cycle/questions.md](cycle/questions.md), Y14).
 4. **The weak-table redesign.** A per-entity weak cell reachable by
    address would make nulling one atomic store from any thread. Under
    the hand-off design the nulling stays in the mutator's prologue, so

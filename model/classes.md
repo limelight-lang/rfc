@@ -39,7 +39,7 @@ predicates are mask tests and the enrolment gate is one.
 | 12 | Has weak references (side table exists) |
 | 13 | **`DESTRUCTOR_PENDING`** — this instance owes a `__destruct`: set only when the user constructor has returned successfully, **and** only for a class that has a destructor. What every teardown path dispatches on, not just the arena's ([object-lifecycle.md](../runtime/object-lifecycle.md)) |
 | 14 | **`DESTRUCTOR_RAN`** — `__destruct` has already run (exactly-once guard) |
-| 15 | Free |
+| 15 | **`DEAD_IN_PLACE`** — the slot's occupant died while a trace held rows over a block this thread owns and the deferred-reuse list had no room to record the return, so the fact stands here and the sweep that nulls the block's shadow pointer finds it (`model/gc/rc-cycle.md`, "Zero-count entities pending slot reuse"). The count reads zero under it, and the bit is what separates such a slot from a free one. **The mutator's half is full at this bit**: a further mutator flag needs a re-lay rather than a free position |
 | 16–17 | Epoch, the collector's own. **Byte 6 has one writer**: epoch, age and reserve share it, and each is written by a byte-wide read-modify-write, so a second writer would lose the first's bits with no wider access anywhere to blame |
 | 18–19 | Candidate age used by the traversal cutoff |
 | 20–23 | Collector reserve |

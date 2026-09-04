@@ -19,7 +19,7 @@ typedef struct RcHeader {
                                  //     [10] enrolled, [11] live escapee,
                                  //     [12] has-weak,
                                  //     [13] DESTRUCTOR_PENDING,
-                                 //     [14] DESTRUCTOR_RAN, [15] free
+                                 //     [14] DESTRUCTOR_RAN, [15] DEAD_IN_PLACE
     _Atomic uint8_t  collector;  // +6: bits [16-23] of the same word —
                                  //     epoch, candidate age, reserve.
                                  //     Written by the collector, one byte

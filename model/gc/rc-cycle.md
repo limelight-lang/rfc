@@ -366,16 +366,50 @@ fixed region of the thread's collection workspace holding 1,024 records, and it
 asks no allocation path (`ll-model`, `dev/DECISIONS.md`, "the withheld returns'
 first 1,024 records are the workspace's second region").
 
-**The free path asks no allocation path past that region either.** The fact a
-slot's return is withheld fits in the dead slot itself, so the list, the block
-it once drew past 1,024 records and the process end behind that draw all go
-(Edmond, 2026-09-03; `ll-model`, `dev/DECISIONS.md`, "under memory starvation a
-collection ends itself and gives back everything", and `PLAN.md` S43, which is
-where the crate replaces the list it carries today). What answers a refusal
-instead is the collection: one that cannot carry on with the memory it holds
-winds itself down, sweeps its rows, replays what it has already withheld and
-returns every block, the critical reserve included. In that regime no collector
-is needed, each thread freeing its own memory by counting.
+**A death past that region is marked in the dead slot rather than recorded**,
+and the sweep that nulls the block's shadow pointer is what finds it, so for
+such a death the free path asks no allocation path either. The slot's count still reads zero
+under the mark and its candidate bit is still clear, so a reader of the first
+word sees what this section already specifies; what the mark adds is a third
+answer to the question of whether the allocator may have the slot, and every
+walk that asks it reads the mark beside the count. The region, its 1,024
+records and the eight-byte append all stay: a mark costs the sweep a walk of
+the block's slots where a record costs eight bytes, and that walk is dearer in
+cache lines at every size class the design is computed over, so it is paid
+where it buys something — on the refusal — and nowhere else (`ll-model`,
+`dev/BENCHMARKS.md`, 2026-09-04, S43.1, and `dev/DECISIONS.md`, "the chain
+stays and the mark answers its refusal").
+
+**A mark is taken only where the sweep will find it.** The block carries this
+trace's shadow pointer, and the thread taking the mark owns the block: a shadow
+pointer another thread's trace wrote, or one standing on a block an exited
+thread abandoned, addresses rows this thread's sweep will never walk.
+**The owner clears a mark and returns the slot**; a collector worker may not,
+for the reason it may not clear the candidate bit.
+
+The other two populations have no slot word to write into — a retained block's
+whole-block return and an OS-direct run — and **their marks are owed rather
+than specified**. Neither condition above transfers to them as it stands: a
+retained block is on no thread's list, so ownership does not name a thread
+there, and a retained occupant's mark would land in the same word the emptiness
+count reads, which decides whether the block goes back to the pool.
+
+**A death the mark cannot take still takes a record**, and with it the growth
+past the region that the mark exists to retire. One case is left in that state
+and it is open: a slot dying past a full region in a block no shadow pointer
+addresses, or in one this thread does not own. It cannot be marked, a mark there being one no
+sweep walks to, and a return cannot be dropped. Two forms would close it — one
+record per block rather than per slot, which retires both conditions above, or a growth kept for that one population — and the design chooses
+neither here. Until one is chosen, a record the region cannot take and the
+growth cannot fund has no answer.
+
+What answers memory starvation, which is a regime rather than this residue, is
+the collection: one that cannot carry on with the memory it holds winds itself
+down, sweeps its rows, replays what it has already withheld and returns every
+block, the critical reserve included (Edmond, 2026-09-03; `ll-model`,
+`dev/DECISIONS.md`, "under memory starvation a collection ends itself and gives
+back everything"). In that regime no collector is needed, each thread freeing
+its own memory by counting.
 
 A thread runs at most one trace at a time, so no old or newly started trace of
 its own can address a replayed slot. Establishing the same instant for a

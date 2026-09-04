@@ -10,6 +10,43 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-09-04 — a refused withheld return is a mark on the dead slot, and the list stays
+
+**Ruled by Edmond**, in `ll-model` (`dev/DECISIONS.md`, "the chain stays and the
+mark answers its refusal"), and the bit it lands on **ruled by the Sage** the
+same day (`ll-model`, `dev/DECISIONS.md`, "the dead-in-place mark is flags bit
+15, and the owner clears it"). Carried here because it binds the design. A slot
+freed while the thread's own trace is open is recorded in the deferred-reuse
+list as before; a death the list's fixed region has no room for is marked dead
+in the slot's own header, and the sweep that unstamps the block finds it. The
+count reads zero under the mark and the candidate bit stays clear, so the
+section's own contract with the queue reader is untouched. The mark is taken
+only where the sweep will reach it: the block carries the trace's stamp and the
+marking thread owns it. The owner clears the mark and returns the slot, never a
+collector worker.
+
+**Why.** What the mark removes is the free path's ask of an allocation path for
+the population it covers: the growth past the region, its draw on the critical
+reserve and the process end behind that draw, which no `ll_free` frame could
+report. A death the mark cannot take — an unstamped block, or one this thread
+does not own — still takes a record and still grows the list, and that residue
+is open.
+
+**Rejected**, and this replaces the form recorded on 2026-09-03, that the list
+goes altogether: `ll-model` priced the sweep a full replacement would cost
+every collection — arithmetic over counted structure, neither side being built
+— and it is dearer than the list in cache lines at every class that pricing
+covers, 32 through 256 — about a thousandfold on a component
+scattered one member to a block, the walk's cost following the blocks a trace
+touched rather than the deaths inside it (`ll-model`, `dev/BENCHMARKS.md`,
+2026-09-04, S43.1).
+
+**Cost.** Two mechanisms where one was planned, the second running only when a
+region fills; and the flags word's mutator half is full at bit 15, so a further
+mutator flag needs a re-lay.
+
+---
+
 ## 2026-09-04 — a thread waits for the trace, collects, and then exits
 
 **Ruled by Edmond**, in `ll-model` (`dev/DECISIONS.md`, same heading) and carried

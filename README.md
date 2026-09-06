@@ -51,6 +51,10 @@ pluggable garbage collection instead of a one-size-fits-all VM heap.
 - [dev/GLOSSARY.md](dev/GLOSSARY.md) — normative technical vocabulary and
   context-sensitive replacements for retired terms
 
+**HIR is not designed here.** It was, in `hir/`, until 2026-09-06; the design of
+record is `amber/design/`, and this repository keeps only what the runtime model
+owes it (`dev/DECISIONS.md`, 2026-09-06).
+
 ## The key principle
 
 **[Attributes are the language surface](attributes.md).** Limelight

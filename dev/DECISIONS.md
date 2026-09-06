@@ -10,6 +10,30 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-09-06 — HIR is designed in `amber`, and stage S10 with the folder `hir/` is retired here
+
+**Decided by Edmond.** The HIR design of record is `amber/design/`. Stage S10 is
+deleted from `dev/PLAN.md` without being closed, and `hir/{shape,erasure,
+php-classes}.md` are deleted from this repository.
+
+**Why.** `amber` was founded on 2026-09-03 to hold HIR, and until today the same
+questions were answered in two repositories at once. Two answers to one question
+diverge silently, and the rule that says which of them wins is not something a
+reader of either document can see.
+
+**What survived and where.** `shape.md` became `amber/design/hir.md`,
+`erasure.md` became `amber/design/boundary.md`, `php-classes.md` became
+`amber/design/php-classes.md`, all in Russian by the ruling of 2026-09-06; the
+rulings and open steps of S10 are in `amber/dev/DECISIONS.md`. Nothing was left
+behind: `erasure.md`'s "not read yet" list was carried into `boundary.md` before
+the deletion.
+
+**Cost.** The design is no longer reviewable in this repository, and a reader
+who arrives here for HIR must be sent on. `README.md` and `dev/INDEX.md` say
+where.
+
+---
+
 ## 2026-09-04 — a refused withheld return is a mark on the dead slot, and the list stays
 
 **Ruled by Edmond**, in `ll-model` (`dev/DECISIONS.md`, "the chain stays and the

@@ -430,6 +430,18 @@ synchronous collection and batches proposed by a collector worker. Reordering
 the steps can expose a weak reference, run teardown twice, or reclaim storage
 while user code still holds a reference.
 
+**The in-line collection commits the whole unreachable set as one unit**, and
+partitions it into connected components nowhere (`ll-model`, `cycle::collect`;
+amended 2026-09-07). The union is sound rather than convenient: the identity
+exact validation compares holds per member, so a set that meets the sum meets it
+member by member and nothing is freed because a neighbour balanced it. What the
+union costs is precision in the two arms that refuse — one destructor that
+resurrects a member, or one teardown whose children the arena refuses, keeps the
+whole set for a later collection where a partition would keep one component of
+it — and a missed cycle stays eligible, so the cost is latency. Read "component"
+below as "the confirmed set" for that form; a collector worker proposing
+components keeps the finer unit.
+
 1. **Check for zero-count members, then validate the component.** If any member
    already has count zero, ordinary reference-counted teardown has completed
    and its slot is awaiting reuse. Remove that component from the current
@@ -537,10 +549,19 @@ accelerator.
 follow from that. Every slot the teardown frees waits for the window's close
 rather than returning at the free. The releases the sever performs are non-final
 decrements, so the live children of a member register as candidates in the
-operation that frees them, and the collection therefore **disposes of** its
-detached chain — takes the batch and gives its segments back — instead of
-restoring it into a write position the severing has already refilled; a restore
-over a refilled lane is a checked error in every build. And a collection that
+operation that frees them, and the lane the close finds is therefore not the
+lane the detach emptied. The collection **merges** its detached chain into
+whatever the lane holds by then (amended 2026-09-07): the batch's full segments
+are spliced behind the whole live chain, a part-filled head is copied in through
+the ordinary registration write, a head the detach caught at capacity is spliced
+with the segments rather than copied, and the emptied head's block goes to a
+spare cell (`ll-model`, `cycle::queue::merge_candidates`). Two other answers are
+refused, and for one reason. Giving the segments back strands every root
+recorded in them: the segment goes to the pool carrying its entries while the
+bits those entries answer for stay set, so a root whose only record was one of
+them is proposed by no later trace, which is Y6's permanent miss. Writing the
+batch's head into the write position loses the segment the severing installed
+there the same way. And a collection that
 cannot carry on with the memory it holds ends itself and returns every block,
 the critical reserve included, which is the answer to a refusal rather than a
 process end (`ll-model`, `dev/DECISIONS.md`, "the restore's refusal is the

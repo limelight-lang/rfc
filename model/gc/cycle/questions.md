@@ -965,12 +965,19 @@ the first three are what the candidate would have to be given.
    entry is its evidence, so the bit outlives the entry — and clause 8 is the
    other half, without which the reservation is never redeemed.
 5. **A root the trace did not walk stays enrolled**, its bit uncleared and its
-   entry re-enqueued by the owner out of the detached chain — the owner being
-   its queue's one writer, which is what makes the re-enqueue legal
-   (amended 2026-08-27). **So does a root the trace marked and the owner did not
+   entry back in the lane — the owner being its queue's one writer, which is
+   what makes that legal (amended 2026-08-27). **So does a root the trace
+   marked and the owner did not
    validate**: a mark is a proposal and only an exact reading disposes of one, so
    an unjudged proposal is re-enqueued exactly as an unwalked root is. A partial
    collection is legal (Y14) and a dropped root is not (Y6).
+   **One merge of the whole detached chain puts them back**, rather than an
+   entry-at-a-time re-enqueue (amended 2026-09-07): the collection's close joins
+   the batch into whatever the lane holds by then, so a root is back on the
+   queue without having been read at all, and a member the collection freed
+   keeps its entry too — that entry is what holds its slot out of the
+   allocator's hands until clause 7's reading retires it (`ll-model`,
+   `cycle::queue::merge_candidates`).
 6. **Growth that cannot allocate draws on the reserve.** The thirteenth
    ruling: the enrolment does not drop, the runtime enters reserve mode, and
    it leaves reserve mode only after every queued root has been walked. **The

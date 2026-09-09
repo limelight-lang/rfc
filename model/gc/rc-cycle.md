@@ -551,11 +551,24 @@ rather than returning at the free. The releases the sever performs are non-final
 decrements, so the live children of a member register as candidates in the
 operation that frees them, and the lane the close finds is therefore not the
 lane the detach emptied. The collection **merges** its detached chain into
-whatever the lane holds by then (amended 2026-09-07): the batch's full segments
-are spliced behind the whole live chain, a part-filled head is copied in through
-the ordinary registration write, a head the detach caught at capacity is spliced
-with the segments rather than copied, and the emptied head's block goes to a
-spare cell (`ll-model`, `cycle::queue::merge_candidates`). Two other answers are
+whatever the lane holds by then. In `ll-model`, the combination keeps both
+original head/fill bounds, packs the records into existing segments and reverses
+the occupied prefix so that only its published head can be partial. It draws no
+block; surplus segments replenish spare cells, then the critical reserve. A
+batch returning to an empty lane needs only its original head/fill publication
+(`cycle::queue::merge_candidates`).
+
+After all membership reads and the relevant shadow sweep, the synchronous
+owner removes completed zero-count entries across the combined queue and its
+overflow buffer, clears their candidate and completed-free marks, and returns
+the slots through `ll_free`. A zero count whose teardown has not completed
+keeps its entry. The ordinary collection reaches that reading after its trace
+window closes; the pressure collection reaches it after its standing member
+list ends, before another round and before the allocation retry. The cleanup
+owner retains bounds, cursors and pending returns across the combination's
+unwind boundaries (`ll-model`, `cycle::queue::retire_candidates`).
+
+Two other answers are
 refused, and for one reason. Giving the segments back strands every root
 recorded in them: the segment goes to the pool carrying its entries while the
 bits those entries answer for stay set, so a root whose only record was one of

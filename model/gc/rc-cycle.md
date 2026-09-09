@@ -551,11 +551,12 @@ rather than returning at the free. The releases the sever performs are non-final
 decrements, so the live children of a member register as candidates in the
 operation that frees them, and the lane the close finds is therefore not the
 lane the detach emptied. The collection **merges** its detached chain into
-whatever the lane holds by then. In `ll-model`, the combination keeps both
-original head/fill bounds, packs the records into existing segments and reverses
-the occupied prefix so that only its published head can be partial. It draws no
-block; surplus segments replenish spare cells, then the critical reserve. A
-batch returning to an empty lane needs only its original head/fill publication
+whatever the lane holds by then. In `ll-model`, a batch returning to an empty
+lane needs only its original head/fill publication. With two lanes, the merge
+moves only the suffix of the detached partial head that fits in the active
+partial head and splices the full tails. Any detached remainder is already a
+prefix and becomes the sole partial output head. Thus it draws no block, reads
+no entity header and does no whole-queue record pass
 (`cycle::queue::merge_candidates`).
 
 After all membership reads and the relevant shadow sweep, the synchronous

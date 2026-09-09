@@ -10,6 +10,29 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-09-09 — the owner trace retains pre-destructor exact validation
+
+**Decided in `ll-model`** (`dev/DECISIONS.md`, same heading) and carried here
+because it fixes the normative finalization sequence. A synchronous owner trace
+cannot have stale counts or a member that died after scan, but it still takes
+exact validation before guards and before user code. That call is the
+independent check of the scan's row-based arithmetic against the actual member
+cells and current reference counts.
+
+**Why.** A defect in grouping, saturation, reverse indexing or row placement
+must refuse collection while rollback is still possible. Deferring the check to
+post-destructor revalidation lets a false verdict run irreversible user code.
+The same pre-destructor `ExternallyReferenced` result is a required producer
+of the maturation stamp; leaving only the post-destructor producer narrows Y9
+again. The attempted exception (`ll-model` `195ddc5`) was reverted by
+`faad4f2`, and this repository's matching specification edit by `9af5087`.
+
+**Cost.** The ordinary path retains the validation's member and edge walks.
+A later optimization must preserve an equally early independent check and the
+pre-destructor stamp producer.
+
+---
+
 ## 2026-09-06 — HIR is designed in `amber`, and stage S10 with the folder `hir/` is retired here
 
 **Decided by Edmond.** The HIR design of record is `amber/design/`. Stage S10 is

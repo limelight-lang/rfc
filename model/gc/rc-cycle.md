@@ -425,10 +425,12 @@ slot while a stale queue entry still names it.
 ## Cycle finalization and reclamation
 
 The owning mutator runs the following sequence for each component that exact
-validation confirms as unreachable. The order is normative and applies to both
-synchronous collection and batches proposed by a collector worker. Reordering
-the steps can expose a weak reference, run teardown twice, or reclaim storage
-while user code still holds a reference.
+validation confirms as unreachable. A completed in-line owner trace is the
+one exception to that first confirmation: while it still holds its consistency
+window, its final scan is that proof and proceeds directly to step 2. A batch
+proposed by a collector worker always takes exact validation. Reordering the
+steps can expose a weak reference, run teardown twice, or reclaim storage while
+user code still holds a reference.
 
 **The in-line collection commits the whole unreachable set as one unit**, and
 partitions it into connected components nowhere (`ll-model`, `cycle::collect`;
@@ -447,7 +449,11 @@ components keeps the finer unit.
    and its slot is awaiting reuse. Remove that component from the current
    validation batch before tracing fields or adding guard references. The
    disposition of other candidate roots in such a component is unresolved; see
-   `dev/ALGORITHM-AUDIT.md`, issue B1.
+   `dev/ALGORITHM-AUDIT.md`, issue B1. A completed in-line owner trace cannot
+   contain such a member: mark omits count-zero roots before scan, and no
+   mutator may run between the final scan and step 2. Its non-empty condemned
+   set therefore enters at step 2 without this reread. The shortcut ends at
+   guard acquisition; step 5 remains mandatory after a destructor runs.
 
 2. **Add a guard reference to every member of every confirmed component**
    (`+1` each) before any user code runs. A release from inside any destructor
@@ -516,15 +522,17 @@ of this section. The proof is still incomplete for moved objects, actor sharing
 and FFI entry. These are correctness prerequisites, not optional optimizations;
 see `dev/ALGORITHM-AUDIT.md`, issues B3, B4, and C3.
 
-The token covers mark, scan, and reads of the live candidate queue. The tracer
-releases it at the end of scan, before exact validation and before the first
-destructor, on both paths. Everything after the release — zero-count-entry
-handling, guard references, weak-reference invalidation, destructors,
-revalidation, edge severing, storage reclamation, slot return, and candidate-bit
-clearing — runs without the token. What the release ends is the right to trace
-and not the life of the rows: reading a row whose block has gone back is a
-defect on either path, and reading one whose block has not is what the ordinary
-path's teardown does.
+The token covers mark, scan, and reads of the live candidate queue. A completed
+in-line owner trace retains its consistency window through guard acquisition,
+then releases it before user code and the first destructor. A worker result,
+and the pressure path that closes its window to harvest members, release it at
+the end of scan and take exact validation before guards. Everything after that
+boundary — zero-count-entry handling, guard references, weak-reference
+invalidation, destructors, revalidation, edge severing, storage reclamation,
+slot return, and candidate-bit clearing — runs without the token. What a
+release ends is the right to trace and not the life of the rows: reading a row
+whose block has gone back is a defect on either path, and reading one whose
+block has not is what the ordinary path's teardown does.
 
 **When the arena goes back depends on why the collection ran.** A collection
 off the safepoint poll keeps its rows: the arena is not reset before the

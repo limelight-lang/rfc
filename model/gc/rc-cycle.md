@@ -55,6 +55,21 @@ prunes nothing. A 2026-08-25 measurement also found that the median candidate
 root reached all 381 objects in its test heap, which is why an independent
 trace budget remains necessary.
 
+**What a commit stamps.** A collection that keeps its rows through the teardown
+stamps every entity its scan proved live, with the epoch read at the start of
+the commit and an age one more than the minimum current-epoch age over that
+entity's strongly connected component in the subgraph the trace walked. The
+unit is that strongly connected component rather than the traced closure: where
+a service container connects everything, the closure is the whole live set, and
+one entity met for the first time holds the minimum at zero, so no component
+reaches the threshold. A member added to a component between two commits resets
+that component's age, which is the price of ageing whole components rather than
+entities; a component that has reached the threshold is not descended into for
+the rest of the epoch, is therefore not read again, and keeps its age until the
+turnover. A collection an allocation failure starts has returned its blocks
+before the commit, so it stamps only what its exact validation read as
+externally referenced.
+
 ### Aggregate proof fast path
 
 Collection has two scheduling modes:

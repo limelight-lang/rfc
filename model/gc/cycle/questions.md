@@ -644,6 +644,16 @@ header's four-bit candidate-age stamp carries its low two bits. A thread compare
 it against a full-width local
 mirror, so a stamp that wraps hides no turnover from the re-offer.
 
+**What "component" means for the stamp was ruled 2026-09-10** with the producer
+that writes it (`ll-model` `PLAN.md` S37.0): the strongly connected component of
+the subgraph one trace walked, computed over the trace's own rows after the scan
+and before any guard. The closure of a root is refused as the unit on the
+381-of-381 reading above — a closure that is the whole live set takes the age of
+whatever entity the collection met first, which is zero, and matures nothing. A
+collection an allocation failure starts stamps only the components its exact
+validation read as externally referenced: its blocks are back before the first
+destructor, so no rows remain to walk.
+
 **What would answer the rest:** the traversal age threshold `k` — a measurement on a
 real workload, YRC's 3 being the only known value; the advance period `N`,
 where YRC's 64 is likewise the only known value and the two dials are separate;

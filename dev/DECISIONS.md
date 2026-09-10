@@ -10,6 +10,32 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-09-10 — the component a maturation stamp ages is the strongly connected component
+
+**Decided by the Sage** at `ll-model`'s pre-change gate for `PLAN.md` S37.1, and
+carried here because Y9 and `rc-cycle.md`'s age-based pruning bullet use
+"component" for the stamp without defining it. A commit stamps every entity its
+scan proved live, and the age is one more than the minimum current-epoch age
+over that entity's strongly connected component in the subgraph the trace
+walked.
+
+**Why.** The minimum rule ages a unit whose membership is the same at every
+reading. The traced closure is not one: the median candidate root reaches all
+381 objects of the corpus, so the closure is the live set, and any entity met
+for the first time reads age zero and holds the whole set at age one for ever.
+The strongly connected component keeps a ring's members together, which is what
+Y9 asks of the unit, and lets an acyclic newcomer age without resetting the core.
+
+**Rejected:** the whole live population of one collection as one unit, pinned at
+age one by any newcomer; the per-root first-reach partition, which equals the
+closure on the corpus and moves with the batch order; per-entity ageing, which
+Y9 forbids by name.
+
+**Cost:** a third descent over the live rows on every ordinary collection, and a
+newcomer that points back into a mature core resets that core's age. A collection
+under memory pressure stamps only through exact validation, so a thread whose
+every collection runs under pressure never matures its live core.
+
 ## 2026-09-09 — the owner trace retains pre-destructor exact validation
 
 **Decided in `ll-model`** (`dev/DECISIONS.md`, same heading) and carried here

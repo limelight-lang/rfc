@@ -163,6 +163,15 @@ for the same reason.
         mirror so a wrap hides no turnover.
         `N` joins the promote bound `k` as an open dial; YRC's 64 and 3 are the
         only known values of either.
+      correction 2026-09-10: Y12 clause 8 no longer promises a whole-segment
+        splice at re-offer. The built queue has one fill bound per lane, so a
+        deferred partial head cannot lawfully become an interior segment. The
+        normative form is the bounded merge of the deferred lane into the
+        active one at the poll, and with it three rules the built path carries:
+        the mirror is the commit count the reading itself saw, the deferral
+        retires completed deaths on the way in, and a bounded pressure round
+        defers nothing. One registered entity remains one token throughout.
+        `model/PLAN.md` S37.4 is built to this text.
       handoff: the retention this buys is the widest in the design and was
         accepted rather than solved — a suspect that dies while parked keeps its
         slot, and the slot's block, until the next turnover or an in-line

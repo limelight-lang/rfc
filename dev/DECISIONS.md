@@ -543,6 +543,41 @@ same last-resort abort the funded class already keeps
 
 ## 2026-08-27 — the deferred-candidate buffer is the owner's, and the re-offer is a splice at the epoch's turn
 
+**Amended 2026-09-10.** The old "splice" wording assumed every deferred
+segment could be made an interior segment without a bound. The built owner
+queue has a fill bound only for a lane head, so a partially filled deferred
+head cannot be spliced behind an active head. Re-offer is the bounded merge
+the queue already performs on a restored batch: at the poll the owner merges
+the deferred lane into the active one, entries reconciled between the two
+partial heads and no segment drawn. The merge is chosen over a composite
+active-and-deferred batch because it leaves the trace one lane to detach; the
+composite form carries two fill bounds through every consumer of a batch and
+splits them again on abort, and what it saves is one bounded copy per turnover
+per thread. A trace that aborts after a re-offer therefore leaves its records
+in the active lane, where the next trace reads them, rather than returning them
+to the deferred one.
+
+The built path adds three rules, and all three are normative. The mirror a
+re-offer compares against is the commit count the reading that found the
+component live saw, taken at that reading and carried into the deferral: the
+two collection paths dispose of a batch on opposite sides of their own commit's
+close, and a count read at the disposition would put the same event up to one
+epoch apart between them. The deferral retires the records of completed deaths
+on the way into the lane, which makes this clause's own "may sweep its own
+deferred-candidate buffer for zero-count entities first" mandatory rather than
+permitted: nothing reads the deferred lane before the turnover, so a slot a
+record withholds there is withheld for the epoch. And a bounded round of the
+pressure path defers nothing at all, because the trace behind it read a prefix
+of the lane and the records behind that prefix name components no reading
+answered for.
+
+None of this duplicates an entry: `CANDIDATE_BIT` still denotes one token, in
+the active lane, in a trace's detached batch, or in the deferred lane, and the
+eventual trace or owner retirement is its only consumer. The amendment is the
+normative Y12 clause 8 text; the 2026-08-27 rationale below is retained as the
+historical decision that established owner-local residence and the poll
+instant.
+
 **Decided (Sage), closing Y12 clause 8.** The deferred-candidate buffer is one
 per mutator thread, beside that thread's candidate queue and made of the same
 segments, and the owner is its only writer and its only reader — no atomics,

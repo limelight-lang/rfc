@@ -1019,8 +1019,11 @@ the first three are what the candidate would have to be given.
    instead of a permanent miss (Y6).
 
    **The buffer is one per mutator thread, beside that thread's queue**, a
-   chain of the same segments, and the owner is its only writer and its only
-   reader. It takes no atomics and the trace token does not cover it, because
+   chain of the same segments with its own head and fill bound, and the owner
+   is its only writer and its only reader. A registered entity has exactly one
+   token: it is in the active lane, a trace's detached batch, or this deferred
+   lane, never in two of them. It takes no atomics and the trace token does not
+   cover it, because
    the owner makes this classification after exact validation in both forms —
    the synchronous commit and the inbox pickup — and re-offer is a write into
    the queue, whose one
@@ -1050,16 +1053,41 @@ the first three are what the candidate would have to be given.
    safepoint poll that finds the counter moved** from a thread-local
    full-width mirror recorded at the last re-offer; full-width on both sides,
    so a stamp that wraps hides no turnover. At that poll, after clause 3's
-   cells are refilled and its overflow buffer drained, the owner links every deferred-candidate
-   segment onto its own live queue, one link per segment and no entry copied,
-   and records the counter. The order among the poll's three writers of the live
-   queue is refill, drain, splice: the drain writes entries and the splice
-   whole segments, so a splice first would put the drained entries behind a
-   chain the trace has already been offered.
+   cells are refilled and its overflow buffer drained, the owner merges the
+   deferred lane into the active one, through the same bounded reconciliation
+   of two partial heads a restored batch takes and with no segment drawn. A
+   whole-segment splice is not available: only a lane head carries a fill
+   bound, so a partially filled deferred head cannot become an interior
+   segment. The merge copies entries where a composite batch of both lanes
+   would copy none, and it is chosen for what it does not cost elsewhere —
+   the trace detaches one lane, no consumer of a batch carries two bounds, and
+   no abort path splits one. A trace that aborts after a re-offer leaves its
+   records in the active lane rather than returning them to the deferred one:
+   the next trace reads them, and what is lost is the re-registration saving
+   for one round. The order among the poll's three writers of the live queue is
+   refill, drain, re-offer: the drain writes its entries before the merge, so
+   none lands behind a chain the trace has already been offered.
+
+   **The mirror is the count the reading saw**, taken at the exact validation
+   that found the component live and carried into the deferral. The two
+   collection paths dispose of a batch on opposite sides of their own commit's
+   close, so a count read at the disposition would hold the same event for
+   anything between no commits and a whole epoch.
+
+   **The deferral retires the records of completed deaths on the way in.**
+   Nothing reads the deferred lane before the turnover, so a slot such a record
+   withholds is withheld for the epoch; the sweep this clause permits below is
+   therefore performed at every deferral rather than left to an in-line
+   collection.
+
+   **A bounded round defers nothing.** A trace under memory pressure reads a
+   prefix of the lane, and the records behind that prefix name components no
+   reading has answered for; they return to the active lane whatever the round's
+   own reading was.
    The poll is the instant rather than the owner's next validation, because a
    thread whose only garbage is a parked ring has an empty queue, and Y14 fixes
    an in-line collection's scope at that queue: no roots, so no validation, and
-   the parked ring is outside the token's coverage where no accelerator reaches
+   the deferred ring is outside the token's coverage where no accelerator reaches
    it either. Waiting for a validation would therefore wait for ever, which is
    Y6's miss by another road.
 

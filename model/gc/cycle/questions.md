@@ -618,6 +618,15 @@ is the cost `rc-cycle` exists to remove. With it, the mature live core stops
 being descended after the first collection of an epoch, and what remains to
 trace is what changed and its immature neighbors.
 
+**Which targets the rule spares was read on 2026-09-10, when the prune was
+built.** A queue root is an entity a candidate queue entry names — the
+registration bit, cleared by the owner at death and at no other point — and not
+only a root of the batch a trace is holding. The bit is the wider set, and every
+entity it spares beyond the batch is one the descent traces where it might have
+stopped: a descent, never a collection. What the narrow reading would cost is
+the case the exclusion exists for, a ring whose members are all at the threshold
+and whose garbage is discovered through a decrement that registers one of them.
+
 **The first collection of an epoch is therefore the expensive one**, and
 nothing in the design bounds it. Whether that matters is a measurement nobody
 has taken: how often an epoch turns over against how long a process runs. Ageing whole components rather than cells is what keeps

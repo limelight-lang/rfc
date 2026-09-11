@@ -14,7 +14,8 @@
 - Trial deletion uses trace-local shadow counts and does not modify live
   reference counts.
 - Candidate age prunes traversal edges at a traversal age threshold. The rule
-  never applies to a candidate-queue root.
+  never applies to a candidate-queue root — an entity a queue entry names,
+  whichever batch that entry stands in.
 - An acyclic-class filter prevents instances that cannot participate in a
   reference cycle from entering the candidate queue.
 - A collector worker may produce a speculative validation batch, but only the
@@ -46,7 +47,12 @@ candidate mechanism from Bacon and Rajan:
   non-root target has the current epoch stamp and has reached the traversal age
   threshold, the traversal treats it as an opaque external live reference. The
   rule applies only to edge targets, never to queue roots; otherwise a reference
-  cycle at the threshold could be skipped until the epoch changes. A trace
+  cycle at the threshold could be skipped until the epoch changes. **A target is
+  a queue root when a candidate queue entry names it** — the registration bit,
+  which the owner clears at death and at no other point — rather than only when
+  the batch this trace holds names it: a trace cannot address another thread's
+  batch or another collection's, and the wider set spares entities the rule
+  would allow it to prune, which costs a descent and never a collection. A trace
   may also stop at an explicit budget. See `cycle/questions.md`, Y9 and Y13.
 
 The age rule is a performance policy, not a completeness guarantee. In the

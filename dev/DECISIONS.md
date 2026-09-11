@@ -10,6 +10,32 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-09-10 — a queue root of the pruning rule is the registration bit
+
+**Decided at the build** of the edge-side prune in `ll-model` and carried here
+because `rc-cycle.md` states the exclusion normatively and its sentence read
+two ways. A target is a queue root when a candidate queue entry names it — the
+registration bit, cleared by the owner at death and at no other point — rather
+than only when the batch under trace names it.
+
+**Why.** The narrow reading is not addressable: a trace holds one detached
+batch and cannot ask whether another batch, another lane or another thread's
+queue names a target. The wide reading is a superset of the narrow one, and
+every entity it adds is one the descent traces where the rule would have let it
+stop — a descent, never a collection, because a pruned edge only ever raises a
+row.
+
+**Rejected:** the batch as the unit, for the reason above; a second header bit
+saying "root of the current batch", which is a bit spent to prune more of a
+population the design has no measurement of.
+
+**Cost:** the prune spares every entity that ever observed a non-final
+decrement, so the population it stops at is the never-decremented one. What
+that is worth on a real workload is `ll-model`'s S40.1, and the simulation that
+step priced does not model this exclusion.
+
+---
+
 ## 2026-09-10 — the component a maturation stamp ages is the strongly connected component
 
 **Decided by the Sage** at `ll-model`'s pre-change gate for `PLAN.md` S37.1, and

@@ -360,8 +360,9 @@ without first attempting collection. No triggering
 policy lives in the model.
 
 **The entry gate and the inbox are `rc-cycle`'s, added 2026-08-27.** A
-thread whose allocation fails reads its own gate — the collecting flag and
-`TEARDOWN_DEPTH` — before waiting on the trace token, and a closed gate
+thread whose allocation fails reads its own gate — the collecting flag,
+`TEARDOWN_DEPTH` and the arena reset in flight, if one is (added 2026-09-11) —
+before waiting on the trace token, and a closed gate
 sends it down the pressure ladder instead; and a thread's safepoint poll
 picks up the per-thread inbox in which a collector thread leaves the
 validation batch it traced. That is how the collector worker delivers now that

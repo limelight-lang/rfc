@@ -91,7 +91,8 @@ candidate is returned to the live queue.
 ### Mutator progress while collection is unavailable
 
 After an allocation failure, a mutator checks its collection-entry conditions:
-the collecting flag and `TEARDOWN_DEPTH`. If collection is permitted, the
+the collecting flag, `TEARDOWN_DEPTH` and the arena reset in flight, if one is
+(`../gc/rc-cycle.md`, "Concurrency"). If collection is permitted, the
 mutator waits for its trace token, acquires it, and runs a synchronous trace. If
 the entry conditions prohibit collection, ordinary application allocation must
 not retry against the reserve.

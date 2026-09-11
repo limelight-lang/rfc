@@ -627,9 +627,14 @@ collection kept, on the pressure path the harvested list. Neither may read a row
 whose block has gone back.
 
 **Check collection eligibility before waiting.** After allocation failure, a
-thread reads its collecting flag and `TEARDOWN_DEPTH`. If either prohibits
-collection, the thread follows the memory-pressure fallback instead of waiting
-for a token it cannot use. Otherwise it waits, acquires the token, and traces.
+thread reads its collecting flag, `TEARDOWN_DEPTH`, and whether an arena reset
+is in flight on it (`../memory/arenas.md`; a reset runs user destructors over a
+heap whose promoted survivors are not yet listed, which no trace may read). If
+any of the three prohibits collection, the thread follows the memory-pressure
+fallback instead of waiting for a token it cannot use. Otherwise it waits,
+acquires the token, and traces. The same three inputs are read by the
+safepoint poll before it spends its arming, so a poll a closed gate refuses
+leaves the arming for the next poll at a clean point.
 A trace runs no user code, takes no user lock, and releases the token before
 destructors, so this wait is intended to be bounded.
 

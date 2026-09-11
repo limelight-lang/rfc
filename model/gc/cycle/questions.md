@@ -1335,7 +1335,10 @@ the crate named its absence where the gate belonged, in the `walk.rs` deleted on
 2026-08-26: "The entry gate belongs to the pressure ladder ... unbuilt". The gate reads two things
 and no third — this thread's own collecting flag and `TEARDOWN_DEPTH` — and it
 is read **before** any wait, which it can be because it depends on no other
-thread. A closed gate sends the allocation down the ladder and never touches the
+thread. *(Amended 2026-09-11: a third input, the arena reset in flight on this
+thread, is read beside the two — still this thread's own state, never the
+token; `dev/DECISIONS.md`, "the entry gate's third input is the reset
+window".)* A closed gate sends the allocation down the ladder and never touches the
 token word; an open one CASes the token, and a failed CAS waits and retries
 rather than falling back to the ladder (`dev/DECISIONS.md`, "the entry gate
 reads this thread's own state and never the trace token").

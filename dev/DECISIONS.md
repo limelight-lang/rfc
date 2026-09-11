@@ -10,6 +10,29 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-09-11 — the entry gate's third input is the reset window
+
+**Decided in `ll-model`** (`dev/DECISIONS.md`, 2026-09-07, "a collection is
+refused while an arena reset is in flight") and carried here by S38.4, which
+built the gate's second input. The gate reads three things of this thread's
+own state: the collecting flag, `TEARDOWN_DEPTH`, and whether an arena reset
+is in flight; the ruling of 2026-08-27 stands in what it was against — the
+gate never reads the token — and its "two and no third" counted the inputs
+it knew.
+
+**Why.** Between `retain_block` and `place_survivor_lists` a promoted
+survivor stands in a retained block with no occupant list published, a state
+no trace may read; and a member a collection frees in such a block is
+absorbed by the reset window while the teardown reports it freed. The
+reset's destructors run at teardown depth zero, so the depth does not cover
+it. The poll reads the same three inputs before it spends its arming.
+
+**Rejected:** counting the reset as a teardown in `TEARDOWN_DEPTH`, which
+would cover the destructors and not the unlisted-block state the refusal
+exists for.
+
+**Cost:** one more thread-local read on the poll and on the slow path.
+
 ## 2026-09-11 — the ownership mark is moved by the store into a proven slot, and honoured by the holder's `dispose`
 
 **Decided by Edmond**, answering how the mark (bit 9, given its address by

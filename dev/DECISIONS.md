@@ -10,6 +10,59 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-09-11 — the ownership mark is moved by the store into a proven slot, and honoured by the holder's `dispose`
+
+**Decided by Edmond**, answering how the mark (bit 9, given its address by
+the twenty-second entry of 2026-08-25) is written. It is not the factory's: a
+store into a slot the compiler proved moves it, the displaced entity losing it
+and the new occupant gaining it, before the displaced entity is dropped by
+the plain `drop`. At the holder's death the `dispose` reads the mark on each
+child it would release and destroys a marked child instead: mark off, count
+written to zero, the child's own death path. The proof the compiler owes has
+three parts — no other heap slot shares the occupant, nothing but the slot
+holds it at the holder's death, and no ring closes through proven slots
+alone — and the runtime checks none of them.
+
+**Why.** The proof binds the slot, not the entity's life: an occupant read
+into a local and then displaced lives on in the local and may be stored
+anywhere afterwards, so its next non-zero decrement has to register it, and
+the mark has to be off before that decrement. Moving it inside the store puts
+the ordering in one runtime body. At the holder's death the child is
+destroyed rather than released because the proof, not the count, is the
+authority for its death; under the bound of 2026-08-26 the count there is
+exact and equals the slot's one reference, so the two paths reach the same
+free, and the rule is stated without the count. The third part of the proof
+is what keeps a ring through marked entities collectable: none of them
+registers, so the ring is found from the unmarked holder the chain of
+holders ends at — the shape Y11 warns of, "the holder may lie in the same
+ring".
+
+**Rejected:** a factory stamp for the entity's life, which cannot follow an
+entity out of the slot; two bare set-and-clear entries, which owe the
+clear-before-decrement order to every emission site, and a missed clear is a
+ring no collection finds; a `dispose` specialized per class with a proven
+slot, which the mark on the child makes unnecessary — the default `dispose`
+reads the child's header before releasing it anyway; clearing the mark
+inside every `drop`, which puts a flag test and a possible store on the hot
+path at sites that prove nothing.
+
+**Cost:** the owned store reads the slot before publishing, because the
+store micro-op is not handed the displaced entity — `drop` takes it, `store_*`
+does not. The rule is asymmetric — the displaced entity is released, the
+child of a dying holder is destroyed — and the asymmetry is the contract. A
+violated proof is not detected: a child a local still holds at the holder's
+death is destroyed under it. The mark is written only where holder and
+occupant are both GC-heap entities, the holder's `dispose` being the one
+reader of it at a death — the default one and a generated one alike, through
+the exported `ll_owned_child_die`. The cycle collector reads the mark nowhere
+and clears it nowhere: a marked entity is a member of every confirmed set its
+holder is in, the sever empties the holder's slot without touching it, and
+the member's free at the guard release runs no destructor (step 4 ran it), so
+nothing can resurrect an entity with the mark standing; the header is
+rewritten whole at the slot's next publication.
+
+---
+
 ## 2026-09-10 — a queue root of the pruning rule is the registration bit
 
 **Decided at the build** of the edge-side prune in `ll-model` and carried here

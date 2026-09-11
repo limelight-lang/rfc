@@ -68,6 +68,64 @@ drop(ctx, owner_cat, old)              # old is an entity; no slot
   which may collect and read the slot, and must see the new value
   (audit C1). The split makes that ordering fall out of the composition.
 
+**A proven slot takes the owned form of the store.** The compiler proves
+three things of such a slot: no other heap slot names its occupant while
+it does; at the holder's death no reference to the occupant stands but
+the slot's own; and no ring closes through proven slots alone, so the
+chain of holders from any marked entity ends at an unmarked one. What a
+local may do between those two points is not restricted — an occupant
+read into a local and then displaced from the slot lives on in the
+local. Every store into a proven slot, the null store included, is the
+owned form:
+
+```
+store_ptr_owned(ctx, owner_cat, slot, new)   # a proven 8-byte slot
+store_box_owned(ctx, owner_cat, slot, new)   # a proven 16-byte slot
+```
+
+Each is the plain publish followed by a move of the **ownership mark**,
+bit 9 of the flags ([classes.md](../classes.md), "Flags layout"): the
+entity the slot held loses the mark and the entity the slot now names
+gains it, so a store of the same entity into its own slot keeps it and a
+null store only clears the old occupant's. The mark moves before the
+displaced entity is dropped, and the `drop` that follows is the plain
+one: the release path then reads that entity unmarked, which it has to,
+because an entity that has left a proven slot may be stored anywhere
+afterwards and its next non-zero decrement has to register it. The mark
+is written only where the holder and the occupant are both GC-heap
+entities: the holder's `dispose` is the one reader of it at a death, and
+an entity of any other category dies by its category's own rule.
+
+While the mark stands the entity is no candidate. The release path
+registers none for it — the candidate gate tests the bit beside the
+acyclic gate, in the word it already holds ([rc-cycle.md](rc-cycle.md),
+"Zero-count entities pending slot reuse") — and a ring through it is
+found from the unmarked holder its chain of holders ends at. At the
+holder's death the `dispose` destroys a marked child instead of releasing
+it: the mark comes off, the count is written to zero, and the child's
+own death path runs, so a `__destruct` that stores `$this` resurrects it
+as it would any entity, and the resurrected entity, held by no proven
+slot, registers again like any other
+([object-lifecycle.md](../../runtime/object-lifecycle.md), "Phase 2 —
+Field and resource teardown: `drop`"). No count is read on that path: by
+the proof the slot's reference is the only one there, and the proof
+rather than the count is what the death is decided on. The runtime
+checks none of the three conditions; a child that a local still holds at
+the holder's death is destroyed under it. The cycle collector reads the
+mark nowhere: a marked entity nothing but its holder holds is a member of
+every confirmed set its holder is in, since its one in-edge is internal,
+and one a local holds reads as externally referenced and keeps the whole
+set, which the in-line collection commits as one unit
+([rc-cycle.md](rc-cycle.md), "Cycle finalization and reclamation"); a
+marked member is freed with its mark standing, its destructor already
+run at step 4, and the header is rewritten whole at the slot's next
+publication. Why
+the mark is a store-side move and a `dispose`-side test rather than a
+factory stamp or a pair of bare entries is
+[`../../dev/DECISIONS.md`](../../dev/DECISIONS.md), "the ownership mark is
+moved by the store into a proven slot, and honoured by the holder's
+`dispose`".
+
 **`owner_cat` is a parameter, not read from the owner.** The
 destination's memory category decides the cross-arena direction, and
 the compiler knows it — so it is passed, not loaded from `owner->flags`.

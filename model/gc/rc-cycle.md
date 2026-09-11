@@ -441,7 +441,14 @@ Candidate registration applies only to the cycle-collected heap category. The
 fast-path gate combines category zero, a cycle-capable entity kind, an eligible
 class, unproven ownership, and a clear candidate bit as
 `flags & 0x723 == 0`. Without the category test, an arena reset could reuse a
-slot while a stale queue entry still names it.
+slot while a stale queue entry still names it. The ownership clause reads the
+mark a store into a compiler-proven slot moves onto the slot's occupant; the
+same mark makes the holder's `dispose` destroy the occupant with the holder
+instead of releasing it, so a marked entity is never a root
+([strategies.md](strategies.md), "The store barrier, as micro-operations").
+Its edges are still traced, and a ring through it is found from the unmarked
+holder its chain of holders ends at — the proof forbids a ring closing
+through proven slots alone.
 
 ## Cycle finalization and reclamation
 

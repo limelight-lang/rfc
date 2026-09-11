@@ -774,6 +774,13 @@ acyclic one. The compiler's site-by-site proof stays the stronger form — it
 removes the test rather than answering it — and the mark is what serves the
 sites the compiler could not prove.
 
+**How the mark is written was answered on 2026-09-11:** the store into a
+proven slot moves it — the displaced entity loses it, the new occupant gains
+it — and the holder's `dispose` destroys a marked entity instead of releasing
+it ([`../strategies.md`](../strategies.md), "The store barrier, as
+micro-operations"; `dev/DECISIONS.md`, "the ownership mark is moved by the
+store into a proven slot, and honoured by the holder's `dispose`").
+
 **What remains:** the two signatures written down, and the default without
 a proof — the enrolling form everywhere, which is what the crate does
 today.

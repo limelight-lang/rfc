@@ -33,7 +33,7 @@ predicates are mask tests and the enrolment gate is one.
 | 6 | Copy-on-write: counted in every memory category |
 | 7 | Arena reset mark: the transient mark of the reset's escaped-subgraph trace, cleared when a survivor is promoted ([arena-reset.md](memory/arena-reset.md)). It is safe here because a reset never runs against a collection on the same entity — an arena entity is never a candidate |
 | 8 | Acyclic gate: this instance's class is proven unable to hold a reference to a ring-closing kind, so it never enters the candidate set ([rc-cycle.md](gc/rc-cycle.md)) |
-| 9 | Ownership mark: this entity's owner is proven, so no trace need consider it |
+| 9 | Ownership mark: a compiler-proven slot holds this entity, so it registers as no candidate and is destroyed with its holder instead of released. Moved by the store into that slot, read by the candidate gate and by the holder's `dispose` ([gc/strategies.md](gc/strategies.md), "The store barrier, as micro-operations") |
 | 10 | Enrolled: a queue entry names this entity. Cleared by the owner at death and at no other point |
 | 11 | Live escapee: `refcount` currently holds the escape hold-count |
 | 12 | Has weak references (side table exists) |

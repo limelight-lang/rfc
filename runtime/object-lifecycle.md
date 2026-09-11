@@ -193,7 +193,17 @@ Runtime-level teardown, invisible to PHP:
   committed — and either outlive phase 3 (use-after-free) or re-enter
   dispose on its own release (double free). Zend nulls its weak
   references at the top of `zend_object_std_dtor` for the same reason.
-- release every refcounted property slot (cascading releases),
+- release every refcounted property slot (cascading releases) — except
+  that a slot whose entity carries the **ownership mark** is not released
+  but destroyed: by the compiler's proof the slot's reference is the only
+  one standing at this death, and the proof rather than the count decides
+  it. The mark comes off, the count is written to zero and the entity's
+  own death path runs, so its `__destruct` sees the count any dying entity
+  sees and one that stores `$this` resurrects it — unmarked, since the
+  slot that held it is gone with the holder. The mark is moved onto the
+  entity by the store into the proven slot
+  ([gc/strategies.md](../model/gc/strategies.md), "The store barrier, as
+  micro-operations"),
 - free the dynamic-properties hashtable if present.
 
 ### Phase 3 — Memory release
@@ -244,6 +254,10 @@ fn Foo__dispose(obj: *mut Object) {
     if flags(obj) & WEAK != 0 { weak_table_notify(obj); }
     drop_slot(obj, FOO_NEXT_OFFSET);      // e.g. `Foo $next`
     drop_slot(obj, FOO_DATA_OFFSET);      // e.g. `array $data`
+    // A child carrying the ownership mark is destroyed, not dropped:
+    // `ll_owned_child_die` takes the mark off, writes the count to zero
+    // and runs its death path. The generated dispose tests the mark the
+    // way the default one does; `drop` itself stays blind to it.
     if FOO_HAS_DYNAMIC_PROPS { free_hashtable(dynamic_props(obj)); }
 
     // Phase 3: memory, by category

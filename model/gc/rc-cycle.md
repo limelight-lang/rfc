@@ -683,7 +683,12 @@ waits, collects, retires its queue and only then hands its heap over, so
 assigns the block to another thread, never run under a live trace. The
 collection precedes the queue's retirement because the queue is its root set
 (`ll-model`, `dev/DECISIONS.md`, "a thread waits for the trace, collects, and
-then exits", ruled 2026-09-04).
+then exits", ruled 2026-09-04). An exit a destructor asks for — inside a collection, an ordinary
+teardown or an arena reset — is recorded and runs at the thread's top, where
+the next exit call outside those states or the thread's end reaches it: every
+frame above the destructor goes on using the heap, so the sequence cannot run
+under it (`ll-model`, `dev/DECISIONS.md`, "an exit requested inside a
+collection runs at the thread's top", ruled 2026-09-12).
 
 **What bounds that wait differs by path, and the ruling was written against the
 shorter one.** On the pressure path the rows go back before the first

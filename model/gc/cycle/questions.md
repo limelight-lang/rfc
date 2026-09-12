@@ -1230,8 +1230,8 @@ a question of scheduling.
 > handshake acknowledgement; the handshake is deleted design-wide, and a
 > collector thread hands its validation batch over by posting a swapped queue buffer
 > to an inbox nobody waits on. In force: the word is the **trace token**, it
-> covers mark and scan and is released at the end of scan before any exact
-> test, so it is never held across user code. A thread whose allocation fails
+> covers mark and scan and is released after the trace's last row read, before
+> any exact test, so it is never held across user code. A thread whose allocation fails
 > reads its own entry gate first — the collecting flag and `TEARDOWN_DEPTH` —
 > and goes down the ladder when the gate is closed, because it could not
 > collect on taking the token anyway; otherwise it waits, takes the token and

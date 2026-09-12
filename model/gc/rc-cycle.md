@@ -545,8 +545,9 @@ and FFI entry. These are correctness prerequisites, not optional optimizations;
 see `dev/ALGORITHM-AUDIT.md`, issues B3, B4, and C3.
 
 The token covers mark, scan, and reads of the live candidate queue. The tracer
-releases it at the end of scan, before exact validation and before the first
-destructor, on both paths. Everything after the release — zero-count-entry
+releases it after its last row read, which is the end of scan on the ordinary
+path and the harvesting sweep on the pressure path, before exact validation and
+before the first destructor. Everything after the release — zero-count-entry
 handling, guard references, weak-reference invalidation, destructors,
 revalidation, edge severing, storage reclamation, slot return, and candidate-bit
 clearing — runs without the token. What the release ends is the right to trace

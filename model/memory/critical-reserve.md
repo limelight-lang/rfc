@@ -125,17 +125,18 @@ If both paths fail during growth, the trace aborts and returns every block it
 drew. Blocks obtained from the reserve return to it when the trace scratch arena
 is reset, including on abort.
 
-One fixed region stands in front of the bump inside the workspace, and it draws
-on nothing: the first 1,024 records of the deferred-reuse list, so a trace that
-withholds fewer slots than that asks no allocation path at all
-([`../gc/rc-cycle.md`](../gc/rc-cycle.md), "Zero-count entities pending slot
-reuse"). A second region takes the same shape: it is where a collection an
+Two fixed regions stand in front of the bump inside the workspace, and both
+draw on nothing. The first is one 64-byte control line holding the head of the
+trace's withheld-return stack, which is threaded through the dead entities
+themselves and so has no capacity: a trace withholds every slot it has without
+asking an allocation path ([`../gc/rc-cycle.md`](../gc/rc-cycle.md),
+"Zero-count entities pending slot reuse"). The second is where a collection an
 allocation failure started harvests its unreachable rows before returning its
 blocks, and it is what that collection's teardown reads in place of a
-component-member list. Its capacity is unchosen, and the list's own bytes do
-not fund it — the list stays where it is
-([`../gc/rc-cycle.md`](../gc/rc-cycle.md), "Zero-count entities pending slot
-reuse"). What the post-trace validation storage of
+component-member list. Its capacity is 1,024 records behind a control line of
+its own, 8,256 bytes (`ll-model`, `dev/DECISIONS.md`, "the member list is the
+workspace's second region, and its capacity is 1,024 records"). What the
+post-trace validation storage of
 [`../../dev/ALGORITHM-AUDIT.md`](../../dev/ALGORITHM-AUDIT.md) A6 adds to this
 reserve's bound is zero either way, both regions being part of a block the
 thread already holds.

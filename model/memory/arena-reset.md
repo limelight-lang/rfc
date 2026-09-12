@@ -87,12 +87,16 @@ can add:
 - **Pure** — creates nothing and stores no managed reference. It cannot
   add work: no new arena object, no new escape, no new release-log entry.
   **A round of only pure destructors is the last.**
-- **Dirty** — allocates in the *same arena*. The new objects may carry
-  their own destructors (which must then run) and may be stored into a
-  **survivor**, so the survivor trace must re-read that survivor's current
-  children — a destructor-added child has no reason to be a new *escape*
-  (it is an arena→arena store) yet must still be promoted. This is the
-  hazard a naïve "re-run destructors only" loop misses.
+- **Dirty** — allocates in the *same arena*, or stores a managed reference
+  into an arena holder. The new objects may carry their own destructors
+  (which must then run), and an object stored into a **survivor** — new or
+  already existing, reachable until then from the dying object alone —
+  changes that survivor's children, so the survivor trace must re-read
+  them: a destructor-added child has no reason to be a new *escape* (it is
+  an arena→arena store) yet must still be promoted. This is the hazard a
+  naïve "re-run destructors only" loop misses, and a re-trace keyed on
+  allocation alone misses the existing object (`ll-model`
+  `dev/DECISIONS.md`, "the re-trace runs after every destructor round").
 - **Heap-effecting** — creates heap objects, or stores an arena reference
   into a longer-lived container (a **new escape**), or a heap reference
   into an arena container (a **new release-log entry**). A

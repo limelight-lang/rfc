@@ -270,11 +270,26 @@ was rejected with the row's width, and a second word for “exact or lower bound
 would reintroduce the captured count this design deliberately omits.
 
 **The chunked form is the recorded alternative, not the choice**: rows in groups
-of eight behind a two-byte directory entry per group. It wins only where the
-density of traced slots in touched blocks stays below 29 % — the analytic
-crossing is `1 − 1/√2` — and it costs a further dependent load on every edge. On
-a full trace it writes *more* than the flat array, 762 MiB against 717, because
-every chunk is zeroed at first use too.
+of eight behind a two-byte directory entry per group, the entry an offset in
+eight-byte units from the directory's own address and a continuation directory
+where the arena's bump has left the directory's block (`ll-model`,
+`dev/SHADOW-ROW-REPRESENTATION-ANALYSIS.md`, "The specified chunked form").
+What separates the two forms is the share of a block's **groups** a trace
+meets, not the share of its slots: two placements of 32 met rows in a block of
+256 read one slot density and reserve 224 against 1,120 bytes under the
+directory (measured 2026-09-12). The chunked form reserves less where the met
+groups are under about 0.91 of the block's at class 256 and 0.94 at class 32,
+and draws fewer blocks only where the flat arrays overflow the collection's
+workspace, which begins at 47 touched class-256 blocks in one collection; it
+writes more at every block's first touch, the directory being cleared whole
+where the flat array clears a bitmap, and it costs a further dependent load on
+every row lookup, the row's address waiting on the entry where the flat form
+computes it from the shadow pointer. On a full trace it writes *more* than the
+flat array, 762 MiB against 717, because every chunk is zeroed at first use
+too. It was refused without a build on 2026-09-12 (`ll-model`,
+`dev/DECISIONS.md`, "the flat row array stays"). The 29 % slot-density
+crossing this paragraph carried until then, `1 − 1/√2`, follows only from
+independent per-slot visitation, which no measured placement satisfies.
 
 ## The survivor list of a retained block
 
@@ -377,52 +392,38 @@ The owner must return a slot only after both conditions are false, and block
 occupancy decreases at that return rather than at zero-count teardown.
 
 In the in-line form the free path tests the two conditions in that order, and
-only one of them writes anything down. A slot whose entity still has a
-candidate-queue entry is recorded nowhere, the entry naming the slot already,
-and the disposal of that entry is what returns it. A slot freed while the
-thread's own trace is open is appended to the trace's **deferred-reuse list**,
-which the trace's close replays through the ordinary free path once its last
-row is gone, so the two conditions may clear in either order. That list is a
-fixed region of the thread's collection workspace holding 1,024 records, and it
-asks no allocation path (`ll-model`, `dev/DECISIONS.md`, "the withheld returns'
-first 1,024 records are the workspace's second region").
+neither of them writes anything down outside the dying entity. A slot whose
+entity still has a candidate-queue entry is recorded nowhere, the entry naming
+the slot already, and the disposal of that entry is what returns it. A slot
+freed while the thread's own trace is open goes onto the trace's
+**withheld-return stack**, threaded through the dead entities themselves by
+the word a free slot links by — dead data once teardown has finished, and
+overwritten by the free-list link at the return, so the pop takes the next
+address off a slot before it hands that slot over. The stack has no capacity
+and asks no allocation path: a collection withholds every return it has,
+whichever of the three populations the entity belongs to, and holds one head
+for it in a 64-byte control line at the front of the thread's collection
+workspace. The trace's close pops the stack through the ordinary free path
+once its last row is gone, so the two conditions may clear in either order. A
+death in a block no row of this collection addresses is returned at once. The
+pop cannot overlap its returns as a record chain's could, and the stack was
+kept on that measurement, 3.7 ns a death where the deaths share a block and
+20.5 where each has its own against the chain's 2.9 and 12.6 (`ll-model`,
+`dev/DECISIONS.md`, "one stack through the dead entity holds every withheld
+return" and "the stack stays, its close being slower than the chain";
+`dev/BENCHMARKS.md`, 2026-09-06, S44.4).
 
-**A death past that region is marked in the dead slot rather than recorded**,
-and the sweep that nulls the block's shadow pointer is what finds it, so for
-such a death the free path asks no allocation path either. The slot's count still reads zero
-under the mark and its candidate bit is still clear, so a reader of the first
-word sees what this section already specifies; what the mark adds is a third
-answer to the question of whether the allocator may have the slot, and every
-walk that asks it reads the mark beside the count. The region, its 1,024
-records and the eight-byte append all stay: a mark costs the sweep a walk of
-the block's slots where a record costs eight bytes, and that walk is dearer in
-cache lines at every size class the design is computed over, so it is paid
-where it buys something — on the refusal — and nowhere else (`ll-model`,
-`dev/BENCHMARKS.md`, 2026-09-04, S43.1, and `dev/DECISIONS.md`, "the chain
-stays and the mark answers its refusal").
-
-**A mark is taken only where the sweep will find it.** The block carries this
-trace's shadow pointer, and the thread taking the mark owns the block: a shadow
-pointer another thread's trace wrote, or one standing on a block an exited
-thread abandoned, addresses rows this thread's sweep will never walk.
-**The owner clears a mark and returns the slot**; a collector worker may not,
-for the reason it may not clear the candidate bit.
-
-The other two populations have no slot word to write into — a retained block's
-whole-block return and an OS-direct run — and **their marks are owed rather
-than specified**. Neither condition above transfers to them as it stands: a
-retained block is on no thread's list, so ownership does not name a thread
-there, and a retained occupant's mark would land in the same word the emptiness
-count reads, which decides whether the block goes back to the pool.
-
-**A death the mark cannot take still takes a record**, and with it the growth
-past the region that the mark exists to retire. One case is left in that state
-and it is open: a slot dying past a full region in a block no shadow pointer
-addresses, or in one this thread does not own. It cannot be marked, a mark there being one no
-sweep walks to, and a return cannot be dropped. Two forms would close it — one
-record per block rather than per slot, which retires both conditions above, or a growth kept for that one population — and the design chooses
-neither here. Until one is chosen, a record the region cannot take and the
-growth cannot fund has no answer.
+**A second `ll_free` of an entity is refused, and flags bit 15 is the bit it
+is refused on.** The head of `ll_free` sets the bit when it takes a slot and
+refuses a free that finds it up, touching no free list, no pool and no mapping;
+whatever hands the slot back — the queue entry's disposal, the trace's close,
+a reset's flush — clears it first. The count reads zero under the bit, so a
+reader of the first word sees what this section already specifies; the bit is
+what separates a slot `ll_free` has taken from a free one, and it is no part of
+the withholding, which the stack alone carries (`ll-model`, `dev/DECISIONS.md`,
+"a second `ll_free` of an entity is refused, and the mark is the bit it is
+refused on"; `model/classes.md`, flags row 15). **The owner returns the slot**;
+a collector worker may not, for the reason it may not clear the candidate bit.
 
 What answers memory starvation, which is a regime rather than this residue, is
 the collection: one that cannot carry on with the memory it holds winds itself

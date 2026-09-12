@@ -366,8 +366,8 @@ need, a change to what "pure" means moves both horizon kinds with it.
 **With the arena reset**
 ([arena-reset.md](../memory/arena-reset.md#step-1--validate-trace-destruct-a-fixpoint-loop)):
 P0 zero-count entities already cost zero; what the compile-time bit adds is skipping
-the dirty re-trace that today over-triggers on allocation by a
-destructor that only touched its own dying fields, and fixpoint
+the dirty re-trace that today runs after every round in which a
+destructor ran, the runtime having no class to read, and fixpoint
 convergence in fewer passes for strictly pure destructors (unmeasured).
 The COW reconciliation is untouched.
 

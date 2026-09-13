@@ -53,6 +53,14 @@ the steps below).
 - The purity ladder's four open questions are carried in
   `model/gc/pure-destructors.md` as open items, unresolved in the code
   repository (`model/dev/design/pure-destructors.md` there).
+- Two sentences are owed an amendment by the crate's ruling of 2026-09-13
+  (`model`, `dev/DECISIONS.md`, "a survivor cell the pool cannot supply severs
+  the edge, and the reset finishes"): `runtime/exceptions.md`'s gap paragraph,
+  which says the reset fixpoint's working memory "is funded by none of the
+  three reserves" and that "finishes the reset" assumes it is available, and
+  the promise that a reset promotes the whole reachable subgraph of a survivor.
+  The first becomes the arena's own memory with the roots' cells in the escapee
+  records; the second gains the severed edge as its exception.
 - Closure and fiber/generator layouts are unspecified anywhere in this
   repository. The case book that reported the holes went with the horizon on
   2026-08-26; the holes did not.

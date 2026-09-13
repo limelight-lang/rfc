@@ -10,6 +10,33 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-09-13 — flags bit 24 is the reset reconciliation's own, and byte 7 takes a byte-wide writer
+
+**Decided** in `ll-model` and carried here, where the flags layout is
+normative (`model/classes.md`, "Flags layout"). Bit 24 marks an entity the
+arena reset's COW count reconciliation has in hand, and while it stands the
+entity's `refcount` holds a signed accumulator rather than a count. The bit
+is set and cleared inside one function, which runs no user code, opens no
+nested reset and cannot unwind.
+
+**Why:** settling a COW survivor's count needs a membership test — is this
+correction's child one this reset promoted — and the two allocation-free
+alternatives are worse. A search of the log's segments is `O(C²)` in the COW
+survivors of one reset, measured at 248 µs against a `HashMap`'s 102 for 2400
+of them (`ll-model/dev/BENCHMARKS.md`, 2026-09-13). The count word's own top
+bit narrows the count to 2^31 for any COW entity a correction names.
+
+**Rejected:** bit 7, the arena reset mark. A destructor of one reset can
+reset a second arena, and a correction of the inner log can name a COW entity
+of the outer arena, which carries bit 7 legitimately from the outer reset's
+trace — the inner reconciliation would take it for its own and corrupt a live
+count.
+
+**Cost:** byte 7 gains a writer, so its fields take byte-wide
+read-modify-writes as byte 6's do; and the reconciliation reads the flags
+byte of children it never promoted, which rests on the pool not unmapping its
+regions and on a re-issued slot being published by a store that covers byte 7.
+
 ## 2026-09-11 — the entry gate's third input is the reset window
 
 **Decided in `ll-model`** (`dev/DECISIONS.md`, 2026-09-07, "a collection is

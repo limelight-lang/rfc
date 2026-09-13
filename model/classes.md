@@ -40,10 +40,23 @@ predicates are mask tests and the enrolment gate is one.
 | 13 | **`DESTRUCTOR_PENDING`** — this instance owes a `__destruct`: set only when the user constructor has returned successfully, **and** only for a class that has a destructor. What every teardown path dispatches on, not just the arena's ([object-lifecycle.md](../runtime/object-lifecycle.md)) |
 | 14 | **`DESTRUCTOR_RAN`** — `__destruct` has already run (exactly-once guard) |
 | 15 | **`DEAD_IN_PLACE`** — `ll_free` has taken this slot and has not handed it back: a second free that finds the bit up is refused, touching no free list, no pool and no mapping, and whatever returns the slot clears the bit first (`model/gc/rc-cycle.md`, "Zero-count entities pending slot reuse"). The count reads zero under it, and the bit is what separates such a slot from a free one; a withheld return is not recorded here but on the trace's stack through the dead entity. **The mutator's half is full at this bit**: a further mutator flag needs a re-lay rather than a free position |
-| 16–17 | Epoch, the collector's own. **Byte 6 has one writer**: epoch, age and reserve share it, and each is written by a byte-wide read-modify-write, so a second writer would lose the first's bits with no wider access anywhere to blame |
+| 16–17 | Epoch, the collector's own. **Byte 6 has one writer**: epoch, age and reserve share it, and each is written by a byte-wide read-modify-write, so a second writer would lose the first's bits with no wider access anywhere to blame. **Byte 7 obeys the same rule** for the same reason: bit 24 is written by a byte-wide read-modify-write, which is what leaves room for a second field there |
 | 18–19 | Candidate age used by the traversal cutoff |
 | 20–23 | Collector reserve |
-| 24–31 | Free |
+| 24 | **Reconciling**: the arena reset's COW count reconciliation has this entity in hand. Set and cleared inside one function of the reset (`ll-model`'s `promote::reconcile_cow_counts`), which runs no user code, opens no nested reset and cannot unwind, so the bit stands on no entity outside it. **No other reader may test it**: while it stands, the entity's `refcount` holds a signed accumulator rather than a count, and a reader that took it for one would free a live entity. The reconciliation's own reader is the one that decides whether a correction belongs to this reset's population |
+| 25–31 | Free |
+
+**Bit 24's reader touches headers it did not write, and what makes that
+legal is not the reset's own window.** The reconciliation walks a log of
+records naming COW children, and a child named there may have been freed
+inside the reset and its slot handed out again: the window defers the free of
+a large body and absorbs the free of an occupant of a block whose count is
+not established, and neither covers an ordinary small slot. The read is
+sound for two other reasons, and an implementation that loses either owes
+this bit a different reader. A block pool that does not unmap its regions
+keeps every address the log names mapped for the life of the process. And a
+slot handed out again is published by one eight-byte store that writes byte 7
+as part of it, so a re-issued slot reads the bit clear rather than stale.
 
 **Which code names which kind is still the encoding's own business** —
 normative in `EntityKind` (`ll-model/src/refcount.rs`), and a consumer takes

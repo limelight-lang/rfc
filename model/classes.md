@@ -419,11 +419,11 @@ no production VM adopted it.)
 
 **Two lists, by run kind.** A counted-pointer run and a ValueBox run are
 walked differently — a pointer element is 8 bytes and "empty" is `NULL`,
-a ValueBox element is 16 bytes and "empty" is the `refcounted` flag clear —
+a ValueBox element is 16 bytes and "empty" is a `+8` word that is zero or has bit 0 set (values.md, "ValueBox Layout") —
 so a single flat list of `(offset, count)` could not tell a strider
 which stride and which skip-test to use. `traced_runs` is therefore
 **two typed lists**: pointer runs (stride 8, skip `NULL`) and ValueBox runs
-(stride 16, skip by flag). A typed class's ValueBox list is usually empty.
+(stride 16, skip on the `+8` word). A typed class's ValueBox list is usually empty.
 
 **Every stride null-checks.** A counted-pointer slot can hold `NULL` at
 any time — an uninitialized non-nullable pointer starts `NULL`, and
@@ -748,7 +748,7 @@ Hot part (touched by dispatch and property access):
 | `factory` | Canonical constructor `factory(ctx, category)`: allocates and initializes an instance ("Construction and teardown") |
 | `dispose` | Generated teardown `dispose(obj)`: runs `__destruct` once; returns if the object was resurrected; otherwise invalidates weak references, releases counted fields and resources, and reclaims storage according to its memory category |
 | `prop_layout` | Property table: name → (offset, slot kind, hook flags, declaration index, and for a bitmap-tracked slot its init-bit position in the byte block, [values.md](values.md) "Uninitialized properties") |
-| `traced_runs` | The trace map the GC strides: **two** typed lists of `(offset, count)` — pointer runs (stride 8, skip `NULL`) and ValueBox runs (stride 16, skip by flag) |
+| `traced_runs` | The trace map the GC strides: **two** typed lists of `(offset, count)` — pointer runs (stride 8, skip `NULL`) and ValueBox runs (stride 16, skip on a `+8` word that is zero or has bit 0 set) |
 | `undef_runs` | ValueBox slots declared **without** a default, as `(offset, count)` runs (stride 16, always a sub-range of the ValueBox trace runs): the out-of-line factory stamps their `undef` flag after the zero-fill ([values.md](values.md), Construction). Construction-only — the GC and teardown never read it |
 | `display` | Cohen display: ancestors root→self indexed by depth, for O(1) `instanceof` |
 | `destruct_slot` | Vtable slot of `__destruct`, or a sentinel when the class has none |

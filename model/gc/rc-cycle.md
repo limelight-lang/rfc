@@ -161,8 +161,16 @@ non-zero counts. The covering obligation must therefore be an actual counted
 Trace precision affects cost and latency, not safety: a missed cycle remains
 eligible for a later collection. A trace may therefore stop at an age boundary,
 at its work budget, or after scratch allocation fails. This statement assumes a
-memory-safe protocol for concurrent slot reads; that protocol is currently an
-open blocker, as recorded in `dev/ALGORITHM-AUDIT.md`.
+memory-safe protocol for concurrent slot reads. The protocol is the ValueBox's
+discriminating word (`../values.md`, "ValueBox Layout"): a worker reads a
+box's `+8` word alone, one relaxed 8-byte load, and follows it only when it is
+a non-zero word with bit 0 clear, which is a counted pointer and nothing else;
+a counted-pointer slot is one word already. The mutator's two stores can show
+such a reader a stale pointer, never a scalar under a pointer reading
+(`dev/ALGORITHM-AUDIT.md`, A1, resolved 2026-09-14). What the read still needs
+is that the entity it reaches is published — the fence in "Concurrency" —
+and that the address it holds stays mapped and unreissued until the token's
+release, which is the deferral there.
 
 Only the owning mutator performs **exact validation**. It re-reads current
 fields on its own thread and calculates the component's current internal edge
@@ -664,6 +672,10 @@ The detach is not yet linearized against concurrent candidate registration: it
 moves two words the writer is about to write, and until that protocol is
 defined a worker can lose or duplicate an entry. This blocks the collector-worker
 optimization; see `dev/ALGORITHM-AUDIT.md`, issue A2, and `dev/PLAN.md` S8.7.
+The acquire rule of "Concurrency" reaches the chain: a worker's roots are the
+entries it reads from the detached chain, and those reads are acquire loads
+ordered against the owner's entry writes by the same fence-to-load rule, which
+S8.7's protocol places.
 
 At pickup, the owner handles each entry in one of four ways:
 
@@ -677,6 +689,53 @@ The owner is the sole writer for all of these queue transitions.
 
 While a trace is active, its owner defers reuse of released slots. Other threads
 need not do so only if the block-disjointness prerequisite above holds.
+
+**The deferral's contract.** No memory a trace holds an address into is
+returned, recommissioned or unmapped before the token's release, whichever
+thread would do it: an entity slot, an array's storage chunk, a retained
+payload's block, an OS-direct run, and a block an arena reset returns while
+the token is held. The last is why the contract is stated for memory and not
+for slots — a block the pool recommissioned under a trace would let a stale
+address resolve to whatever entity now occupies it, and a proposal built on
+that is one the owner should never have to refuse. Under synchronous
+collection the contract costs nothing: a thread with a reset in flight does
+not collect ("Check collection eligibility before waiting"), a trace runs no
+user code and so starts no reset, and slot returns already wait for the
+close. With a worker, the reset's block-return path reads the
+owner's token once, as slot returns do (`ll-model`, `PLAN.md` S38.3).
+
+**Publication, for a reader on another thread.** A worker that follows a
+pointer it read from a slot reads the entity's header and its class word, and
+on a weakly ordered target the store that hands the address out can become
+visible before the stores that built what it names — a recycled slot would
+then show the previous occupant's class, and the worker would stride the
+wrong runs. The rule is fence-to-load, and the fence sits between the
+building stores and the handing-out store: after the last store that
+constructs an entity (the header, which is the last construction store —
+`../layouts.md`, "Publication is one 8-byte store, last") and before the
+first store of its address into memory a trace can read; after a storage
+chunk is filled and before the store that installs it as an array's storage;
+after a ReferenceBox is built and before its address is stored. One release
+fence per such event, on the thread that did the building; every load
+through which the worker obtains an entity address — a box's `+8` word, a
+counted-pointer slot, an array's storage head, a hash entry's key word — is
+an acquire load. Every store sequenced before the fence is then visible to a
+worker whose acquire load returned an address stored after it, however much
+later that store came, and the slot stores themselves stay relaxed. What the
+rule does not cover is an address built on one thread and stored by another:
+that is a transfer, and its prerequisites are `dev/ALGORITHM-AUDIT.md` B3 and
+B4. An array's walker bounds its stride by a count it loads the same way,
+and what a worker finds in an entry between the count's old and new value
+must be either a fully stored element or one that reads as null — which
+storage zero-filled at install gives for nothing, and which otherwise needs
+the count's store to follow its element's stores under the same fence rule;
+which of the two is S38.0's to fix with the reader. On x86-64 the fence is a
+compiler barrier and the load a plain load; on
+ARM64 a release fence is what the language emits for it (`dmb ish`), one per
+allocation and not per store, and the acquire load an `ldar` on the worker's
+path. Synchronous collection reads on its own thread and needs neither. The
+fence is emitted with the worker (`ll-model`, `PLAN.md` S38.0), and its
+allocation-path cost on ARM64 is measured before it is.
 
 **A thread does not exit while any trace holds rows over its blocks.** It
 waits, collects, retires its queue and only then hands its heap over, so

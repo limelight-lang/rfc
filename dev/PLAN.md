@@ -1,6 +1,6 @@
 # PLAN
 
-Updated: 2026-09-06 · Active: S8 — the clauses the build runs into first
+Updated: 2026-09-14 · Active: S8 — the clauses the build runs into first
 
 **Closed stages are deleted whole** (rule 23.1.3). S1 through S5 went on
 2026-08-25, S6 and S7 on 2026-08-27; what survived each is in
@@ -85,7 +85,10 @@ S8.5 through S8.8 are what the two rulings of 2026-08-27 left behind — the
 boundary one of them refused to cross, the ordering obligation it created, the
 clause whose swap their mechanisms gave a chain and a third writer, and the
 counter one of them gave a reader and no writer discipline — and they are here
-for the same reason.
+for the same reason. S8.11 is the relayout that closes the audit's A1 on
+2026-09-14 (`dev/DECISIONS.md`, "A1 closes on a discriminating word"): the
+documents state the encoding the ruling fixed, so that the crate's stage has a
+normative table to follow rather than a decision entry.
 
 - [x] S8.1 Verify that `ll-model`'s collecting flag is per-thread
       done: the flag the entry gate reads is named in `ll-model`, its scope is
@@ -419,6 +422,93 @@ for the same reason.
         The claim rests on no thread naming an entity in another thread's
         blocks; a cross-thread reference the trace follows would break it, and
         one it must not follow needs a written rule saying so.
+
+- [x] S8.11 Write the discriminating word into the ValueBox's normative documents
+      done: `model/values.md`, "ValueBox Layout" states the two arms of the +8
+        word — the counted pointer with bit 0 clear, or the tag word with the
+        flags byte at +8 (bit 0 fixed to 1, bit 1 undef) and the tag byte at
+        +9 — with +0 the immediate value on one arm and the tag word on the
+        other, `(0, 0)` as null, `(0, 0x0003)` as undef, the rule that the +8
+        word alone decides the arm, the type tests by tag (a 16-bit compare on
+        bytes +8..+9 for the four immediate tags, `(w8 & ~1) == 0` for null,
+        the arm test and a 16-bit compare of +0 for a pointer tag), the undef
+        test `w8 & 2`, and what the layout says of identity and no more (bit 0
+        and the bytes above the tag byte are never the value; after a
+        reference is followed, different tag bytes are never identical); the
+        `refcounted` flag and bit 2 `writing` are gone from "Type tags" and
+        the `satb.md` citation with them; `model/layouts.md`, "ValueBox" shows
+        the new sample fillings and the WRITING-lock sentence names the
+        discriminating word instead; `model/lowering.md` states the
+        one-store-per-word rule for published slots a trace can read, the
+        16-bit type test on a slot whose arm is unknown, and the
+        `box_runs` skip on the +8 test, and narrows "no atomics needed" to
+        the counts; `model/arrays-hashtable.md`, which places the link today,
+        moves the hash entry's collision link to the top 32 bits of the arm's
+        tag word and spells the table's null
+        as `(0, 0x0001 | link << 32)`; `model/gc/rc-cycle.md`'s open-blocker
+        sentence under "Speculative tracing and exact validation" cites the
+        resolution, and "Concurrency" carries the publication clause (a
+        release fence after the last building store and before the store
+        that hands the address out, an acquire load on every load through
+        which the worker obtains an address) and the deferral's contract (no memory a trace holds an
+        address into is returned, recommissioned or unmapped before the
+        token's release); `dev/tools/linkcheck.php` clean; `ll-model`'s
+        `citations.py` unmoved, or every citation it moves repointed in the
+        same sitting
+      tier: T2 · role: Critic
+      Critic 2026-09-14, first round over the written text: nine findings —
+        the publication fence on the wrong side of the installing store, the
+        factory sample stamping undef as a pointer-arm box, the whole-word
+        type test failing on every hash element, "exactly one word has bit 0
+        set" refuted by an odd integer, `===` silent on the pointer arm, the
+        typed vector named for the mixed one, the typed-slot ReferenceBox's
+        interior pointer read as an entity, stale flag wording and glossary
+        terms, two silences (the key word and storage head under the
+        one-store rule; endianness). Six repaired from the sources, three to
+        the Sage.
+      Sage 2026-09-14, `Final`: the fence stands after the last building store
+        and before the handing-out store, one per construction event, with an
+        acquire on every address-obtaining load including the detached chain;
+        the layout owns of identity only which bits are never the value and
+        that different tag bytes are never identical after a reference is
+        followed — `===` per tag is an operators' document's, owed; the typed
+        slot reference is a ring-closing kind of its own, and a trace reads
+        its `owner` and never its `slot`.
+      Critic 2026-09-14, second round: six findings, every one refutable and
+        repaired — the 16-bit test is the four immediate tags' only, null is
+        `(w8 & ~1) == 0` and pointer tags test +0 after the arm; null keeps
+        two spellings and no read normalizes; the identity sentence takes the
+        reference qualifier; the typed slot reference takes a free reserve
+        code because the mutator's flag half is full; the one-store rule gains
+        the strategy tag and counts, and the count-versus-element order is
+        S38.0's; the undef test is `w8 & 2`, one instruction, written where
+        it happens.
+      consolidation 2026-09-14: four citations corrected (`set_storage` is the
+        installing store, not a building one; the eligibility paragraph cited
+        for its converse; `slot` is not 8-aligned for a `bool`; 8-alignment
+        sourced to `refcount.rs` and `maps.md`), five cross-document
+        mismatches aligned; `linkcheck.php` 649 links clean; `ll-model`'s
+        `citations.py` 602/6 unmoved.
+      handoff: the ruling and the Critic round that shaped it are
+        `dev/DECISIONS.md`, "A1 closes on a discriminating word"; the shipped
+        precedents are `dev/CONCURRENT-SLOT-READS-SURVEY.md`. The crate's half
+        — `Value` as two words with decode accessors, `write_value_slot`,
+        `counted_box_cell`, `refcounted_in_meta_word`, `Entry::value()` and
+        the link accessors, the fixtures that spell bits by hand, and the three
+        gate benches (a mixed-arithmetic loop, a tag-only loop and a lookup
+        bench with collisions) — is a stage in `ll-model`'s plan that
+        opens after this step, since the code follows the document.
+      handoff: `resource`'s arm is not this step's: the pointer arm is
+        reserved for entities beginning with `RcHeader`, and whether a resource
+        becomes one is `model/layouts.md`'s open question.
+      handoff: the language's operators have no document. `values.md` now
+        states only what the layout decides about identity — which bits are
+        never part of the value, and that different tag bytes are never
+        identical — and hands `===` per tag (integer equality, IEEE equality
+        for `float`, object identity, string and array content, a reference's
+        referent) to a document that does not exist yet; the same-pointer
+        shortcut for strings and arrays is that document's to state. Owned by
+        no step (the Sage's second round over this step, 2026-09-14).
 
 ## S9 — The vocabulary
 

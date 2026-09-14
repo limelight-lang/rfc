@@ -10,6 +10,206 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-09-14 — A1 closes on a discriminating word: the ValueBox's +8 word is a pointer or a tag word, never both
+
+**Decided** by the Sage (`Final`) on Edmond's proposal, after one Critic round
+over the ruling and the Sage's answers to it: `rfc/dev/ALGORITHM-AUDIT.md` A1
+closes by resolution (1), an atomic slot representation. The `ValueBox` keeps
+its 16 bytes and its word offsets; inside the +8 word the flags byte and the
+tag byte swap places. The word at +0 stays the immediate value — a full
+`i64`, an `f64` bit pattern untouched, `0` for `null`/`false`/`true`. The word
+at +8 is the discriminating word: on the pointer arm it is the counted pointer
+itself, bit 0 clear because every entity begins with an 8-aligned `RcHeader`
+(`ll-model`, `refcount.rs`, `#[repr(C, align(8))]`; `model/maps.md`, "the
+arena rounds to 8 and a class's object size is aligned to 8");
+on the immediate arm it is a tag word with bit 0 set — the flags byte at +8 with
+bit 0 fixed to 1 and bit 1 `undef`, the tag byte at +9 with today's codes,
+bytes +10..+15 zero outside a container. The pointer arm's +0 carries the same
+tag word with the entity's tag code, so a type test never chases the pointer.
+The +8 word alone decides the arm — on the immediate arm +0 is the value and
+its bit 0 means nothing (the Critic round of the same day over S8.11's text
+struck "exactly one word has bit 0 set", which an odd integer refutes);
+`(0, 0)` is null and is how the barrier writes it; the undef slot is `(0, 0x0003)`, one 8-byte store after
+the zero-fill. The `refcounted` flag retires — the arm is the flag — and so does
+bit 2 `writing`, the `rc-satb` lock whose only purpose was this tear; the
+`satb.md` citation `values.md` and `layouts.md` still carry goes with it.
+
+**Why:** a collector on another thread reads +8 alone, with one relaxed 8-byte
+load, and decides from it whether to follow: bit 0 set — an immediate value, skip; zero —
+null, skip; otherwise a pointer, whose kind it reads from the `RcHeader` as
+`cells::entity_kind` does today. It never interprets +0. The mutator's wide
+store stays two relaxed 8-byte stores in either order, which `ll-model`'s
+`write_value_slot` already emits; `Object P → Int 42` writes +0 = 42 and +8 =
+tag word, and a reader of +8 sees P or the tag word, never 42 — P stale, which
+is the class the deferred slot return answers for synchronous collection and A3's
+still-owed worker protocol must answer for a worker. The third tear reading —
+an immediate value under a pointer tag, the one A1 describes and the crate's
+barrier comment misses, and the one no exact validation can repair — cannot
+arise,
+because the one word that says "pointer or not" is written by one store and
+read by one load. The precedent is Go 1.4 (issue #8405): the collector reads
+the interface's data word alone, always a pointer or nil, and the type word is
+not the GC's; Go paid an allocation for scalars in interfaces because its
+pointer took the data word, which this form avoids by keeping the scalar at +0
+(`dev/CONCURRENT-SLOT-READS-SURVEY.md`).
+
+**Rejected:** a seqlock — three stores per wide write and a version in bytes
+10..15 against ABA, with a reader retry loop; the seqlock priced in
+`model/lowering.md` for the inline cache was priced for the reader on every
+hit and does not transfer. A 16-byte atomic slot — a lock-prefixed
+`cmpxchg16b` per store or a promise about particular microarchitectures'
+vector stores, 16-byte alignment the layout does not give, and no stable
+128-bit atomic in Rust. A write-barrier snapshot — `rc-satb`'s shape, deleted
+2026-08-26. Stop-at-consistent-point — synchronous collection with a thread
+switch. The 63-bit `int` with bit 0 in the payload — `model/values.md`, "Why
+not NaN-boxing (8 bytes)?" requires full 64-bit integers. Tolerating a raw
+`double` as a phantom edge — unsafe in the crate as built, because
+`resolve_edge_target` masks any address to a block header through `of_ptr`
+and reads a kind there, and `trace_cells` reads the class word of whatever
+address it is handed; the owner's exact validation repairs a phantom edge to a
+stale entity address, never a read of arbitrary bits. The Sage's own first form, the displaced bit 0 relocated into
+flags bit 3 — three ALU operations on every `int`/`float` box and two on unbox,
+where this form costs none. A pointer mirror at +0 of the pointer arm — leaves
+the kind only in the header, a dependent load on every object type switch.
+Odd tag codes instead of the fixed flags bit — the undef slot is a Null tag
+with the undef flag and must be a tag word, so Null would need an odd code,
+and then the zero-filled `(0, 0)` and a written null would decode to different
+tag bytes unless the decoder special-cased zero; under the fixed flags bit both
+decode to Null by the ordinary `cmov` rule, and no decoder special case is
+needed. "No worker" —
+the Sage's first ruling, withdrawn once the discriminating word removed the
+race by construction rather than by ordering.
+
+**Cost:** two stores per wide slot write, as today; no added load on any read
+that needed both words; a type switch on a mixed value gains one `test` and
+one `cmov` (`tagword = (w8 & 1) ? w8 : w0`); the counted-copy test is
+`w8 != 0 && (w8 & 1) == 0`, one null test more than today's bit test. A
+tag-only read — `if ($x)`, `isset`, `??`, a loop condition over a mixed
+value — loads both words where it loaded one byte, because the tag byte is at
++9 on one arm and at +1 on the other; the gate before the layout lands is a
+before/after on a mixed-arithmetic loop *and* on a tag-only loop, neither
+measured. A type test on a slot whose arm is unknown compares bytes +8 and
++9 together against the tag-word constant, never the byte at +9 alone, which
+on the pointer arm is a pointer byte; the 16-bit width, not the whole word,
+because bit 0 already tells a tag word from a pointer and a container keeps
+its own state in the bytes above (the Critic round over S8.11's text
+narrowed the ruling's "whole word", which failed on every hash element). The worker and the synchronous trace
+pay one load per box cell instead of two.
+
+**Measured 2026-09-14, after the crate landed the layout** (`ll-model`,
+`dev/BENCHMARKS.md`, "S48.2 the box's price after the relayout", A/B/A with a
+placement control, minima per box): the mixed-arithmetic loop fell 18 %
+(1.108 to 0.909 ns), the old struct's field-wise store-back going, with the
+two-word decode costing about 0.3 ns more than the byte read it replaced by
+the S48.0 estimate of the store-back's share; the one-word tests fell 24 %,
+autovectorised; the full decode rose 62 % (0.363 to 0.589), twice the
+instructions and every branch predicted — the compiler emitted a branch on
+the arm, not the `cmov` above, with the second load behind it; the truth
+test rose 74–82 % by shape, 0.444 to 0.77 at best of three formulations,
+the arm test and the qword load standing before any tag byte; the
+collision-chain hop is a load, a predicted branch and a second load on the
+pointer arm, its cost unresolved below the placement bar of 0.35 ns a hop
+(slope 1.73–1.80 before, 1.97 after), and the one-hop lookup fell 46 %
+through the element copy. Edmond took these as the ruling's price.
+
+**What the Critic round added, each ruled by the Sage.** The hash entry's
+collision link lives in the top 32 bits of the element's +8 word
+(`ll-model`, `array/entry.rs`, `LINK_SHIFT = 32`), which the pointer arm now
+fills whole: the link moves to the top 32 bits of whichever word is the tag
+word — +8 on the immediate arm as today, +0 on the pointer arm — selected by the
+same bit-0 test; the table spells null as `(0, 0x0001 | link << 32)`, since
+`(0, link << 32)` is even and non-zero; `Entry::value()` clears bits 16–63 of
+the chosen tag word rather than +10..+15 unconditionally; every hop of a
+collision-chain walk gains the `test` and `cmov`, so a lookup bench with
+collisions joins the gate, and `values.md` defers the container's use of the
+tag word's upper bits to `arrays-hashtable.md`, which places the link today.
+The entry's key word keeps its own convention — a sentinel below 8, otherwise
+the low three bits are the kind and the pointer is `word & !7` — and
+`values.md` says in one sentence that it is not a ValueBox word. `===` compares the tag byte and, on the
+immediate arm, +0 — never the raw tag word, or `null === null` fails between a
+local and an array element. The one-store-per-word rule applies to published
+memory a trace can read — an entity body after publication, array storage
+after `set_storage`, a ReferenceBox after its header — and to nothing on the
+stack or in an unpublished factory body. (The `===` clause two sentences up
+was withdrawn in the second round below: the layout does not own `===`.) In the crate `Value` becomes two
+words with decode accessors, because a Rust enum at +8 is undefined the
+moment a pointer byte lands there. (A second, pointer-typed read of the +8
+word "for provenance" stood here until the Critic round over `ll-model`'s
+S48 plan refuted it the same day: it would be two loads of the racing word,
+and the crate's record says the bytes carry no provenance to recover —
+`cells.rs`, `counted_box_cell`: "`Value::entity` stores the address as a
+`u64`, so the bytes carry no provenance and reading them back as a pointer
+yields one Miri rejects on first use". The reader is one integer load and
+the cast the crate makes today; slot-typed pointer stores, if ever wanted,
+are a priced step of their own.)
+
+**What A1's closure does not cover, and who owns it.** The publication order
+on ARM64 is a separate clause: a relaxed slot store can become visible before
+the entity's class-word store, so a worker could read a recycled slot's
+previous class and stride the wrong `box_runs` — A1's headline failure with
+no slot tear. The remedy is fence-to-load synchronization: one release fence
+per publication event on the mutator — after `publish_header` at entity
+construction, before the store that installs an array's storage
+(`set_storage` is that store), after a ReferenceBox's header —
+and an acquire load on every load through which the worker obtains an
+address; the slot stores stay relaxed. The fence's side was corrected by the
+Critic round over S8.11's text: it stands after the last building store and
+before the store that hands the address out — a fence after the installing
+store orders nothing. On
+x86-64 the fence is a compiler barrier and the load a plain `mov`; on ARM64 a
+release fence is the `dmb ish` Rust and C++ emit for it (the store-store
+`dmb ishst` would serve the hardware pattern, but no language-level fence
+emits it), one per allocation, and one `ldar` per cell the worker reads — the
+allocation-path figure to be taken before the fence is emitted. A release
+store per pointer store was refused (an `stlr` on the hottest path); "the
+worker declines young entities" was withdrawn as undefined. S8.11 writes the
+clause into `model/gc/rc-cycle.md`, "Concurrency" as the concrete form of the
+"mature" precondition `ll-model`'s `trace_cells` states today; `ll-model`'s
+S38.0 owns it beside the reader. An
+arena block `ll_arena_reset` returns while a trace token is held joins
+S38.3's deferred set, and S8.11 writes the deferral's contract into
+"Concurrency": no memory a trace holds an address into is returned,
+recommissioned or unmapped before the token's release, whichever thread would
+do it — today at zero
+cost, since under synchronous collection a reset never runs under its owner's own
+trace. The pointer arm is reserved for pointers to entities beginning with
+`RcHeader` and nothing else; whether `resource` becomes such an entity is
+`model/layouts.md`'s open question and decides its arm — on the immediate arm
+it is an opaque handle at +0, invisible to the collector and uncounted on
+copy. The worker path stays unbuilt: A2 (S8.7), A3's generation or handoff
+protocol for a worker's stale pointers, S38.3, A6's worker clause and the
+token-versus-teardown question stand; A1 is no longer among the reasons.
+
+**Adopted now rather than with a worker:** the offsets are ABI in three
+normative documents and the compiler that will bake them is a specification,
+not code, so the price only rises; the mutator pays nothing per store; and the
+relayout retires a normative sentence that cites a deleted document. The
+edits are S8.11 in `dev/PLAN.md`; the crate follows in `ll-model`'s plan.
+
+**The second round, over S8.11's text (same day).** The Critic's nine
+findings on the written documents: six repaired from the sources (the arm is
+decided by the +8 word alone; the type test is 16 bits wide; the factory
+sample's undef stamp is one 8-byte store of `3` and its header store is last;
+the collector strides the mixed vector, not the typed one; stale flag wording;
+glossary terms). Three ruled by the Sage. The publication fence stands after
+the last building store and before the store that hands the address out, and
+one fence per construction event suffices however late the entity's slots are
+written, because what a slot's reader needs ordered is the child's
+construction, fenced on the child's builder before every store of its
+address; the acquire rule reaches the detached candidate chain's entry reads,
+placed by S8.7. The layout says of identity only that bit 0 and the bytes
+above the tag byte are never the value and that, once a reference is followed
+to its referent, different tag bytes are never identical; `===` per tag is the operators' document's, which is owed
+(`float` is IEEE equality, not a word compare). A typed slot reference is told
+from the ordinary ReferenceBox in the header word the trace already loads — a
+kind code from the ring-closing reserve if one is free, else a flag beside
+the kind — and the trace reads its retained `owner` as one counted-pointer
+cell and never its `slot`, an interior pointer the +8 rule would take for an
+entity whenever it is even and non-zero; a tag word at +16 was refused
+because it would hide the `owner` edge.
+
+---
+
 ## 2026-09-13 — flags bit 24 is the reset reconciliation's own, and byte 7 takes a byte-wide writer
 
 **Decided** in `ll-model` and carried here, where the flags layout is

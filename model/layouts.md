@@ -42,39 +42,54 @@ payload points to (see the last section). Normative:
 [values.md](values.md) "ValueBox Layout".
 
 ```
- +0                               +8    +9    +10
-┌────────────────────────────────┬─────┬─────┬──────────────────┐
-│            payload             │ tag │flags│     reserved     │
-│ 8 B  union { i64 · f64 · ptr } │ 1 B │ 1 B │ 6 B, zeros       │
-└────────────────────────────────┴─────┴─────┴──────────────────┘
+immediate arm — the +8 word has bit 0 set
+ +0                               +8    +9    +10   +12
+┌────────────────────────────────┬─────┬─────┬─────┬────────────┐
+│            payload             │flags│ tag │  0  │ container  │
+│ 8 B  i64 · f64 · 0             │ 1 B │ 1 B │ 2 B │ 4 B, zeros │
+└────────────────────────────────┴─────┴─────┴─────┴────────────┘
+                                 └──────── the tag word ────────┘
+pointer arm — the +8 word is the pointer, bit 0 clear
+ +0                                +8
+┌─────┬─────┬─────┬────────────┬────────────────────────────────┐
+│flags│ tag │  0  │ container  │        ptr → entity            │
+│ 1 B │ 1 B │ 2 B │ 4 B, zeros │ 8 B, begins with RcHeader      │
+└─────┴─────┴─────┴────────────┴────────────────────────────────┘
+└──────── the tag word ────────┘
 
 tag:    0 Null · 1 False · 2 True · 3 Int · 4 Float · 5 String
         6 Array · 7 Object · 8 Resource · 9 Reference
-flags:  bit 0 REFCOUNTED   payload is a counted entity pointer
+flags:  bit 0 fixed 1      this word is a tag word, not a pointer
         bit 1 UNDEF        property slot not initialized
-        bit 2 WRITING      rc-satb store lock (satb.md, "Torn
-                           16-byte ValueBox reads"); reserved elsewhere
-        bits 3-7           free
+        bits 2-7           free
 ```
 
-Sample fillings:
+The arm is the counted flag: `w8 != 0 && (w8 & 1) == 0` says the box holds a
+counted pointer, and the `+8` word alone decides it — on the immediate arm
+`+0` is the value and its bit 0 means nothing. The tag word is decoded as
+`(w8 & 1) ? w8 : w0`; the hex words below are little-endian, byte 0 low. The
+four "container" bytes are zero in a slot; a hash entry keeps its collision
+link there ([arrays-hashtable.md](arrays-hashtable.md)).
+
+Sample fillings, as `(+0, +8)`:
 
 ```
-int 42          │ 42                │ Int    │ 00000000 │
-float 2.5       │ f64 bit pattern   │ Float  │ 00000000 │
-true            │ 0 (never read)    │ True   │ 00000000 │
-null            │ 0                 │ Null   │ 00000000 │
-"hi"            │ ptr → StringBox   │ String │ 00000001 │ RC
-object          │ ptr → Object      │ Object │ 00000001 │ RC
-undef slot      │ 0                 │ Null   │ 00000010 │ UNDEF
+int 42          ( 42               , 0x0301 )
+float 2.5       ( f64 bit pattern  , 0x0401 )
+true            ( 0 (never read)   , 0x0201 )
+null            ( 0                , 0      )
+"hi"            ( 0x0501           , ptr → StringBox )
+object          ( 0x0701           , ptr → Object )
+undef slot      ( 0                , 0x0003 )   UNDEF
 ```
 
 All-zeros is **null**, not undef — so a factory stamps UNDEF with one
-store after the body zero-fill. Every store writes all 16 bytes,
-clearing UNDEF for free — but the publish is **two** stores (payload,
-then the tag word), not one atomic 16-byte write; a concurrent marker
-could catch a torn pair, which is what the WRITING lock exists for
-(satb.md).
+8-byte store after the body zero-fill. Every store writes all 16 bytes,
+clearing UNDEF for free — but the publish is **two** stores, one per word,
+not one atomic 16-byte write. A concurrent reader is safe against the pair
+anyway: it reads the +8 word alone, and that word is a pointer, a tag word
+or zero whichever store landed last (values.md, "ValueBox Layout";
+`dev/DECISIONS.md`, "A1 closes on a discriminating word").
 
 ---
 
@@ -161,7 +176,7 @@ Load-bearing invariants:
 │ RcHeader │  class  │ pointer runs  │  ValueBox runs    │  rest   │
 │   8 B    │ ptr 8 B │ 8 B each      │  16 B each        │ + byte  │
 │          │         │ stride 8,     │  stride 16, skip  │  block  │
-│          │         │ skip NULL     │  non-refcounted   │         │
+│          │         │ skip NULL     │  zero or bit 0 set│         │
 └──────────┴─────────┴───────────────┴───────────────────┴─────────┘
 ```
 
@@ -213,8 +228,11 @@ typed-slot:  │ RcHeader │ owner │ slot │ type │    &$obj->typedProp:
                                                   writes type-check
 ```
 
-The two variants are distinguished by a flag bit in the box's own
-header. Only code using `&` pays for any of this. Normative:
+The two variants are two entity kinds — the typed slot reference is a
+ring-closing kind of its own, so the one header load a trace makes tells them
+apart and it reads the typed variant's retained `owner` and never its `slot`
+(values.md, "References into unboxed slots"). Only code using `&` pays for
+any of this. Normative:
 [values.md](values.md) "ReferenceBox", "References into unboxed
 slots".
 
@@ -257,12 +275,12 @@ the kind Lazy → Object. Normative: [classes.md](classes.md) "Lazy objects".
 Type is answered at two levels, deliberately redundant:
 
 ```
-value level — tag, one load,            entity level — kind, bits 2-5,
-no dereference                          for bare pointers
+value level — tag word, no              entity level — kind, bits 2-5,
+dereference                             for bare pointers
 
-mixed $s │ ptr │ String │ RC │ ───┐
-                                  ├──▶ │ rc=2 │ flags: kind=String │ hash │ len │ "hi" │
-string $t │ ptr │ (compiler) ─────┘         one StringBox, one count
+mixed $s │ String tag word │ ptr │ ───┐
+                                      ├──▶ │ rc=2 │ flags: kind=String │ hash │ len │ "hi" │
+string $t │ ptr │ (compiler) ─────────┘         one StringBox, one count
 ```
 
 | ValueBox tag | → | entity kind |
@@ -270,17 +288,19 @@ string $t │ ptr │ (compiler) ─────┘         one StringBox, one c
 | String = 5 | → | StringBox |
 | Array = 6 | → | ArrayBox |
 | Object = 7 | → | Object · FFIBox · WeakRef · Lazy |
-| Reference = 9 | → | ReferenceBox |
+| Reference = 9 | → | ReferenceBox · typed slot reference |
 | Resource = 8 | → | **no kind — open question** (below) |
 | Null/False/True/Int/Float | | no entity; the payload is the value |
 
 The tag serves the mixed world without touching the entity; the kind
 serves every holder of a bare pointer (GC walk, teardown dispatch,
-barriers). The mapping is not 1:1: tag Object covers four kinds —
-WeakRef and Lazy are full PHP objects — and refinement reads the kind.
+barriers) — and a collector following a ValueBox, which reads the +8 word
+for the arm and the header for the kind, never the tag. The mapping is not
+1:1: tag Object covers four kinds — WeakRef and Lazy are full PHP objects —
+and tag Reference two, and refinement reads the kind.
 Reading a *type* by tag touches nothing, but *copying* a refcounted
 ValueBox retains — one access to the entity header (a potential cache
-miss); the RC bit cheapens the branch, not the access.
+miss); the arm test cheapens the branch, not the access.
 
 Why a ValueBox has no refcount: a count inside a freely-copied value
 would be duplicated by the copy — two holders, two counters, both
@@ -291,10 +311,14 @@ review of a proposed generalization confirmed the split: the pointer
 world is already unified by RcHeader, and no code path holds "a word
 of unknown nature" that a shared discriminator would serve.
 
-**Open question — `resource` has no entity kind.** The tag exists and
-carries a pointer payload, but no kind backs it: a bare resource
+**Open question — `resource` has no entity kind.** The tag exists, but no
+kind backs a pointer behind it: a bare resource
 pointer is not self-describing for teardown, violating the rule that
 makes bare heap pointers freeable ([classes.md](classes.md) "Entity
-kind and non-object teardown"). The kind field is nearly full (7 of 8
-codes taken; consolidation of the Proxy family is deferred in
-classes.md). To resolve when resources are designed.
+kind and non-object teardown"). The kind field has room — four bits,
+eight of sixteen codes free ([classes.md](classes.md), "Flags layout"). To
+resolve when resources are designed. The answer decides
+the resource's arm in the ValueBox: the pointer arm is reserved for entities
+beginning with `RcHeader`, so a resource takes it only by becoming one, and
+otherwise sits on the immediate arm as an opaque handle at +0 — uncounted on
+copy and invisible to the collector (values.md, "Type tags").

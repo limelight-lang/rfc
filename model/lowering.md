@@ -93,7 +93,7 @@ typedef struct Class {
                                  // stride 8, skip NULL (GC trace, clone, dispose)
     uint32_t      ptr_run_count;
     Run          *box_runs;      // (offset,count) list — ValueBox runs, stride 16,
-                                 // skip when the refcounted flag is clear
+                                 // skip when the +8 word is zero or has bit 0 set
     uint32_t      box_run_count;
     struct Class **display;      // Cohen display, indexed by depth (instanceof)
     uint32_t      display_len;
@@ -120,7 +120,8 @@ Intra-metadata references (`parent`, `interfaces`, `meta`, …) may be stored as
 
 ## retain / release
 
-Phase 1 (one thread per request, no atomics needed, like Zend):
+Phase 1 (one thread per request; the counts need no atomics, like Zend —
+the slots a trace may read are another matter, "Property Access" below):
 
 ```c
 static inline void ll_retain(RcHeader *h) {
@@ -200,6 +201,55 @@ assignment. Hashtables are involved only for dynamic properties and
 Stores to a slot holding a counted reference go through the store
 barrier, which is chosen statically by slot kind: an 8-byte pointer
 slot and a 16-byte ValueBox slot are two different entries.
+
+**One store per word, and it is a relaxed atomic store.** In memory a trace
+may read — an entity body after publication, an array's storage after it is
+installed, a ReferenceBox after its header, and the words a trace reads
+beside the boxes: the hash entry's key word, the array's storage head, and
+the ArrayBox's strategy tag and counts (arrays-hashtable.md, "The strategy
+tag") —
+each 8-byte word of a ValueBox slot, each counted-pointer slot and each such
+word is written by exactly one 8-byte store, emitted as a relaxed atomic
+store: the same `mov` or `str`, with the IR marked so the compiler neither
+merges the two words of a box into one 16-byte vector store nor splits or
+reorders them. The mutator's own loads stay plain, since
+it is the sole writer of its slots and a collector never writes them. A
+16-byte vector store is legal only where no trace can read — a stack local,
+a factory body before publication. This is the second half of
+`dev/ALGORITHM-AUDIT.md` A1; the first half is the layout
+(values.md, "ValueBox Layout").
+
+**A type test on a box whose arm is unknown is a 16-bit compare for the four
+immediate tags, `(w8 & ~1) == 0` for null, and the arm test plus a 16-bit
+compare of +0 for a pointer tag** (values.md, "Type tests, by tag") — or the
+decode, which answers every tag at once:
+
+```llvm
+; switch on the type of $v, a mixed value at %b
+%w8 = load i64, ptr %b.w8             ; +8: pointer, tag word or 0
+%w0 = load i64, ptr %b.w0             ; +0: payload or tag word
+%sc = and i64 %w8, 1
+%is = icmp ne i64 %sc, 0
+%tw = select i1 %is, i64 %w8, i64 %w0 ; the tag word, a cmov
+%tag = lshr i64 %tw, 8                ; byte 1
+%t  = trunc i64 %tag to i8            ; (0, 0) yields Null with no special case
+switch i8 %t, ...
+
+; is the slot undef?  — bit 1 of +8, sound on both arms (a pointer's bits
+; 0-2 are clear); a tracked property read makes this test before the switch
+%ud = and i64 %w8, 2
+
+; is $v counted?  — one word, one test
+%nz = icmp ne i64 %w8, 0
+%pt = icmp eq i64 %sc, 0
+%rc = and i1 %nz, %pt
+```
+
+A box whose arm is known statically — a `?int` slot, always on the immediate
+arm — keeps the one-byte test (values.md, "Nullable types"). A truth test, `isset` or
+`??` on a mixed value loads both words where the previous layout loaded one
+byte; that is the price the discriminating word puts on tag-only reads
+(`dev/DECISIONS.md`, "A1 closes on a discriminating word", the cost line).
 
 A hooked property (PHP 8.4) compiles to a call through the hook's vtable
 slot instead; `virtual` properties have no backing slot at all. The
@@ -314,7 +364,9 @@ Interface-conversion sites and property sites take the same shape, with the
 pair's second half an itable pointer or a slot offset. A `__call` resolution is
 not cached: the site re-enters the slow path, which is where `__call` belongs.
 
-**Alternatives, priced.** A seqlock over two words costs two extra loads and a
+**Alternatives, priced.** (This pricing is the inline cache's, where the
+reader is the hot party on every hit; it is not a figure for value slots,
+whose two-word problem is answered by layout in values.md.) A seqlock over two words costs two extra loads and a
 branch on every hit, which is worse than the pair's one added level of
 indirection. Per-thread site arrays need no atomics at all but cost
 `sites × 16 bytes × threads` and a cold start per thread. Packing the whole
@@ -358,7 +410,6 @@ br i1 %ok, label %commit, label %refill          ; refill = runtime call, rare
 
 commit:
   store ptr %next, ptr @arena.bump
-  store i64 RC1_PLUS_FLAGS, ptr %cur             ; header in one 8-byte store
   store ptr @class.User,
         ptr getelementptr(i8, ptr %cur, i64 8)
   ; Body zeroed as one range: an all-zero ValueBox is null (tag 0), a null
@@ -366,10 +417,21 @@ commit:
   ; is uninitialized — every uninitialized slot's correct start, and the
   ; bitmap's, in one store. No sentinel or tag to stamp.
   call void @llvm.memset.p0.i64(ptr %body, i8 0, i64 BODY_LEN, i1 false)
-  ; Then the explicit stores: defaults, and the undef flag on a mixed
-  ; slot with no default (an all-zero ValueBox is null, not undefined).
+  ; Then the explicit stores: defaults, and the undef tag word on a mixed
+  ; slot with no default — one 8-byte store of (flags 0b11, tag Null) at
+  ; the box's +8 (an all-zero ValueBox is null, not undefined).
   store i64 1, ptr getelementptr(i8, ptr %cur, i64 U_COUNT)   ; public int $count = 1
-  store i8 UNDEF, ptr getelementptr(i8, ptr %cur, i64 U_META_FLAGS) ; public $meta;
+  store i64 3, ptr getelementptr(i8, ptr %cur, i64 U_META_W8)  ; public mixed $meta;
+                                                 ; (typed: uninitialized; an untyped
+                                                 ; `public $meta;` is null by default)
+  ; The header is the last construction store: it publishes the entity
+  ; (layouts.md, "Publication is one 8-byte store, last"), and a release
+  ; fence stands between the stores above and the first store of %cur
+  ; into memory a trace can read (gc/rc-cycle.md, "Concurrency").
+  store atomic i64 RC1_PLUS_FLAGS, ptr %cur monotonic, align 8
+                                                 ; header in one 8-byte relaxed
+                                                 ; atomic store (layouts.md, RcHeader)
+  fence release
   call void @User__construct(ptr %cur, ...)      ; constructor known → direct
   ; Only for a class with a destructor, and only after __construct
   ; returns: this is what makes the object owe a __destruct at all

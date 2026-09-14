@@ -31,25 +31,42 @@ Entry (32 B):
   +8   key           ptr   string key, tagged in its low three bits
                            (maps.md, "The key word gains a tag, for
                            every owner"); 0 = integer key; 1 = hole
-  +16  value         ValueBox (16 B), whose reserved bytes carry this
-                     entry's collision link: a u32 at entry +28
+  +16  value         ValueBox (16 B), whose tag word carries this entry's
+                     collision link in its top four bytes: entry +28 when
+                     the element is an immediate value, entry +20 when it is
+                     a pointer
 ```
 
-**The collision link lives inside the element's ValueBox**, in the six bytes
-[values.md](values.md) reserves at the box's `+10` — the link is the top four of
-them, box `+12`. The entry therefore costs 32 bytes rather than the 40 a
+**The collision link lives inside the element's ValueBox**, in the top four
+bytes of whichever word is the box's tag word ([values.md](values.md),
+"ValueBox Layout"): box `+12` on the immediate arm, box `+4` on the pointer arm,
+selected by the same bit-0 test of the `+8` word that decodes the box. The
+table spells an empty or null element as a immediate-arm tag word, `(0, 0x0001 |
+link << 32)`, never as all-zero: `(0, link << 32)` would be a non-zero `+8`
+word with bit 0 clear, which is a pointer. A read hands that element out as
+`(0, 0x0001)`, which every null test accepts beside the barrier's `(0, 0)`
+(values.md, "ValueBox Layout", "Type tests, by tag"). A collector is
+unaffected — it
+reads `+8`, and on every immediate-arm element and every null of the table bit 0 is
+set — and so is the mixed vector (strategy 2), which publishes both words
+whole and keeps no link; the typed vector (strategy 1) holds unboxed elements
+and no ValueBox at all. The entry therefore costs 32 bytes rather than the 40 a
 separate `next` and `meta` pair cost, and an element of capacity costs 40 with
 its two index slots against the 48 it cost before, which is what `zend_array`
 has cost since PHP 7.3. Zend threads its
 chain through the element's own padding (`zval.u2.next`) under a rule its macros
 obey: a value copy never carries `u2`. The rule here has to be stronger, because
-the concurrent collector reads the element's second word while a mutator writes
-it, so **every** write to that word is one relaxed atomic store of the width the
-collector loads. The element field is private, three composing writers publish
-the word, and every read hands the box out with the reserved bytes cleared, so a
-link cannot travel in a copy into another entry
+the concurrent collector reads the element's `+8` word while a mutator writes
+it, so **every** write to either word is one relaxed atomic store of the width
+the collector loads. The element field is private, three composing writers
+publish the tag word, and every read hands the box out with bits 16–63 of its
+tag word cleared, so a link cannot travel in a copy into another entry
 (`ll-model/dev/DECISIONS.md`, 2026-08-07). The link is loaded with the entry
-that was going to be read anyway, so it costs no third dependent access.
+that was going to be read anyway, so it costs no third dependent access; what
+it costs since the relayout of 2026-09-14 is the arm test — one `test` and one
+`cmov` — on every link read and write, which is every hop of a collision-chain
+walk, so a lookup bench with collisions gates the change (`dev/DECISIONS.md`,
+"A1 closes on a discriminating word").
 
 **Why the key words come first.** The store barrier writes all sixteen bytes of
 a ValueBox, so a value store reaches bytes 16..32 and nothing below them: the
@@ -203,7 +220,7 @@ branches on them:
 - **hole** — `key == 1`. Left by deletion, skipped by iteration and by the
   tracer, reclaimed by compaction.
 - **element holding a reference** — the ValueBox carries a pointer to a
-  ReferenceBox (`RcHeader | Value`), tagged in the box's own flags.
+  ReferenceBox (`RcHeader | Value`), tag code `reference` in its tag word.
 - **element of a table under a foreign owner** — see "Thread hand-over".
 
 **A reference into an element is a ReferenceBox, never a slot pointer.**

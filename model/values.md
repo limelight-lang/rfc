@@ -45,25 +45,118 @@ storage format of one kind of property. See
 
 ## ValueBox Layout
 
+A ValueBox is two 8-byte words, and the word at +8 says which of two arms the
+box is on. On the **pointer arm** the +8 word is the counted pointer itself:
+every entity begins with an 8-aligned `RcHeader` (the header is
+`align(8)` in `ll-model`'s `refcount.rs`, and [maps.md](maps.md): "the
+arena rounds to 8 and a class's object size is aligned to 8"), so bit 0 of a
+pointer is clear, and a non-zero +8 word with bit 0 clear is a pointer and
+nothing else.
+On the **immediate arm** the +8 word is a *tag word* with bit 0 set. The +8
+word alone decides the arm: on the pointer arm +0 is a tag word and has bit 0
+set, on the immediate arm +0 is the value and is unconstrained — an odd
+integer or an f64 whose low bit is set is not a pointer-arm box. `(0, 0)` is
+null.
+
 ```
-+0   payload   8 B   union { i64, f64, ptr }
-+8   type      1 B   type tag
-+9   flags     1 B   bit 0 refcounted; bit 1 undef (property slots only);
-                     bit 2 writing (rc-satb concurrent-marking lock, below);
-                     bits 3-7 reserved, unassigned. This is the cheapest
-                     spare room in the ValueBox: the byte is already loaded and
-                     tested on every ValueBox copy (the refcounted bit), so a
-                     future per-value boolean costs nothing to read here,
-                     unlike one placed in the reserved bytes at +10
-+10  reserved  6 B   bytes 10..15, through the end of the ValueBox: alignment
-                     padding, not usable as per-slot state — the store
-                     barrier writes all 16 bytes of the ValueBox
++0   payload   8 B   immediate arm: the value — a full i64, an f64 bit pattern
+                     untouched, 0 for null/false/true (never read)
+                     pointer arm: the tag word (below), carrying the entity's
+                     tag code, so a type test never chases the pointer
++8   word      8 B   0            null — the all-zero box is null
+                     bit 0 = 0    pointer arm: the counted entity pointer,
+                                  non-zero, → an entity beginning with RcHeader
+                     bit 0 = 1    immediate arm: the tag word
+
+tag word (either position; byte 0 is the low byte — both targets are
+little-endian, and the hex words below are written that way):
+     byte 0   flags   bit 0 fixed to 1 (this is a tag word, not a pointer);
+                      bit 1 undef (property slots only); bits 2-7 reserved,
+                      unassigned — the cheapest spare room in the ValueBox,
+                      since the byte is loaded on every type test
+     byte 1   type    the tag code, table below
+     bytes 2-3        zero
+     bytes 4-7        zero in a slot; a container may use them for its own
+                      per-element state (arrays-hashtable.md, the collision
+                      link), and a read hands a box out with bits 16-63 of
+                      the tag word cleared — so a null read out of a container
+                      is (0, 0x0001), a second spelling every null test accepts
 ```
 
-The `undef` flag (bit 1) marks a ValueBox property slot as uninitialized. A
-ValueBox has the room in its own `flags` byte to carry this, so a `mixed` /
-untyped property tracks its uninitialized state **in the slot**, and the
-init bitmap below is left to the raw typed slots that have no such room.
+Sample boxes, as `(+0, +8)`:
+
+```
+int 42        ( 42,                 0x0301 )        tag word: Int (3) at byte 1, flags 0b01
+float 2.5     ( f64 bits of 2.5,    0x0401 )
+true          ( 0,                  0x0201 )
+null          ( 0,                  0 )             a fresh null and the zero-fill; a null
+                                                    read out of a container is (0, 0x0001)
+                                                    and keeps that spelling wherever it is
+                                                    stored next — the barrier writes the
+                                                    box it is given
+undef slot    ( 0,                  0x0003 )        flags 0b11: tag word + undef, tag Null
+"hi"          ( 0x0501,             ptr → StringBox )
+object        ( 0x0701,             ptr → Object )
+```
+
+**Decoding.** `tagword = (w8 & 1) ? w8 : w0` — one test and one `cmov` on
+words a consumer of the value loads anyway; `(0, 0)` decodes to a tag byte of
+`Null` (code 0) with no special case. **Is it counted?** `w8 != 0 && (w8 & 1)
+== 0` — one word, one test; there is no separate refcounted flag, the arm is
+the flag. **Type tests, by tag.** A test for `false`, `true`, `int` or `float` on a
+box whose arm is unknown compares the low 16 bits of the +8 word — bytes +8
+and +9 together — against the tag-word constant (`cmp word [box+8], 0x0301`
+for `int`), never the type byte alone: bit 0 of every tag-word constant is 1
+and bit 0 of every pointer is 0, so no pointer's low bytes can match, and the
+width excludes a container's bytes above. A test for `null` is `(w8 & ~1)
+== 0`: it accepts the barrier's `(0, 0)` and a container's `(0, 0x0001)`
+alike, and rejects the undef slot (`0x0003`), every other tag word and every
+pointer (all at least 8) — one instruction, and no normalization on a read.
+A test for a pointer tag cannot look at +8, where the pointer is; it is the
+arm test followed by a 16-bit compare of +0 (`(w0 & 0xFFFF) == 0x0501` for
+`string`), because on the immediate arm +0 is the value and `int 1281` has
+those low bytes — or the decode below, which answers every tag at once. A
+byte-wide test of +9 is legal once the arm is known — statically, as for a
+`?int` slot, or after the arm test. **The undef test** is `w8 & 2`, sound
+on both arms because an 8-aligned pointer has bits 0–2 clear; it is one
+instruction beside the decode, and a tracked property read makes it before
+the value is used. **What the layout says about identity, and no more.** Bit 0 of a tag word
+and its bytes above the tag byte — a container's link among them — are never
+part of the value, and, once a `reference` has been followed to its referent,
+two boxes whose tag bytes differ are never identical.
+What identity means within a tag — integer equality, IEEE equality for
+`float` (`NaN === NaN` is false, `-0.0 === 0.0` is true, so it is a
+floating-point compare and not a word compare), object identity, string and
+array content, a reference's referent — is the language's rule and lives in
+the document that owns its operators, which is owed (`dev/PLAN.md`, S8.11).
+
+**Why this shape.** A collector on another thread reads the +8 word alone,
+with one relaxed 8-byte load, and decides from it whether to follow: bit 0
+set — an immediate value, skip; zero — null, skip; otherwise a pointer, whose kind it
+reads from the entity's `RcHeader`. It never interprets +0. A mutator's store
+of a box is two 8-byte stores in either order, and a reader of one word sees
+a value some store wrote, never a pair whose halves disagree — which is what
+a 16-byte box with the tag in one word and the payload in the other cannot
+promise (`dev/ALGORITHM-AUDIT.md`, A1, resolved 2026-09-14;
+`dev/DECISIONS.md`, "A1 closes on a discriminating word"; the shipped
+precedent is Go's interface value, `dev/CONCURRENT-SLOT-READS-SURVEY.md`).
+The immediate value keeps +0 unboxed and every bit of a 64-bit `int` or `float`,
+which is why the discriminator is a word of its own rather than a bit of the
+payload.
+
+**What a container's second word is not.** The hash entry's key word
+([arrays-hashtable.md](arrays-hashtable.md)) has a convention of its own — a
+sentinel below 8, otherwise the low three bits are the kind and the pointer is
+the word with them masked — and is not a ValueBox word. It is read by a
+trace all the same, so it is written under the same one-store rule as a
+box's words ([lowering.md](lowering.md), "Property Access").
+
+The `undef` flag (bit 1 of the tag word's flags byte) marks a ValueBox
+property slot as uninitialized. A ValueBox has the room in its own tag word
+to carry this, so a `mixed` / untyped property tracks its uninitialized state
+**in the slot**, and the init bitmap below is left to the raw typed slots that
+have no such room. The undef slot is `(0, 0x0003)`: a Null tag word with the
+undef bit, stamped by one 8-byte store after the body's zero-fill.
 The flag is meaningful only in a property slot and is never set on a ValueBox
 in a local, parameter, return, array element, or ReferenceBox — the
 same confinement `IS_UNDEF` lacks in Zend, which is why Zend's leaks
@@ -86,11 +179,18 @@ arithmetic speed. Zend reached the same conclusion; 16 bytes it is.
 | `string` | pointer → StringBox ([strings.md](strings.md)) |
 | `array` | pointer → ArrayBox ([arrays.md](arrays.md)) |
 | `object` | pointer → Object ([classes.md](classes.md)) |
-| `resource` | pointer |
+| `resource` | open: the pointer arm if a resource becomes an entity beginning with `RcHeader` ([layouts.md](layouts.md), the open question), otherwise the immediate arm — an opaque handle at +0, invisible to the collector and uncounted on copy |
 | `reference` | pointer → ReferenceBox (below) |
 
-The `refcounted` flag in the ValueBox duplicates what the tag implies so that
-retain/release on ValueBox copy is a single bit test, with no tag decoding.
+`string`, `array`, `object` and `reference` are the pointer arm; `null`,
+`false`, `true`, `int` and `float` the immediate arm; `resource` goes with
+whichever the open question above gives it. Retain/release on a ValueBox copy
+is therefore one test of the +8 word with no tag decoding — the arm is the
+counted flag. The pointer arm is reserved for
+pointers to entities beginning with `RcHeader` and nothing else: a raw C
+pointer never enters a ValueBox (`FFIBox`, [memory/ffi.md](memory/ffi.md),
+wraps it), and that reservation is what lets a collector follow the +8 word
+without a tag.
 
 There is deliberately **no `undef` tag**. Uninitialized is not a type,
 so it does not take a tag value that `gettype` or a `switch` on the tag
@@ -105,13 +205,13 @@ slots and reading one throws, and the bitmap is separate metadata.
 Hashtable holes remain a separate, container-internal marker
 ([arrays.md](arrays.md)), unrelated to this.
 
-The **writing** flag (bit 2) is the concurrent-marking lock: because a
-16-byte ValueBox is published as two stores (payload, then tag), a background
-marker reading the slot could otherwise catch a torn pair and trace a
-non-pointer as a pointer. It is set and cleared only by `store_box` on the
-`rc-satb` strategy and read only by that strategy's marker; every other
-build leaves the bit permanently clear. The mechanism is in
-satb.md, "Torn 16-byte ValueBox reads".
+**There is no store lock.** A 16-byte ValueBox is published as two 8-byte
+stores, and an earlier layout carried a `writing` bit that a background marker
+tested so as not to read a torn pair; it went with the `rc-satb` strategy on
+2026-08-26. The discriminating word makes the tear harmless without a lock:
+the one word a concurrent reader interprets is written by one store. The
+stores themselves are word-sized relaxed atomic stores wherever a trace may
+read the slot ([lowering.md](lowering.md), "Property Access").
 
 All pointer payloads point to entities that begin with the common
 `RcHeader` (refcount + flags at offset 0, see [classes.md](classes.md)).
@@ -151,7 +251,8 @@ workloads from having one representation less; the microbenchmark that
 regressed 23% did not save it.
 
 ```llvm
-; $x = $x + 5   where $x: ?int  — payload +0, tag +8 (ValueBox layout)
+; $x = $x + 5   where $x: ?int  — payload +0, tag byte +9 (ValueBox layout);
+; a ?int box is always on the immediate arm, so the byte test is legal here
 %t = load i8, ptr %x.tag
 br %t == TAG_NULL → %coerce, else → %add
 %add:                                  ; hot path
@@ -172,8 +273,8 @@ that touches a value.
 room to say it**, and only for properties that can actually have it.
 
 - **ValueBox slot** (`mixed` / untyped): the `undef` flag bit in the ValueBox
-  itself (above). A read decodes the ValueBox anyway, so testing the bit is
-  part of that decode and costs nothing extra.
+  itself (above). A read loads the +8 word anyway, and the test is `w8 & 2`
+  on it — one instruction beside the decode ("ValueBox Layout").
 - **Non-nullable pointer** (`Foo`, `string`, `array`): **`NULL` itself**.
   A non-nullable type can never legally hold null, so a null in the slot
   is unambiguously "not written yet". The read compares to null and
@@ -247,9 +348,29 @@ RcHeader | owner (ptr, retained) | slot (ptr) | type
 ```
 
 Reads box the raw value on the fly; writes type-check and store raw. The
-variant is distinguished by a flag bit in the box's own header. `&` is
-rare in real code, and the entire cost is confined to the box; code that
-does not use references pays nothing.
+variant is a kind of its own, *typed slot reference*, taken from the
+ring-closing reserve ([classes.md](classes.md), "Flags layout": four of the
+low eight codes stand free, and the mutator's flag half is full) — so that the
+one header load a trace makes already tells the two variants apart, and the
+candidate gate's `kind < 8` admits it, as it must for a kind whose `owner`
+edge can close a ring. The code that names the kind is `EntityKind`'s,
+never this document's. **A trace
+reads a typed slot reference's `owner` and nothing else of it.** `owner` is
+retained, so it is a counted edge and a ring can close through it; a trace
+that skipped it would read the owner as externally referenced and never
+collect such a ring. `slot` is never read by a trace: it is an interior
+pointer into an object body — to an 8-byte slot, or to a byte or a bit for a
+`bool` ([classes.md](classes.md), "`bool`: a byte or a bit") — which,
+whenever even and non-zero, the `+8` rule of "ValueBox Layout" would take
+for an entity address, and a collector that followed it would read a header
+out of the middle of an object. Putting a tag word at +16 with `slot` at +24 was refused: it would
+make the generic box read skip the whole box, hiding the `owner` edge, and
+dress a field as a ValueBox it is not (`dev/DECISIONS.md`, "A1 closes on a
+discriminating word", the Sage's second round). The variant is published
+like the ordinary ReferenceBox — the fence of [gc/rc-cycle.md](gc/rc-cycle.md),
+"Concurrency" — and its `owner` word falls under the one-store-per-word rule.
+`&` is rare in real code, and the entire cost is confined to the box; code
+that does not use references pays nothing.
 
 ---
 

@@ -278,3 +278,24 @@ tracer moves two words, the head segment and its fill, and draws nothing
 (`cycle/questions.md`, Y12 clause 2). The issue itself is unchanged — the two
 words are ones the writer is about to write, and their linearization against a
 concurrent registration is still owed.
+
+**A1 (2026-09-14, ruled by the Sage on Edmond's proposal, `Final`).** Resolution
+(1), an atomic slot representation, in a form that keeps the `ValueBox`'s 16
+bytes and word offsets: +0 stays the immediate value on the immediate arm and
+carries the tag word on the pointer arm, and the word at +8 is either the
+counted pointer itself (bit 0 clear, 8-aligned; zero is null) or a tag word
+with bit 0 set — the flags byte at +8 with bit 0 fixed and the tag byte at +9,
+the two bytes swapping places. A collector reads +8 alone with one relaxed 8-byte load and
+never interprets +0, so no interleaving of the mutator's two 8-byte stores can
+show it a non-pointer under a pointer reading; the mutator's stores are
+unchanged. The second half of the issue — that a plain store racing a read is
+undefined regardless of tearing — closes by the rule that every 8-byte word of
+a published slot a trace can read is written by one relaxed 8-byte store, which
+`ll-model`'s barrier already does and `dev/PLAN.md` S8.11 writes into
+`model/lowering.md`. What the
+closure does not cover is owned by name: the entity's publication order on
+ARM64 (a release fence per publication event, an acquire load on the worker —
+`ll-model` S38.0), and an arena block returned under a held token (S38.3's
+deferred set). The worker path stays blocked on A2, A3's worker clause and A6's;
+this issue is no longer among the blockers. `dev/DECISIONS.md`, "A1 closes on a
+discriminating word"; the relayout is `dev/PLAN.md` S8.11.

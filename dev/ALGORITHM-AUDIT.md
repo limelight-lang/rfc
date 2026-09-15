@@ -295,7 +295,8 @@ a published slot a trace can read is written by one relaxed 8-byte store, which
 `model/lowering.md`. What the
 closure does not cover is owned by name: the entity's publication order on
 ARM64 (a release fence per publication event, an acquire load on the worker —
-`ll-model` S38.0), and an arena block returned under a held token (S38.3's
-deferred set). The worker path stays blocked on A2, A3's worker clause and A6's;
+`ll-model`, `refcount::publish_header` and `cells::AtomicCells`), and an arena
+block returned under a held token (`ll-model`, `cycle::deferred_slot_reuse`,
+"A foreign holder of the token"). The worker path stays blocked on A2, A3's worker clause and A6's;
 this issue is no longer among the blockers. `dev/DECISIONS.md`, "A1 closes on a
 discriminating word"; the relayout is `dev/PLAN.md` S8.11.

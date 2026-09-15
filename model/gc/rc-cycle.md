@@ -701,8 +701,14 @@ that is one the owner should never have to refuse. Under synchronous
 collection the contract costs nothing: a thread with a reset in flight does
 not collect ("Check collection eligibility before waiting"), a trace runs no
 user code and so starts no reset, and slot returns already wait for the
-close. With a worker, the reset's block-return path reads the
-owner's token once, as slot returns do (`ll-model`, `PLAN.md` S38.3).
+close. With a worker, every one of those returns reads the owner's token
+once, at the entry that would make it — the free of a slot, of a chunk, of a
+run, and the pool's own entry for a block — and waits on a per-thread stack
+threaded through the memory itself until the owner reads the token free
+(`ll-model`, `cycle::deferred_slot_reuse`, "A foreign holder of the token").
+The owner withholds every such return under a foreign holder rather than
+the ones a stamp names, because a trace holds an address between reading a
+cell and meeting the row, and in that interval the block carries no stamp.
 
 **Publication, for a reader on another thread.** A worker that follows a
 pointer it read from a slot reads the entity's header and its class word, and

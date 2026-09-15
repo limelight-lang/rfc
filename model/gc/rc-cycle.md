@@ -666,7 +666,8 @@ access before the claim being a load of the outbox word. A collector worker
 that reads the word set claims the owner's trace token,
 takes the chain by an acquire exchange with null, traces it, posts the chain
 to the inbox before the token's release — walked or not: a trace the pool
-refuses mid-way posts what it holds, and clause 5 re-enqueues the rest — and
+refuses, or one that did not complete, posts the chain unmarked, its colours
+being no verdict, and clause 5 re-enqueues every unmarked root — and
 releases. The owner processes the proposal at a consistent-point poll.
 Nothing waits for the request, the offer or the pickup: an empty outbox, like
 a held token or a full inbox, is a skip. The detach draws no segment and
@@ -693,7 +694,10 @@ from the chain it took, and the outbox word orders them: every entry store and
 link store sequenced before the owner's release store is visible after the
 worker's acquire exchange, so the entries themselves are plain stores and plain
 loads. An owner reclaims an untaken offer by the same exchange with null before
-an in-line collection. Its exit claims its own token first and never releases
+an in-line collection, and drains a posted chain into its lane the same way,
+since a collection short of memory would otherwise not see the garbage a
+worker proposed; the round traces every root of it exactly, so the marks
+decide nothing there. Its exit claims its own token first and never releases
 it, then reclaims the outbox, drains the inbox into its lane, runs its
 collection rounds under the claim, retires the queue and releases the record
 with the token held: no worker posts after the drain, a worker's claim on a

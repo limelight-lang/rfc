@@ -556,7 +556,8 @@ see `dev/ALGORITHM-AUDIT.md`, issues B3, B4, and C3.
 The token covers mark, scan, and reads of the live candidate queue. The tracer
 releases it after its last row read, which is the end of scan on the ordinary
 path and the harvesting sweep on the pressure path, before exact validation and
-before the first destructor. Everything after the release — zero-count-entry
+before the first destructor; the one exception is the exiting thread's final
+claim, at the end of this section. Everything after the release — zero-count-entry
 handling, guard references, weak-reference invalidation, destructors,
 revalidation, edge severing, storage reclamation, slot return, and candidate-bit
 clearing — runs without the token. What the release ends is the right to trace
@@ -648,19 +649,33 @@ leaves the arming for the next poll at a clean point.
 A trace runs no user code, takes no user lock, and releases the token before
 destructors, so this wait is intended to be bounded.
 
-A collector worker that finds the token held or the owner's result inbox full
-skips that owner until a later round. Candidate bits remain set.
+A collector worker that finds the owner's outbox empty, the token held or the
+owner's result inbox full skips that owner until a later round. Candidate bits
+remain set.
 
 ### Worker-to-owner handoff
 
-A collector worker detaches the owner's active candidate chain — two words, the
-head segment and its fill — traces it, and posts the marked chain to a
-capacity-one per-thread inbox at token release. The owner processes it at a
-consistent-point poll. Nothing waits for pickup. The detach draws no segment and
+The owner detaches its active candidate chain — two words, the head segment
+and its fill — at a safepoint poll where a worker's request word is set, and
+publishes it to a capacity-one per-thread outbox as one word, the head's
+address with the fill in its low sixteen bits, by a release store after its
+last store into the chain. The outbox, the inbox, the request word and the
+trace token share one per-thread record whose storage outlives the thread,
+and a worker writes the outbox and the inbox only under the token, its one
+access before the claim being a load of the outbox word. A collector worker
+that reads the word set claims the owner's trace token,
+takes the chain by an acquire exchange with null, traces it, posts the chain
+to the inbox before the token's release — walked or not: a trace the pool
+refuses mid-way posts what it holds, and clause 5 re-enqueues the rest — and
+releases. The owner processes the proposal at a consistent-point poll.
+Nothing waits for the request, the offer or the pickup: an empty outbox, like
+a held token or a full inbox, is a skip. The detach draws no segment and
 cannot be refused, so a collection is never stopped at its front by an
 allocation; the lane it leaves empty is the state a thread holds before its
 first registration, and the next registration takes the growth path
-(`cycle/questions.md`, Y12 clause 2).
+(`cycle/questions.md`, Y12 clause 2). The poll's order is refill, drain,
+re-offer, pickup, offer; the pickup and the offer stand behind the entry gate
+as the fire does, and the owner offers only into an empty outbox.
 
 What a trace does need is rows. The worker draws its own workspace and its own
 scratch blocks through ordinary allocation, and skips that owner for the round
@@ -668,14 +683,21 @@ when the pool refuses. Synchronous collection tries the pool and then the
 critical reserve, and aborts before drawing a row if both fail. See
 `cycle/questions.md`, Y12 clause 3.
 
-The detach is not yet linearized against concurrent candidate registration: it
-moves two words the writer is about to write, and until that protocol is
-defined a worker can lose or duplicate an entry. This blocks the collector-worker
-optimization; see `dev/ALGORITHM-AUDIT.md`, issue A2, and `dev/PLAN.md` S8.7.
-The acquire rule of "Concurrency" reaches the chain: a worker's roots are the
-entries it reads from the detached chain, and those reads are acquire loads
-ordered against the owner's entry writes by the same fence-to-load rule, which
-S8.7's protocol places.
+The detach is linearized against registration by being the owner's: a
+registration is ordered in the owner's program order, the detach at the release
+store into the outbox, and no thread but the owner writes the head, the fill or
+a segment's link (`dev/DECISIONS.md`, "the owner detaches at its poll, and the
+worker takes the chain from a one-word outbox", which closes
+`dev/ALGORITHM-AUDIT.md` issue A2). The worker's roots are the entries it reads
+from the chain it took, and the outbox word orders them: every entry store and
+link store sequenced before the owner's release store is visible after the
+worker's acquire exchange, so the entries themselves are plain stores and plain
+loads. An owner reclaims an untaken offer by the same exchange with null before
+an in-line collection. Its exit claims its own token first and never releases
+it, then reclaims the outbox, drains the inbox into its lane, runs its
+collection rounds under the claim, retires the queue and releases the record
+with the token held: no worker posts after the drain, a worker's claim on a
+released record fails, and the record is never reused under a worker's claim.
 
 At pickup, the owner handles each entry in one of four ways:
 
@@ -756,7 +778,12 @@ waits, collects, retires its queue and only then hands its heap over, so
 assigns the block to another thread, never run under a live trace. The
 collection precedes the queue's retirement because the queue is its root set
 (`ll-model`, `dev/DECISIONS.md`, "a thread waits for the trace, collects, and
-then exits", ruled 2026-09-04). An exit a destructor asks for — inside a collection, an ordinary
+then exits", ruled 2026-09-04). The exit is the one holder that keeps the
+token past its last row read: it claims the token and holds it through the
+record's release, so that no worker takes or posts a chain after the exit's
+drain, and the held word stalls nobody because a worker never waits
+(`dev/DECISIONS.md`, "the owner detaches at its poll, and the worker takes the
+chain from a one-word outbox"). An exit a destructor asks for — inside a collection, an ordinary
 teardown or an arena reset — is recorded and runs at the thread's top, where
 the next exit call outside those states or the thread's end reaches it: every
 frame above the destructor goes on using the heap, so the sequence cannot run

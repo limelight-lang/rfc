@@ -10,6 +10,163 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-09-15 — the owner detaches at its poll, and the worker takes the chain from a one-word outbox
+
+**Decided** (`dev/PLAN.md` S8.7): what the queue's writer and the chain's
+detacher agree on is that they are one thread. The detach of Y12 clause 2 — the
+move of the head segment and its fill that leaves the write position empty —
+is the owner's at every instant it happens: at the start of an in-line
+collection, as built, and under the accelerator at the owner's safepoint poll,
+where the owner publishes the detached chain to a per-thread **outbox** of
+capacity one. The outbox is one word: the head segment's address with the fill
+in its low sixteen bits, which are free because a pool block is block-aligned
+(`model/memory/large-entities.md`, "one block-aligned allocation per entity";
+`ll-model`, `block_pool::BlockHeader::of_ptr`) and a fill is at most 8,160. The
+owner writes the word with a release store after its last store into the
+chain, and writes nothing into the chain after it.
+
+**Where the word resides, and who touches it when.** The outbox, the inbox and
+the trace token share one per-thread record, which a worker enumerates owners
+through and which this ruling creates: today the token is a thread-local no
+worker can address (`ll-model`, `cycle::token`), so the record is the worker
+step's first build (`model/PLAN.md` S38.5). The record's storage outlives the
+thread, and a worker writes the outbox and the inbox only while it holds the
+record's token; its one access before the claim is a load of the outbox word.
+The worker's round over an owner is: read the outbox; null skips the owner. Set, claim the
+token by compare-and-swap (held skips), then exchange the outbox with null
+under acquire ordering; a null answer — the owner reclaimed the offer meanwhile
+— releases the token and skips. Otherwise the worker traces the chain it took,
+**posts it to the inbox before the token's release store**, marked as far as
+the trace got, and releases. A taken chain is always posted: a trace the pool
+refuses mid-way posts what it holds, and clause 5 re-enqueues every root it
+did not walk. The exit's last act on its token is a claim it never releases:
+the exit claims the token, reclaims the outbox by the same exchange, drains
+the inbox into its lane, runs its collection rounds under the claim, retires
+the queue and releases the record with the token still held. A worker's claim
+on a released record therefore fails, no chain is posted after the exit's
+drain, and the record is never reused under a worker's claim.
+
+**When the owner offers.** The worker asks: it sets a request word in the
+record, and the owner's poll reads that word beside the maintenance every poll
+already performs. A set request runs the offer, which clears it; an empty lane
+answers the request with no offer. The offer stands behind the entry gate as
+the fire does: a poll inside a teardown, a reset or a collection neither picks
+up its inbox — the pickup's disposition finalizes components and so runs
+destructors — nor offers, and both wait for the next poll at a clean point.
+The order at an open-gate poll is refill, drain, re-offer, pickup, offer, and
+the owner offers only into an empty outbox, so a thread has at most one chain
+untaken, one under trace and one proposal unpicked, each held by one party. An
+owner about to collect in line — the pressure path, the exit — first reclaims
+its outbox by the exchange and merges what comes back into its lane, then
+waits on its token.
+
+**The linearization points A2 asked for.** A registration is linearized in the
+owner's program order, as it is today. A detach is linearized at the release
+store into the outbox: the worker's acquire exchange returns the address the
+owner stored, and every entry store and link store sequenced before that
+release is visible to it, so the chain needs no per-entry ordering and the
+entries stay plain stores. The writer has no retry rule because it never
+contends: no thread but the owner writes the head, the fill, or a segment's
+link.
+
+**Why.** The two words are the owner's, in the base block's control line,
+written by a store and an increment on the release path — clause 3 forbids the
+write to allocate, lock or copy, and as built it is not atomic either. A
+detacher on another thread has no instant at which both words are stable:
+between the entry store and the fill's increment an entry is written and
+uncounted, and between a growth's link store and its head publication the chain
+has two heads. Packing the pair into one atomic word closes the tearing and
+opens the ownership: the owner's own publication would then be a
+compare-and-swap against the worker's exchange, and so would every other move
+of that word and of the links behind it — the merge at the close, the deferral
+and the re-offer at the turnover, the drain of the overflow buffer and the
+release at exit all write links of segments a worker holding the chain would be
+walking. Keeping the detach on the owner keeps clause 1's one writer as the
+chain's one mover, which is the invariant `ll-model`'s queue is built on, and
+shrinks the cross-thread object to one word written by a release store and
+read by an acquire exchange.
+
+**Why this is not the handshake the ruling of 2026-08-27 deleted.** The
+rendezvous it struck had a collection wait for the owner's checkpoint, so a
+thread waiting on the token could wait on a holder waiting on that thread's
+own checkpoint. Nothing waits on the request, on the offer or on the pickup: a
+worker that finds the outbox empty skips the owner, a worker the pool refuses
+posts and skips, and a thread waiting for its token waits for a trace that
+runs no user code and blocks on nothing — rows are refused, frees are parked.
+The wait graph keeps its one edge kind, waiter on token. The exit's held token
+stalls nobody by the same rule: only a worker could want it, and a worker
+never waits.
+
+**Rejected.** One packed word compare-and-swapped by the owner on every
+registration: a `lock cmpxchg` on the path Y12 names the hottest in the system,
+unmeasured and unneeded once the owner is the mover, and the protocol would
+spread to every owner-side transition of the word and the links. The worker
+tracing the live lane without a detach and posting a list of entities: the
+owner's disposition works on entries, and Y7 removed the index an entity-keyed
+proposal would need to find them. The worker taking only the full segments
+behind the head, by one exchange on the head's link: a thread that registers
+slowly holds its partial head's roots untraced for up to 8,160 registrations,
+and the owner rolling the head at a poll to fix that is this ruling. The outbox
+in the base block's control line, where nine bytes of padding would hold it:
+a worker's read of it would address a block the exit may have returned, and
+the deferral contract covers memory a *trace* holds an address into, which a
+worker before its claim is not. The owner offering on its own cadence rather
+than on request: a request costs the poll one relaxed load, an unrequested
+offer costs a pool round trip per poll that offers. The protocol document of
+2026-09-09 (`ll-model`, `dev/COLLECTOR-MUTATOR-MEMORY-PROTOCOL.md`) left an
+owner detach at the safepoint out of its proposal without a reason against it,
+and its review recorded the alternative as open.
+
+**Cost.** A thread's roots are traced no sooner than the poll after the
+worker's request, so a thread inside a call that never polls keeps its
+candidates untraced; it keeps its own frees withheld already, since only the
+owner reduces state, so what the wait delays is the proposal and nothing
+reclaimable. Every offer leaves the lane empty: the next registration draws a
+spare, the next poll refills it, and the pickup returns a surplus segment —
+one pool round trip per served request per thread, where a detach by the
+worker would have paid the same per round. Clause 3's two-cell argument now
+counts the offer as a detach: an interval between polls that holds both an
+offer and a pressure collection spends both cells on growths from empty and
+sends its overflow to the reserve. One load per poll of the request word, on a
+record line the worker writes once per request; three stores at an offer, one
+of them release; a word each for the outbox and the request in the record.
+None of this is measured. `ll-model`'s queue states the single-mover
+invariant and, in the same module doc, that it ends when a second thread swaps
+the chain — four sentences now false (`queue.rs`: the module doc's chain
+paragraph, its opening paragraph, the growth path's assertion comment and
+`SPARE_SEGMENTS`'s count), amended with this entry. `cycle::token`'s module
+doc describes the exit's collection as waiting through the ordinary take,
+which is true today and is what S38.5 changes. Whether a worker may claim the token while the
+owner's ordinary-path teardown is still reading rows stays open where
+`rc-cycle.md`'s readership paragraph leaves it; A2 closes on the queue's
+linearization alone.
+
+**What it supersedes:** the mechanism sentence of "the trace token covers the
+trace alone, and the accelerator hands off by buffer swap", where the token
+holder swaps (since 2026-09-03, detaches) the owner's live chain; the holder
+now takes what the owner detached. Its "at the release it posts" is pinned to
+post-then-release, and its "one release instant and not one per form" gains
+the exiting thread as its one exception: the exit's final claim is a token
+held across user code, which that entry rejected because other threads wait
+on the word — and on an exiting thread's word only a worker could, and a
+worker never waits. The entry "the collection detaches the candidate chain and
+swaps nothing" stands and gains the accelerator's instant.
+`dev/ALGORITHM-AUDIT.md` A2 closes on this entry.
+
+Critic 2026-09-15: seven findings, none against the linearization itself. The
+outbox in the base block let a worker address a returned block, and
+"posted at the release" admitted release-then-post, which loses a whole chain
+into a freed inbox — the word moved to the token's record, the worker touches
+it only under the token, the post precedes the release, and the exit's final
+claim is never released. "At its safepoint poll" named no arming, under which
+a healthy thread was never offered — the worker's request word. A worker the
+pool refuses mid-trace had no obligation to post — it has one. The closed
+gate's effect on the pickup and the offer was unstated — both wait. The
+exit's drain was ordered against nothing — it follows the final claim and
+precedes the rounds. The two-cell sentence of clause 3 and the cost section
+undercounted — amended. The free low bits were argued from the block's size
+rather than its alignment — cited.
+
 ## 2026-09-15 — the publication fence lands before its ARM64 price
 
 **Decided** by Edmond, on the question whether the release fence of

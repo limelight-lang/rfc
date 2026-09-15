@@ -295,11 +295,14 @@ covers the trace alone, and the accelerator hands off by buffer swap"). An
 acknowledged rendezvous is what a thread waiting on the trace token would
 deadlock against — the collection parked on an acknowledgement that rides the
 waiter's own checkpoint — so the delivery it performed is done by detachment
-instead: the token holder takes a thread's live queue chain, traces it, and at
-the token's release posts it to a per-thread inbox of capacity one that nobody
-waits on. The ruling's own word was *swap*, and the swap became a two-word
-detach on 2026-09-04 (Y12 clause 2); the delivery it describes is unchanged. The rest of the list is untouched, and the
-in-line form never used the handshake at all.
+instead: the owner detaches its queue chain at its safepoint poll and publishes
+it to a one-word outbox, the token holder takes it from there, traces it, and
+before the token's release posts it to a per-thread inbox of capacity one that
+nobody waits on. The ruling's own word was *swap*, the swap became a two-word
+detach on 2026-09-04, and the detach became the owner's on 2026-09-15 (Y12
+clause 2); the delivery it describes is unchanged, and nothing waits on the
+offer either. The rest of the list is untouched, and the in-line form never
+used the handshake at all.
 
 **The two-sided form was permitted for one day and withdrawn.** The ninth
 entry of 2026-08-25 let the collector free an entity whose destructor is
@@ -785,7 +788,7 @@ store into a proven slot, and honoured by the holder's `dispose`").
 a proof — the enrolling form everywhere, which is what the crate does
 today.
 
-## Y12. The root queue: written by the mutator, read behind it by the collector  [contract written 2026-08-25; the named candidate does not meet it; clauses 3 and 8 ruled 2026-08-27; clauses 2 and 3 amended 2026-09-04 against the built queue]
+## Y12. The root queue: written by the mutator, read behind it by the collector  [contract written 2026-08-25; the named candidate does not meet it; clauses 3 and 8 ruled 2026-08-27; clauses 2 and 3 amended 2026-09-04 against the built queue; clause 2's detacher ruled 2026-09-15, clauses 3 and 6 amended with it]
 
 Filed by Edmond on the map, 2026-08-25. Candidates come from the release
 path itself, so the enrolment write lands on the hottest path in the
@@ -859,19 +862,40 @@ the first three are what the candidate would have to be given.
    readers of the same queue and only one may exist at a time, which the
    token guarantees, because holding it is what makes a thread the tracer.
    Validation runs *outside* the token and reads no live queue at all: the
-   holder **detaches** the active chain by moving two words, its head segment
+   owner **detaches** the active chain by moving two words, its head segment
    and that segment's fill, and leaves the write position empty, which is the
    state a thread holds before its first registration; the next registration
    finds no room by construction and takes the growth path. The detach asks no
    allocation path, so it cannot be refused and answers nothing (amended
    2026-09-04; `ll-model`, `dev/DECISIONS.md`, "the detach of a candidate chain
-   draws no segment"). The owner validates from the detached chain, which it
-   alone holds, and **disposes of it rather than restoring it**: the severing
+   draws no segment"). **The detacher is the owner in both forms** (ruled
+   2026-09-15, [`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md), "the
+   owner detaches at its poll, and the worker takes the chain from a one-word
+   outbox"): in line, at the collection's start; under the accelerator, at the
+   owner's safepoint poll where a worker's request word is set, which
+   publishes the detached chain as one word — the head's address with the
+   fill in its low sixteen bits — to a per-thread outbox of capacity one,
+   with a release store after the owner's last store into the chain. The
+   outbox, the inbox and the request word reside with the trace token in the
+   owner's record, which this ruling creates — today the token is a
+   thread-local no worker can address — and a worker writes the outbox and
+   the inbox only under the token: its one access before the claim is a load
+   of the outbox word, then it claims the token, takes the chain by an
+   acquire exchange with null, and posts the chain to the inbox before the
+   token's release, walked or not. An owner reclaims an untaken offer by the same exchange
+   before an in-line collection, and its exit claims its own token for good
+   before it reclaims, drains and retires. The registration is linearized in
+   the owner's program order and the detach at the release store, so the
+   entries stay plain stores and no thread but the owner writes the head, the
+   fill or a segment's link. The owner validates from the detached chain, which it
+   alone holds, and **merges it back rather than restoring it**: the severing
    inside the teardown releases the live children of a confirmed member, each
    release registers a candidate, and the first of them installs a fresh segment
-   in the write position the detach emptied. The disposition therefore takes the
-   batch and gives its segments back, and a restore over a refilled lane is a
-   checked error in every build — one that yields on an unwind alone, where the
+   in the write position the detach emptied. The disposition therefore merges
+   the batch into the lane the close finds (clause 5; [`../rc-cycle.md`](../rc-cycle.md),
+   "Concurrency", which refuses giving the segments back because a root whose
+   only record was in one is proposed by no later trace), and a restore over a
+   refilled lane is a checked error in every build — one that yields on an unwind alone, where the
    batch keeps its chain and its roots keep candidate bits with no record behind
    them (`ll-model`, `dev/DECISIONS.md`, "the restore's refusal is the ordinary
    teardown, and it yields on an unwind"). The queue stays single-reader across both phases, and the
@@ -879,12 +903,11 @@ the first three are what the candidate would have to be given.
 
    The chain's bound is the head's own fill, every segment behind the head
    holding a full segment's entries, which is so because a segment leaves the
-   write position only when it is full. That
-   is a property of a single mover: a detacher on a second thread reads a fill
-   the writer is about to reset, and what the two agree on at that instant is
-   what this clause still owes ([`../../../dev/PLAN.md`](../../../dev/PLAN.md),
-   S8.7). The in-line form refuses the second reader by construction, one thread
-   running at most one trace.
+   write position only when it is full. That is a property of a single mover,
+   and the ruling above makes the owner the one mover under both forms: a
+   worker reads a fill the owner published and will not touch again, so the
+   bound holds for the chain it took. The in-line form refuses the second
+   reader by construction, one thread running at most one trace.
 3. **The enrolment write never allocates, never locks and never copies**, so
    the overflow path is a pointer swap: the filled segment is linked into the
    queue's chain and a fresh one becomes live. **The queue is a chain of
@@ -948,10 +971,12 @@ the first three are what the candidate would have to be given.
    empty-queue case needs no separate arm.
 
    Two cells cover the two consumptions a single interval between polls can
-   hold: one overflow, and the first registration after a collection, which
-   finds the write position the detach left empty and takes the growth path. An
-   accelerator's trace takes none, detaching rather than swapping. Two overflows
-   in one interval would need a whole
+   hold: one overflow, and the first registration after a detach, which finds
+   the write position empty and takes the growth path. An accelerator's trace
+   takes none: the owner's offer at the poll is the detach, so an interval
+   that holds both an offer and a pressure collection spends both cells on
+   growths from empty and sends its overflow to the reserve (ruled 2026-09-15).
+   Two overflows in one interval would need a whole
    segment — 65 280 bytes of entries — to fill between two polls, which the
    ABI's bound on operations between two polls excludes at any entry size; that
    bound is unwritten, so the exclusion is an argument and not yet a
@@ -1013,7 +1038,9 @@ the first three are what the candidate would have to be given.
    it, and raises memory-exhausted from its own frame when the collection runs
    and loses. **A poll whose gate is closed does none of the three** — it
    refills, drains, and carries the entries to the next poll, a closed gate
-   meaning a collection or a teardown is already running. Nothing is dropped at
+   meaning a collection or a teardown is already running; neither does it pick
+   up its inbox, whose disposition runs destructors, nor offer its chain to a
+   worker (ruled 2026-09-15). Nothing is dropped at
    any of those arms, which is Edmond's ruling and the reason this clause has a
    floor at all.
 7. **A root that dies before it is read is left in the queue and refused at
@@ -1265,8 +1292,11 @@ point.
 ([`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md), "an enrolment cannot
 fail"), Edmond having ruled that nothing may be lost. The poll refills the
 cells first, then drains the overflow buffer into the queue as far as the refill made
-room, then picks up its inbox — the cheap memory first, an accelerator's
-finished proposal being where collector-freed memory actually arrives. **The
+room, re-offers the deferred lane where the epoch moved (clause 8), then
+picks up its inbox — the cheap memory first, an accelerator's finished
+proposal being where collector-freed memory actually arrives — and offers its
+chain where a worker's request word is set, behind the same gate as the
+pickup (ruled 2026-09-15). **The
 arming outlives the drain:** a poll that emptied the overflow buffer still fires if the
 refusal armed it, which is `../strategies.md`'s own rule that the refusal arms
 and the poll fires. It then reads this thread's own entry gate. An open gate

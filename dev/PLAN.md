@@ -1,6 +1,6 @@
 # PLAN
 
-Updated: 2026-09-14 · Active: S8 — the clauses the build runs into first
+Updated: 2026-09-15 · Active: S8 — the clauses the build runs into first; S8.7 closed 2026-09-15
 
 **Closed stages are deleted whole** (rule 23.1.3). S1 through S5 went on
 2026-08-25, S6 and S7 on 2026-08-27; what survived each is in
@@ -326,7 +326,7 @@ normative table to follow rather than a decision entry.
         restored, and a collection that cannot carry on ends itself and returns
         every block. All three are ruled in `ll-model` on 2026-09-03; what is
         not is the instant the window closes, which S36.7 builds.
-- [ ] S8.7 Decide what the queue's writer and the buffer's swapper agree on
+- [x] S8.7 Decide what the queue's writer and the buffer's swapper agree on
       done: Y12 clause 2 states the agreement, so that an entry written while
         the chain is being detached lands in exactly one of the detached chain
         and the lane the writer keeps, and in neither twice, and so does a whole
@@ -356,6 +356,32 @@ normative table to follow rather than a decision entry.
         is about to reset, so the two words are read while one of them may be
         written. `ll-model`'s queue states the same bound as a property of
         today's single mover rather than of the structure.
+      Critic 2026-09-15: seven findings against the first draft, none against
+        the linearization; the exit could return the block the outbox stood
+        in under a worker's read, and "posted at the release" admitted a
+        post into a freed inbox. The outbox moved beside the token, the post
+        precedes the release, and the exit's final claim is never released;
+        the offer gained the worker's request word as its arming, the closed
+        gate its effect on pickup and offer, the refused trace its duty to
+        post, and clause 3's two-cell count its third consumption. All in
+        the entry.
+      Consolidation reader 2026-09-15: eight findings of fact, all repaired —
+        the record stated as existing (it is S38.5's first build), "touches
+        only under the token" against the pre-claim load, Y5 still saying
+        "at the release", clause 2's "gives its segments back" against the
+        merge of clause 5 and `rc-cycle.md` (the review's Q9, standing since
+        2026-09-09), the audit's two blocker lists, the one-release-instant
+        rule unnamed as superseded for the exit, the Y12 heading, and the
+        count of amended crate sentences.
+      handoff: closed 2026-09-15. The writer and the detacher are one thread:
+        the owner detaches at its poll on the worker's request and publishes
+        one word to an outbox beside its token, the worker takes it under the
+        token by an acquire exchange. `dev/DECISIONS.md`, "the owner detaches
+        at its poll, and the worker takes the chain from a one-word outbox";
+        Y12 clauses 2, 3 and 6 and Y14's poll sentence carry it;
+        `rc-cycle.md`, "Worker-to-owner handoff"; `ALGORITHM-AUDIT.md` A2
+        closed. `model/PLAN.md` S38.5 is unblocked and its criterion rewritten
+        to the record, the request and the exit's final claim.
 - [ ] S8.8 Decide how concurrent commits advance the epoch counter
       done: Y9 states who writes the process-global counter, how "every N
         collections" is counted when several owners commit at once, and what

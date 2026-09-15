@@ -13,15 +13,16 @@ found an additional contradiction or consequence.
 ## Summary
 
 The synchronous owner-side form of `rc-cycle` remains the safest implementable
-subset. The optional collector-worker path is blocked by concurrent slot reads,
-an undefined candidate-queue swap, slot-reuse ordering, and block migration.
+subset. The optional collector-worker path is blocked by A3's worker clause, A4's
+second clause and A6's worker clause; the slot reads closed on 2026-09-14
+(A1) and the queue detach on 2026-09-15 (A2).
 Memory-pressure guarantees are also not closed because mandatory queue capacity
 and post-trace validation storage have no complete bound or lifetime protocol.
 
 | ID | Severity | Status | Issue |
 |---|---|---|---|
-| A1 | Critical | New | Collector-worker reads race with non-atomic slot writes |
-| A2 | Critical | Recognized | Candidate-queue swap has no linearization protocol |
+| A1 | Critical | Closed 2026-09-14 | Collector-worker reads race with non-atomic slot writes |
+| A2 | Critical | Closed 2026-09-15 | Candidate-queue swap has no linearization protocol |
 | A3 | Critical | New contradiction | Deferred slot return has two incompatible instants |
 | A4 | Critical | Recognized | Block migration can invalidate live trace rows |
 | A5 | Critical | Recognized | Mandatory candidate registration has no proved capacity bound |
@@ -278,6 +279,19 @@ tracer moves two words, the head segment and its fill, and draws nothing
 (`cycle/questions.md`, Y12 clause 2). The issue itself is unchanged — the two
 words are ones the writer is about to write, and their linearization against a
 concurrent registration is still owed.
+
+**A2 (2026-09-15, closed).** The atomic object exchanged is a per-thread outbox
+word, the head segment's address with its fill in the low sixteen bits; the
+owner detaches its chain at its safepoint poll and publishes it there with a
+release store, and the worker takes it by an acquire exchange with null after
+claiming the owner's trace token. The registration's linearization point is the
+owner's program order, the detach's is that release store, the segment links
+are published before it and read after the exchange, and the writer has no
+retry rule because no thread but the owner writes the head, the fill or a link.
+`dev/DECISIONS.md`, "the owner detaches at its poll, and the worker takes the
+chain from a one-word outbox"; `cycle/questions.md`, Y12 clause 2;
+`model/gc/rc-cycle.md`, "Worker-to-owner handoff". The worker path stays
+blocked on A3's worker clause, A4's second clause and A6's worker clause.
 
 **A1 (2026-09-14, ruled by the Sage on Edmond's proposal, `Final`).** Resolution
 (1), an atomic slot representation, in a form that keeps the `ValueBox`'s 16

@@ -773,9 +773,10 @@ the collector reads each owner's unread count itself — `frontBlock ≠
 tailBlock`, or one block's `(tail − front) mod cap` — and takes a batch
 where the count is at or above the threshold (Edmond, 2026-09-15,
 `dev/DECISIONS.md`, "the collector traces on the count it reads itself").
-The wakes are three. The mutator's poll, finding its own R's unread count
-at or above the threshold, sets a note on its record and wakes the
-collector its record names; a memory shortage collects in line and wakes it
+The wakes are three. The mutator's poll, having registered N entries since
+its last signal — a count of its own writes, so that it reads no word of
+the reader's — sets a note on its record and wakes the collector its
+record names; a memory shortage collects in line and wakes it
 too; a wake sent to a collector that has ended is lost until the next poll
 re-reads the word. The collector sleeps on a futex between rounds, with a
 fallback timer between two named bounds that it lengthens after empty

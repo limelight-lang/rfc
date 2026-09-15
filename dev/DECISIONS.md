@@ -18,6 +18,9 @@ that itself — it stands behind the writer and reads `(tail − front) mod cap`
 on its round. The three wakes stand as ways to start a round — the poll's
 signal, the memory shortage, the timer — and none of them decides a batch;
 the count read on the round does, against the threshold the runtime sets.
+The mutator's signal is by its own writes, not by the unread count: it
+counts the registrations it made since its last signal and wakes at N of
+them, reading no word of the reader's — `front` is the collector's line.
 
 ## 2026-09-15 — the candidate queue is read behind its writer, and the collector's verdicts come back by a second ring
 

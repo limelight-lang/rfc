@@ -10,6 +10,15 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-09-15 — the collector traces on the count it reads itself; a wake is only a wake
+
+**Ruled by Edmond**, amending the entry below: the collector collects an
+owner when enough roots have accumulated in that owner's R, and it knows
+that itself — it stands behind the writer and reads `(tail − front) mod cap`
+on its round. The three wakes stand as ways to start a round — the poll's
+signal, the memory shortage, the timer — and none of them decides a batch;
+the count read on the round does, against the threshold the runtime sets.
+
 ## 2026-09-15 — the candidate queue is read behind its writer, and the collector's verdicts come back by a second ring
 
 **Ruled by Edmond**, restoring the form he designed on 2026-08-25 (tenth entry

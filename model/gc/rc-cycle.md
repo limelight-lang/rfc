@@ -768,15 +768,19 @@ itself, as the consumer; its disposition is the one above, made directly.
 The exit takes the token for good, reads P and R to their ends, and retires
 the queue.
 
-**Signals.** The mutator's poll, finding R's unread count at or above a
-threshold — `frontBlock ≠ tailBlock`, or one block's `(tail − front) mod
-cap` — sets a note on its record and wakes the collector its
-record names; a memory shortage collects in line and wakes it too; a wake
-sent to a collector that has ended is lost until the next poll re-reads the
-word. The collector sleeps on a futex between rounds, with a fallback timer
-between two named bounds that it lengthens after empty rounds and shortens
-when an owner's last disposition freed something, which that owner's poll
-writes into its record. Several collectors divide the owners, each owner
+**Signals.** A wake starts a round and decides nothing else: on the round
+the collector reads each owner's unread count itself — `frontBlock ≠
+tailBlock`, or one block's `(tail − front) mod cap` — and takes a batch
+where the count is at or above the threshold (Edmond, 2026-09-15,
+`dev/DECISIONS.md`, "the collector traces on the count it reads itself").
+The wakes are three. The mutator's poll, finding its own R's unread count
+at or above the threshold, sets a note on its record and wakes the
+collector its record names; a memory shortage collects in line and wakes it
+too; a wake sent to a collector that has ended is lost until the next poll
+re-reads the word. The collector sleeps on a futex between rounds, with a
+fallback timer between two named bounds that it lengthens after empty
+rounds and shortens when an owner's last disposition freed something, which
+that owner's poll writes into its record. Several collectors divide the owners, each owner
 named to one collector by a word in its record; a collector left with a
 backlog after two consecutive rounds births a sibling and hands it half of
 its owners, and ends a sibling idle for several rounds; a sibling's birth

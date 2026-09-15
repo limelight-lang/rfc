@@ -19,6 +19,7 @@ No product code lives here — this is the specification, see
 - **Vocabulary: canonical, deprecated and context-sensitive terms, each with its established equivalent and verdict** → [GLOSSARY.md](GLOSSARY.md)
 - **Pitfalls already hit** → [POSTMORTEM.md](POSTMORTEM.md)
 - **What shipped runtimes do about a collector reading a two-word value slot** → [CONCURRENT-SLOT-READS-SURVEY.md](CONCURRENT-SLOT-READS-SURVEY.md) — the precedent record behind A1's resolution; reports, recommends nothing
+- **What deployed chained single-producer single-consumer queues do** → [SPSC-QUEUE-SURVEY.md](SPSC-QUEUE-SURVEY.md) — the table behind the candidate ring's form (moodycamel's circle of blocks) and its one deliberate difference, release/acquire on the index words
 - **HIR, the passes over it, and the erasure line** → not here. `amber/design/`
   holds them from 2026-09-06; the folder `hir/` and stage S10 were retired that
   day ([DECISIONS.md](DECISIONS.md))

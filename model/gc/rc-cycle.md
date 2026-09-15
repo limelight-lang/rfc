@@ -121,9 +121,9 @@ The aggregate pass also permits a smaller scratch representation:
 
 The persistent candidate queue remains logically separate: it records roots
 across collection attempts, whereas the traversal vector contains every member
-discovered by one attempt. An implementation may reuse detached queue storage,
-but only after the owner has established a linearized snapshot; the unresolved
-worker detach protocol does not yet provide that guarantee.
+discovered by one attempt. Queue storage a reader has consumed is the
+writer's again around the circle of blocks, and the owner unlinks surplus at
+its poll ("Worker-to-owner handoff").
 
 The **acyclic-class filter** excludes a class only when static analysis proves
 that none of its declared slots can contain a reference that closes a cycle.
@@ -588,21 +588,20 @@ accelerator.
 follow from that. Every slot the teardown frees waits for the window's close
 rather than returning at the free. The releases the sever performs are non-final
 decrements, so the live children of a member register as candidates in the
-operation that frees them, and the lane the close finds is therefore not the
-lane the detach emptied. The collection **merges** its detached chain into
-whatever the lane holds by then. In `ll-model`, a batch returning to an empty
-lane needs only its original head/fill publication. With two lanes, the merge
-moves only the suffix of the detached partial head that fits in the active
-partial head and splices the full tails. Any detached remainder is already a
-prefix and becomes the sole partial output head. Thus it draws no block, reads
-no entity header and does no whole-queue record pass
-(`cycle::queue::merge_candidates`).
+operation that frees them: they are written at the ring's tail, past what the
+collection's read took, and the next reader meets them. Nothing is merged
+back: an entry the reader consumed is consumed, and a root the collection
+could not dispose of — a trace an allocation path refused — was never
+consumed, `front` having advanced only over disposed entries. The deferred
+lane is the owner's own structure beside the ring, and the re-offer at the
+epoch's turn splices its blocks into R, the owner being R's writer
+("Worker-to-owner handoff").
 
 After all membership reads and the relevant shadow sweep, the synchronous
-owner removes completed zero-count entries across the combined queue and its
-overflow buffer, clears their candidate and completed-free marks, and returns
-the slots through `ll_free`. A zero count whose teardown has not completed
-keeps its entry. The ordinary collection reaches that reading after its trace
+owner retires the zero-count entries its read met — the reader's verdict for
+an entity that had died before the read — clears their candidate and
+completed-free marks, and returns the slots through `ll_free`. A zero count
+whose teardown has not completed keeps its entry. The ordinary collection reaches that reading after its trace
 window closes; the pressure collection reaches it after its standing member
 list ends, before another round and before the allocation retry. The cleanup
 owner retains bounds, cursors and pending returns across the combination's
@@ -649,69 +648,141 @@ leaves the arming for the next poll at a clean point.
 A trace runs no user code, takes no user lock, and releases the token before
 destructors, so this wait is intended to be bounded.
 
-A collector worker that finds the owner's outbox empty, the token held or the
-owner's result inbox full skips that owner until a later round. Candidate bits
-remain set.
+A collector that finds an owner's ring empty, or the owner's token held, skips
+that owner until a later round. Candidate bits remain set.
 
 ### Worker-to-owner handoff
 
-The owner detaches its active candidate chain — two words, the head segment
-and its fill — at a safepoint poll where a worker's request word is set, and
-publishes it to a capacity-one per-thread outbox as one word, the head's
-address with the fill in its low sixteen bits, by a release store after its
-last store into the chain. The outbox, the inbox, the request word and the
-trace token share one per-thread record whose storage outlives the thread,
-and a worker writes the outbox and the inbox only under the token, its one
-access before the claim being a load of the outbox word. A collector worker
-that reads the word set claims the owner's trace token,
-takes the chain by an acquire exchange with null, traces it, posts the chain
-to the inbox before the token's release — walked or not: a trace the pool
-refuses, or one that did not complete, posts the chain unmarked, its colours
-being no verdict, and clause 5 re-enqueues every unmarked root — and
-releases. The owner processes the proposal at a consistent-point poll.
-Nothing waits for the request, the offer or the pickup: an empty outbox, like
-a held token or a full inbox, is a skip. The detach draws no segment and
-cannot be refused, so a collection is never stopped at its front by an
-allocation; the lane it leaves empty is the state a thread holds before its
-first registration, and the next registration takes the growth path
-(`cycle/questions.md`, Y12 clause 2). The poll's order is refill, drain,
-re-offer, pickup, offer; the pickup and the offer stand behind the entry gate
-as the fire does, and the owner offers only into an empty outbox.
+**Two rings per mutator thread, each with one writer and one reader** (ruled
+2026-09-15, `dev/DECISIONS.md`, "the candidate queue is read behind its
+writer, and the collector's verdicts come back by a second ring", which
+restores the design of 2026-08-25 and supersedes the outbox form). The
+candidate ring R is written by the mutator alone and read by the trace
+token's holder alone; the verdict ring P is written by the collector alone
+and read by the mutator alone. Both take the form of moodycamel's
+`ReaderWriterQueue`: a circular list of 64 KiB blocks, each block carrying
+its own `front` (the reader's) and `tail` (the writer's) on separate cache
+lines with a local copy of the other, and a `next` the writer alone sets
+and only on the block it writes; a `frontBlock` pointer the reader owns and
+a `tailBlock` the writer owns, in the owner's record on two lines beside
+the token, one line per writer. A registration stores the entry, then
+`tail + 1` by a release store. No index is compare-and-swapped and no
+block changes hands: the writer leaves a full block for the next in the
+circle when that is not the front block, and otherwise takes a fresh one —
+a spare cell, then the critical reserve, then the overflow buffer that
+cannot refuse (`cycle/questions.md`, Y12 clause 3) — links it after the
+tail block and moves `tailBlock` with a release store. The reader takes
+from the front block; finding it empty while `frontBlock ≠ tailBlock`, it
+re-reads the front block once and then advances to the next, which is never
+empty. A block's indices wrap at its capacity with one spare slot, as the
+reference's do, so its occupancy is `(tail − front) mod cap` and a block is
+filled once per lap from wherever the reader left it. Consumed blocks are
+not returned: the writer reaches them around the circle; the owner shrinks
+a circle, when it chooses, by unlinking the empty block after its tail
+block. The record is drawn beside the base block at thread init, before the
+heapless return, and its refusal is a thread that never starts; a thread
+the runtime never registered draws it at its first registration, which
+takes the registry's lock once on that thread's release path; it is reset
+at every re-take, and the collector re-derives its cursors under the token
+at every batch, its per-owner batch size excepted.
 
-What a trace does need is rows. The worker draws its own workspace and its own
-scratch blocks through ordinary allocation, and skips that owner for the round
-when the pool refuses. Synchronous collection tries the pool and then the
-critical reserve, and aborts before drawing a row if both fail. See
-`cycle/questions.md`, Y12 clause 3.
+**The in-line collection excludes the collector for its whole length.** The
+owner sets a collecting word in its record before it takes its token and
+clears it at its close, by a release store that is the close's last; the
+collector reads the word with acquire after its own claim and, finding it
+set, releases and skips. The owner's collection reads every entry from the
+front block to the tail block's `tail` as its batch, traces, releases the
+token at the scan's end as above, and at its close compacts the ring in
+place: an entry it disposed of is dropped, every other entry — a component
+whose teardown was refused or resurrected, a zero-count entity whose
+teardown has not completed, a root read live with nothing proposed, a root
+a refused trace never walked — is kept in order, packed from the front
+block's `front`, and the blocks' `tail` indices and `tailBlock` are set to
+what was kept, `tailBlock` on the last block holding a kept entry; the
+compaction rewrites the blocks' local copies of the other side's index as
+well, since the reference's fast paths trust them on the invariant that
+`tail` never moves back. All of these are the owner's words. The compaction
+is the retirement pass in ring form and draws nothing. A retirement inside a
+teardown with no collection running takes the token first and waits out a
+collector's batch, and reads P's prefix up to the first verdict it cannot
+dispose of. The pressure path compacts after every round and, before its
+allocation retry, makes the returns a foreign holder left withheld, under
+its own token. The deferred lane is re-offered at the epoch's turn by a
+splice with no copy: its blocks are linked into R's circle after the tail
+block and `tailBlock` moved to the last of them, so they lie inside the
+reader's region; the re-offer arms the poll's collection only while the
+record names no living collector.
 
-The detach is linearized against registration by being the owner's: a
-registration is ordered in the owner's program order, the detach at the release
-store into the outbox, and no thread but the owner writes the head, the fill or
-a segment's link (`dev/DECISIONS.md`, "the owner detaches at its poll, and the
-worker takes the chain from a one-word outbox", which closes
-`dev/ALGORITHM-AUDIT.md` issue A2). The worker's roots are the entries it reads
-from the chain it took, and the outbox word orders them: every entry store and
-link store sequenced before the owner's release store is visible after the
-worker's acquire exchange, so the entries themselves are plain stores and plain
-loads. An owner reclaims an untaken offer by the same exchange with null before
-an in-line collection, and drains a posted chain into its lane the same way,
-since a collection short of memory would otherwise not see the garbage a
-worker proposed; the round traces every root of it exactly, so the marks
-decide nothing there. Its exit claims its own token first and never releases
-it, then reclaims the outbox, drains the inbox into its lane, runs its
-collection rounds under the claim, retires the queue and releases the record
-with the token held: no worker posts after the drain, a worker's claim on a
-released record fails, and the record is never reused under a worker's claim.
+**The collector's batch.** For an owner with work — a note set at the
+owner's poll, or a front block that is not empty — the collector opens its
+own workspace, claims the owner's trace token by compare-and-swap (held:
+skip; collecting: release and skip), checks P's room and clamps its batch
+to it, takes at most K entries — K under a block's capacity, so a batch
+spans at most two blocks — from R's front as the reference's dequeue takes
+them but advances only after the batch's verdicts are posted, the up to
+three stores of the advance owned by one guard from the unwind as well,
+copies them into its workspace, traces the copy
+through its own reader and arena under a block budget B, posts one verdict
+per entry to P in R's order, advances `front` and releases. The token
+covers the read and the trace, as above: two traces over one thread's
+blocks would put a block on two touched lists. What the owner waits for
+when it needs its token is one batch's trace, bounded by B and not by K,
+since one root's closure can be the heap. The verdicts are four:
+*proposed*, the row having read potentially unreachable; *read live*;
+*zero-count*, the count having read zero; *unwalked*, the trace having met
+B or a refused allocation before the root — posted so that no root blocks
+the ring behind it, and validated by the owner's in-line collection, which
+traces under no budget. A batch that met B halves K for that owner, a
+completed one doubles it back to its bound, and neither is an empty round
+for the timer.
 
-At pickup, the owner handles each entry in one of four ways:
+**P does not grow.** One block per thread, the owner's memory, drawn with
+the record; the collector clamps its batch to P's room and never writes a
+link into P, so no block passes from the owner to the collector and no
+unlink races a link. The collector allocates nothing in the owner's name;
+its workspace and its rows are its own, as before.
 
-- return storage for a zero-count entity when slot reuse is safe;
-- finalize a component confirmed as unreachable;
-- requeue an entry that was not traced or not validated; or
-- move a candidate that currently has an external reference to the
-  deferred-candidate buffer until the epoch changes.
+**The mutator's disposition.** It reads P at its open-gate poll, and every
+in-line collection — the fire, the pressure path, the exit — reads P into
+its batch first, so a proposal never stands through a collection short of
+memory. A proposed root becomes part of one in-line collection over the
+proposed roots, validated exactly and finalized as any batch is; an
+unwalked root joins that batch; a root read live moves to the deferred lane
+until the epoch turns, on the collector's reading (clause 8, amended
+2026-09-15: the owner still makes the move, the mirror it records is the
+poll's own commit count, and a garbage root the collector misread waits one
+epoch); a zero-count verdict is a count read and not a completed death, so
+the owner re-reads the entity's completed-free bit and retires the entry
+only on it. Every entry the reading cannot dispose of — a proposed root
+whose in-line trace was refused, a component whose teardown was refused or
+resurrected, a resurrected zero-count entity — is written back into R as a
+registration is, its candidate bit still set, before P's `front` advances,
+and P's `front` advances at the close by the whole reading. A closed-gate
+poll reads no verdict. The owner is the sole writer for all of these
+transitions.
 
-The owner is the sole writer for all of these queue transitions.
+**In-line collection is the same reader.** A mutator short of memory, or one
+whose poll fires, sets its collecting word, takes its own token — waiting
+out a collector's batch if one is in progress — and reads P and then R
+itself, as the consumer; its disposition is the one above, made directly.
+The exit takes the token for good, reads P and R to their ends, and retires
+the queue.
+
+**Signals.** The mutator's poll, finding R's unread count at or above a
+threshold — `frontBlock ≠ tailBlock`, or one block's `(tail − front) mod
+cap` — sets a note on its record and wakes the collector its
+record names; a memory shortage collects in line and wakes it too; a wake
+sent to a collector that has ended is lost until the next poll re-reads the
+word. The collector sleeps on a futex between rounds, with a fallback timer
+between two named bounds that it lengthens after empty rounds and shortens
+when an owner's last disposition freed something, which that owner's poll
+writes into its record. Several collectors divide the owners, each owner
+named to one collector by a word in its record; a collector left with a
+backlog after two consecutive rounds births a sibling and hands it half of
+its owners, and ends a sibling idle for several rounds; a sibling's birth
+waits the same interval after a refused one as the first thread's. Two
+collectors never read one owner's ring: the owner's word says whose it is,
+and the token says who reads now.
 
 While a trace is active, its owner defers reuse of released slots. Other threads
 need not do so only if the block-disjointness prerequisite above holds.
@@ -786,8 +857,8 @@ then exits", ruled 2026-09-04). The exit is the one holder that keeps the
 token past its last row read: it claims the token and holds it through the
 record's release, so that no worker takes or posts a chain after the exit's
 drain, and the held word stalls nobody because a worker never waits
-(`dev/DECISIONS.md`, "the owner detaches at its poll, and the worker takes the
-chain from a one-word outbox"). An exit a destructor asks for — inside a collection, an ordinary
+(`dev/DECISIONS.md`, "the candidate queue is read behind its writer, and the
+collector's verdicts come back by a second ring"). An exit a destructor asks for — inside a collection, an ordinary
 teardown or an arena reset — is recorded and runs at the thread's top, where
 the next exit call outside those states or the thread's end reaches it: every
 frame above the destructor goes on using the heap, so the sequence cannot run
@@ -843,8 +914,9 @@ naming retained blocks (`ll-model`, `memory/retained.rs`). The other three must
 be implemented for this design.
 
 The old mutator handshake is not retained. It could deadlock with a mutator
-waiting on its trace token. Collector workers instead use the detached-chain
-handoff described under “Concurrency”.
+waiting on its trace token. Collector workers instead read the candidate ring
+behind its writer and answer by the verdict ring, described under
+“Concurrency”.
 
 Only the owning mutator validates and reclaims a component. Exact validation is
 sound only when the owning thread stabilizes the entity while reading its

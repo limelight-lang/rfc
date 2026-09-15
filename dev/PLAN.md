@@ -1,6 +1,6 @@
 # PLAN
 
-Updated: 2026-09-15 · Active: S8 — the clauses the build runs into first; S8.7 closed 2026-09-15
+Updated: 2026-09-15 · Active: S8 — the clauses the build runs into first; S8.7 closed 2026-09-15 and reopened the same night as S8.12, Edmond's ruling
 
 **Closed stages are deleted whole** (rule 23.1.3). S1 through S5 went on
 2026-08-25, S6 and S7 on 2026-08-27; what survived each is in
@@ -382,6 +382,83 @@ normative table to follow rather than a decision entry.
         `rc-cycle.md`, "Worker-to-owner handoff"; `ALGORITHM-AUDIT.md` A2
         closed. `model/PLAN.md` S38.5 is unblocked and its criterion rewritten
         to the record, the request and the exit's final claim.
+- [x] S8.12 Restore the queue's concurrent reader: written by the mutator, read behind it by the collector   *(before S8.8; reopens S8.7)*
+      done: Y12 clause 2 states the single-producer single-consumer form
+        Edmond designed and the entry of 2026-09-15 replaced without his
+        ruling — the mutator only writes its queue: an entry, then the fill
+        by a release store; the collector only reads it: entries up to an
+        acquire-loaded fill by a cursor of its own, moving neither the head
+        nor the fill and writing nothing into the queue; a consumed entry is
+        consumed, so the owner neither merges, defers, drains nor retires
+        inside the live queue — its dispositions work on what comes back;
+        the proposal returns by a second queue of the same form in the other
+        direction, written only by the collector and read only by the
+        mutator; the in-line collection is the same consumer on the owner's
+        own thread, the token being what keeps the consumer single; the
+        growth's segment publication is stated as a producer-only act —
+        evaluated against Lamport's SPSC queue, FastForward and `kfifo`;
+        `dev/DECISIONS.md` carries the ruling and marks "the owner detaches
+        at its poll, and the worker takes the chain from a one-word outbox"
+        superseded, and names what of `ll-model` S38.5–S38.7 (the outbox,
+        the offer, the pickup's walk-back) goes with it
+      tier: T2 · role: Critic
+      handoff: opened 2026-09-15 by Edmond's ruling in conversation: the
+        queue was designed so that the mutator writes and the collector reads
+        in parallel; a session's Decide step closed S8.7 by making the reader
+        the owner's detach at its poll, considered no SPSC form, and never
+        put the change of premise to him. The two-word tearing the entry
+        argues from is a detacher's problem, not a reader's: a reader that
+        moves nothing needs one release/acquire pair on the fill.
+      progress 2026-09-15: the ruling is written — `dev/DECISIONS.md`, "the
+        candidate queue is read behind its writer, and the collector's
+        verdicts come back by a second ring"; `rc-cycle.md`, "Worker-to-owner
+        handoff" rewritten, its "Concurrency" merge paragraph and exit
+        citation amended; Y12's heading, clause 2 (restored), clause 3's
+        two-cell count and spare replenishment, clause 5's merge, clause 8's
+        parking and turnover, and "What is still open" amended; Y5's
+        handshake paragraph, `strategies.md`'s mechanism list and
+        `ALGORITHM-AUDIT.md` A2 amended.
+      Critic 2026-09-15 round 1: eleven findings, all accepted — the in-line
+        collection disposes after the token's release while the collector
+        reads (a collecting word in the record); the ring is a FIFO and
+        four disposition arms leave an entry standing (compaction in place
+        at the close, the retirement pass in ring form); zero-count is a
+        count read, not a death (retire on the completed-free bit, else
+        write back); a two-word tail tears; P read only by the poll (every
+        in-line collection reads it first); the index words' residence;
+        post-then-advance; the re-offer's funding; two unnamed prices; the
+        timer's signal; the criteria.
+      Critic 2026-09-15 round 2: ten findings, all accepted — the per-root
+        re-offer copy can abort in the overflow buffer at a pressure poll
+        (a splice); a root past the budget blocks the ring for ever (the
+        *unwalked* verdict, K halved and doubled); the segment the other
+        side's index names must never be returned; withheld returns under
+        the owner's own token; the collecting word's clear is the close's
+        last release store; a record mandatory at init; P's write-back arm
+        for every undisposed verdict; the offset word overflows (an entry
+        index); the re-offer's arming retires with a living collector;
+        S49.1 was four results. Then Edmond named the deployed queue in
+        `~/true-async-server`, moodycamel's `ReaderWriterQueue`, and the
+        ring took its exact form — a circle of blocks with per-block
+        indices — which retired the packed word, the oldest-segment pointer
+        and the return-behind-head rule.
+      Critic 2026-09-15 round 3: eleven findings, all accepted — the
+        compaction breaks the reference's "tail never goes backwards" and
+        must rewrite the blocks' local copies; indices wrap modulo the
+        capacity with a spare slot; the splice must move `tailBlock` to the
+        last spliced block or the reader never enters them; P must not grow
+        (the collector's link would race the owner's unlink); the teardown
+        retirement reads P's prefix only; parked cases are a rule-4 dress
+        (deleted with the mechanism); the splice belongs beside the ring
+        and the shrink last; the collecting word is `COLLECTING` moved; the
+        batch advance is three stores under one guard; K on the reader's
+        line. The survey behind the adoption is `dev/SPSC-QUEUE-SURVEY.md`.
+      handoff: closed 2026-09-15. The ruling and its three rounds are one
+        entry, `dev/DECISIONS.md`, "the candidate queue is read behind its
+        writer, and the collector's verdicts come back by a second ring";
+        `rc-cycle.md`, "Worker-to-owner handoff" carries the mechanism; Y12
+        clauses 2, 3, 5, 8 and its heading; `model/PLAN.md` S49 builds it in
+        eight steps.
 - [ ] S8.8 Decide how concurrent commits advance the epoch counter
       done: Y9 states who writes the process-global counter, how "every N
         collections" is counted when several owners commit at once, and what

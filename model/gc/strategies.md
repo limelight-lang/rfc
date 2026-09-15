@@ -354,7 +354,7 @@ retained cycles, the caller's call to make).
 The runtime therefore exposes only mechanism: candidate registration on the
 release path (arm), `ll_gc_collect_cycles` (fire now), `ll_gc_maybe_collect`
 (fire if armed), the entry gate and the reentrancy guard behind it, the
-inbox pickup at a safepoint, and the GC-heap allocation slow path, which
+reading of the collector's verdict ring at a safepoint, and the GC-heap allocation slow path, which
 collects synchronously after allocation failure rather than reporting it
 without first attempting collection. No triggering
 policy lives in the model.

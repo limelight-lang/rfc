@@ -293,6 +293,18 @@ chain from a one-word outbox"; `cycle/questions.md`, Y12 clause 2;
 `model/gc/rc-cycle.md`, "Worker-to-owner handoff". The worker path stays
 blocked on A3's worker clause, A4's second clause and A6's worker clause.
 
+**A2 (2026-09-15, re-answered by Edmond's ruling, closed).** The closing
+above answered the question by removing the concurrent reader; Edmond
+restored it. The atomic objects are the ring's two indices, each with one
+writer: the registration's linearization point is the release store of
+`tail` after the entry, the read's the acquire load of `tail` before the
+entries below it, and no index or link has two writers — the owner writes
+entries, `tail` and the links, the reader writes `head`. Each index is one
+word, segment and offset, so a chained ring adds no race: a segment leaves
+the write position only when full, and a reader at its end knows it whole.
+`dev/DECISIONS.md`, "the candidate queue is read behind its writer,
+and the collector's verdicts come back by a second ring"; Y12 clause 2.
+
 **A1 (2026-09-14, ruled by the Sage on Edmond's proposal, `Final`).** Resolution
 (1), an atomic slot representation, in a form that keeps the `ValueBox`'s 16
 bytes and word offsets: +0 stays the immediate value on the immediate arm and

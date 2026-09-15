@@ -294,14 +294,13 @@ a slot from being recycled under an identifier in flight, and eager death.
 covers the trace alone, and the accelerator hands off by buffer swap"). An
 acknowledged rendezvous is what a thread waiting on the trace token would
 deadlock against — the collection parked on an acknowledgement that rides the
-waiter's own checkpoint — so the delivery it performed is done by detachment
-instead: the owner detaches its queue chain at its safepoint poll and publishes
-it to a one-word outbox, the token holder takes it from there, traces it, and
-before the token's release posts it to a per-thread inbox of capacity one that
-nobody waits on. The ruling's own word was *swap*, the swap became a two-word
-detach on 2026-09-04, and the detach became the owner's on 2026-09-15 (Y12
-clause 2); the delivery it describes is unchanged, and nothing waits on the
-offer either. The rest of the list is untouched, and the in-line form never
+waiter's own checkpoint — so the delivery it performed is done by the two
+rings instead: the collector reads the candidate ring behind its writer under
+the token and answers by the verdict ring, which the owner reads at its poll
+and nobody waits on (Y12 clause 2, restored 2026-09-15 by Edmond after the
+ruling's *swap*, a detach of 2026-09-04 and an owner-side detach earlier on
+2026-09-15 had each given the buffer switch to the reader). Nothing waits on
+a verdict either. The rest of the list is untouched, and the in-line form never
 used the handshake at all.
 
 **The two-sided form was permitted for one day and withdrawn.** The ninth
@@ -788,7 +787,7 @@ store into a proven slot, and honoured by the holder's `dispose`").
 a proof — the enrolling form everywhere, which is what the crate does
 today.
 
-## Y12. The root queue: written by the mutator, read behind it by the collector  [contract written 2026-08-25; the named candidate does not meet it; clauses 3 and 8 ruled 2026-08-27; clauses 2 and 3 amended 2026-09-04 against the built queue; clause 2's detacher ruled 2026-09-15, clauses 3 and 6 amended with it]
+## Y12. The root queue: written by the mutator, read behind it by the collector  [contract written 2026-08-25; clauses 3 and 8 ruled 2026-08-27; clause 2's read-behind form restored and clause 8's deferral on the collector's reading ruled by Edmond 2026-09-15, superseding the detach forms of 2026-09-04 and earlier that day]
 
 Filed by Edmond on the map, 2026-08-25. Candidates come from the release
 path itself, so the enrolment write lands on the hottest path in the
@@ -857,57 +856,48 @@ the first three are what the candidate would have to be given.
    enrols only into its own queue, so the write is uncontended by
    construction and needs no read-modify-write. Nothing else may write it.
 2. **The live queue has one reader, and it is the trace token's holder**
-   (amended 2026-08-27). The collector reads a thread's queue behind its
-   writer; the owner reads its own when it collects in line (Y14). Both are
-   readers of the same queue and only one may exist at a time, which the
-   token guarantees, because holding it is what makes a thread the tracer.
-   Validation runs *outside* the token and reads no live queue at all: the
-   owner **detaches** the active chain by moving two words, its head segment
-   and that segment's fill, and leaves the write position empty, which is the
-   state a thread holds before its first registration; the next registration
-   finds no room by construction and takes the growth path. The detach asks no
-   allocation path, so it cannot be refused and answers nothing (amended
-   2026-09-04; `ll-model`, `dev/DECISIONS.md`, "the detach of a candidate chain
-   draws no segment"). **The detacher is the owner in both forms** (ruled
-   2026-09-15, [`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md), "the
-   owner detaches at its poll, and the worker takes the chain from a one-word
-   outbox"): in line, at the collection's start; under the accelerator, at the
-   owner's safepoint poll where a worker's request word is set, which
-   publishes the detached chain as one word — the head's address with the
-   fill in its low sixteen bits — to a per-thread outbox of capacity one,
-   with a release store after the owner's last store into the chain. The
-   outbox, the inbox and the request word reside with the trace token in the
-   owner's record, which this ruling creates — today the token is a
-   thread-local no worker can address — and a worker writes the outbox and
-   the inbox only under the token: its one access before the claim is a load
-   of the outbox word, then it claims the token, takes the chain by an
-   acquire exchange with null, and posts the chain to the inbox before the
-   token's release, walked or not. An owner reclaims an untaken offer by the same exchange
-   before an in-line collection, and its exit claims its own token for good
-   before it reclaims, drains and retires. The registration is linearized in
-   the owner's program order and the detach at the release store, so the
-   entries stay plain stores and no thread but the owner writes the head, the
-   fill or a segment's link. The owner validates from the detached chain, which it
-   alone holds, and **merges it back rather than restoring it**: the severing
-   inside the teardown releases the live children of a confirmed member, each
-   release registers a candidate, and the first of them installs a fresh segment
-   in the write position the detach emptied. The disposition therefore merges
-   the batch into the lane the close finds (clause 5; [`../rc-cycle.md`](../rc-cycle.md),
-   "Concurrency", which refuses giving the segments back because a root whose
-   only record was in one is proposed by no later trace), and a restore over a
-   refilled lane is a checked error in every build — one that yields on an unwind alone, where the
-   batch keeps its chain and its roots keep candidate bits with no record behind
-   them (`ll-model`, `dev/DECISIONS.md`, "the restore's refusal is the ordinary
-   teardown, and it yields on an unwind"). The queue stays single-reader across both phases, and the
-   candidate's fatal second-reader case never arises.
+   (amended 2026-08-27; the reader's form restored 2026-09-15 by Edmond,
+   [`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md), "the candidate
+   queue is read behind its writer, and the collector's verdicts come back by
+   a second ring"). The queue takes the form of moodycamel's
+   `ReaderWriterQueue`: a circular list of 64 KiB blocks, each with its own
+   `front` (the reader's) and `tail` (the writer's) on separate cache lines,
+   a `next` only the writer sets, and two block pointers, the reader's
+   `frontBlock` and the writer's `tailBlock`. The mutator stores an entry,
+   then `tail + 1` by a release store; the reader takes from the front
+   block, re-reading it once when it finds it empty with `frontBlock ≠
+   tailBlock`, and then advances. The collector reads the queue behind its
+   writer this way; the owner reads its own the same way when it collects
+   in line (Y14). Both are readers of the same ring and only one exists at
+   a time, which the token guarantees, because holding it is what makes a
+   thread the tracer. No index is compare-and-swapped, no block changes
+   hands, and nothing is detached: an entry the reader consumed is
+   consumed, and one the reader could not dispose of — a trace an
+   allocation path refused — was never consumed, `front` having advanced
+   only over disposed entries. The writer switches blocks around the circle
+   and takes a fresh one only when the next is the front block (clause 3);
+   consumed blocks are reached again around the circle, and the owner
+   unlinks surplus at its poll. The owner's own collection excludes the
+   collector for its whole length by a collecting word in its record, which
+   the collector reads after its claim, and compacts the ring in place at
+   its close, keeping in order every entry it could not dispose of and
+   lowering its own indices. Validation runs *outside* the token and reads no live
+   queue at all: the collector validates nothing, and answers by the verdict
+   ring — a second ring of the same form, written by the collector alone and
+   read by the mutator alone — with one of three verdicts per entry, proposed,
+   read live, or zero-count; the owner disposes at its poll (clauses 5, 7
+   and 8). The in-line collection's disposition is the same, made directly.
+   The registration is linearized in the owner's program order and the read
+   at the acquire load of `tail`, so the entries stay plain stores and no
+   thread but the owner writes an entry, `tail` or a segment's link.
 
-   The chain's bound is the head's own fill, every segment behind the head
-   holding a full segment's entries, which is so because a segment leaves the
-   write position only when it is full. That is a property of a single mover,
-   and the ruling above makes the owner the one mover under both forms: a
-   worker reads a fill the owner published and will not touch again, so the
-   bound holds for the chain it took. The in-line form refuses the second
-   reader by construction, one thread running at most one trace.
+   **Superseded the same day it was built.** The form of 2026-09-15's
+   first entry — the owner detaching its lane at its safepoint poll into a
+   one-word outbox on the worker's request — and the detach of 2026-09-04
+   before it, and the buffer swap by the accelerator of 2026-08-27 before
+   that, each solved a race the previous one had created by giving the
+   buffer switch to the reader; none was Edmond's, and the chain is recorded
+   as superseded in `dev/DECISIONS.md`.
 3. **The enrolment write never allocates, never locks and never copies**, so
    the overflow path is a pointer swap: the filled segment is linked into the
    queue's chain and a fresh one becomes live. **The queue is a chain of
@@ -923,7 +913,8 @@ the first three are what the candidate would have to be given.
    registration can suffer since the overflow buffer below, and it cost a pool
    request at the front of every collection — worst on the collection an
    allocation failure started, which would take a block from the tier its own
-   rows need before drawing a single row. The detach of clause 2 replaces it.
+   rows need before drawing a single row. The reader of clause 2 draws no
+   block at all: it advances `front` and the writer switches blocks.
 
    **The owner provisions the overflow**, no reader existing at a non-final
    decrement to have provisioned it. It holds **two spare segments** in a
@@ -970,13 +961,11 @@ the first three are what the candidate would have to be given.
    so a thread that never enrols holds two segments and not three, and the
    empty-queue case needs no separate arm.
 
-   Two cells cover the two consumptions a single interval between polls can
-   hold: one overflow, and the first registration after a detach, which finds
-   the write position empty and takes the growth path. An accelerator's trace
-   takes none: the owner's offer at the poll is the detach, so an interval
-   that holds both an offer and a pressure collection spends both cells on
-   growths from empty and sends its overflow to the reserve (ruled 2026-09-15).
-   Two overflows in one interval would need a whole
+   Two cells cover two overflows in one interval between polls, which is
+   the only consumption left since the reader of clause 2 detaches nothing:
+   the write position is never emptied, and a collector's batch spends no
+   cell (amended 2026-09-15 with the read-behind form). Two overflows in one
+   interval would need a whole
    segment — 65 280 bytes of entries — to fill between two polls, which the
    ABI's bound on operations between two polls excludes at any entry size; that
    bound is unwritten, so the exclusion is an argument and not yet a
@@ -995,13 +984,14 @@ the first three are what the candidate would have to be given.
    refused for want of a workspace; every window after it opens on memory in
    hand.
 
-   **A consumed spare is replenished by the buffer that comes back.** At the
-   inbox pickup the owner drains the detached segments, disposes of each entry
-   (clauses 5, 7 and 8), refills its cells to two out of the drained segments,
-   and returns the rest through the critical reserve's return path, which
-   refills the reserve before the pool sees anything
+   **A consumed block is the writer's again around the circle.** No block
+   passes from the reader to the writer: the writer reaches an emptied block
+   when the circle brings it back. At its poll the owner may unlink the
+   empty block after its tail block, refill its cells to two from such
+   blocks, and return the rest through the critical reserve's return path,
+   which refills the reserve before the pool sees anything
    ([`../../memory/critical-reserve.md`](../../memory/critical-reserve.md)).
-   The poll's fill is what covers a thread that has not been traced.
+   The poll's fill is what covers a thread that has not been read.
 4. **The candidate bit is set before the queue write and cleared by the owner
    only when the entity reaches zero count** (narrowed 2026-08-26). Setting it
    after the write lets a second decrement register the same entity twice in
@@ -1022,13 +1012,13 @@ the first three are what the candidate would have to be given.
    validate**: a mark is a proposal and only an exact reading disposes of one, so
    an unjudged proposal is re-enqueued exactly as an unwalked root is. A partial
    collection is legal (Y14) and a dropped root is not (Y6).
-   **One merge of the whole detached chain puts them back**, rather than an
-   entry-at-a-time re-enqueue (amended 2026-09-07): the collection's close joins
-   the batch into whatever the lane holds by then, so a root is back on the
-   queue without having been read at all, and a member the collection freed
-   keeps its entry too — that entry is what holds its slot out of the
-   allocator's hands until clause 7's reading retires it (`ll-model`,
-   `cycle::queue::merge_candidates`).
+   **Nothing is put back, because nothing was taken out** (amended
+   2026-09-15 with the read-behind form of clause 2): a root the trace did not
+   walk was never consumed, `front` having advanced only over disposed
+   entries; a root the collector marked comes back by the verdict ring and is
+   disposed of by the owner; a member the collection freed keeps its entry in
+   the ring until clause 7's reading retires it, which is what holds its slot
+   out of the allocator's hands.
 6. **Growth that cannot allocate draws on the reserve.** The thirteenth
    ruling: the enrolment does not drop, the runtime enters reserve mode, and
    it leaves reserve mode only after every queued root has been walked. **The
@@ -1074,23 +1064,31 @@ the first three are what the candidate would have to be given.
    **The buffer is one per mutator thread, beside that thread's queue**, a
    chain of the same segments with its own head and fill bound, and the owner
    is its only writer and its only reader. A registered entity has exactly one
-   token: it is in the active lane, a trace's detached batch, or this deferred
-   lane, never in two of them. It takes no atomics and the trace token does not
+   token: it is in the ring, in a reader's batch, in the verdict ring, or in
+   this deferred lane, never in two of them. It takes no atomics and the trace token does not
    cover it, because
-   the owner makes this classification after exact validation in both forms —
-   the synchronous commit and the inbox pickup — and re-offer is a write into
+   the owner makes this classification at its own reading in both forms —
+   the synchronous commit and the verdict ring's reading — and re-offer is a write into
    the queue, whose one
    writer is the owner (clause 1).
 
-   **Parking is the owner's disposition at that reading.** Draining a detached
-   buffer, the owner sorts each entry four ways: an entry whose entity reads
-   zero is removed, its bit is cleared, and its slot returns (clause 7); a
-   component confirmed as unreachable enters finalization; a root the trace did
-   not walk, or one a speculative trace only marked, is re-enqueued (clause 5);
-   and a root for which exact validation finds a current external reference is
-   appended here. Moving an entry is an owner-only queue transition performed
-   after exact validation. A speculative trace never moves an entry to this
-   buffer. The append uses the tail segment's free space and then the
+   **Parking is the owner's disposition at that reading.** Reading the
+   verdict ring, or its own ring in line, the owner sorts each entry four
+   ways: an entry whose entity reads zero is removed, its bit is cleared, and
+   its slot returns (clause 7); a component confirmed as unreachable enters
+   finalization; a root the trace did not walk was never consumed and stays
+   in the ring (clause 5); and a root for which exact validation finds a
+   current external reference is appended here — **and so is a root the
+   collector's speculative trace read live** (amended 2026-09-15 by Edmond,
+   `dev/DECISIONS.md`, "the candidate queue is read behind its writer, and
+   the collector's verdicts come back by a second ring"): the move is still
+   the owner's, made on the collector's verdict, the mirror it records is
+   the poll's own commit count, and what the reading can cost is one
+   epoch's delay for a garbage root the collector misread, where the
+   alternative was a root re-traced at every batch until an in-line
+   collection met it. A zero-count verdict is retired only on the entity's
+   completed-free bit, re-read by the owner; otherwise the entry goes back
+   to the ring at `tail`. The append uses the tail segment's free space and then the
    ordinary allocation path, and by nothing the pickup itself frees: clause 3 spends those
    segments in a fixed order — the cells first, the reserve's return after — and
    a segment retained here is one the reserve does not get back. Both refusing
@@ -1109,19 +1107,25 @@ the first three are what the candidate would have to be given.
    cells are refilled and its overflow buffer drained, the owner merges the
    deferred lane into the active one, through the same bounded reconciliation
    of two partial heads a restored batch takes and with no segment drawn. A
-   whole-segment splice is not available: only a lane head carries a fill
-   bound, so a partially filled deferred head cannot become an interior
-   segment. The merge copies entries where a composite batch of both lanes
-   would copy none, and it is chosen for what it does not cost elsewhere —
-   the trace detaches one lane, no consumer of a batch carries two bounds, and
-   no abort path splits one. A trace that aborts after a re-offer leaves its
-   records in the active lane rather than returning them to the deferred one:
-   the next trace reads them, and what is lost is the re-registration saving
-   for one round. The order among the poll's three writers of the live queue is
+   whole-segment splice is the re-offer's form (amended 2026-09-15, second
+   and third Critic rounds): the deferred lane's blocks are linked into R's
+   circle after the tail block and `tailBlock` is moved to the last of
+   them, nothing copied, so a re-offer of any length draws no block and
+   sends no root to the overflow buffer at a poll — a per-root
+   copy would need a cell before the first deferred segment could be
+   recycled, and at a poll whose refill was refused would abort in the
+   overflow buffer. The splice is chosen for what it does
+   not cost elsewhere — a reader sees one ring, no consumer of a batch carries
+   two bounds, and no abort path splits one. A trace that aborts after a
+   re-offer leaves its records in the ring rather than returning them to the
+   deferred one: the next reader meets them, and what is lost is the
+   re-registration saving for one round. The order among the poll's writers of the live queue is
    refill, drain, re-offer: the drain writes its entries before the merge, so
    none lands behind a chain the trace has already been offered.
 
-   **The mirror is the count the reading saw**, taken at the exact validation
+   **The mirror is the count the reading saw** — for a root the collector
+   read live, the poll's own count at its reading of the verdict ring
+   (amended 2026-09-15) — taken at the exact validation
    that found the component live and carried into the deferral. The two
    collection paths dispose of a batch on opposite sides of their own commit's
    close, so a count read at the disposition would hold the same event for
@@ -1151,9 +1155,10 @@ the first three are what the candidate would have to be given.
    exact reading. That retention window is up to one epoch and is the widest
    this design carries, wider than clause 7's "until the owner reads it".
 
-**What is still open:** what the writer and the detacher of clause 2 agree on,
-so that an entry written while the chain is being detached lands in exactly one
-of the two and in neither twice; the poll bound clause 3's two cells and its overflow buffer are
+**What is still open:** the batch bound K and the soft-signal threshold of
+the read-behind form, both unmeasured (`dev/DECISIONS.md`, "the candidate
+queue is read behind its writer, and the collector's verdicts come back by a
+second ring"); the poll bound clause 3's two cells and its overflow buffer are
 sized against, which the ABI has not written down and which since 2026-08-28
 must satisfy `B` ≤ overflow-buffer capacity minus stride; and the reserved critical
 area's sizing —

@@ -143,7 +143,13 @@ None that is new, which is the point:
   invisible exactly as free slots are.
 - Stamping publishes the header the same way the factory does today
   (kind last, release order), so a mid-epoch construction is the
-  allocate-black newcomer the protocol already handles.
+  allocate-black newcomer the protocol already handles. The release fence
+  a reader on another thread pairs with is emitted at that publication
+  (`../gc/rc-cycle.md`, "Publication, for a reader on another thread"), so
+  a reserved cell's address is stored into no slot a trace can read before
+  its construction returns: an address handed out earlier would reach a
+  worker ahead of the fence, and the worker's narrow header loads would
+  race the 8-byte publish store.
 - Reservation is allocation, not release: nothing parks, nothing needs
   the deferral queue.
 

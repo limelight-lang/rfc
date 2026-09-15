@@ -729,13 +729,20 @@ and what a worker finds in an entry between the count's old and new value
 must be either a fully stored element or one that reads as null — which
 storage zero-filled at install gives for nothing, and which otherwise needs
 the count's store to follow its element's stores under the same fence rule;
-which of the two is S38.0's to fix with the reader. On x86-64 the fence is a
+and the second is the rule `ll-model`'s table keeps: the count's release
+store follows the entry's stores (`array/table.rs`, "The entry is written
+before the count that admits it"), so storage is not zero-filled at install.
+On x86-64 the fence is a
 compiler barrier and the load a plain load; on
 ARM64 a release fence is what the language emits for it (`dmb ish`), one per
 allocation and not per store, and the acquire load an `ldar` on the worker's
 path. Synchronous collection reads on its own thread and needs neither. The
-fence is emitted with the worker (`ll-model`, `PLAN.md` S38.0), and its
-allocation-path cost on ARM64 is measured before it is.
+fence is emitted with the reader, after the header's publication
+(`ll-model`, `refcount::publish_header`), and its allocation-path cost on
+ARM64 is measured before the first ARM64 build rather than before the fence
+lands: no ARM64 machine exists to measure it on, and on x86-64 the fence adds
+no instruction (`dev/DECISIONS.md`, "the publication fence lands before its
+ARM64 price").
 
 **A thread does not exit while any trace holds rows over its blocks.** It
 waits, collects, retires its queue and only then hands its heap over, so

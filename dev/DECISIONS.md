@@ -10,6 +10,30 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-09-15 — the publication fence lands before its ARM64 price
+
+**Decided** by Edmond, on the question whether the release fence of
+"Publication, for a reader on another thread" (`model/gc/rc-cycle.md`) may be
+emitted before its ARM64 allocation-path cost is measured: yes, the requirement
+is relaxed. The fence is one `fence(Release)` after the header store in
+`ll-model`'s `refcount::publish_header`, one per entity built, and the ARM64
+figure is owed before the first ARM64 build (`ll-model`, `PLAN.md`, the backlog
+line "The publication fence's ARM64 price").
+
+**Why:** the sentence ordered the measurement before the emission to protect
+the allocation path on a weakly ordered target, and no such target exists in
+the project today: the one development machine is x86-64, where the fence
+compiles to no instruction (checked on 2026-09-15 against the release assembly
+of the crate: the instruction multiset is identical with and without it, and
+the diff is twelve `#MEMBARRIER` comments). Without the fence the collector's
+reader on another thread — built the same day, `cells::AtomicCells` — is
+correct on x86-64 by the hardware's own ordering and nowhere by the code.
+
+**Rejected:** leaving the fence out until the worker exists, which would leave
+the reader sound only on TSO with nothing in the code saying so.
+
+**Cost:** an unmeasured price on ARM64, paid at the first build for it.
+
 ## 2026-09-14 — A1 closes on a discriminating word: the ValueBox's +8 word is a pointer or a tag word, never both
 
 **Decided** by the Sage (`Final`) on Edmond's proposal, after one Critic round

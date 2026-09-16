@@ -22,6 +22,41 @@ The mutator's signal is by its own writes, not by the unread count: it
 counts the registrations it made since its last signal and wakes at N of
 them, reading no word of the reader's — `front` is the collector's line.
 
+## 2026-09-16 — P stays one block: growth would buy one in-line walk and cost the poll's deferral stock
+
+**Ruled by Edmond**, on 2026-09-16, after doubting his own clause "P does not
+grow" (below, "The ring P and the verdicts") and putting it to two Critics —
+one asked whether a fixed P stalls or starves any workload, the other where
+a P the mutator grows breaks. Both answered against growth, and he accepted.
+
+**What a fixed P costs, quantified from the crate.** The collector posts at
+most K ≤ 1,024 verdicts per owner per 10 ms round, so a block of 8,135 fills
+in about 80 ms; a mutator that reaches an open-gate poll drains P at every
+poll, so P never binds it. P binds only an owner absent from polls for
+longer than 80 ms — a blocking call, a foreign loop, a destructor cascade
+under a closed gate — with more than a block's worth of candidates behind
+it. Its whole cost is then one exact in-line walk over R at the owner's
+first poll back, where a grown P would have let the collector screen the
+rest meanwhile. A latency bump on one owner, never a stall: the collector
+skips a full P without a claim and serves the others.
+
+**What growth would cost.** The owner can grow P only where it reads P —
+its open-gate poll — and that poll empties P before it could measure it, so
+a block linked there is linked to an empty ring; a note the collector
+writes at room zero is stale by the same poll. A P of two blocks read live
+lets one poll defer past the lane's stock (two spare cells), and the lane's
+refusal fires an in-line walk over R: growth would convert the collector's
+lead into the owner's heap walk. And a shrink returns to the pool the very
+region the collector reads before its claim.
+
+**What the question uncovered.** The ruling's "one in-line collection over
+the proposed roots" admits a narrower batch than the whole of R the crate
+traces at every fire; whether the collector "keeps up" turns on that
+choice, not on P's size, and it is open. And the exit returns P's block
+while a collector may be reading it before its claim, once per exit; the
+fix is to keep P's block with the record for the process, as the record
+itself is kept.
+
 ## 2026-09-15 — the candidate queue is read behind its writer, and the collector's verdicts come back by a second ring
 
 **Ruled by Edmond**, restoring the form he designed on 2026-08-25 (tenth entry

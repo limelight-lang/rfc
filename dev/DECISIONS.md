@@ -10,6 +10,22 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-09-16 — the collector takes P's block to itself for the reading it makes before its claim
+
+**Ruled by Edmond.** The collector's idle test reads P's index words before
+it claims the owner's token, and an owner exiting in that window returns
+P's block with its record, so the reading could land in a block the pool
+has reissued. The block does not stay with the record for the process: the
+collector takes the block to itself for the length of that reading, the
+way the memory manager moves a block between owners, so an exit that
+returns a block another thread holds returns it by the cross-thread path
+and never straight to the pool; after the reading the collector hands it
+back. **Rejected:** keeping P's block with the record for the process,
+64 KiB per record ever used. **Cost:** the take and the hand-back on every
+idle test, unmeasured.
+
+---
+
 ## 2026-09-15 — the collector traces on the count it reads itself; a wake is only a wake
 
 **Ruled by Edmond**, amending the entry below: the collector collects an

@@ -161,10 +161,19 @@ refused, a component whose teardown was refused or resurrected, the
 resurrected zero-count — is written back into R before P's `front`
 advances, and P's `front` advances at the close by the whole reading (a
 write-back is a registration, funded as one). A closed-gate poll reads no
-verdict, as it fires nothing; the retirement inside a teardown reads P's
-prefix up to the first verdict it cannot dispose of — zero-count verdicts
-retired on the completed-free bit — and leaves the rest standing, so what
-it buys is the deaths ahead of the first proposal and no more.
+verdict, as it fires nothing; the retirement inside a teardown retires
+the completed deaths standing anywhere in P — zero-count verdicts on the
+completed-free bit — in place, nulling each entry it answered for under
+the token and advancing nothing, so what it buys is every death the
+collector read and no proposal (amended 2026-09-16 by the model, in
+`ll-model` S49.4: the ruling's form read the prefix up to the first
+proposal because the owner was not to write P's slots; the owner writes
+the slots it has read and not advanced past under its token or its
+collecting word, which keep the collector out of P altogether, and the
+same writes carry the close's deferral mark). The mirror a deferred root
+records is the count of the reading that deferred it — the poll's own at
+the poll, the close's at a collection — which stands in the same epoch or
+one behind the poll's.
 
 **The collector's batch.** For an owner with work — a note set, or R's
 front block not empty — the collector opens its workspace first, takes the token by

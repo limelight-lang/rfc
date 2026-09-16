@@ -704,8 +704,11 @@ well, since the reference's fast paths trust them on the invariant that
 `tail` never moves back. All of these are the owner's words. The compaction
 is the retirement pass in ring form and draws nothing. A retirement inside a
 teardown with no collection running takes the token first and waits out a
-collector's batch, and reads P's prefix up to the first verdict it cannot
-dispose of. The pressure path compacts after every round and, before its
+collector's batch, and retires the completed deaths standing anywhere in
+P in place, nulling their entries and advancing nothing (amended
+2026-09-16 from a prefix reading: the owner writes the slots of P it has
+read and not advanced past under its token or collecting word, which keep
+the collector out). The pressure path compacts after every round and, before its
 allocation retry, makes the returns a foreign holder left withheld, under
 its own token. The deferred lane is re-offered at the epoch's turn by a
 splice with no copy: its blocks are linked into R's circle after the tail
@@ -750,7 +753,8 @@ proposed roots, validated exactly and finalized as any batch is; an
 unwalked root joins that batch; a root read live moves to the deferred lane
 until the epoch turns, on the collector's reading (clause 8, amended
 2026-09-15: the owner still makes the move, the mirror it records is the
-poll's own commit count, and a garbage root the collector misread waits one
+count of the reading that deferred it — the poll's own at the poll, the
+close's at a collection — and a garbage root the collector misread waits one
 epoch); a zero-count verdict is a count read and not a completed death, so
 the owner re-reads the entity's completed-free bit and retires the entry
 only on it. Every entry the reading cannot dispose of — a proposed root

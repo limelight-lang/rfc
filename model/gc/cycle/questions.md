@@ -932,9 +932,10 @@ the first three are what the candidate would have to be given.
     allocator-issued"). The storage is one 64 KiB pool block — the **baseline segment** —
     the allocator issues at thread init, before the best-effort reserve fills,
     and the thread holds for its life; the draw's refusal is the thread that
-    never starts. A thread that never ran `ll_thread_init` draws its floor
-    lazily at first enrol, once, through the ordinary allocation path, and that draw's
-    refusal aborts — the funded class's last resort, reached by one additional allocation path.
+    never starts. A thread that never ran `ll_thread_init` has no floor and does
+    not exist for the runtime: an enrol on it ends the process with a named reason
+    ([`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md), "`ll_thread_init`
+    is called once, and a thread without it does not exist for the runtime").
     A fixed, never-grown array in that block takes the entry by a store and an
     increment when the reserve is spent too, so this clause's three prohibitions
     hold through the last tier and **an enrolment has no store on it that can

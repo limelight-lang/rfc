@@ -680,11 +680,13 @@ filled once per lap from wherever the reader left it. Consumed blocks are
 not returned: the writer reaches them around the circle; the owner shrinks
 a circle, when it chooses, by unlinking the empty block after its tail
 block. The record is drawn beside the base block at thread init, before the
-heapless return, and its refusal is a thread that never starts; a thread
-the runtime never registered draws it at its first registration, which
-takes the registry's lock once on that thread's release path; it is reset
-at every re-take, and the collector re-derives its cursors under the token
-at every batch, its per-owner batch size excepted.
+heapless return, and its refusal is a thread that never starts; every thread
+that registers has its record before it does, because `ll_thread_init` is
+the one initialisation a thread gets and no thread registers before it
+(`dev/DECISIONS.md`, "`ll_thread_init` is called once, and a thread without
+it does not exist for the runtime"); it is reset at every re-take, and the collector
+re-derives its cursors under the token at every batch, its per-owner batch
+size excepted.
 
 **The in-line collection excludes the collector for its whole length.** The
 owner sets a collecting word in its record before it takes its token and

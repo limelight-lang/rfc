@@ -10,6 +10,25 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-09-16 — `ll_thread_init` is called once, and a thread without it does not exist for the runtime
+
+**Ruled by Edmond (2026-09-15, and again on 2026-09-16 for the thread that
+skipped it).** `ll_thread_init` is an initialisation: made once, by whoever
+starts the thread, before its first allocation, enrolment or record, and a
+refusal closes the thread. There is no thread that reaches the runtime
+without it, so the runtime serves none: an allocation or an enrolment on such
+a thread ends the process with a reason naming the entry point, the state
+being a broken embedding rather than one with an answer of its own. **Why:**
+the "ensure" form let a repeated init's rollback return a live thread's
+queue, and a floor drawn lazily at the first enrol was a second
+initialisation path with its own refusal. **Rejected:** self-initialising
+allocation on a cold branch, which `mi_malloc` does, kept for parity in
+benchmarks — the parity is the embedder's shim's to pay; a null from the
+allocator with the enrolment refused, which would read as an exhaustion.
+**Cost:** an embedder with no thread-start hook tests a flag on every malloc.
+
+---
+
 ## 2026-09-16 — the collector takes P's block to itself for the reading it makes before its claim
 
 **Ruled by Edmond.** The collector's idle test reads P's index words before

@@ -716,9 +716,11 @@ block and `tailBlock` moved to the last of them, so they lie inside the
 reader's region; the re-offer arms the poll's collection only while the
 record names no living collector.
 
-**The collector's batch.** For an owner with work — a note set at the
-owner's poll, or a front block that is not empty — the collector opens its
-own workspace, claims the owner's trace token by compare-and-swap (held:
+**The collector's batch.** For an owner with work — its unread count, read
+by the collector itself off the front block, at or above the threshold
+("Signals", below; amended 2026-09-16 from "a note set at the owner's poll,
+or a front block that is not empty", under the ruling that the count decides
+and a wake does not) — the collector opens its own workspace, claims the owner's trace token by compare-and-swap (held:
 skip; collecting: release and skip), checks P's room and clamps its batch
 to it, takes at most K entries — K under a block's capacity, so a batch
 spans at most two blocks — from R's front as the reference's dequeue takes
@@ -781,13 +783,17 @@ where the count is at or above the threshold (Edmond, 2026-09-15,
 `dev/DECISIONS.md`, "the collector traces on the count it reads itself").
 The wakes are three. The mutator's poll, having registered N entries since
 its last signal — a count of its own writes, so that it reads no word of
-the reader's — sets a note on its record and wakes the collector its
-record names; a memory shortage collects in line and wakes it
-too; a wake sent to a collector that has ended is lost until the next poll
-re-reads the word. The collector sleeps on a futex between rounds, with a
+the reader's, and one an in-line collection's reading of R starts again —
+wakes the collector its record names (amended 2026-09-16: no note is set,
+the count read on the round being the one that decides); a memory shortage
+collects in line and wakes it too; a wake sent to a collector that has
+ended is lost, and the poll's count stands until a poll finds a collector
+to receive it. The collector sleeps on a futex between rounds, with a
 fallback timer between two named bounds that it lengthens after empty
-rounds and shortens when an owner's last disposition freed something, which
-that owner's poll writes into its record. Several collectors divide the owners, each owner
+rounds, holds after a round that read an owner at the threshold and could
+not serve it, and shortens after a batch and when an owner's disposition
+freed something since the last round, which that owner's poll writes into
+its record. Several collectors divide the owners, each owner
 named to one collector by a word in its record; a collector left with a
 backlog after two consecutive rounds births a sibling and hands it half of
 its owners, and ends a sibling idle for several rounds; a sibling's birth

@@ -732,10 +732,12 @@ blocks would put a block on two touched lists. What the owner waits for
 when it needs its token is one batch's trace, bounded by B and not by K,
 since one root's closure can be the heap. The verdicts are four:
 *proposed*, the row having read potentially unreachable; *read live*;
-*zero-count*, the count having read zero; *unwalked*, the trace having met
-B or a refused allocation before the root — posted so that no root blocks
-the ring behind it, and validated by the owner's in-line collection, which
-traces under no budget. A batch that met B halves K for that owner, a
+*zero-count*, the count having read zero; *unwalked*, every root of a batch
+whose trace met B or a refused allocation (amended 2026-09-16 from "before
+the root": no color of an abandoned trace is a verdict) — posted so that no
+root blocks the ring behind it, and validated by the owner's in-line
+collection, which traces under no budget; a live root the trace could not
+place reads *live*. A batch that met B halves K for that owner, a
 completed one doubles it back to its bound, and neither is an empty round
 for the timer.
 

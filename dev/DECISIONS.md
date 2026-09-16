@@ -139,10 +139,16 @@ written by the collector into the owner's block, an unlink racing it. Every
 entry the collector read from R
 comes back through P, in R's order, with a verdict: *proposed* (its row read
 potentially unreachable), *read live*, *zero-count* (the count read zero),
-or *unwalked* (the trace met its block budget before it, or the pool
-refused) — the last so that a root whose closure exceeds the collector's
-budget never blocks the ring behind it: the owner's in-line collection,
-which traces on the pool under no budget, validates it exactly. The owner
+or *unwalked* (the batch's trace met its block budget or the pool refused —
+every root of such a batch, amended 2026-09-16 by the model in `ll-model`
+S49.5 from "before the root": no color of an abandoned trace is a verdict,
+the crate's own rule for a trace that gave up) — the last so that a root
+whose closure exceeds the collector's budget never blocks the ring behind
+it: the owner's in-line collection, which traces on the pool under no
+budget, validates it exactly. A live root the trace could not place — an
+entity of a block with no survivor list — is *read live*, as the trace
+reads an edge it cannot place, and not *unwalked*, which would send it
+round P and R at every poll. The owner
 reads P at its open-gate poll
 and at the start of every in-line collection — the fire, the pressure path,
 the exit — into its batch, so a proposal never stands through a collection

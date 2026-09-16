@@ -869,7 +869,13 @@ token past its last row read: it claims the token and holds it through the
 record's release, so that no worker takes or posts a chain after the exit's
 drain, and the held word stalls nobody because a worker never waits
 (`dev/DECISIONS.md`, "the candidate queue is read behind its writer, and the
-collector's verdicts come back by a second ring"). An exit a destructor asks for — inside a collection, an ordinary
+collector's verdicts come back by a second ring"). The rings' blocks are
+what a worker reads before its claim, and it holds them for that reading:
+an exit that reaches a ring's return under the hold leaves that ring in
+the record, the worker's hand-back returns it, and the registry hands out
+no record with blocks left in it (amended 2026-09-16; `dev/DECISIONS.md`,
+"the collector takes P's block to itself for the reading it makes before
+its claim"). An exit a destructor asks for — inside a collection, an ordinary
 teardown or an arena reset — is recorded and runs at the thread's top, where
 the next exit call outside those states or the thread's end reaches it: every
 frame above the destructor goes on using the heap, so the sequence cannot run

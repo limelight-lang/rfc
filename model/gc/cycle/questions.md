@@ -1247,7 +1247,7 @@ once each decrement what the other captured and each conclude from the other's
 evidence. `rc-walk` had no such field, its counts being real and its
 condemnation collector-private, which is why its ladder could let rung 4 run
 during an open epoch and needed no rule. `rc-cycle` cannot: one **trace** at a time over a
-given thread's graph — teardowns run concurrently and need no exclusion, and
+given thread's candidates and the entities the trace reaches — teardowns run concurrently and need no exclusion, and
 several collectors run at once on different threads, their rows disjoint
 because a block belongs to one thread's heap and no thread names an entity in
 another's (2026-08-29, [`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md),

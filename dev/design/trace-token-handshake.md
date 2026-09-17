@@ -1,7 +1,8 @@
 # The trace token as a handshake
 
 Status: ruled 2026-09-17 — drafted by the model on Edmond's proposal of
-that day, attacked by two Critics, ruled by the Sage; awaiting Edmond's
+that day, attacked by two Critics, ruled by the Sage, and the silent-owner
+question ruled by a second Sage round the same day; awaiting Edmond's
 reading before it amends `model/gc/rc-cycle.md`, "Concurrency", and before
 `ll-model` builds it. The defect it answers is the Code Reviewer's of
 2026-09-16 (`ll-model`, `dev/DECISIONS.md`, "the free path's reading of the
@@ -130,12 +131,18 @@ is not. A return before the deadline that was not the grant is remembered,
 and the between-rounds sleep after this round is skipped once, because the
 loop may have consumed a round-start wake. For an owner that did not
 answer its last request — a silent mark on the collector's reader line,
-reset with the line at a re-take — the request stands, guarded, through
-the rest of the round in a fixed array on the round's frame (a silent
-owner past the array is skipped this round); at the round's end, if any
-silent request stands, the collector waits W once and sweeps: a
-`COLLECTOR|s` is served, anything else withdrawn. An owner served from the
-sweep loses its mark. Withdrawal: CAS `REQUESTED|s → FREE` (Relaxed
+reset with the line at a re-take — the request is not waited for and not
+withdrawn: it stands on the byte, recorded in a fixed array on the
+collector thread's frame (a silent owner past the array's capacity is
+skipped that round), until the owner answers or the collector thread
+ends. Each round begins by sweeping the standing array: `COLLECTOR|s` is
+served, `REQUESTED|s` is left standing, anything else — `MUTATOR`, `FREE`,
+another slot's value — is a record moved on and the entry is dropped. A
+standing request costs no wait; the consent wake cannot be lost, since
+`park`'s token makes an unpark sent mid-round end the next `park_timeout`
+at once. An owner served from the sweep loses its mark. The withdrawal of
+standing requests is the thread body's drop; one that fails reading its
+own `COLLECTOR|s` releases without a batch. Withdrawal: CAS `REQUESTED|s → FREE` (Relaxed
 success, Acquire failure); on failure the read-back decides —
 `COLLECTOR|s` is the grant and is served then, not released; `MUTATOR` is a
 refusal; `FREE`, or a value with another slot, is a record moved on — the
@@ -148,18 +155,19 @@ same drop; the arena is declared after the guard and drops before it.
 `Served` gains `Unanswered`, which is neither a batch nor work: the
 interval doubles. A refusal is work as today.
 
-**Fallback for an owner that never answers: none.** It is withdrawn from
-and stands uncollected while silent; its garbage is held for as long as it
-is blocked, and it is served within one round interval plus W of its first
-poll or slot free after it wakes. This is Edmond's rule as given, and the
-only sound form under the one-load budget: a forced take needs a barrier
-on the mutator's side of the pair, and the free path's load cannot decide
-to fence on a value it has not loaded. The one sound forced take is a
-process-wide barrier after the collector's CAS (`membarrier(2)`
-private-expedited on Linux, `FlushProcessWriteBuffers` on Windows), which
-replaces the handshake's premise rather than completing it; it is refused
-here as Edmond's to open, against one figure: the memory that idle pool
-threads' standing garbage holds on the corpus.
+**Fallback for an owner that never answers: none.** Its request stands,
+and it is served by one batch of the collector's next round after its
+first poll or slot free, since that first touch consents and its wake
+starts a round. Its garbage is held for as long as it is blocked under
+every form this design can carry: the collector frees nothing — its batch
+posts verdicts into P, one block per owner, and every reduction of state
+is the owner's at its poll or its in-line collection — so a forced trace
+of a sleeper yields a shortlist the sleeper cannot judge until it wakes,
+and no protocol on the token shortens the hold. The asymmetric barrier
+(`membarrier(2)` private-expedited on Linux, `FlushProcessWriteBuffers` on
+Windows, a signal to the one thread on POSIX) is refused as the whole
+protocol and as a fallback: the ruling and its reasons are under
+"Rulings", the second Sage round.
 
 ## Why it is sound
 
@@ -444,16 +452,15 @@ that never answers costs, as the collector paragraph above has it. The
 per-owner wait for answering owners keeps a consenting owner withholding
 for at most one batch, where a request-all form would have every
 consenting owner withhold for the round's length, moving the price onto
-the mutators; the round-end sweep puts k blocked pool threads at one
-shared W instead of k·W. The deadline loop reads only the byte, because
-the consent wake and the round-start wake are one `unpark`. A refusal
-wakes slot s, so a refused request ends the wait at once. The arena moves
-after the grant. No fallback for an owner that never answers — the ruling's
-reason is in the collector paragraph, and the process-wide barrier that
-would be the one sound forced take is Edmond's to open against the
-blocked-thread garbage figure. W: not measured and not guessed; the fact
-that sets it is the tail of the poll-or-free interval of a running mutator
-on the corpus, bench's to measure. `Final`.
+the mutators. The deadline loop reads only the byte, because the consent
+wake and the round-start wake are one `unpark`. A refusal wakes slot s, so
+a refused request ends the wait at once. The arena moves after the grant.
+The first round's round-end sweep with one shared W for silent owners was
+retired the same day by the second round (below): a request to a silent
+owner stands until answered, so k blocked owners cost no wait at all. W:
+not measured and not guessed; the fact that sets it is the tail of the
+poll-or-free interval of a running mutator on the corpus, bench's to
+measure. `Final`.
 
 **E9.** The consenting poll keeps its arming; an armed poll meeting
 `COLLECTOR` defers, returning before `take_arming()`. The armed poll
@@ -499,13 +506,142 @@ consenting slot free withholds its own slot for uniformity: returning it
 would be sound, and one slot until the batch's end is cheaper than a second
 arm. `Final`.
 
+### The second round: the silent owner and the asymmetric barrier
+
+Edmond put the E5 question back to the Sage rather than taking it: whether
+a pooled mutator blocked in a syscall keeping its cyclic garbage for the
+length of its sleep is acceptable, or the asymmetric barrier is opened.
+
+**The fact that decides it.** Under this design the collector frees
+nothing. Its batch reads the owner's ring, traces a copy on its own arena,
+posts one verdict per root into P and advances R; P is one block per
+owner, and the batch is clamped to P's room. Every reduction of state —
+the exact validation, the teardown, the slot return — is the owner's, at
+its open-gate poll or in its in-line collection. A thread blocked in
+`accept()` therefore holds its cyclic garbage until it wakes under every
+protocol this design can carry: a collector that forced its way to the
+ring while the thread slept would post at most one block of verdicts into
+P, then find P without room and answer `Idle`, and the memory those
+verdicts name stands until the owner's first poll disposes of them. The
+barrier changes when the shortlist is made and cannot change when the
+memory is returned. The figure the first round named as the one that
+would reopen the premise — the memory idle pool threads' garbage holds —
+is the same under the handshake and under the barrier, so it decides
+nothing between them.
+
+**What the garbage is.** A blocked thread's ring names entities that took
+a non-final decrement since its last disposition. The request arena's
+entities die at the reset regardless, so what a request leaves standing is
+the escaped or heap-allocated residue, and of that the cyclic unreachable
+part; its size on the corpus is not measured, its shape is known — a
+sleeping thread registers nothing and frees nothing, so the quantity is
+constant for the sleep's length and set by the last active stretch.
+Growth needs activity, and activity is the poll, which consents.
+Assumption stated and not verified in code: a ring entry naming a reset
+arena's entity is refused before any trace reads through it; if false, it
+is a defect of the ring, not of this question.
+
+**(a) The silent owner's standing garbage is the rule.** `Final`. Bounded
+in the mechanism by the amendment above: a request to a silent owner is
+not withdrawn at the round's end; it stands until the owner answers or the
+collector thread ends, each round sweeping the standing array first.
+Served-within bound: one batch of the collector's next round after the
+owner's first poll or slot free, with no probabilistic term — where a
+request withdrawn at the round's end met a thread active in short bursts
+only when a burst overlapped the request window. The transition table is
+unchanged and no state is added; "no `REQUESTED` or `COLLECTOR` outlives
+its requester" holds with the requester being the thread. The per-owner W
+for an owner that answered its last request stands: a standing request on
+an active owner would make it withhold for the round's length, the
+request-all price the first round refused. Three interactions, each
+answered by the byte's identity: an owner exiting under a standing request
+refuses (`REQUESTED|s → MUTATOR`, wake), the sweep drops the entry, the
+walk requests the next life afresh; a sibling ended by the elder withdraws
+its standing requests in its drop, and a consent landing between the
+`ENDING` word and the drop is released without a batch; an owner handed to
+a sibling while the elder's request stands makes the sibling's request
+fail on `REQUESTED|elder` (skip), the elder's sweep serves the grant, and
+the naming word decides the next request.
+
+**(b) The asymmetric barrier is refused, as the whole protocol and as the
+fallback.** `Final`. As the whole: it lands nothing on the free path (E3's
+return direction needs the same acquire load whatever the take does),
+moves each batch's price onto every running core of the process
+(`membarrier`: an IPI per running core, once per batch of 64
+registrations, paid by threads that own none of the garbage), needs three
+target forms and a fourth free path for a target with none (`membarrier`
+is Linux ≥ 4.14 with a registration at startup, `FlushProcessWriteBuffers`
+is Windows, macOS has neither), and places the one ordering the defect
+lives in outside every instrument the crate runs: the mutator's side is an
+acquire load and a compiler fence, and by the language model nothing
+orders its earlier cell stores before the collector's loads — the argument
+is the kernel's contract that the IPI is a full barrier on the interrupted
+CPU, so loom and Miri either report the store-buffering execution or model
+the syscall as a `SeqCst` fence and verify the fenced protocol of
+2026-09-16 rather than the shipped one. The handshake is a release/acquire
+protocol whole inside the model, exhibited and verified on the shipped
+code. As the fallback (after N unanswered rounds the collector swaps
+`REQUESTED|s → COLLECTOR|s` itself and issues the barrier): sound, but the
+owner it would serve gains nothing — a sleeper's memory is freed at its
+wake in either form — and the price is a second writer over `COLLECTOR|s`,
+a second proof outside the model, the counter N and the platform code. No
+owner exists that the hybrid serves and the handshake does not: emitted
+code polls at every backedge and the runtime's own bulk loop carries its
+poll. The barrier is not held in reserve against a measurement; the one
+change that would reopen it is a change to owner-judges — the collector
+freeing under an exact trace of its own — which is a premise change and
+Edmond's alone.
+
+**(c) No fallback, so the collector's behaviour is target-independent.**
+`Final`. Should the barrier ever be opened on a premise change, the form is
+the process-wide one; the per-thread signal is refused outright for the
+`EINTR` it delivers to the blocking call it targets (`poll`, `epoll_wait`,
+`select`, `nanosleep` do not restart under `SA_RESTART`, and an FFI
+library whose loop does not retry fails — Go's `SIGURG` preemption of 1.14
+is the precedent, cgo programs breaking on `EINTR`); a target with neither
+would run the fenced take of 2026-09-16 on its free path, a second free
+path per target, which is one of the reasons the whole is refused.
+
+**(d) The instrument story.** `Final`. Loom models the byte, two cells, a
+slot's class word and R's `front`, and W as a nondeterministic branch at
+the wait rather than as time, so that withdraw-before-consent and
+consent-before-withdraw are both explored; three executions are exhibited
+under the wrong ordering and pass under the ruled one — the
+store-buffering pair with a take and no consent (`free_path_model.rs`,
+kept as `should_panic`), E3's return direction with a `Relaxed` load of
+`FREE` at the pop, E4's failed withdrawal with a `Relaxed` failure
+ordering — and three more pass: E1, a withdrawal against a pressure-path
+refusal with no cell loaded after `MUTATOR`; E2, two collectors and one
+record reborn, the slot bits separating the grants; the standing request,
+the collector requesting, yielding, the mutator consenting later, the
+collector reading the grant on its sweep, the byte the only channel. Miri
+runs the crate's real tests over the diff's unsafe lines: the slot entry's
+consent, the poll's consent, the exit's refusal, the guard's unwind under
+a panic between the request and the wait, a record's rebirth under a
+standing request, the hand-back after a release, the standing array's drop
+at the thread's end. The stress test, release build, real threads, probe
+counters on the collector's outcomes, shows four things: an owner blocked
+on a pipe read for at least 2 × `FALLBACK_INTERVAL_MAX` with a ring of
+cyclic garbage of known size gets zero batches while blocked and at least
+one `Unanswered`, its byte reads `REQUESTED|s` before the pipe is written,
+it gets one batch within one round after its first poll, and its
+disposition frees the known count; k such sleepers beside one active owner
+leave the active owner's batch interval equal to its interval alone within
+the run-to-run spread; an owner freeing at full rate under continuous
+requests balances consents against grants served plus refusals, makes
+every withheld return at its next safepoint, and leaves the pool's counts
+balanced; a consent landing mid-round starts the next round without the
+timer, read off round timestamps. Bench, before the rfc amendment lands:
+the poll's acquire load per statement, and the tail of the poll-or-free
+interval of a running mutator on the corpus that sets W.
+
 ## What is Edmond's
 
-Three things this document leaves to him. Whether the handshake's
-premise stands against the blocked-thread garbage figure (E5) or the
-process-wide barrier is opened instead. The rfc amendment E10 implies —
+Two things this document leaves to him. The rfc amendment E10 implies —
 the claim held through the close rather than released after the last row
 read — which changes a sentence of "Concurrency" and closes its open
 question. And the reading of the whole before `ll-model` builds it, since
 it replaces the token's word, the record's `owner_holds`, the collector's
-`serve` and the poll's reading in one stage.
+`serve` and the poll's reading in one stage. The asymmetric barrier is
+closed by the second round's (b) and reopens only on a premise change of
+his: the collector freeing under an exact trace of its own.

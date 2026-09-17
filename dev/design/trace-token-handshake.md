@@ -858,3 +858,16 @@ builds the whole as one stage, replacing the token's word, the record's
 `owner_holds`, the collector's `serve` and the poll's reading of P. The asymmetric barrier is
 closed by the second round's (b) and reopens only on a premise change of
 his: the collector freeing under an exact trace of its own.
+
+**Built** in `ll-model` as its stage S51, closed 2026-09-17. Of the
+instruments above: the loom executions pass; Miri ran the lines named
+but two cases too long for it, the refused trace and the budget-met batch
+(`ll-model`, `PLAN.md`, the S51 note), with one harness rule it produced
+(`ll-model`, `dev/WORKFLOW.md`, "A test thread waits, it does not spin");
+the stress readings are
+`cycle/worker/tests/under_stress.rs` and their figures `dev/BENCHMARKS.md`,
+"S51.5 the token handshake's instruments"; the poll's load measured 3.3 ns
+cheaper than the peek it replaces; W's tail waits on the corpus, the
+placeholder 2 ms kept. The stage-close review found the arena opened
+before the request, against E2, and it was moved under the grant before
+the commit (`dev/POSTMORTEM.md`, "the arena moved above the request").

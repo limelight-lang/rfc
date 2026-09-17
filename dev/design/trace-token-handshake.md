@@ -66,7 +66,7 @@ inside one bound, which a thread pool produces.
 
 ## Transitions
 
-Byte = `state | slot << 2`; `s` is the acting collector's slot. Every
+Byte = `state | slot << 3`; `s` is the acting collector's slot. Every
 transition is a compare-and-swap naming the value it expects, and the
 value a failed swap reads back is acted on, never inferred.
 

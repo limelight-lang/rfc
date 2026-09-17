@@ -135,14 +135,30 @@ reset with the line at a re-take — the request is not waited for and not
 withdrawn: it stands on the byte, recorded in a fixed array on the
 collector thread's frame (a silent owner past the array's capacity is
 skipped that round), until the owner answers or the collector thread
-ends. Each round begins by sweeping the standing array: `COLLECTOR|s` is
-served, `REQUESTED|s` is left standing, anything else — `MUTATOR`, `FREE`,
-another slot's value — is a record moved on and the entry is dropped. A
-standing request costs no wait; the consent wake cannot be lost, since
-`park`'s token makes an unpark sent mid-round end the next `park_timeout`
-at once. An owner served from the sweep loses its mark. The withdrawal of
-standing requests is the thread body's drop; one that fails reading its
-own `COLLECTOR|s` releases without a batch. Withdrawal: CAS `REQUESTED|s → FREE` (Relaxed
+ends. The standing array is read at two checkpoints on the collector's
+frame, the two places it commits time, at both of which it holds no token
+and no arena: before every request of the walk — which is after every
+batch, every skip and every refusal, and at the round's start — and after
+every `park_timeout` return inside a deadline loop that was not the grant,
+before the loop parks again. At a checkpoint the live prefix of the array
+is read in order, one Acquire load per entry: `COLLECTOR|s` is served then
+— arena opened after the grant, the batch, the arena's reset, the release,
+the entry dropped, the silent mark cleared; `REQUESTED|s` is left
+standing; anything else — `MUTATOR`, `FREE`, another slot's value — is a
+record moved on and the entry is dropped. Every consented entry found is
+served in the same checkpoint, and the walk or the stranger's deadline
+loop resumes after; the deadline is absolute, computed once, so a resumed
+loop parks for what is left or withdraws. A standing request costs no
+wait; the consent wake cannot be lost, since `park`'s token makes an
+unpark sent mid-round end the next `park_timeout` at once, and a batch in
+progress ends by its block budget — so a woken owner is served at the
+first checkpoint after its consent, at most one stranger's batch away plus
+the batches of standing entries ahead of it that consented in the same
+interval. The "remembered early return" that skips the between-rounds
+sleep once is set only when the checkpoint that followed the return served
+nothing. The withdrawal of standing requests is the thread body's drop;
+one that fails reading its own `COLLECTOR|s` releases without a batch.
+Withdrawal: CAS `REQUESTED|s → FREE` (Relaxed
 success, Acquire failure); on failure the read-back decides —
 `COLLECTOR|s` is the grant and is served then, not released; `MUTATOR` is a
 refusal; `FREE`, or a value with another slot, is a record moved on — the
@@ -156,9 +172,10 @@ same drop; the arena is declared after the guard and drops before it.
 interval doubles. A refusal is work as today.
 
 **Fallback for an owner that never answers: none.** Its request stands,
-and it is served by one batch of the collector's next round after its
-first poll or slot free, since that first touch consents and its wake
-starts a round. Its garbage is held for as long as it is blocked under
+and it is served at the collector's first checkpoint after its consent —
+its first poll or slot free — at most one stranger's batch away; its
+withholding, its pressure path's wait and its exit's wait are bounded by
+that, and neither W nor the round's length enters. Its garbage is held for as long as it is blocked under
 every form this design can carry: the collector frees nothing — its batch
 posts verdicts into P, one block per owner, and every reduction of state
 is the owner's at its poll or its in-line collection — so a forced trace
@@ -215,8 +232,11 @@ before the rfc amendment lands. The collector pays per batch one request
 CAS, a wait of at most W, one acquire load per wake inside it, the arena
 opened after the grant, the batch as today, the arena's reset, and one
 Release store with a lock and notify; per silent owner one request and one
-withdrawal per round plus one shared W at the round's end; per refusal one
-wait ended early by the wake. W is not measured and not guessed: it lands
+withdrawal per round, and at most k Acquire loads and k branches per
+checkpoint (k the standing array's capacity, a constant named beside
+`BACKLOGGED_REMEMBERED`), one checkpoint per walk step and one per park
+return, which the batch that follows dwarfs; per refusal one wait ended
+early by the wake. W is not measured and not guessed: it lands
 above the 99th percentile of the interval between two consecutive polls or
 slot frees of a running mutator on the corpus, with a margin — bench
 measures it, and the placeholder the implementer writes carries "not a
@@ -551,9 +571,13 @@ request withdrawn at the round's end met a thread active in short bursts
 only when a burst overlapped the request window. The transition table is
 unchanged and no state is added; "no `REQUESTED` or `COLLECTOR` outlives
 its requester" holds with the requester being the thread. The per-owner W
-for an owner that answered its last request stands: a standing request on
-an active owner would make it withhold for the round's length, the
-request-all price the first round refused. Three interactions, each
+for an owner that answered its last request stands, for the first round's
+other reason: with one outstanding request at a time at most one
+consenting owner is waiting, where under request-all n owners consent
+within microseconds of each other and the i-th withholds i batches. (The
+reason first given here — a standing request on an active owner withholds
+for the round's length — was retired by the third round: under
+checkpoints every consent is served within batches.) Three interactions, each
 answered by the byte's identity: an owner exiting under a standing request
 refuses (`REQUESTED|s → MUTATOR`, wake), the sweep drops the entry, the
 walk requests the next life afresh; a sibling ended by the elder withdraws
@@ -634,6 +658,84 @@ balanced; a consent landing mid-round starts the next round without the
 timer, read off round timestamps. Bench, before the rfc amendment lands:
 the poll's acquire load per statement, and the tail of the poll-or-free
 interval of a running mutator on the corpus that sets W.
+
+### The third round: the woken silent owner
+
+Edmond's objection: a silent owner that wakes finds the standing request,
+consents, and withholds from that instant — but the collector is mid-round
+serving strangers and read the standing array only at the next round's
+start, so the woken owner withholds for the remainder of a stranger's
+round, up to (n − 1) × (W + batch), and its pressure path waits on the
+condition variable for that remainder plus its batch. The second round
+refused standing requests on active owners for exactly this figure and
+priced the woken sleeper at its service time rather than its withholding
+time. **Sustained.** `Final`.
+
+**The fact that decides the form.** The withholding starts at the
+consent's Release write and cannot be moved later: the collector's first
+cell load is ordered after the mutator's stores only through the one
+Release write its Acquire read pairs with, and every free the mutator
+makes after that write and before the collector's read is unordered
+against the collector's loads — one of them is the store-buffering
+execution of 2026-09-16 exactly. No state exists in which the mutator both
+returns memory freely and has given a consent the collector may later read
+as a grant. What can shorten the woken owner's withholding is only when
+the collector looks.
+
+**Refused.** A soft consent — `CONSENTED|s` under which the owner keeps
+returning until the collector acknowledges — is the defect the protocol
+removes; making it sound needs a Release RMW per free in that window,
+which the owner forbids. A mutator-side clearing of stale requests: the
+byte carries no age, the slot free cannot separate a standing request from
+one the collector is parked on, the poll cannot know it is the first after
+a syscall return, and a refusal on every first touch defeats the standing
+request's purpose. A revocable consent (`REQUESTED|s → CONSENTED|s` by
+the owner, `CONSENTED|s → COLLECTOR|s` the collector's claim,
+`CONSENTED|s → MUTATOR` the owner's revocation, `CONSENTED` withholding on
+the free path exactly as `COLLECTOR`, a third state bit and the slot at
+bits 3–5): sound, and recorded as the form to build should Edmond weigh
+the pressure-path stall of a woken sleeper differently — it shortens that
+wait and not the withholding — but refused here: a fifth state in every
+reader's arms, one more RMW per batch, a new failure class on the grant's
+reading, a second writer over the consented byte, a state more in the loom
+model, against a wait of one batch on a path that is already memory
+exhaustion and about to run a whole in-line trace.
+
+**The mechanism: checkpoints on the collector's frame**, as the collector
+paragraph above now has it. The bound on the woken owner's withholding:
+one stranger's batch plus the batches of standing entries ahead of it that
+consented in the same interval (at most k − 1) plus its own; neither W nor
+the round's length enters; its pressure path and its exit wait the same
+bound. In the ordinary case — one sleeper waking — one stranger's batch
+plus its own, against an active owner's own batch alone; the k-way case is
+the serialisation one collector with one arena imposes on any k owners
+that consent at once. Cost: at most k Acquire loads and k branches per
+checkpoint on the collector; nothing on the mutator. The transition table
+is unchanged and no state is added; two of the collector's requests may be
+outstanding at once — `REQUESTED|s` on the walk's owner and `COLLECTOR|s`
+on a standing owner served inside that owner's deadline loop — which the
+identity in the byte covers, the standing batch being served while the
+walk's owner stands at `REQUESTED|s`, whose readers read it as `FREE`;
+the standing entry's array is its guard, the walk owner's guard stands on
+the frame below it, and the arena is opened inside the standing batch and
+reset before its release, on the return and on the unwind. The soundness
+argument gains one sentence: the checkpoint's loads are Acquire because
+they act on `COLLECTOR|s`, and a checkpoint inside a stranger's deadline
+loop reads the stranger's cells never. A consent landing mid-batch leaves
+the park token set after its owner has been served at the next
+checkpoint, so one between-rounds sleep is skipped for nothing — one empty
+round per mid-batch consent at most, accepted. `Round` reads a standing
+batch as a batch made, so the timer and the sibling birth see it as work.
+
+**Instruments.** Loom's standing-request scenario gains an arm: the
+collector parked on B's request, O consenting from its standing
+`REQUESTED|s`, the collector serving O from inside B's loop, B consenting
+during O's batch, B served after. The stress test gains a probe: a sleeper
+that wakes while an active owner is being served gets its release within
+one batch of the active owner after its consent, read off timestamps,
+against the round's length it would take otherwise; and a pressure
+collection fired by that sleeper right after its consent ends within the
+same bound.
 
 ## What is Edmond's
 

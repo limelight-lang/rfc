@@ -10,5 +10,7 @@ served page, not in the repository, and he reads it in Russian.
 
 Occupants: `rc-cycle.map.yaml`, `rc-cycle`'s question graph
 ([`../../model/gc/cycle/questions.md`](../../model/gc/cycle/questions.md)) as an
-interactive map. Still expected: the fact-base schema (entities,
+interactive map; `trace-token-handshake.md`, the trace token as a
+request-and-consent word between a collector thread and a mutator, ruled
+2026-09-17 and waiting on Edmond before it amends "Concurrency". Still expected: the fact-base schema (entities,
 relations, attributes, invariants) once the formalism is chosen.

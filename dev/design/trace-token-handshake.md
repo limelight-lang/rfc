@@ -32,12 +32,13 @@ free.
 ## The word
 
 One `AtomicU8` per mutator thread, in the token line of its record
-(`ll-model`, `cycle::owner_record`), five bits used. The low two bits are
-the state; bits 2–4 are the requesting collector's slot (`MAX_COLLECTORS`
-is 8). `FREE` and `MUTATOR` carry slot zero, so a collector's request
-expects exactly 0. The byte replaces `TraceToken::held`, the record's
-`owner_holds` byte, and the collector-facing reading of the collecting
-word (E10).
+(`ll-model`, `cycle::mutator_record`), six bits used. The low three bits
+are the state; bits 3–5 are the requesting collector's slot
+(`MAX_COLLECTORS` is 8). `FREE`, `MUTATOR` and `POSTED` carry slot zero,
+so a collector's request expects exactly 0. The byte replaces
+`TraceToken::held`, the record's `owner_holds` byte, the collector-facing
+reading of the collecting word (E10), and the poll's reading of P (the
+fourth round).
 
 | state | meaning |
 |---|---|
@@ -45,10 +46,14 @@ word (E10).
 | `MUTATOR` (1) | the mutator holds its own token: an in-line collection through its close, the exit's final claim, the initialisation's hold on a record not yet claimable |
 | `REQUESTED\|s` (2) | collector s asks to trace; the mutator has not consented |
 | `COLLECTOR\|s` (3) | collector s traces; the mutator withholds every return |
+| `POSTED` (4) | no collector holds anything; the last batch posted verdicts into P that the owner has not disposed of; the mutator returns memory at once and owes a collection over P |
 
 The record leaves the registry `MUTATOR`, the initialisation's end stores
 `FREE`, the exit's kept claim leaves `MUTATOR` on the free list; the
-registry writes nothing to the byte across lives.
+registry writes nothing to the byte across lives. The invariant `POSTED`
+carries: P holds an entry the owner has not disposed of only while the
+byte reads `POSTED` or `MUTATOR`, so a byte that reads `FREE` promises an
+empty P and the poll has no reason to read P.
 
 The slot rather than a life counter: three bits fit beside the state, the
 slot is already the collector's name, and it is exact — a request never
@@ -70,47 +75,84 @@ value a failed swap reads back is acted on, never inferred.
 | `FREE` | `REQUESTED\|s` | collector s | `serve`, after the hold-read idle test, the guard installed first | CAS Acquire / Relaxed |
 | `REQUESTED\|s` | `COLLECTOR\|s` | mutator | the slot free entry; the poll's reading before the gate | CAS Release / Acquire; then wake s |
 | `REQUESTED\|s` | `FREE` | collector s | the deadline, the round-end sweep, the guard's drop | CAS Relaxed / Acquire; failure acted on by value |
-| `COLLECTOR\|s` | `FREE` | collector s | after the last row read and the arena's reset | store Release; lock; `notify_all` |
+| `COLLECTOR\|s` | `FREE` | collector s | after the last row read and the arena's reset, when the batch posted nothing into P | store Release; lock; `notify_all` |
+| `COLLECTOR\|s` | `POSTED` | collector s | the same release, when the batch posted its verdicts into P; on the unwind as on the return | store Release; lock; `notify_all` |
+| `POSTED` | `MUTATOR` | mutator | every taker of the `FREE → MUTATOR` row below, the teardown-refusal retirement excepted, which holds `POSTED` unswapped | CAS Acquire / Acquire |
+| `POSTED` | (skip) | collector s | the request CAS fails on it: neither a batch nor work; the owner is served by no round until its own collection has run | CAS failure, Relaxed |
 | `FREE` | `MUTATOR` | mutator | `CollectingThread::take` on both paths, the teardown-refusal retirement, the exit | CAS Acquire / Acquire |
 | `REQUESTED\|s` | `MUTATOR` | mutator | the same takers: the request is refused | CAS Acquire / Acquire; then wake s |
 | `MUTATOR` | `FREE` | mutator | the close's last store; the initialisation's end | store Release |
 | `COLLECTOR\|s` | (wait) | mutator | the same takers: the condition variable under the token's mutex, re-tested by CAS | — |
 
 No other transition exists. The collector writes over `COLLECTOR|s` alone
-and only its own; the mutator never writes over `COLLECTOR`. Every load
-that acts on `FREE` is Acquire.
+and only its own; the mutator never writes over `COLLECTOR`; `POSTED` is
+written by the collector alone and consumed by the mutator alone, and the
+close that consumed it writes `FREE`, always. Every load that acts on
+`FREE` or on `POSTED` is Acquire.
 
 ## The two sides
 
 **Mutator, free path.** One acquire load of the byte — a plain `mov` on
-x86-64, `ldar` on ARM64. `FREE`: return the memory. `COLLECTOR|any`:
-withhold it, as today. `MUTATOR`: the thread's own window decides, as
-today. `REQUESTED|s`, at the slot entry with no window open: consent — CAS
-`REQUESTED|s → COLLECTOR|s` (Release on success, Acquire on failure), wake
-slot s read from the byte, withhold this slot; a swap that fails acts on
-the value it read back. The other readers — the chunk gate, the block
+x86-64, `ldar` on ARM64 — made by one reading function that the slot
+entry and the poll share and nobody else calls. `FREE`: return the
+memory. `POSTED`: arm this thread for a collection over P (a thread-local
+store; the byte is left as it is, so every reading in the window re-arms)
+and return the memory: the collector holds no cell after its release.
+`COLLECTOR|any`: withhold it, as today. `MUTATOR`: the thread's own window
+decides, as today. `REQUESTED|s`, at the slot entry with no window open:
+consent — CAS `REQUESTED|s → COLLECTOR|s` (Release on success, Acquire on
+failure), wake slot s read from the byte, withhold this slot; a swap that
+fails acts on the value it read back. The other readers — the chunk gate, the block
 gate, `returns_are_withheld` for the remote reclaim, the per-pop checks of
-the three drains — read `REQUESTED` as `FREE` and return: before consent
-the collector has read no cell, so no address it holds names the memory.
+the three drains — read `REQUESTED` and `POSTED` as `FREE` and return:
+before consent, and after the release, the collector holds no cell, so no
+address it holds names the memory. They test `state == COLLECTOR`, never
+`state != FREE`.
 The slot drain needs no arm of its own — its hand-back re-enters the slot
 entry, which consents at the first slot, and the next pop reads `COLLECTOR`
 and splices the rest back. `BlockPool::put` from a thread-local's drop at
 exit reads `MUTATOR` and returns; it never wakes a condition variable.
 
-**Mutator, poll.** The poll reads the byte once, before the gate, one
-acquire load per poll. `REQUESTED|s`: consent, wake s, continue; the
-arming is kept — an arming is spent by a collection that ran and by
-nothing else. An armed poll that read `COLLECTOR` returns before
-`take_arming()`; the next poll re-reads. A request that lands between the
-reading and the take is met by the take loop, which refuses; a
-`COLLECTOR` that lands there is waited for, today's wait and bound. A
-closed-gate poll consents all the same, since the reading precedes the
-gate. The explicit fire waits as today.
+**Mutator, poll.** The poll is a second caller of the reading function,
+before the gate, one acquire load per poll; it reads nothing of P.
+`POSTED` arms; `REQUESTED|s`: consent, wake s, continue; the arming is
+kept — an arming is spent by a collection that ran and by nothing else.
+An armed poll that read `COLLECTOR` returns before `take_arming()`; the
+next poll re-reads. A request that lands between the reading and the take
+is met by the take loop, which refuses; a `COLLECTOR` that lands there is
+waited for, today's wait and bound. A closed-gate poll consents and arms
+all the same, since the reading precedes the gate. The arming word has
+two values above none, `Verdicts` and `AllRoots`, merged by maximum: the
+byte's `POSTED` arms `Verdicts`; the pressure path's endings that hand a
+component to the next poll arm `AllRoots`; nothing else arms. The fire
+spends the word: `Verdicts` fires the collection over P, `AllRoots` the
+collection over R whole with P disposed of whole in it. The explicit fire
+waits as today and spends a standing arming.
 
 **Mutator, in-line collection.** `CollectingThread::take` takes `MUTATOR`
 after the gate and after `set_collecting`: `FREE → MUTATOR`;
-`REQUESTED|s → MUTATOR` with the refusal wake; `COLLECTOR` waited out on
-the condition variable. The claim is released in the guard's drop after
+`POSTED → MUTATOR`; `REQUESTED|s → MUTATOR` with the refusal wake;
+`COLLECTOR` waited out on the condition variable, the loop acting on every
+other read-back by a fresh swap. The collection `Verdicts` fires is over
+P alone: it counts P's proposed and unwalked roots without writing, and
+`EmptyLane` is its answer only on a zero count; it traces them with exact
+counts, validates and finalizes; then, on every ending of every path that
+took `POSTED`, one disposition of P whole — a read-live root deferred to
+the deferred lane, or written into R on `NoBlock`; a zero-count verdict
+retired on the entity's re-read completed-free bit; a finalized root
+nulled; a refused, untraced, resurrected or unreached root written back
+into R through `append_entry`, which cannot refuse — followed by one
+advance of `front` by the whole prefix, so that a root is in one ring at
+every instant; and the close writes `FREE`. The disposition sits in
+`CollectingThread`'s drop, where `retire_candidates` runs, so
+`NoWorkspace` before the window opens and the pressure path's `restore_batch`
+endings reach it too. The pressure path and the exit read R whole and
+dispose of P whole the same way. The teardown-refusal retirement pass, run
+with the gate closed, takes `FREE → MUTATOR` and `REQUESTED|s → MUTATOR`
+and holds `POSTED` unswapped: under `POSTED` no collector holds anything
+and a request fails, so it nulls P's slots and rewrites R's blocks under
+it and leaves the byte as it found it. The P-only reading never lowers
+`signal_due`: the block-filled wake is for an R it did not read. The claim is released in the guard's drop after
 `retire_candidates`, as the close's last store, on both paths: the ordinary
 path holds it through its teardown and the pressure path through its loop.
 The `HeldToken` takes inside the two paths are nested and release nothing.
@@ -164,8 +206,16 @@ success, Acquire failure); on failure the read-back decides —
 refusal; `FREE`, or a value with another slot, is a record moved on — the
 collector holds nothing. On the grant: `TraceScratchArena::open()` (a
 refusal releases at once and answers `Idle`), the batch as today, the
-arena's reset, then release `COLLECTOR|s → FREE` (Release), lock,
-`notify_all`. The guard's drop is the withdrawal above, and a failure
+arena's reset, then release `COLLECTOR|s → POSTED` if the batch posted
+verdicts into P and `COLLECTOR|s → FREE` if it posted nothing (Release),
+lock, `notify_all`; the guard that releases on the unwind carries the
+posted fact, set before the first post. A request that meets `POSTED`
+fails and reads nothing: P holds one batch at a time, and the next request
+is made against `FREE` after the owner's close; for the timer the skip is
+neither a batch nor work, and the owner's note of a freeing disposition
+is the way back to the minimum interval. The collector exists before the
+first pressure collection: the poll's first wake births the elder, since
+the poll has a frame and may allocate. The guard's drop is the withdrawal above, and a failure
 reading its own `COLLECTOR|s` releases; `note_traced_owner(null)` in the
 same drop; the arena is declared after the guard and drops before it.
 `Served` gains `Unanswered`, which is neither a batch nor work: the
@@ -227,8 +277,17 @@ per free is gone. A consent pays one Release compare-and-swap, one lock of
 the collector slot's handle mutex with an `unpark`, and one slot withheld
 until the batch ends — once per batch, not measured. The poll pays one
 acquire load per poll, the one addition to a path the draft did not touch,
-not measured; since the poll is emitted per statement, bench measures it
-before the rfc amendment lands. The collector pays per batch one request
+and loses its per-poll peek of P (`Reader::new` and one `peek`); the
+difference is not measured; since the poll is emitted per statement,
+bench measures it before the rfc amendment lands. The fourth round's
+prices: every free made while the byte reads `POSTED` stores the arming
+once more, a thread-local write on the slow branch, the window being one
+poll interval; the collector posts one batch per owner-collection, its
+request failing at `POSTED` until the owner's close; a completed death in
+R keeps its slot until the collector's batch reaches it and the owner's
+collection over P retires it, so slot retirement runs at the collector's
+throughput, the pressure path's whole-R compaction being the fallback;
+each not measured. The collector pays per batch one request
 CAS, a wait of at most W, one acquire load per wake inside it, the arena
 opened after the grant, the batch as today, the arena's reset, and one
 Release store with a lock and notify; per silent owner one request and one
@@ -486,10 +545,10 @@ measure. `Final`.
 `COLLECTOR` defers, returning before `take_arming()`. The armed poll
 consents rather than takes because the batch is the trace taken off the
 mutator and the in-line collection that follows one poll later reads its
-verdicts; what Reading A feared is not lost — a proposal standing in P
-through the batch is re-read and re-armed by `dispose_prefix_at_the_poll`
-at the next open-gate poll, an epoch's re-offer stands in R where the batch
-reads it, and the pressure path's arming stands in R the same way. The
+verdicts; what Reading A feared is not lost — a batch that posted leaves
+`POSTED` on the byte, which the next reading re-arms (the fourth round),
+an epoch's re-offer stands in R where the batch reads it, and the pressure
+path's arming stands in R the same way. The
 rfc's "the gate is the one refusal that keeps the arming" gains a second
 refusal. `Final`.
 
@@ -521,7 +580,8 @@ close, the ordering of a foreign thread's stores against A's collector is
 a rule of that closure. `Final`.
 
 **E12.** The slot entry and the poll consent; every other reader reads
-`REQUESTED` as `FREE`, as the free-path paragraph above has it. The
+`REQUESTED` and `POSTED` as `FREE`, as the free-path paragraph above has
+it. The
 consenting slot free withholds its own slot for uniformity: returning it
 would be sound, and one slot until the batch's end is cheaper than a second
 arm. `Final`.
@@ -737,13 +797,64 @@ against the round's length it would take otherwise; and a pressure
 collection fired by that sleeper right after its consent ends within the
 same bound.
 
+### The fourth round: the collector's batch as the mutator's trigger
+
+**Edmond, 2026-09-17, in five lines.** The mutator accumulates roots in R.
+The collector may walk them itself, and below X entries it does not take
+the thread. The mutator does not collect its roots itself, except under
+memory shortage. When the collector has collected P it hands them to the
+mutator. The mutator then processes all of P; as an option to think
+about, it also collects the entries of R whose refcount is zero. He also
+ruled, against the draft's form: the trigger is made where `ll_free`
+reads the byte, so the collector's release says "collect" through the
+byte, and the poll is an additional caller of the same reading, not a
+mechanism of its own; a refused block for R wakes the collector and does
+not make the mutator collect; and the rfc is amended to the algorithm,
+never cited as its authority.
+
+**The form, after two Sage rounds and three Critic rounds** (the rulings
+and the findings are in `ll-model`'s journals under 2026-09-17): the
+fifth state `POSTED`, its invariant, the one reading function, the
+two-valued arming word, the collection over P with its disposition on
+every ending and `front` advanced last, the retirement pass holding
+`POSTED` unswapped, the request's skip, the release carrying the posted
+fact on the unwind, the collector born at the poll's first wake, the
+non-consenting readers testing `state == COLLECTOR`, the P-only reading
+leaving `signal_due` standing. What the Critic showed and the form
+answers: a refused ending that left P undisposed behind `FREE` (the
+disposition sits in the drop every ending reaches); a livelock of a
+collection that answered `EmptyLane` before disposing of a P with no
+proposed root (the count decides `EmptyLane`, the disposition runs
+regardless); a root advanced past before it was traced (`front` moves
+last); a mutex taken inside `ll_release` under a literal reading of
+"wake" (`signal_due` is raised there, the poll sends); the stress
+invariant on `POSTED` skips being ≥, not =, batches minus collections.
+The zero-refcount pass over R stays an option: if built, it is bounded to
+one block of R per fire by a cursor over the occupied run, the
+front-block-only and capped forms refused, with a bench line before it is
+called free. `Final`.
+
+**Instruments the fourth round adds.** Loom: one more passing execution —
+the collector posts a word into P and releases `POSTED`; the owner reads
+`POSTED` with Acquire, arms, takes `POSTED → MUTATOR`, reads the word and
+R's `front`; both read the collector's values — and E3's return-direction
+exhibit run with the released value `POSTED`. Miri lines: the release to
+`POSTED` after a batch, the take from `POSTED` on the poll's fire and on
+the pressure path, the retirement pass around a `POSTED` P. Regression
+tests, in place of those of `dispose_prefix_at_the_poll`: a batch of
+read-live verdicts alone, one poll, the byte `FREE` and the roots
+deferred; a retirement pass over a `POSTED` P of deaths, one poll, the
+byte `FREE`; `P = [Proposed x]` with the trace refused by a forced pool
+refusal, one poll, `x` found in R and P's `front` past it; a `POSTED`
+owner, one collector round, `Served` neither a batch nor work and P
+unchanged. The stress probe counts `POSTED` skips as rounds during which
+the byte read `POSTED`.
+
 ## What is Edmond's
 
-Two things this document leaves to him. The rfc amendment E10 implies —
-the claim held through the close rather than released after the last row
-read — which changes a sentence of "Concurrency" and closes its open
-question. And the reading of the whole before `ll-model` builds it, since
-it replaces the token's word, the record's `owner_holds`, the collector's
-`serve` and the poll's reading in one stage. The asymmetric barrier is
+Nothing stands open after 2026-09-17: he approved the E10 amendment and
+the fourth round's form with the rfc sentences they change, and `ll-model`
+builds the whole as one stage, replacing the token's word, the record's
+`owner_holds`, the collector's `serve` and the poll's reading of P. The asymmetric barrier is
 closed by the second round's (b) and reopens only on a premise change of
 his: the collector freeing under an exact trace of its own.

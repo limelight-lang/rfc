@@ -10,6 +10,29 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-09-17 — the collector's batch is the mutator's trigger, through the token byte
+
+**Ruled by Edmond.** The mutator accumulates roots in R; the collector walks
+them itself and below X entries does not take the thread; the mutator does
+not collect its roots itself except under memory shortage; when the
+collector has collected P it hands them to the mutator; the mutator then
+processes all of P. The hand-over is the token byte: the collector's release
+after a batch that posted writes `POSTED`, read by the one reading `ll_free`
+and the poll share, which arms the collection over P; no poll reads P. The
+owner holds its token through its close (E10). A refused block for R wakes
+the collector and makes the mutator collect nothing. The form after two Sage
+and three Critic rounds is `dev/design/trace-token-handshake.md`, "The fourth
+round". **Why:** the poll's per-statement peek of P was a mechanism of its
+own where one load the free path already makes carries the signal; and a
+mutator that re-traced R after the collector's batch would make the
+collector pointless. **Rejected:** the arming as a flag over `FREE` (every
+`FREE` test would mask it); the close writing `POSTED` back on a refused
+collection (P is disposed of on every ending instead); a threshold ruling in
+either direction — X stays and is unmeasured. **Cost:** slot retirement at
+the collector's throughput; one batch per owner-collection; unmeasured.
+
+---
+
 ## 2026-09-16 — `ll_thread_init` is called once, and a thread without it does not exist for the runtime
 
 **Ruled by Edmond (2026-09-15, and again on 2026-09-16 for the thread that

@@ -553,14 +553,15 @@ of this section. The proof is still incomplete for moved objects, actor sharing
 and FFI entry. These are correctness prerequisites, not optional optimizations;
 see `dev/ALGORITHM-AUDIT.md`, issues B3, B4, and C3.
 
-The token covers mark, scan, and reads of the live candidate queue. The tracer
-releases it after its last row read, which is the end of scan on the ordinary
-path and the harvesting sweep on the pressure path, before exact validation and
-before the first destructor; the one exception is the exiting thread's final
-claim, at the end of this section. Everything after the release — zero-count-entry
-handling, guard references, weak-reference invalidation, destructors,
-revalidation, edge severing, storage reclamation, slot return, and candidate-bit
-clearing — runs without the token. What the release ends is the right to trace
+The token covers mark, scan, and reads of the live candidate queue. A
+collector releases it after its last row read, which is the end of its batch's
+trace, before any reduction of state, which is the owner's. The owner's own
+collection holds it from its take through its close on both paths (amended
+2026-09-17, `rfc/dev/design/trace-token-handshake.md`, E10 and the fourth
+round): exact validation, destructors, revalidation, edge severing, storage
+reclamation, slot return and candidate-bit clearing all run under it, and the
+close's last store releases it; the exiting thread's final claim, at the end
+of this section, is never released. What a release ends is the right to trace
 and not the life of the rows: reading a row whose block has gone back is a
 defect on either path, and reading one whose block has not is what the ordinary
 path's teardown does.
@@ -624,12 +625,12 @@ The readership rule narrows with it. Mark and scan remain the only **writers**
 of a shadow row. The readers are mark and scan, the sweep that harvests on the
 pressure path, and on the ordinary path the owner's own teardown after the
 release. Nothing else reads them, the in-line form having no second tracer.
-What a worker may do here is open twice over: whether its trace may hold its
+What a worker may do here is open once: whether its trace may hold its
 arena through a teardown the way an owner's does (`ll-model`,
 `dev/DECISIONS.md`, "the member list is the pressure path's alone, and the
-surplus is a second trace", which leaves that to the accelerator), and whether
-it may acquire an owner's token while that owner's teardown is still reading
-rows, which no ruling has reached.
+surplus is a second trace", which leaves that to the accelerator). Whether it
+may acquire an owner's token while that owner's teardown is still reading
+rows closed as no on 2026-09-17: the owner holds the token through its close.
 
 Exact validation and teardown revalidation compute `IN` by iterating current
 fields against the component's members: on the ordinary path the rows the
@@ -648,8 +649,9 @@ leaves the arming for the next poll at a clean point.
 A trace runs no user code, takes no user lock, and releases the token before
 destructors, so this wait is intended to be bounded.
 
-A collector that finds an owner's ring empty, or the owner's token held, skips
-that owner until a later round. Candidate bits remain set.
+A collector that finds an owner's ring empty, or the owner's token held, or
+its last batch's verdicts not yet disposed of (the token word reads `POSTED`),
+skips that owner until a later round. Candidate bits remain set.
 
 ### Worker-to-owner handoff
 
@@ -689,12 +691,12 @@ re-derives its cursors under the token at every batch, its per-owner batch
 size excepted.
 
 **The in-line collection excludes the collector for its whole length.** The
-owner sets a collecting word in its record before it takes its token and
-clears it at its close, by a release store that is the close's last; the
-collector reads the word with acquire after its own claim and, finding it
-set, releases and skips. The owner's collection reads every entry from the
-front block to the tail block's `tail` as its batch, traces, releases the
-token at the scan's end as above, and at its close compacts the ring in
+owner holds its token from its take to its close, so a collector's request
+fails on it in one compare-and-swap and skips; the collecting word the owner
+sets before the take and clears at the close is the owner's own gate, read by
+the owner alone (amended 2026-09-17, E10). The owner's collection reads every entry from the
+front block to the tail block's `tail` as its batch, traces, holds the
+token through its close as above, and at its close compacts the ring in
 place: an entry it disposed of is dropped, every other entry — a component
 whose teardown was refused or resurrected, a zero-count entity whose
 teardown has not completed, a root read live with nothing proposed, a root
@@ -730,7 +732,9 @@ them but advances only after the batch's verdicts are posted, the up to
 three stores of the advance owned by one guard from the unwind as well,
 copies them into its workspace, traces the copy
 through its own reader and arena under a block budget B, posts one verdict
-per entry to P in R's order, advances `front` and releases. The token
+per entry to P in R's order, advances `front` and releases — to `POSTED`
+when it posted, which tells the owner to collect, and to `FREE` when it
+posted nothing. The token
 covers the read and the trace, as above: two traces over one thread's
 blocks would put a block on two touched lists. What the owner waits for
 when it needs its token is one batch's trace, bounded by B and not by K,
@@ -751,25 +755,27 @@ link into P, so no block passes from the owner to the collector and no
 unlink races a link. The collector allocates nothing in the owner's name;
 its workspace and its rows are its own, as before.
 
-**The mutator's disposition.** It reads P at its open-gate poll, and every
-in-line collection — the fire, the pressure path, the exit — reads P into
-its batch first, so a proposal never stands through a collection short of
-memory. A proposed root becomes part of one in-line collection over the
-proposed roots, validated exactly and finalized as any batch is; an
+**The mutator's disposition.** P is read by in-line collections alone, and
+no poll reads a verdict: the collector's release to `POSTED` is read by the
+owner's free path and by its poll through one reading, which arms the
+collection over P that the poll fires; the pressure path and the exit read
+P into their batch first, so a proposal never stands through a collection
+short of memory. A proposed root becomes part of one in-line collection over
+the proposed roots, validated exactly and finalized as any batch is; an
 unwalked root joins that batch; a root read live moves to the deferred lane
 until the epoch turns, on the collector's reading (clause 8, amended
 2026-09-15: the owner still makes the move, the mirror it records is the
-count of the reading that deferred it — the poll's own at the poll, the
-close's at a collection — and a garbage root the collector misread waits one
+count of the reading that deferred it — the close's — and a garbage root
+the collector misread waits one
 epoch); a zero-count verdict is a count read and not a completed death, so
 the owner re-reads the entity's completed-free bit and retires the entry
 only on it. Every entry the reading cannot dispose of — a proposed root
 whose in-line trace was refused, a component whose teardown was refused or
 resurrected, a resurrected zero-count entity — is written back into R as a
 registration is, its candidate bit still set, before P's `front` advances,
-and P's `front` advances at the close by the whole reading. A closed-gate
-poll reads no verdict. The owner is the sole writer for all of these
-transitions.
+and P's `front` advances at the close by the whole reading, on every ending
+of the collection, so that the close's release to `FREE` always finds P
+disposed of. The owner is the sole writer for all of these transitions.
 
 **In-line collection is the same reader.** A mutator short of memory, or one
 whose poll fires, sets its collecting word, takes its own token — waiting
@@ -796,8 +802,8 @@ to receive it. The collector sleeps on a futex between rounds, with a
 fallback timer between two named bounds that it lengthens after empty
 rounds, holds after a round that read an owner at the threshold and could
 not serve it, and shortens after a batch and when an owner's disposition
-freed something since the last round, which that owner's poll writes into
-its record. Several collectors divide the owners, each owner
+freed or retired something since the last round, which that owner's poll
+writes into its record after the collection it fired. Several collectors divide the owners, each owner
 named to one collector by a word in its record; a collector left with a
 backlog after two consecutive rounds births a sibling and hands it half of
 its owners, and ends a sibling idle for several rounds; a sibling's birth

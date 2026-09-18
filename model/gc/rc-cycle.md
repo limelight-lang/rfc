@@ -807,8 +807,11 @@ writes into its record after the collection it fired. Several collectors divide 
 named to one collector by a word in its record; a collector left with a
 backlog after two consecutive rounds births a sibling and hands it half of
 its owners, and ends a sibling idle for several rounds; a sibling's birth
-waits the same interval after a refused one as the first thread's. Two
-collectors never read one owner's ring: the owner's word says whose it is,
+waits the same interval after a refused one as the first thread's. A birth
+is made by the operating system's thread entry on a stack the manager maps
+once per collector slot and keeps, so it makes no allocation whose refusal
+would abort; a stack or a thread the operating system refuses is a refused
+birth. Two collectors never read one owner's ring: the owner's word says whose it is,
 and the token says who reads now.
 
 While a trace is active, its owner defers reuse of released slots. Other threads

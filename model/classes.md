@@ -1015,7 +1015,11 @@ mid-request is the store barrier's `drop`
   reference releases and cascades, an immortal/long-lived one is a no-op.
   The block is headerless, which does not matter: `drop` operates on the
   displaced entity, and the destination's `owner_cat` (long-lived) is a
-  compile-time constant.
+  compile-time constant. A slot is emptied before its occupant is dropped,
+  so a `__destruct` that drop runs reads that slot as null and the slots
+  after it as they were; a store it makes into a later slot is released
+  when the walk reaches that slot, and one into the emptied slot or an
+  earlier one is rooted for the life of the process.
 - **`__destruct` runs** wherever a release drives a refcount to zero —
   these are the shutdown destructors of the thread's end of life, in
   refcount-determined order.

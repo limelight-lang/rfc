@@ -546,12 +546,23 @@ releases it with a release store. Different mutator threads have different
 tokens, so their traces may run concurrently only if their reachable blocks are
 disjoint.
 
-The intended disjointness proof assumes that transferring an object leaves no
-reference in the source thread and that no thread points into another thread's
-blocks. Block adoption is ordered against the trace by the exit rule at the end
-of this section. The proof is still incomplete for moved objects, actor sharing
-and FFI entry. These are correctness prerequisites, not optional optimizations;
-see `dev/ALGORITHM-AUDIT.md`, issues B3, B4, and C3.
+Disjointness is an invariant the compiler enforces, and not a property the
+collector proves: no reference names an entity in another thread's blocks, and a
+transfer leaves none behind in the source thread (Edmond, 2026-09-19,
+[`../../dev/DECISIONS.md`](../../dev/DECISIONS.md), "no reference crosses a
+thread, and the compiler is what keeps it so"). A cycle therefore cannot span
+two mutator threads, and the disjointness above is that invariant rather than a
+consequence of the transfer rule alone. Block adoption is ordered against the
+trace by the exit rule at the end of this section.
+
+Two things the invariant does not cover, and neither is a reference a trace
+follows. A moved object can stay in the block it was allocated in while another
+thread owns it logically, so an address-derived row lookup reaches a block its
+owner does not hold ([`domains.md`](domains.md);
+[`../../dev/ALGORITHM-AUDIT.md`](../../dev/ALGORITHM-AUDIT.md), B3). An actor's
+`share` mode hands a copied pointer that nobody counts and nobody owns, and the
+rule keeping a collection from reading it as one of its edges is what
+[`../../runtime/actors.md`](../../runtime/actors.md) owes (B4 and C3).
 
 The token covers mark, scan, and reads of the live candidate queue. A
 collector releases it after its last row read, which is the end of its batch's

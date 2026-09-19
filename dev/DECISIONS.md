@@ -10,6 +10,29 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-09-19 (second) — no reference crosses a thread, and the compiler is what keeps it so
+
+**Ruled by Edmond.** No reference names an entity in another thread's blocks,
+and a transfer leaves none behind in the source thread. The compiler enforces the
+rule and the collector relies on it, so a cycle cannot span two mutator threads,
+and `model/gc/rc-cycle.md`'s "Concurrency" states this as the premise of its
+claim instead of deriving it from the transfer rule.
+
+**Why it was open:** Edmond's statement of 2026-08-29, that a cycle spanning two
+mutator threads arises in the general case when a thread borrows another's
+object, stood against the vocabulary in force — a borrow is frame-only
+(`model/memory/static-lifetimes.md`), anything leaving a frame is stored and
+counted, `model/classes.md`'s transfer rule forbids a reference left behind, and
+the ruling of 2026-08-26 gives every stack-held reference a counted `+1`. Of the
+three readings `dev/PLAN.md` S8.10 carried, the ruling takes the first: the case
+is closed, and no form is owed. **What it does not close:** a moved object's
+placement in the block it was allocated in while another thread owns it
+(`dev/ALGORITHM-AUDIT.md` B3), and the uncounted pointer of an actor's `share`
+mode, whose exclusion from a collection's edges `runtime/actors.md` already owes
+(B4 and C3). Neither is a reference. **Cost:** none in the collector, and one
+obligation outside it — a language feature that lets a reference cross a thread
+reopens this entry.
+
 ## 2026-09-19 — the epoch counter belongs to the thread that collects
 
 **Decided (Edmond).** The candidate-age epoch of Y7 and Y9 is counted per

@@ -1,6 +1,6 @@
 # PLAN
 
-Updated: 2026-09-15 · Active: S8 — the clauses the build runs into first; S8.7 closed 2026-09-15 and reopened the same night as S8.12, Edmond's ruling
+Updated: 2026-09-19 · Active: S8 — the clauses the build runs into first; S8.10 closed 2026-09-19 by Edmond's ruling, and the open steps are S8.4, S8.8 and S8.9
 
 **Closed stages are deleted whole** (rule 23.1.3). S1 through S5 went on
 2026-08-25, S6 and S7 on 2026-08-27; what survived each is in
@@ -504,7 +504,7 @@ normative table to follow rather than a decision entry.
         would collect it is refused until the accelerator exists and is
         revisited there against the measured residue, so today that residue is a
         bounded leak with no collector.
-- [ ] S8.10 Decide what a cross-thread reference is, and whether a cycle can run through one
+- [x] S8.10 Decide what a cross-thread reference is, and whether a cycle can run through one
       done: the documents name the form a reference takes when it reaches
         another thread, or state that none exists and that a cycle therefore
         cannot span two mutator threads; `rc-cycle.md`'s claim scope cites that
@@ -525,6 +525,14 @@ normative table to follow rather than a decision entry.
         The claim rests on no thread naming an entity in another thread's
         blocks; a cross-thread reference the trace follows would break it, and
         one it must not follow needs a written rule saying so.
+      handoff: ruled by Edmond 2026-09-19, the first of the three readings — no
+        reference names an entity in another thread's blocks, the compiler
+        enforces it, and a cycle cannot span two mutator threads.
+        `model/gc/rc-cycle.md`, "Concurrency" states it as the claim's premise;
+        `dev/DECISIONS.md`, "no reference crosses a thread, and the compiler is
+        what keeps it so"; `dev/ALGORITHM-AUDIT.md` records what of B3, B4 and
+        C3 closes with it. The two residues are not references: a moved object's
+        placement, and the actor's uncounted shared pointer.
 
 - [x] S8.11 Write the discriminating word into the ValueBox's normative documents
       done: `model/values.md`, "ValueBox Layout" states the two arms of the +8

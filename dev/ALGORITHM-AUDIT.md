@@ -229,6 +229,17 @@ Each entry names the ruling that closed a clause, where the ruling is recorded,
 and where the specification states it. The issue rows above are left as they
 were written on 2026-08-30.
 
+**B3, B4 and C3, in part (2026-09-19).** The disjointness the `rc-cycle` proof
+needed is an invariant the compiler enforces rather than an obligation of the
+collector's: no reference names an entity in another thread's blocks, and a
+transfer leaves none behind (`dev/DECISIONS.md`, "no reference crosses a thread,
+and the compiler is what keeps it so"; `model/gc/rc-cycle.md`, "Concurrency").
+C3's clause about cross-thread managed pointers closes with it. What stays open
+is not about references: B3's moved object is physically placed in the block it
+was allocated in while another thread owns it logically, and B4's `share` mode
+hands an uncounted pointer whose exclusion from a collection's edges
+`runtime/actors.md` owes.
+
 **A3, for the in-line collection (2026-09-03).** The free path tests the two
 conditions in order and only one of them writes anything down. A slot whose
 entity still has a candidate-queue entry is recorded nowhere, that entry naming

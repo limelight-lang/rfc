@@ -168,8 +168,10 @@ slot. Request: CAS `FREE → REQUESTED|s`; any other value is a skip
 (`Served::TokenHeld`). For an owner that answered its last request: a
 deadline loop with one bound W — `deadline = now + W`; load Acquire;
 `COLLECTOR|s` is the grant; past the deadline, withdraw; else
-`park_timeout(deadline − now)`. Only the byte is the answer; a park return
-is not. A return before the deadline that was not the grant is remembered,
+a wait on the collector slot's wake word for what is left of the deadline;
+the word is set under its mutex by every sender and taken by the wait, and
+it is the wait the sections below name where they say the collector parks.
+Only the byte is the answer; a wait's return is not. A return before the deadline that was not the grant is remembered,
 and the between-rounds sleep after this round is skipped once, because the
 loop may have consumed a round-start wake. For an owner that did not
 answer its last request — a silent mark on the collector's reader line,
@@ -181,8 +183,8 @@ ends. The standing array is read at two checkpoints on the collector's
 frame, the two places it commits time, at both of which it holds no token
 and no arena: before every request of the walk — which is after every
 batch, every skip and every refusal, and at the round's start — and after
-every `park_timeout` return inside a deadline loop that was not the grant,
-before the loop parks again. At a checkpoint the live prefix of the array
+every wait return inside a deadline loop that was not the grant, before
+the loop waits again. At a checkpoint the live prefix of the array
 is read in order, one Acquire load per entry: `COLLECTOR|s` is served then
 — arena opened after the grant, the batch, the arena's reset, the release,
 the entry dropped, the silent mark cleared; `REQUESTED|s` is left
@@ -190,10 +192,10 @@ standing; anything else — `MUTATOR`, `FREE`, another slot's value — is a
 record moved on and the entry is dropped. Every consented entry found is
 served in the same checkpoint, and the walk or the stranger's deadline
 loop resumes after; the deadline is absolute, computed once, so a resumed
-loop parks for what is left or withdraws. A standing request costs no
-wait; the consent wake cannot be lost, since `park`'s token makes an
-unpark sent mid-round end the next `park_timeout` at once, and a batch in
-progress ends by its block budget — so a woken owner is served at the
+loop waits for what is left or withdraws. A standing request costs no
+wait; the consent wake cannot be lost, since the slot's wake word makes a
+wake sent mid-round end the next wait at once, and a batch in progress ends
+by its block budget — so a woken owner is served at the
 first checkpoint after its consent, at most one stranger's batch away plus
 the batches of standing entries ahead of it that consented in the same
 interval. The "remembered early return" that skips the between-rounds
@@ -214,8 +216,8 @@ fails and reads nothing: P holds one batch at a time, and the next request
 is made against `FREE` after the owner's close; for the timer the skip is
 neither a batch nor work, and the owner's note of a freeing disposition
 is the way back to the minimum interval. The collector exists before the
-first pressure collection: the poll's first wake births the elder, since
-the poll has a frame and may allocate. The guard's drop is the withdrawal above, and a failure
+first pressure collection: the poll's first wake births the elder, the one
+tracer of R. The guard's drop is the withdrawal above, and a failure
 reading its own `COLLECTOR|s` releases; `note_traced_owner(null)` in the
 same drop; the arena is declared after the guard and drops before it.
 `Served` gains `Unanswered`, which is neither a batch nor work: the
@@ -274,7 +276,7 @@ before: for a `COLLECTOR` to release when it must collect itself.
 The mutator's free path pays one acquire load of the byte, a plain `mov`
 on x86-64 and `ldar` on ARM64, as before 2026-09-16: the 2.5–3 ns fence
 per free is gone. A consent pays one Release compare-and-swap, one lock of
-the collector slot's handle mutex with an `unpark`, and one slot withheld
+the collector slot's wake word with a notify, and one slot withheld
 until the batch ends — once per batch, not measured. The poll pays one
 acquire load per poll, the one addition to a path the draft did not touch,
 and loses its per-poll peek of P (`Reader::new` and one `peek`); the
@@ -293,7 +295,7 @@ opened after the grant, the batch as today, the arena's reset, and one
 Release store with a lock and notify; per silent owner one request and one
 withdrawal per round, and at most k Acquire loads and k branches per
 checkpoint (k the standing array's capacity, a constant named beside
-`BACKLOGGED_REMEMBERED`), one checkpoint per walk step and one per park
+`BACKLOGGED_REMEMBERED`), one checkpoint per walk step and one per wait
 return, which the batch that follows dwarfs; per refusal one wait ended
 early by the wake. W is not measured and not guessed: it lands
 above the 99th percentile of the interval between two consecutive polls or

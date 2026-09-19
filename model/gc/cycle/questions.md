@@ -649,11 +649,17 @@ survivors re-registering every collection.
 **The epoch counter's residence was ruled 2026-08-27** with the deferred-candidate
 buffer that reads it ([`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md),
 "the deferred-candidate buffer is the owner's, and the re-offer is a splice at the
-epoch's turn"): the counter is process-global and full-width, a collection's
-commit advances it once every N collections, and the epoch field of the
-header's four-bit candidate-age stamp carries its low two bits. A thread compares
-it against a full-width local
-mirror, so a stamp that wraps hides no turnover from the re-offer.
+epoch's turn") **and re-ruled 2026-09-19**, when Edmond gave the counter to the
+thread that collects: it is that thread's own, full-width, kept in its mutator
+record, and a collection's commit advances the committing thread's counter once
+every N collections. The epoch field of the header's four-bit candidate-age
+stamp carries its low two bits. A thread compares its counter against a
+full-width local mirror, so a stamp that wraps hides no turnover from the
+re-offer. A collector thread tracing for an owner prunes against the owner's
+counter, the stamps it reads being that owner's commits'; the entities of one
+mutator are that mutator's, no thread pointing into another thread's blocks
+([`../rc-cycle.md`](../rc-cycle.md), the disjointness the token's proof
+assumes).
 
 **What "component" means for the stamp was ruled 2026-09-10** with the producer
 that writes it (`ll-model` `PLAN.md` S37.0): the strongly connected component of
@@ -666,10 +672,11 @@ validation read as externally referenced: its blocks are back before the first
 destructor, so no rows remain to walk.
 
 **What would answer the rest:** the traversal age threshold `k` — a measurement on a
-real workload, YRC's 3 being the only known value; the advance period `N`,
-where YRC's 64 is likewise the only known value and the two dials are separate;
-and how concurrent commits count `N` on one process-global word, several owner
-threads being able to commit at the same instant. The stamp's residence in the
+real workload, YRC's 3 being the only known value; and the advance period `N`,
+where YRC's 64 is likewise the only known value and the two dials are separate.
+How concurrent commits would count `N` on one shared word is no longer a
+question: each thread counts its own, and `N` is a count of that thread's
+collections. The stamp's residence in the
 header is settled — epoch 16-17, age 18-19, under Y7's re-lay of 2026-08-26. The
 381-of-381 figure also owes its instrument: it was taken on 2026-08-25 against
 the booted Laravel corpus, the filed corpus tool
@@ -1098,10 +1105,12 @@ the first three are what the candidate would have to be given.
    slot and never a root.
 
    **Epoch turnover is the candidate-age epoch of Y7 and Y9**, `rc-walk`'s drain
-   epoch having been deleted with it. The counter is process-global and
-   full-width, a collection's commit advances it once every N collections (N is
-   Y9's dial, and YRC's 64 is the only known value), and the epoch field of the
-   header's four-bit candidate-age stamp carries its low two bits. **The re-offer instant is the owner's first
+   epoch having been deleted with it. The counter is the collecting thread's
+   own and full-width, in that thread's record (re-ruled 2026-09-19), a
+   collection's commit advances the committing thread's counter once every N
+   collections (N is Y9's dial, and YRC's 64 is the only known value), and the
+   epoch field of the header's four-bit candidate-age stamp carries its low two
+   bits. **The re-offer instant is the owner's first
    safepoint poll that finds the counter moved** from a thread-local
    full-width mirror recorded at the last re-offer; full-width on both sides,
    so a stamp that wraps hides no turnover. At that poll, after clause 3's

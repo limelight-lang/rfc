@@ -10,6 +10,25 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-09-19 — the epoch counter belongs to the thread that collects
+
+**Decided (Edmond).** The candidate-age epoch of Y7 and Y9 is counted per
+thread, in the mutator's record, and a commit advances the counter of the
+thread that closed it; a collector thread tracing for an owner prunes against
+that owner's counter. This replaces the process-global word of the ruling
+closing Y12 clause 8, whose stated reason — one maturation rate for a component
+split across two threads' heaps — describes a shape `model/gc/rc-cycle.md`
+forbids, no thread pointing into another thread's blocks.
+
+**Why (the model's, not part of the ruling):** a shared word hands the
+maturation rate to the busiest thread in the process, so a thread that collects
+rarely reads every stamp of its own as stale at its next collection and prunes
+nothing. **Cost:** eight bytes in the record's writer line and one load of that
+line per batch by the collector; the open question of how concurrent commits
+count N on one word goes with the word. Built in `ll-model` the same day
+(`ll-model` `PLAN.md` S37.10, the form `model/gc/cycle/questions.md` uses for
+that plan).
+
 ## 2026-09-17 — the collector's batch is the mutator's trigger, through the token byte
 
 **Ruled by Edmond.** The mutator accumulates roots in R; the collector walks

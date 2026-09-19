@@ -671,9 +671,21 @@ collection an allocation failure starts stamps only the components its exact
 validation read as externally referenced: its blocks are back before the first
 destructor, so no rows remain to walk.
 
-**What would answer the rest:** the traversal age threshold `k` — a measurement on a
-real workload, YRC's 3 being the only known value; and the advance period `N`,
-where YRC's 64 is likewise the only known value and the two dials are separate.
+**The traversal age threshold `k` is one**, ruled by Edmond on 2026-09-19 over
+two readings taken on a parameterized test heap, a corpus over the runtime's own
+heap having been refused as unreachable (`ll-model`, `dev/BENCHMARKS.md`, "the
+pruned share against a named survival rate" and "what a turnover re-offers, and
+what a deferral costs"). The pruned-edge share is `1 - k * q` at retirement rate
+`q`, so every step of the threshold costs one `q` of the population, while a
+component that dies behind a pruned edge waits `N - d + 1` collections whatever
+the threshold is: `k` sets how many components pay that wait, not how long it
+lasts. YRC's 3 was the only published value and was measured nowhere.
+
+**What would answer the rest:** the advance period `N`, where YRC's 64 is the
+only known value and the two dials are separate. Both of its costs are linear in
+it and pull against each other — a live root is re-traced once per `N`
+collections, a dead component waits up to `N` — so the readings give the
+exchange rate and no side.
 How concurrent commits would count `N` on one shared word is no longer a
 question: each thread counts its own, and `N` is a count of that thread's
 collections. The stamp's residence in the

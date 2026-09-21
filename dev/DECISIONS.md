@@ -49,8 +49,8 @@ rarely reads every stamp of its own as stale at its next collection and prunes
 nothing. **Cost:** eight bytes in the record's writer line and one load of that
 line per batch by the collector; the open question of how concurrent commits
 count N on one word goes with the word. Built in `ll-model` the same day
-(`ll-model` `PLAN.md` S37.10, the form `model/gc/cycle/questions.md` uses for
-that plan).
+(`ll-model` `dev/DECISIONS.md`, "the epoch counter is the collecting thread's,
+in its record").
 
 ## 2026-09-17 — the collector's batch is the mutator's trigger, through the token byte
 
@@ -919,7 +919,7 @@ step priced does not model this exclusion.
 
 ## 2026-09-10 — the component a maturation stamp ages is the strongly connected component
 
-**Decided by the Sage** at `ll-model`'s pre-change gate for `PLAN.md` S37.1, and
+**Decided by the Sage** at `ll-model`'s pre-change gate for the edge-side prune, and
 carried here because Y9 and `rc-cycle.md`'s age-based pruning bullet use
 "component" for the stamp without defining it. A commit stamps every entity its
 scan proved live, and the age is one more than the minimum current-epoch age

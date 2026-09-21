@@ -662,7 +662,8 @@ mutator are that mutator's, no thread pointing into another thread's blocks
 assumes).
 
 **What "component" means for the stamp was ruled 2026-09-10** with the producer
-that writes it (`ll-model` `PLAN.md` S37.0): the strongly connected component of
+that writes it (`ll-model` `dev/DECISIONS.md`, "the live population is stamped by
+component, and the component is the strongly connected one"): the strongly connected component of
 the subgraph one trace walked, computed over the trace's own rows after the scan
 and before any guard. The closure of a root is refused as the unit on the
 381-of-381 reading above — a closure that is the whole live set takes the age of

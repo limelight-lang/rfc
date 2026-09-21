@@ -1,6 +1,6 @@
 # PLAN
 
-Updated: 2026-09-19 · Active: S8 — the clauses the build runs into first; S8.10 closed 2026-09-19 by Edmond's ruling, and the open steps are S8.4, S8.8 and S8.9
+Updated: 2026-09-21 · Active: S8 — the clauses the build runs into first; S8.10 closed 2026-09-19 by Edmond's ruling, S8.8 narrowed 2026-09-21 to what the per-thread counter left of it, and the open steps are S8.4, S8.8 and S8.9
 
 **Closed stages are deleted whole** (rule 23.1.3). S1 through S5 went on
 2026-08-25, S6 and S7 on 2026-08-27; what survived each is in
@@ -64,6 +64,33 @@ the steps below).
 - Closure and fiber/generator layouts are unspecified anywhere in this
   repository. The case book that reported the holes went with the horizon on
   2026-08-26; the holes did not.
+- Which destructors "a destructor ran anywhere" counts. `model/gc/rc-cycle.md`,
+  "Cycle finalization and reclamation", step 5 gates the second reading on a
+  destructor having run anywhere in the commit, and `ll-model`'s
+  `cycle::finalization` reads that as a member's pending `__destruct` at step
+  4, which is what its `DestructorPass` records. The other reading is any
+  user destructor at all, the external children of a component's teardown
+  included — and those run without touching the flag, which the crate's case
+  `a_child_of_a_dying_member_runs_its_destructor_inside_the_release` shows.
+  The skip is sound under the first reading by the induction written at the
+  crate's `Revalidation::revalidate`; which reading the specification means
+  is unresolved, and the sentence is this repository's to sharpen. Moved from
+  `ll-model`'s fog on 2026-09-21.
+- An object handed to a survivor by a destructor of the same batch still runs
+  its own `__destruct`. `ll-model`'s settle loop drains a round's destructor
+  entries before the re-trace, so `$survivor->keep = $this->y` in one body
+  does not spare `y`'s body later in the same batch: `y` is promoted
+  already-destructed, its later `dispose` finding `DESTRUCTOR_RAN` and
+  skipping. Zend would not destruct it, `y` never having become unreachable.
+  Named by the Critic of 2026-09-12 over the re-trace; whether the "survives
+  already-destructed" paragraph of `model/memory/arena-reset.md` admits it is the
+  sentence to write. Moved from `ll-model`'s fog on 2026-09-21.
+- A destructor's `ll_thread_exit` waits for the thread's top (`ll-model`'s
+  `memory::heap::thread_exit_pending`), and nothing tells the code above the
+  destructor that a request stands: whether the emitted safepoint reads that
+  word and unwinds on it, and under what name the ABI carries it (`ll-model`
+  `dev/DECISIONS.md`, "an exit requested inside a collection runs at the
+  thread's top"). Moved from `ll-model`'s fog on 2026-09-21.
 
 ## S8 — The open clauses `rc-cycle` cannot be built without
 
@@ -182,7 +209,8 @@ normative table to follow rather than a decision entry.
         the mirror is the commit count the reading itself saw, the deferral
         retires completed deaths on the way in, and a bounded pressure round
         defers nothing. One registered entity remains one token throughout.
-        `model/PLAN.md` S37.4 is built to this text.
+        `ll-model`'s deferred lane (`cycle::queue::defer_candidates`) is built
+        to this text.
       handoff: the retention this buys is the widest in the design and was
         accepted rather than solved — a suspect that dies while parked keeps its
         slot, and the slot's block, until the next turnover or an in-line
@@ -459,12 +487,19 @@ normative table to follow rather than a decision entry.
         `rc-cycle.md`, "Worker-to-owner handoff" carries the mechanism; Y12
         clauses 2, 3, 5, 8 and its heading; `model/PLAN.md` S49 builds it in
         eight steps.
-- [ ] S8.8 Decide how concurrent commits advance the epoch counter
-      done: Y9 states who writes the process-global counter, how "every N
-        collections" is counted when several owners commit at once, and what
-        orders that write against the header stamps a commit writes on its own
-        thread
+- [ ] S8.8 Decide what orders a commit's counter advance against the stamps a collector reads
+      done: Y9 states what orders the committing thread's counter advance
+        against the header stamps that same commit writes, and against a
+        collector thread's read of that counter for its batch — the token's
+        exclusion, or a fence the text names
       tier: T2 · role: Sage
+      correction 2026-09-21: the criterion as first written asked who writes a
+        process-global counter and how several owners count N on one word.
+        Both clauses went with the word on 2026-09-19 (`dev/DECISIONS.md`,
+        "the epoch counter belongs to the thread that collects"): each thread's
+        commit advances its own counter, and a collector reads the owner's. What
+        the step still owes is the third clause, now between one owner's commit
+        and the collector that traces for it.
       handoff: the clause-8 ruling of 2026-08-27 gave the counter its residence
         and its reader and left its writer undisciplined. Commits are not
         serialized: the trace token is released before any exact test, so

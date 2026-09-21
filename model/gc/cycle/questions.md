@@ -651,8 +651,11 @@ buffer that reads it ([`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md),
 "the deferred-candidate buffer is the owner's, and the re-offer is a splice at the
 epoch's turn") **and re-ruled 2026-09-19**, when Edmond gave the counter to the
 thread that collects: it is that thread's own, full-width, kept in its mutator
-record, and a collection's commit advances the committing thread's counter once
-every N collections. The epoch field of the header's four-bit candidate-age
+record, and the thread's commits advance its counter, a turnover every N of
+them; a thread the collector finds quiet for X moves its own counter to the
+next turnover at its poll, on the collector's request (ruled 2026-09-21,
+`ll-model` `dev/DECISIONS.md`, "a quiet thread's turnover is the collector's to
+ask for"). The epoch field of the header's four-bit candidate-age
 stamp carries its low two bits. A thread compares its counter against a
 full-width local mirror, so a stamp that wraps hides no turnover from the
 re-offer. A collector thread tracing for an owner prunes against the owner's
@@ -689,7 +692,8 @@ collections, a dead component waits up to `N` — so the readings give the
 exchange rate and no side.
 How concurrent commits would count `N` on one shared word is no longer a
 question: each thread counts its own, and `N` is a count of that thread's
-collections. The stamp's residence in the
+collections on a thread that collects; a quiet thread's turnover is X, the
+interval after which the collector asks for it. The stamp's residence in the
 header is settled — epoch 16-17, age 18-19, under Y7's re-lay of 2026-08-26. The
 381-of-381 figure also owes its instrument: it was taken on 2026-08-25 against
 the booted Laravel corpus, the filed corpus tool
@@ -1119,9 +1123,11 @@ the first three are what the candidate would have to be given.
 
    **Epoch turnover is the candidate-age epoch of Y7 and Y9**, `rc-walk`'s drain
    epoch having been deleted with it. The counter is the collecting thread's
-   own and full-width, in that thread's record (re-ruled 2026-09-19), a
-   collection's commit advances the committing thread's counter once every N
-   collections (N is Y9's dial, and YRC's 64 is the only known value), and the
+   own and full-width, in that thread's record (re-ruled 2026-09-19), the
+   thread's commits advance its counter, a turnover every N of them (N is
+   Y9's dial, and YRC's 64 is the only known value), a thread the collector
+   finds quiet for X moves its own counter to the next turnover at its poll on
+   the collector's request (2026-09-21), and the
    epoch field of the header's four-bit candidate-age stamp carries its low two
    bits. **The re-offer instant is the owner's first
    safepoint poll that finds the counter moved** from a thread-local

@@ -760,6 +760,18 @@ place reads *live*. A batch that met B halves K for that owner, a
 completed one doubles it back to its bound, and neither is an empty round
 for the timer.
 
+**The ring under the grant decides the batch's form**, rather than the
+request that opened it: the collector reads R again under the token, and a
+ring that still holds the threshold is batched at K and resizes K by the
+batch's outcome, while one below it is batched at one entry short of the
+threshold and leaves K where it stands. Neither case is the kind of request
+that was made: a ring the standing take of "The standing ring is taken after
+an interval" requested may have grown past the threshold while its owner
+slept, and a ring requested at the threshold may have been drained by the
+owner's own in-line collection before it consented (`ll-model`,
+`dev/DECISIONS.md`, "a take's unanswered request stands on the record, and
+the ring under the token decides the batch's form").
+
 **P does not grow.** One block per thread, the owner's memory, drawn with
 the record; the collector clamps its batch to P's room and never writes a
 link into P, so no block passes from the owner to the collector and no
@@ -824,6 +836,38 @@ once per collector slot and keeps, so it makes no allocation whose refusal
 would abort; a stack or a thread the operating system refuses is a refused
 birth. Two collectors never read one owner's ring: the owner's word says whose it is,
 and the token says who reads now.
+
+**The standing ring is taken after an interval.** A count below the
+threshold and above zero is not served at that round: the threshold spares
+an owner with three candidates the foreign-holder window a batch costs. The
+collector notes instead when it first read that ring non-empty and below the
+threshold, and at the first round an interval or more after the note at
+which the ring still reads non-empty — grown meanwhile or not — it takes
+the ring as an ordinary batch. The interval is the collector's own time and
+not a count of rounds, rounds being wake-driven and unbounded below, and the
+embedder replaces the runtime's figure. The note is stamped afresh at the
+release of every grant and cleared by a round that reads the ring empty or
+at the threshold. What it buys is the garbage of an owner that never reaches
+the threshold: it is reclaimed an interval after it appears rather than at
+that owner's exit or at a memory shortage. An owner that does not consent
+inside the request wait is asleep, and nothing touches the thread while it
+sleeps: the request stays on its byte and its record stays in the
+collector's standing list, so the ring is taken at the owner's own first
+poll or slot free, at the checkpoint that reads the consent. A standing
+request is what keeps a sleeping population from being asked again every
+interval: it is made once and waited for once, and the rounds after it read
+a request that already stands. One walk begins at most a bounded number of
+consent waits that then expire, and past that bound every further request it
+lands is left standing at once rather than waited on, which bounds any one
+round's spending on owners that never answer at the bound times the wait
+(Edmond, 2026-09-22, and the two rulings of the same evening he accepted;
+built in `ll-model`, whose `dev/DECISIONS.md` carries them as "a standing R
+is taken after an interval of the collector's own, and no request count is
+capped", "a take's unanswered request stands on the record, and the ring
+under the token decides the batch's form" and "the consent wait stays on
+both paths, and a round's spending on expired waits is capped", its
+`dev/design/a-standing-r-is-taken-after-n-rounds.md` the refused forms and
+its `dev/BENCHMARKS.md` the figures).
 
 While a trace is active, its owner defers reuse of released slots. Other threads
 need not do so only if the block-disjointness prerequisite above holds.

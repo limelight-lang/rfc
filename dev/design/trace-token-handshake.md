@@ -678,11 +678,16 @@ refuses (`REQUESTED|s → MUTATOR`, wake), the pass unlinks the record, the
 walk requests the next life afresh — the registry hands the record to no
 new life while it is linked; a sibling ended by the elder withdraws
 its standing requests in its drop, and a consent landing between the
-`ENDING` word and the drop is released without a batch; an owner is handed
-to a sibling only while unlinked — the handover moves records batched in
-the round, which the batch unlinked — so the elder's standing request is
-never on a record named to a sibling, and a request that meets
-`REQUESTED|elder` is a skip as any other collector's value.
+`ENDING` word and the drop is released without a batch; the handover
+leaves a linked record with the collector whose request stands on it, and
+a request that meets `REQUESTED|elder` is a skip as any other collector's
+value. The handover reads the link itself rather than resting on the batch:
+a record the round batched was unlinked by that batch, but the walk that
+reaches it later in the same round may leave a fresh request standing on
+it, so a record read as standing is left with the elder and costs its owner
+one more round there (amended 2026-09-22, the defect and its repair in
+`ll-model`'s `cycle::worker::hand_over_half` — a sibling that reclaimed
+such a record spliced it out of a list that was not its own).
 
 **(b) The asymmetric barrier is refused, as the whole protocol and as the
 fallback.** `Final`. As the whole: it lands nothing on the free path (E3's

@@ -77,10 +77,10 @@ value a failed swap reads back is acted on, never inferred.
 
 | from | to | who | where | ordering |
 |---|---|---|---|---|
-| `FREE` | `REQUESTED\|s` | collector s | `serve`, after the hold-read idle test, the guard installed first | CAS Acquire / Relaxed |
+| `FREE` | `REQUESTED\|s` | collector s | `serve`, after the hold-read idle test, the record linked into the standing list first | CAS AcqRel / Acquire — the release publishes the link to the exit's take, and through the registry's lock to its acquire load of the link |
 | `REQUESTED\|s` | `COLLECTOR\|s` | mutator | the slot free entry; the poll's reading before the gate | CAS Release / Acquire; then wake s |
-| `REQUESTED\|s` | `FREE` | collector s | the deadline, the round-end sweep, the guard's drop | CAS Relaxed / Acquire; failure acted on by value |
-| `COLLECTOR\|s` | `FREE` | collector s | after the last row read and the arena's reset, when the batch posted nothing into P | store Release; lock; `notify_all` |
+| `REQUESTED\|s` | `FREE` | collector s | the guard's drop inside the wait; the standing list's drop at the thread's end, for a request the deadline left standing | CAS Relaxed / Acquire; failure acted on by value |
+| `COLLECTOR\|s` | `FREE` | collector s | after the last row read and the arena's reset, when the batch posted nothing into P; at a checkpoint, for every grant read after the first, with no batch | store Release; lock; `notify_all` |
 | `COLLECTOR\|s` | `POSTED` | collector s | the same release, when the batch posted its verdicts into P; on the unwind as on the return | store Release; lock; `notify_all` |
 | `POSTED` | `MUTATOR` | mutator | every taker of the `FREE → MUTATOR` row below, the teardown-refusal retirement excepted, which holds `POSTED` unswapped | CAS Acquire / Acquire |
 | `POSTED` | (skip) | collector s | the request CAS fails on it: neither a batch nor work; the owner is served by no round until its own collection has run | CAS failure, Relaxed |
@@ -178,35 +178,55 @@ the word is set under its mutex by every sender and taken by the wait, and
 it is the wait the sections below name where they say the collector parks.
 Only the byte is the answer; a wait's return is not. A return before the deadline that was not the grant is remembered,
 and the between-rounds sleep after this round is skipped once, because the
-loop may have consumed a round-start wake. For an owner that did not
-answer its last request — a silent mark on the collector's reader line,
-reset with the line at a re-take — the request is not waited for and not
-withdrawn: it stands on the byte, recorded in a fixed array on the
-collector thread's frame (a silent owner past the array's capacity is
-skipped that round), until the owner answers or the collector thread
-ends. The standing array is read at two checkpoints on the collector's
-frame, the two places it commits time, at both of which it holds no token
-and no arena: before every request of the walk — which is after every
-batch, every skip and every refusal, and at the round's start — and after
-every wait return inside a deadline loop that was not the grant, before
-the loop waits again. At a checkpoint the live prefix of the array
-is read in order, one Acquire load per entry: `COLLECTOR|s` is served then
-— arena opened after the grant, the batch, the arena's reset, the release,
-the entry dropped, the silent mark cleared; `REQUESTED|s` is left
-standing; anything else — `MUTATOR`, `FREE`, another slot's value — is a
-record moved on and the entry is dropped. Every consented entry found is
-served in the same checkpoint, and the walk or the stranger's deadline
-loop resumes after; the deadline is absolute, computed once, so a resumed
+loop may have consumed a round-start wake. A request the owner did not
+answer inside the wait is not withdrawn: it stands on the byte until the
+owner answers or the collector thread ends, and the record stands in a
+list threaded through the records themselves — a link pair on the
+collector's line of each record, the two ends on the collector thread's
+frame, no capacity, since the number of mutator threads is nobody's to
+know in advance. The record is linked before the request is made, so that
+an exit which takes the request finds it listed, and the registry hands
+out no linked record: a record is renamed to another collector or freed
+only while unlinked. The list is read at checkpoints on the collector's
+frame, the places it commits time, at each of which it holds no token and
+no arena: at the round's start, before every request of the walk — which
+is after every batch, every skip and every refusal — and after every wait
+return inside a deadline loop that was not the grant, before the loop
+waits again. A checkpoint walks only after a byte event: every consent and
+every refusal increments a sequence number on the collector's slot beside
+its wake, and a checkpoint that reads the number it read last does not
+walk, since nothing moves a standing entry's byte out of `REQUESTED|s`
+without a wake to slot s. Otherwise the whole list is read once, one
+Acquire load per entry: `REQUESTED|s` is left standing; the first
+`COLLECTOR|s` read is unlinked and served after the pass — arena opened
+after the grant, the batch, the arena's reset, the release; every further
+`COLLECTOR|s` is unlinked, marked on its record as released unserved, and
+released to `FREE` with no batch, never to `POSTED`, which over an empty P
+would arm a collection over R for nothing; anything else — `MUTATOR`,
+`FREE`, another slot's value — is a record moved on, and is unlinked. One
+grant per checkpoint, so a burst of k consents costs the k-th waker one
+stranger's batch and not a queue of k − 1 batches ahead of it. The walk's
+next request to a released owner is made with no wait, since the owner is
+asleep again by the time the walk reaches it and a wait per released
+worker would cost a broadcast-woken pool n²·W/2 of collector time; it
+stands, and is served at the checkpoint where it is the first grant read,
+in the walk's order, which is fixed across rounds, so that in a lockstep
+burst of n the last is served at its n-th event, each of its windows at
+most one stranger's batch. The walk or the stranger's deadline loop resumes
+after a checkpoint; the deadline is absolute, computed once, so a resumed
 loop waits for what is left or withdraws. A standing request costs no
 wait; the consent wake cannot be lost, since the slot's wake word makes a
 wake sent mid-round end the next wait at once, and a batch in progress ends
-by its block budget — so a woken owner is served at the
-first checkpoint after its consent, at most one stranger's batch away plus
-the batches of standing entries ahead of it that consented in the same
-interval. The "remembered early return" that skips the between-rounds
+by its block budget — so a woken owner is served at the first checkpoint
+after its consent, at most one stranger's batch away, whatever the number
+of threads. The "remembered early return" that skips the between-rounds
 sleep once is set only when the checkpoint that followed the return served
-nothing. The withdrawal of standing requests is the thread body's drop;
-one that fails reading its own `COLLECTOR|s` releases without a batch.
+nothing. Every outcome that leaves no request standing unlinks the record:
+a refusal, a withdrawal whose read-back is a record moved on, and the
+grant's service. The withdrawal of standing requests is the thread body's
+drop, at the thread's end and on its unwind: each listed request withdrawn,
+one that fails reading its own `COLLECTOR|s` released without a batch,
+then the record unlinked.
 Withdrawal: CAS `REQUESTED|s → FREE` (Relaxed
 success, Acquire failure); on failure the read-back decides —
 `COLLECTOR|s` is the grant and is served then, not released; `MUTATOR` is a
@@ -297,12 +317,14 @@ throughput, the pressure path's whole-R compaction being the fallback;
 each not measured. The collector pays per batch one request
 CAS, a wait of at most W, one acquire load per wake inside it, the arena
 opened after the grant, the batch as today, the arena's reset, and one
-Release store with a lock and notify; per silent owner one request and one
-withdrawal per round, and at most k Acquire loads and k branches per
-checkpoint (k the standing array's capacity, a constant named beside
-`BACKLOGGED_REMEMBERED`), one checkpoint per walk step and one per wait
-return, which the batch that follows dwarfs; per refusal one wait ended
-early by the wake. W is not measured and not guessed: it lands
+Release store with a lock and notify; per standing owner one failed
+request per round — the walk's swap fails on its own `REQUESTED|s` and
+waits nothing — and one withdrawal at the thread's end; per checkpoint one
+Acquire load of the slot's byte-event number, and one Acquire load per
+standing entry only after a consent or a refusal, one pass per byte event
+however many consents it carries; one checkpoint per walk step and one per
+wait return, which the batch that follows dwarfs; per refusal one wait
+ended early by the wake. W is not measured and not guessed: it lands
 above the 99th percentile of the interval between two consecutive polls or
 slot frees of a running mutator on the corpus, with a margin — bench
 measures it, and the placeholder the implementer writes carries "not a
@@ -523,7 +545,10 @@ against `REQUESTED|e` withdraws nothing of e's. The guard replaces
 have one writer; the arena is declared after the guard so that the rows
 are reset before the token goes on the unwind as on the return, which
 today's order (arena before `try_take`) does not give on the unwind.
-`Final`.
+`Final`. Past the deadline the guard withdraws nothing: the request stands,
+and its withdrawal passes to the standing list's drop, which runs at the
+thread's end and on its unwind and withdraws every listed request the same
+way.
 
 **E3.** Every load that acts on `FREE` is Acquire; the mutator's take
 CASes are Acquire on success and failure; both releases are Release
@@ -631,7 +656,8 @@ is a defect of the ring, not of this question.
 **(a) The silent owner's standing garbage is the rule.** `Final`. Bounded
 in the mechanism by the amendment above: a request to a silent owner is
 not withdrawn at the round's end; it stands until the owner answers or the
-collector thread ends, each round sweeping the standing array first.
+collector thread ends, listed on its record and read at every checkpoint
+after a consent or a refusal.
 Served-within bound: one batch of the collector's next round after the
 owner's first poll or slot free, with no probabilistic term — where a
 request withdrawn at the round's end met a thread active in short bursts
@@ -646,13 +672,15 @@ reason first given here — a standing request on an active owner withholds
 for the round's length — was retired by the third round: under
 checkpoints every consent is served within batches.) Three interactions, each
 answered by the byte's identity: an owner exiting under a standing request
-refuses (`REQUESTED|s → MUTATOR`, wake), the sweep drops the entry, the
-walk requests the next life afresh; a sibling ended by the elder withdraws
+refuses (`REQUESTED|s → MUTATOR`, wake), the pass unlinks the record, the
+walk requests the next life afresh — the registry hands the record to no
+new life while it is linked; a sibling ended by the elder withdraws
 its standing requests in its drop, and a consent landing between the
-`ENDING` word and the drop is released without a batch; an owner handed to
-a sibling while the elder's request stands makes the sibling's request
-fail on `REQUESTED|elder` (skip), the elder's sweep serves the grant, and
-the naming word decides the next request.
+`ENDING` word and the drop is released without a batch; an owner is handed
+to a sibling only while unlinked — the handover moves records batched in
+the round, which the batch unlinked — so the elder's standing request is
+never on a record named to a sibling, and a request that meets
+`REQUESTED|elder` is a skip as any other collector's value.
 
 **(b) The asymmetric barrier is refused, as the whole protocol and as the
 fallback.** `Final`. As the whole: it lands nothing on the free path (E3's
@@ -705,11 +733,11 @@ ordering — and three more pass: E1, a withdrawal against a pressure-path
 refusal with no cell loaded after `MUTATOR`; E2, two collectors and one
 record reborn, the slot bits separating the grants; the standing request,
 the collector requesting, yielding, the mutator consenting later, the
-collector reading the grant on its sweep, the byte the only channel. Miri
+collector reading the grant at its checkpoint, the byte the only channel. Miri
 runs the crate's real tests over the diff's unsafe lines: the slot entry's
 consent, the poll's consent, the exit's refusal, the guard's unwind under
 a panic between the request and the wait, a record's rebirth under a
-standing request, the hand-back after a release, the standing array's drop
+standing request, the hand-back after a release, the standing list's drop
 at the thread's end. The stress test, release build, real threads, probe
 counters on the collector's outcomes, shows four things: an owner blocked
 on a pipe read for at least 2 × `FALLBACK_INTERVAL_MAX` with a ring of
@@ -730,7 +758,7 @@ interval of a running mutator on the corpus that sets W.
 
 Edmond's objection: a silent owner that wakes finds the standing request,
 consents, and withholds from that instant — but the collector is mid-round
-serving strangers and read the standing array only at the next round's
+serving strangers and read the standing requests only at the next round's
 start, so the woken owner withholds for the remainder of a stranger's
 round, up to (n − 1) × (W + batch), and its pressure path waits on the
 condition variable for that remainder plus its batch. The second round
@@ -770,21 +798,28 @@ exhaustion and about to run a whole in-line trace.
 
 **The mechanism: checkpoints on the collector's frame**, as the collector
 paragraph above now has it. The bound on the woken owner's withholding:
-one stranger's batch plus the batches of standing entries ahead of it that
-consented in the same interval (at most k − 1) plus its own; neither W nor
-the round's length enters; its pressure path and its exit wait the same
-bound. In the ordinary case — one sleeper waking — one stranger's batch
-plus its own, against an active owner's own batch alone; the k-way case is
-the serialisation one collector with one arena imposes on any k owners
-that consent at once. Cost: at most k Acquire loads and k branches per
-checkpoint on the collector; nothing on the mutator. The transition table
+one stranger's batch plus its own, whatever the number of threads — the
+checkpoint serves one grant and releases every other grant it read to
+`FREE` with no batch, so an owner that consented beside others withholds
+one stranger's batch, runs freely until the walk's re-request with no
+wait, and is served at the pass where it is the first grant read, in the
+walk's order, which is fixed across rounds; neither W nor the round's length
+enters; its pressure path and its exit wait the same bound, the release
+being real for both (each a compare-and-swap on `FREE`, and a re-request
+the take meets is a refusal that wins). In the ordinary case — one sleeper
+waking — one stranger's batch plus its own, against an active owner's own
+batch alone; a lockstep burst of n is served in n passes, and what grows
+with the burst is memory held under microsecond windows, not time under
+the byte. Cost: per checkpoint one Acquire load of the slot's byte-event
+number, and a pass over the list only after a consent or a refusal;
+nothing on the mutator. The transition table
 is unchanged and no state is added; two of the collector's requests may be
 outstanding at once — `REQUESTED|s` on the walk's owner and `COLLECTOR|s`
 on a standing owner served inside that owner's deadline loop — which the
 identity in the byte covers, the standing batch being served while the
 walk's owner stands at `REQUESTED|s`, whose readers read it as `FREE`;
-the standing entry's array is its guard, the walk owner's guard stands on
-the frame below it, and the arena is opened inside the standing batch and
+the standing list is its guard, the walk owner's guard stands on the
+frame below it, and the arena is opened inside the standing batch and
 reset before its release, on the return and on the unwind. The soundness
 argument gains one sentence: the checkpoint's loads are Acquire because
 they act on `COLLECTOR|s`, and a checkpoint inside a stranger's deadline
@@ -878,3 +913,18 @@ cheaper than the peek it replaces; W's tail waits on the corpus, the
 placeholder 2 ms kept. The stage-close review found the arena opened
 before the request, against E2, and it was moved under the grant before
 the commit (`dev/POSTMORTEM.md`, "the arena moved above the request").
+
+**Amended 2026-09-22**, and built the same day: the fixed array of
+standing requests on the collector's frame, its capacity of sixteen and
+the silent mark are replaced by the list threaded through the records, the
+byte-event gate on the checkpoint and the one grant per pass, as the
+collector paragraph, "Cost" and the third round's bound state above. The
+array stranded the seventeenth sleeper, requested and withdrawn within
+nanoseconds every round until an entry freed, and served every grant a
+checkpoint found, so the last of a burst of wakers withheld for the whole
+burst. The design and its refused forms are `ll-model`,
+`dev/design/the-standing-request-lives-on-the-record.md`, the ruling
+`ll-model`, `dev/DECISIONS.md`, "the standing request lives on the record,
+the checkpoint serves one grant, and no count is capped"; the sleeper
+probes re-run on the list read the same figures (`ll-model`,
+`dev/BENCHMARKS.md`, "the sleeper probes on the standing list").

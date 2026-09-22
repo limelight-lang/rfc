@@ -77,7 +77,7 @@ value a failed swap reads back is acted on, never inferred.
 
 | from | to | who | where | ordering |
 |---|---|---|---|---|
-| `FREE` | `REQUESTED\|s` | collector s | `serve`, after the hold-read idle test, the record linked into the standing list first | CAS AcqRel / Acquire — the release publishes the link to the exit's take, and through the registry's lock to its acquire load of the link |
+| `FREE` | `REQUESTED\|s` | collector s | `serve`, after the hold-read idle test, the record linked into the standing list first | CAS AcqRel / Acquire — the release publishes the link to the exit's take, and through the registry's lock to its acquire load of the link; a failed swap publishes nothing, so the reading's hold spans the link and the swap and is handed back after the unlink |
 | `REQUESTED\|s` | `COLLECTOR\|s` | mutator | the slot free entry; the poll's reading before the gate | CAS Release / Acquire; then wake s |
 | `REQUESTED\|s` | `FREE` | collector s | the guard's drop inside the wait; the standing list's drop at the thread's end, for a request the deadline left standing | CAS Relaxed / Acquire; failure acted on by value |
 | `COLLECTOR\|s` | `FREE` | collector s | after the last row read and the arena's reset, when the batch posted nothing into P; at a checkpoint, for every grant read after the first, with no batch | store Release; lock; `notify_all` |
@@ -187,7 +187,9 @@ frame, no capacity, since the number of mutator threads is nobody's to
 know in advance. The record is linked before the request is made, so that
 an exit which takes the request finds it listed, and the registry hands
 out no linked record: a record is renamed to another collector or freed
-only while unlinked. The list is read at checkpoints on the collector's
+only while unlinked, the link published to the exit by the request's
+release, and by the reading's hold where the request fails. The list is
+read at checkpoints on the collector's
 frame, the places it commits time, at each of which it holds no token and
 no arena: at the round's start, before every request of the walk — which
 is after every batch, every skip and every refusal — and after every wait

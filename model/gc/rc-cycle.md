@@ -410,7 +410,21 @@ Two conditions can delay reuse:
 
 1. A queue or deferred-candidate-buffer entry still names the entity. Such an
    entry may remain until the candidate epoch changes, unless a synchronous
-   collection removes zero-count entries earlier.
+   collection or the owner's retirement pass removes zero-count entries
+   earlier. The free path arms the pass: the owner counts the completed
+   deaths it withholds since R was last compacted, and the D-th arms its
+   next poll, which — the collection gate open, no collector's grant on its
+   byte, R below the collector's threshold — takes its own token, retires
+   the completed deaths in R, its overflow and P, and traces nothing. The
+   deferred lane's deaths wait for its turnover, so the pass reads R below
+   the threshold and the overflow buffer rather than the lane; a pass that
+   returned fewer than half of its count doubles the count the next one
+   waits for, up to a bound, since the deaths it missed stand in the lane.
+   A ring at the threshold is the collector's to batch: the pass raises
+   the owner's signal instead, which wakes the collector or births it, and
+   counts again (`ll-model`, `dev/DECISIONS.md`, "the collector finds and
+   the mutator judges, and a recall of the token bounds the mutator's wait
+   instead of the budget").
 2. A trace token protects scratch rows indexed by slot. Reusing a slot before
    the trace stops accessing those rows could associate the previous entity's
    visited bit and shadow count with the new occupant.

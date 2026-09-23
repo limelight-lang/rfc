@@ -35,6 +35,13 @@ reopens this entry.
 
 ## 2026-09-19 — the epoch counter belongs to the thread that collects
 
+**Superseded 2026-09-23** (`ll-model` `dev/DECISIONS.md`, "the collector finds
+and the mutator judges, and a recall of the token bounds the mutator's wait
+instead of the budget"): the counter stays per mutator and in its record, and
+it is the collector's, advanced after N of its batches or X of its clock; a
+commit advances nothing (`model/gc/rc-cycle.md`, "The epoch clock is the
+collector's").
+
 **Decided (Edmond).** The candidate-age epoch of Y7 and Y9 is counted per
 thread, in the mutator's record, and a commit advances the counter of the
 thread that closed it; a collector thread tracing for an owner prunes against

@@ -649,17 +649,19 @@ survivors re-registering every collection.
 **The epoch counter's residence was ruled 2026-08-27** with the deferred-candidate
 buffer that reads it ([`../../../dev/DECISIONS.md`](../../../dev/DECISIONS.md),
 "the deferred-candidate buffer is the owner's, and the re-offer is a splice at the
-epoch's turn") **and re-ruled 2026-09-19**, when Edmond gave the counter to the
-thread that collects: it is that thread's own, full-width, kept in its mutator
-record, and the thread's commits advance its counter, a turnover every N of
-them; a thread the collector finds quiet for X moves its own counter to the
-next turnover at its poll, on the collector's request (ruled 2026-09-21,
-`ll-model` `dev/DECISIONS.md`, "a quiet thread's turnover is the collector's to
-ask for"). The epoch field of the header's four-bit candidate-age
-stamp carries its low two bits. A thread compares its counter against a
-full-width local mirror, so a stamp that wraps hides no turnover from the
-re-offer. A collector thread tracing for an owner prunes against the owner's
-counter, the stamps it reads being that owner's commits'; the entities of one
+epoch's turn") **and re-ruled 2026-09-19 and 2026-09-23**: the counter is per
+mutator, full-width and kept in its mutator record, and since 2026-09-23 it
+is the collector's — the collector the mutator is named to advances it after
+N of its batches for that mutator or X of its own clock, whichever comes
+first, and the mutator writes nothing into it (`ll-model` `dev/DECISIONS.md`,
+"the collector finds and the mutator judges, and a recall of the token bounds
+the mutator's wait instead of the budget"; [`../rc-cycle.md`](../rc-cycle.md),
+"The epoch clock is the collector's"). The epoch field of the header's
+four-bit candidate-age stamp carries its low two bits. The collector mirrors
+the counter's low eight bits beside the token, and a thread compares that
+byte against its deferred lane's mirror, so only the 256th turnover a thread
+slept through hides from the re-offer. A collector thread tracing for an owner
+prunes against the owner's counter, the stamps it reads being that owner's; the entities of one
 mutator are that mutator's, no thread pointing into another thread's blocks
 ([`../rc-cycle.md`](../rc-cycle.md), the disjointness the token's proof
 assumes).
@@ -691,9 +693,9 @@ it and pull against each other — a live root is re-traced once per `N`
 collections, a dead component waits up to `N` — so the readings give the
 exchange rate and no side.
 How concurrent commits would count `N` on one shared word is no longer a
-question: each thread counts its own, and `N` is a count of that thread's
-collections on a thread that collects; a quiet thread's turnover is X, the
-interval after which the collector asks for it. The stamp's residence in the
+question: the collector counts, per mutator, and `N` is a count of its batches
+for that mutator; a thread with few batches turns over at X, the interval of
+the collector's own clock. The stamp's residence in the
 header is settled — epoch 16-17, age 18-19, under Y7's re-lay of 2026-08-26. The
 381-of-381 figure also owes its instrument: it was taken on 2026-08-25 against
 the booted Laravel corpus, the filed corpus tool
@@ -1122,17 +1124,17 @@ the first three are what the candidate would have to be given.
    slot and never a root.
 
    **Epoch turnover is the candidate-age epoch of Y7 and Y9**, `rc-walk`'s drain
-   epoch having been deleted with it. The counter is the collecting thread's
-   own and full-width, in that thread's record (re-ruled 2026-09-19), the
-   thread's commits advance its counter, a turnover every N of them (N is
-   Y9's dial, and YRC's 64 is the only known value), a thread the collector
-   finds quiet for X moves its own counter to the next turnover at its poll on
-   the collector's request (2026-09-21), and the
+   epoch having been deleted with it. The counter is per mutator, full-width,
+   in its record, and the collector's (re-ruled 2026-09-19 and 2026-09-23):
+   the collector advances it after N of its batches for the mutator (N is
+   Y9's dial, and YRC's 64 is the only known value) or X of its own clock,
+   and the
    epoch field of the header's four-bit candidate-age stamp carries its low two
    bits. **The re-offer instant is the owner's first
-   safepoint poll that finds the counter moved** from a thread-local
-   full-width mirror recorded at the last re-offer; full-width on both sides,
-   so a stamp that wraps hides no turnover. At that poll, after clause 3's
+   safepoint poll that finds the counter moved**: the poll compares the low
+   eight bits the collector stores beside the token at every advance with a
+   thread-local mirror recorded at the lane's fill or its last re-offer, so
+   only a thread that slept through 256 turnovers misses one. At that poll, after clause 3's
    cells are refilled and its overflow buffer drained, the owner merges the
    deferred lane into the active one, through the same bounded reconciliation
    of two partial heads a restored batch takes and with no segment drawn. A
@@ -1152,13 +1154,15 @@ the first three are what the candidate would have to be given.
    refill, drain, re-offer: the drain writes its entries before the merge, so
    none lands behind a chain the trace has already been offered.
 
-   **The mirror is the count the reading saw** — for a root the collector
-   read live, the poll's own count at its reading of the verdict ring
-   (amended 2026-09-15) — taken at the exact validation
-   that found the component live and carried into the deferral. The two
-   collection paths dispose of a batch on opposite sides of their own commit's
-   close, so a count read at the disposition would hold the same event for
-   anything between no commits and a whole epoch.
+   **The mirror is the count the reading saw** — the collection's one reading
+   of the counter, taken when its trace opened and carried through its commit
+   into the deferral (amended 2026-09-15 and 2026-09-23). For a root the
+   collector read live it is the reading of the owner's collection over P,
+   which equals the batch's: the collector advances the counter before it
+   requests the token, and its release to `POSTED` orders the advance before
+   the owner's reading. A count read at the disposition instead could stand
+   past an advance the reading missed, and the lane would wait for one
+   advance more than its reading did.
 
    **The deferral retires the records of completed deaths on the way in.**
    Nothing reads the deferred lane before the turnover, so a slot such a record

@@ -36,11 +36,13 @@ One `AtomicU8` per mutator thread, in the token line of its record
 are the state; bits 3–5 are the requesting collector's slot
 (`MAX_COLLECTORS` is 8). `FREE`, `MUTATOR` and `POSTED` carry slot zero,
 so a collector's request expects exactly 0. A second `AtomicU8` stands
-beside it on the same line since 2026-09-21, the collector's request for a
-turnover of the mutator's epoch: a plain store by the collector after X
-and a plain load by the poll, relaxed on both sides, taking no part in
-the handshake (`ll-model` `dev/DECISIONS.md`, "a quiet thread's turnover
-is the collector's to ask for"). The byte replaces
+beside it on the same line, the low eight bits of the mutator's epoch
+counter, which the collector keeps (since 2026-09-23; a turnover request
+before it): a plain store by the collector at every advance and a plain
+load by the poll, relaxed on both sides, taking no part in the handshake
+(`ll-model` `dev/DECISIONS.md`, "the collector finds and the mutator judges,
+and a recall of the token bounds the mutator's wait instead of the
+budget"). The byte replaces
 `TraceToken::held`, the record's `owner_holds` byte, the collector-facing
 reading of the collecting word (E10), and the poll's reading of P (the
 fourth round).

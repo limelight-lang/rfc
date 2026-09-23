@@ -62,8 +62,8 @@ root reached all 381 objects in its test heap, which is why an independent
 trace budget remains necessary.
 
 **What a commit stamps.** A collection that keeps its rows through the teardown
-stamps every entity its scan proved live, with the epoch read at the start of
-the commit and an age one more than the minimum current-epoch age over that
+stamps every entity its scan proved live, with the epoch the collection read
+once when its trace opened and an age one more than the minimum current-epoch age over that
 entity's strongly connected component in the subgraph the trace walked. The
 unit is that strongly connected component rather than the traced closure: where
 a service container connects everything, the closure is the whole live set, and
@@ -75,6 +75,25 @@ the rest of the epoch, is therefore not read again, and keeps its age until the
 turnover. A collection an allocation failure starts has returned its blocks
 before the commit, so it stamps only what its exact validation read as
 externally referenced.
+
+**The epoch clock is the collector's.** Each mutator's epoch is a full-width
+count of turnovers in its record, written by the collector the mutator is
+named to and by nobody else: at a visit of its round, before it serves the
+mutator, it advances the count once `N` of its batches for that mutator or X
+of its own clock have passed since the last advance, whichever comes first,
+so that a batch granted at that visit traces on the turned epoch; it stores the count's low
+eight bits beside the trace token, where the mutator's poll compares them with
+its deferred lane's mirror. The mutator writes nothing into the clock. Every
+collection over a mutator's graph — the owner's in line, or a collector's
+batch — reads the count once, when its trace opens, and prunes, stamps and
+records the mirror against that one reading; the stamp's epoch is its low two
+bits. A reading that missed an advance prunes against an epoch that has
+ended, which costs recall and never a wrong free. A record handed to a new
+thread keeps its count, and the collector's first visit of the new life
+advances it, so that no stamp of the old life reads fresh
+(`cycle/questions.md`, Y9; `ll-model` `dev/DECISIONS.md`, "the collector
+finds and the mutator judges, and a recall of the token bounds the mutator's
+wait instead of the budget").
 
 ### Aggregate proof fast path
 
@@ -788,7 +807,7 @@ the proposed roots, validated exactly and finalized as any batch is; an
 unwalked root joins that batch; a root read live moves to the deferred lane
 until the epoch turns, on the collector's reading (clause 8, amended
 2026-09-15: the owner still makes the move, the mirror it records is the
-count of the reading that deferred it — the close's — and a garbage root
+counter as the collection that deferred it read it at its open, and a garbage root
 the collector misread waits one
 epoch); a zero-count verdict is a count read and not a completed death, so
 the owner re-reads the entity's completed-free bit and retires the entry

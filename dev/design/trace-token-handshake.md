@@ -83,7 +83,7 @@ value a failed swap reads back is acted on, never inferred.
 | `REQUESTED\|s` | `COLLECTOR\|s` | mutator | the slot free entry; the poll's reading before the gate | CAS Release / Acquire; then wake s |
 | `REQUESTED\|s` | `FREE` | collector s | the guard's drop inside the wait; the standing list's drop at the thread's end, for a request the deadline left standing | CAS Relaxed / Acquire; failure acted on by value |
 | `COLLECTOR\|s` | `FREE` | collector s | after the last row read and the arena's reset, when the batch posted nothing into P; at a checkpoint, for every grant read after the first, with no batch | store Release; lock; `notify_all` |
-| `COLLECTOR\|s` | `POSTED` | collector s | the same release, when the batch posted its verdicts into P; on the unwind as on the return | store Release; lock; `notify_all` |
+| `COLLECTOR\|s` | `POSTED` | collector s | the same release, when the batch posted its verdicts into P; on the unwind as on the return, the batch's guard having posted *unwalked* for every root the unwind left without a verdict | store Release; lock; `notify_all` |
 | `POSTED` | `MUTATOR` | mutator | every taker of the `FREE → MUTATOR` row below, the teardown-refusal retirement excepted, which holds `POSTED` unswapped | CAS Acquire / Acquire |
 | `POSTED` | (skip) | collector s | the request CAS fails on it: neither a batch nor work; the owner is served by no round until its own collection has run | CAS failure, Relaxed |
 | `FREE` | `MUTATOR` | mutator | `CollectingThread::take` on both paths, the teardown-refusal retirement, the exit | CAS Acquire / Acquire |

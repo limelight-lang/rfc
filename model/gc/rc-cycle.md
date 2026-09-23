@@ -774,6 +774,8 @@ to it, takes at most K entries — K under a block's capacity, so a batch
 spans at most two blocks — from R's front as the reference's dequeue takes
 them but advances only after the batch's verdicts are posted, the up to
 three stores of the advance owned by one guard from the unwind as well,
+which first posts *unwalked* for every root the unwind left without a
+verdict,
 copies them into its workspace, traces the copy
 through its own reader and arena under a block budget B, posts one verdict
 per entry to P in R's order, advances `front` and releases — to `POSTED`

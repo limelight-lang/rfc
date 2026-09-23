@@ -166,6 +166,12 @@ itself is kept.
 
 ## 2026-09-15 — the candidate queue is read behind its writer, and the collector's verdicts come back by a second ring
 
+**Amended 2026-09-23** (`ll-model` `dev/DECISIONS.md`, "the collector finds
+and the mutator judges, and a recall of the token bounds the mutator's wait
+instead of the budget"): a batch that completes doubles K only when it took
+its whole clamp, and one short of it leaves K (`model/gc/rc-cycle.md`,
+"Concurrency").
+
 **Ruled by Edmond**, restoring the form he designed on 2026-08-25 (tenth entry
 of that day) and superseding the chain that replaced it without his word:
 "the named SPSC queue does not meet the enrolment contract" (2026-08-25,

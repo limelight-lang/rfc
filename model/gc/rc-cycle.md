@@ -776,8 +776,10 @@ the root": no color of an abandoned trace is a verdict) — posted so that no
 root blocks the ring behind it, and validated by the owner's in-line
 collection, which traces under no budget; a live root the trace could not
 place reads *live*. A batch that met B halves K for that owner, a
-completed one doubles it back to its bound, and neither is an empty round
-for the timer.
+completed one that took its whole clamp doubles it, up to its bound, one
+that completed short of its clamp leaves it — the ring or P's room held no
+more, which says nothing of what the owner offers per batch — and none is an
+empty round for the timer.
 
 **The ring under the grant decides the batch's form**, rather than the
 request that opened it: the collector reads R again under the token, and a
@@ -789,7 +791,11 @@ an interval" requested may have grown past the threshold while its owner
 slept, and a ring requested at the threshold may have been drained by the
 owner's own in-line collection before it consented (`ll-model`,
 `dev/DECISIONS.md`, "a take's unanswered request stands on the record, and
-the ring under the token decides the batch's form").
+the ring under the token decides the batch's form"). What the batch leaves
+is read by its count under the token, the walk ending at the threshold,
+rather than off the front block: a ring the batch leaves in two blocks reads
+at the threshold off its front block whatever the two hold, and that
+reading is the backlog that votes a sibling's birth.
 
 **P does not grow.** One block per thread, the owner's memory, drawn with
 the record; the collector clamps its batch to P's room and never writes a
@@ -866,7 +872,17 @@ the ring as an ordinary batch. The interval is the collector's own time and
 not a count of rounds, rounds being wake-driven and unbounded below, and the
 embedder replaces the runtime's figure. The note is stamped afresh at the
 release of every grant and cleared by a round that reads the ring empty or
-at the threshold. What it buys is the garbage of an owner that never reaches
+at the threshold. A ring below the threshold is also taken at the first
+round after its owner merged the deferred lane back into R at the epoch's
+turn, however the owner packed the ring since: the owner counts those merges
+beside R's tail word — the pressure path's and the exit's merges trace what
+they merge and are not counted — and the collector records the count it
+read under the token before the batch's peek at the release of every grant,
+and the count it read before the ring at every round that reads the ring
+empty, so that a round reading the two apart holds re-offered roots nobody
+has traced since (`ll-model`, `dev/DECISIONS.md`, "the collector finds and the
+mutator judges, and a recall of the token bounds the mutator's wait instead
+of the budget"). What it buys is the garbage of an owner that never reaches
 the threshold: it is reclaimed an interval after it appears rather than at
 that owner's exit or at a memory shortage. An owner that does not consent
 inside the request wait is asleep, and nothing touches the thread while it

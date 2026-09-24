@@ -152,7 +152,8 @@ paths were deleted with `rc-trace` and `rc-walk` on 2026-08-26.
   the white set owes a destructor (`model/src/gc.rs`, the white-free
   arm).
 - The drain and synchronous walk skipped guard-discounted revalidation
-  when no destructor ran (`model/src/walk.rs`, `any_destructor_ran`).
+  when no destructor ran (`model/src/walk.rs`, `any_destructor_ran`, on
+  `archive/pre-rc-cycle`).
 - The arena reset logged only destructor-bearing instances, so a P0 zero-count
   entity cost the reset's destructor fixpoint nothing
   ([arena-reset.md](../memory/arena-reset.md#step-1--validate-trace-destruct-a-fixpoint-loop));
@@ -343,8 +344,8 @@ death-branch ack, and the unique + P0 + leaf overwrite has no teardown
 exit either, so a workload converted wholesale to that class passes
 neither ack site, its ack rate falling to what the unconverted remainder
 produces (unmeasured). The full accounting, including how the fast class
-can block its own memory return, is in
-`model/dev/design/owned-slots-and-the-walk.md`.
+can block its own memory return, is in `ll-model`'s `archive/pre-rc-cycle`,
+`dev/design/owned-slots-and-the-walk.md`.
 
 **With the acyclic flag**: same delivery channel, different analysis,
 different failure tier. Acyclic + pure + weak-free is the true fast
@@ -441,4 +442,5 @@ this runtime already honours and must keep for everything impure.
   after the order ruling, the NR bit last and only if the escape
   analysis earns its keep. Wholesale conversion of a workload to the
   unique-pure fast class additionally waits on the compensating-poll
-  rule of `model/dev/design/owned-slots-and-the-walk.md`.
+  rule of `ll-model`'s `archive/pre-rc-cycle`,
+  `dev/design/owned-slots-and-the-walk.md`.

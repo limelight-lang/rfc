@@ -207,8 +207,8 @@ is evacuated now or carried until its stragglers die; there is no
   holes. The runtime stamps a retained block, keeps it out of the pool,
   and the accepted cost is that the block's memory stays out of
   circulation while its survivors live. What made Immix look necessary
-  dissolved elsewhere: a walking collector reads correct memory through
-  entity-block segregation (`rc-walk.md`), and a size-class heap cannot
+  dissolved elsewhere: a collector reads correct memory through
+  entity-block segregation, and a size-class heap cannot
   suffer CMS-style "no contiguous run" fragmentation for small objects.
 - Survivors do **not** arrive without refcount history. Promotion
   rebuilds an exact count — external hold-count, plus internal

@@ -90,9 +90,9 @@ ring — is bounded by two facts of this document rather than by a ruling, as of
 boundary, on the thread executing it, so inside an actor there is never a second
 thread to disagree with; and the slot reuse that the deferred-reuse list delays is bound to the
 heap that issued the block, which is a thread's
-(`ll-model` `src/memory/deferred_free.rs`). What is left of the question is the
-weak table's residence, which is node E1
-(../model/gc/walk/questions.md),
+(`ll-model`, `cycle::deferred_slot_reuse`). What is left of the question is the
+weak table's residence, which is node E1 of the deleted walk graph
+(`rfc`'s `archive/pre-rc-cycle`, `model/gc/walk/questions.md`),
 and whether two epochs are ever in flight at once, which E1 handed to node E3
 on 2026-08-24.
 Entry from code this runtime did not call arrives with no context, and what

@@ -101,8 +101,7 @@ The category barrier is the strategy-independent layer of the store
 barrier's micro-operations ([strategies.md](../gc/strategies.md)):
 `store_ptr` / `store_box` publish the new reference and `drop` releases
 the displaced one, each composing the category barrier with the ARC
-operations and, in the `rc-satb` build, the SATB deletion barrier
-(satb.md). One store-barrier interface, split by slot width and by
+operations. One store-barrier interface, split by slot width and by
 new-vs-old, not a second interface.
 
 ### The dangerous direction: longer-lived ← shorter-lived

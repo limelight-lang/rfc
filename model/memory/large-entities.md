@@ -380,7 +380,3 @@ needs the combination that bit could not express.
 restated leak bound of the deferred-reuse queue, the request arena's entity entry point
 and its lifted refusal, the reset's four rules for a surviving run, and
 the compiler's warning at `MAX_SMALL`.
-
-When the cells half is built, ../gc/rc-walk.md's
-"Huge objects" bullet needs narrowing: objects in OS-direct runs stop
-being unenumerable, and the bullet holds only for raw C buffers.

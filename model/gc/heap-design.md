@@ -3,8 +3,8 @@
 > The collector itself is a pluggable build-time strategy; see
 > [strategies.md](strategies.md). This document owns the decisions that
 > hold across strategies (non-moving, block/line heap structure) and
-> the coordination machinery used by the concurrent strategy
-> (satb.md).
+> the coordination machinery of the concurrent strategy `rc-satb`,
+> deleted on 2026-08-26 (`rfc`'s `archive/pre-rc-cycle`, `model/gc/satb.md`).
 
 ## Object Movement: Non-Moving
 
@@ -74,17 +74,18 @@ Block-scanning enumeration is the standard modern arrangement (MMTk and the coll
 
 ## GC / Mutator Coordination: Lock-Free CAS Handoff
 
-**Scope**: this machinery belongs to the **concurrent strategy**
-(`rc-satb`, satb.md); it exists only when the mutator runs
-during a collection cycle. Under the default `rc-trace` the mutator is
-parked at a safepoint while marking runs, and none of these races occur.
+**Scope**: this machinery belonged to the **concurrent strategy**
+`rc-satb`, deleted on 2026-08-26 with `rc-trace`; no built collector uses it.
+`rc-cycle` coordinates its collector threads with the mutator through the
+trace token ([../../dev/design/trace-token-handshake.md](../../dev/design/trace-token-handshake.md)).
 
 **What it does and does not solve**: the CAS handoff resolves the
 *delete-vs-scan* race (mutator freeing an object the marker is
 scanning). It does **not** maintain the tri-color invariant of
 concurrent marking: a mutator can hide a live object from the marker
 without ever touching a state field. That correctness problem is owned
-by the SATB deletion barrier (satb.md). The two mechanisms
+by the SATB deletion barrier (`rfc`'s `archive/pre-rc-cycle`,
+`model/gc/satb.md`). The two mechanisms
 are complementary, not alternatives.
 
 **Decision**: GC and mutator coordinate ownership of objects via a single atomic CAS on the object's state field. Neither side waits for the other.

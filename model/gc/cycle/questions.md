@@ -151,7 +151,7 @@ the backstop. Before the arena reset — yes, inside its destructor pass.
 Observability — the ruling adds no observable state: a count-zero death
 destructs immediately as before, and an unreachable cycle looks live until
 a collection finds it under any reference-counted design, today included.
-The `WeakMap` eager cleanup of `../weak-references.md` keys on count-zero
+The `WeakMap` eager cleanup of `../../weak-references.md` keys on count-zero
 deaths and is untouched. The order of two collection-time destructors was
 not ruled, and no document promises one.
 

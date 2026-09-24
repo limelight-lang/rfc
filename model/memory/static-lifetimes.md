@@ -128,8 +128,7 @@ and its owner are decided by one compilation of one function. The
 obligation is a within-frame property, not a whole-program one.
 
 **The acyclic flag does not relax this.** An acyclic holder cannot be a
-cycle member (../gc/rc-walk.md, "The compiler's
-acyclic flag"), but it can still be garbage *held by* a cycle, and it
+cycle member (`../gc/rc-cycle.md`, "acyclic-class filter"), but it can still be garbage *held by* a cycle, and it
 dies in the cascade the moment the collector frees that cycle. Its field
 is therefore no safer an owner than any other.
 

@@ -53,7 +53,7 @@ count the vector's own hold keeps high, which is the conservative skew a
 collection already tolerates.
 
 *Amended 2026-07-28 with the batched-checkpoint split of
-rc-walk.md ("Batched releases"): ack before the
+`rfc`'s `archive/pre-rc-cycle`, `model/gc/rc-walk.md`, "Batched releases": ack before the
 run, pickup after it — a pre-run pickup observes the run's transients
 still counted, the phase-lock that defeats the forced verdict. In
 code since the same day, pinned by a regression in that shape.*

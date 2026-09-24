@@ -370,7 +370,7 @@ the **destructor**, and what stops the slot being reissued mid-walk.
 | moved A → B | B | A | nobody — skipped by both | B |
 | `shared` | any, through a box | its creator | nobody — skipped | the domain whose box died last |
 | arena entity, never escapes | A's arena | arena blocks | nobody | A, in the reset fixpoint |
-| arena escapee, promoted at reset | A | retained block | nobody (outside the registry — unless retained-block-walk.md lands) | A |
+| arena escapee, promoted at reset | A | retained block | nobody (outside the registry — unless `retained-block-walk.md`, since deleted, had landed) | A |
 | frozen / immortal | any | immortal region | nobody | never |
 | host thread exited, entity moved | B | the adopter | nobody — skipped, as row 2 | B |
 | host thread exited, entity is the adopter's own | the adopter | the adopter | the adopter | the adopter |
@@ -447,7 +447,8 @@ Conservative, never unsound: the last four rows of the table above.
   on a member's moved bit is the obvious one — the zero-count-entry scan already
   loads that word).
 - **The drain-exclusivity window** is proven for one mutator
-  (drain-window.md); the re-derivation is owed.
+  (`rfc`'s `archive/pre-rc-cycle`, `model/gc/drain-window.md`); the
+  re-derivation is owed.
 - **May a `shared` class have a destructor at all?** (Recorded as a
   question, 2026-07-28.) It runs in whichever domain dropped the last
   box — an arbitrary one — so anything with thread affinity in it is a
@@ -463,9 +464,10 @@ Conservative, never unsound: the last four rows of the table above.
   epoch's duration recreates the refill-forever pattern
   `collect_owned` exists to prevent; a cost line is owed once measured.
 
-## 12. What is single-mutator in the code today
+## 12. What was single-mutator in the code on 2026-07-28
 
-Not a plan — an inventory, so nobody re-derives it.
+Not a plan — an inventory of that day. `epoch.rs`, `deferred_free.rs` and
+`snapshot_entity_blocks` went with `rc-walk` on 2026-08-26.
 
 - `epoch.rs` — one process-global handshake flag (the first domain to
   ack lowers it for everyone), one ack counter, one global validation result

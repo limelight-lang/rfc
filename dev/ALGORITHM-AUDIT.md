@@ -246,21 +246,14 @@ entity still has a candidate-queue entry is recorded nowhere, that entry naming
 the slot already; a slot freed
 while the thread's own trace is open waits for that trace's close and returns
 through the ordinary free path once its last row is gone. Block occupancy
-decreases at that return. (Superseded 2026-09-05 for what follows: one
-stack through the dead entities holds every withheld return, and the region
-and the list below went with it; `ll-model`, `dev/DECISIONS.md`, "one stack
-through the dead entity holds every withheld return".) The withheld fact costs
-no allocation while the region holds it: its first 1,024 records stand in a fixed region of the thread's
-collection workspace, and past that a death fits in the dead slot itself, by
-Edmond's ruling of 2026-09-04, under the two conditions the design of record
-states — the block carries this trace's shadow pointer and this thread owns it
-(`model/gc/rc-cycle.md`, "A mark is taken only where the sweep will find it").
-The list keeps every other death and grows for it, which is the residue that
-ruling leaves open. A mark outlives the window that took it, so a thread that
-exits holding one abandons its block with the mark standing; what returns such a
-slot is owed with the sweep. A thread runs at most one trace at a
-time, which is what proves no trace of its own can address a returned slot; the
-generation or handoff protocol is still owed for a collector worker.
+decreases at that return. Since 2026-09-05 one stack threaded through the
+dead entities holds every withheld return, at no allocation (`ll-model`,
+`dev/DECISIONS.md`, "one stack through the dead entity holds every withheld
+return"); the fixed region and the dead-slot mark this finding first recorded
+went with it. A thread runs at most one trace at a time, which is what proves
+no trace of its own can address a returned slot; a collector thread's batch
+holds the thread's trace token, and a free under it is withheld on a stack
+until the token comes back (`dev/design/trace-token-handshake.md`).
 `model/gc/rc-cycle.md`, "Zero-count entities pending slot reuse"; `ll-model`,
 `dev/DECISIONS.md`, "one stack through the dead entity holds every
 withheld return" and "under memory starvation a collection ends itself

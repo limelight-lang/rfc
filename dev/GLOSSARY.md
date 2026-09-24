@@ -154,7 +154,7 @@ definition.
 | guard reference | Temporary `+1` strong reference on each member of a validated component that prevents recursive zero-count teardown during cycle finalization | keep-alive reference (.NET `GC.KeepAlive`) | keep |
 | cycle finalization | Ordered guard, weak-reference invalidation, user destructors, revalidation, severing and reclamation of a validated unreachable component (`model/gc/rc-cycle.md`, "Cycle finalization and reclamation") | finalization (Handbook, ch. 12) | keep; qualified as *cycle* because ordinary object teardown is the other protocol |
 | deferred slot reuse | Delay between an entity's teardown and its slot's reissue while a queue entry or a trace can still identify the old occupant; the owner returns the slot after both conditions are false (`model/gc/rc-cycle.md`, "Zero-count entities pending slot reuse") | deferred reclamation; safe memory reclamation (Michael 2004) | keep |
-| dead in place | A slot whose occupant died under a trace the deferred-reuse list had no room to record: the fact stands in the slot's own header, the count still reading zero, and the sweep that nulls the block's shadow pointer finds it (`model/gc/rc-cycle.md`, "A death past that region is marked in the dead slot rather than recorded") | tombstone; logical deletion | keep; the mark is the third answer to whether the allocator may have a slot, beside live and free |
+| dead in place | A slot whose occupant has been freed and whose storage has not been handed out again: the mark stands in the slot's own header, set by the free before any path withholds or returns the slot, the count still reading zero, and a second free of the slot is refused on it; a slot on its block's free list and one whose return a trace withholds both carry it (`model/gc/rc-cycle.md`, "Zero-count entities pending slot reuse") | tombstone; logical deletion | keep; the mark is the third answer to whether the allocator may have a slot, beside live and free |
 
 ### Lifecycle
 
@@ -280,8 +280,8 @@ resolve by subject. The subject selects the replacement.
   *entry point* (a function a caller reaches: an ABI entry, a store function),
   *mailbox*, *channel* or *store-barrier form* (one of the barrier's
   micro-operation sequences, `store_ptr` or `store_box`). An OS resource is
-  named exactly. The crate's `ll-model/dev/design/door-sites.md` classified its sites
-  against this list.
+  named exactly. The crate's `ll-model/dev/design/door-sites.md`, deleted on
+  2026-09-04 and kept by git, classified its sites against this list.
 - *floor* stays for a mathematical lower bound. Provisioned memory is the
   *queue base block*, an *initial segment*, *baseline capacity* or an exact
   byte count.

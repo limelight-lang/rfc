@@ -161,9 +161,11 @@ after the gate and after `set_collecting`: `FREE → MUTATOR`;
 `POSTED → MUTATOR`; `REQUESTED|s → MUTATOR` with the refusal wake;
 `COLLECTOR` waited out on the condition variable, the loop acting on every
 other read-back by a fresh swap. The collection `Verdicts` fires is over
-P alone: it counts P's proposed and unwalked roots without writing, and
-`EmptyLane` is its answer only on a zero count; it traces them with exact
-counts, validates and finalizes; then, on every ending of every path that
+P alone: it counts P's entries without writing, and `EmptyLane` is its
+answer only on a zero count; it traces the proposed roots among them with
+exact counts, validates and finalizes, an unwalked root being no root of it
+(amended 2026-09-24: the collector read nothing of that root, and the
+collector finds); then, on every ending of every path that
 took `POSTED`, one disposition of P whole, the take having settled the
 live list first — stamped from it off the poll and by the explicit call,
 given back unread by the pressure path and the exit (E13) — a read-live root deferred to

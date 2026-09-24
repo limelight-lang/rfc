@@ -20,6 +20,16 @@
   reference cycle from entering the candidate queue.
 - A collector worker may produce a speculative validation batch, but only the
   owning mutator performs exact validation and reclamation.
+- The collector finds cycle garbage and the owning mutator validates what it
+  proposes. The mutator traces candidates no collector has read on four
+  occasions and no other: two the ruling names, the memory manager refusing it
+  an allocation and the embedder capping the collectors at zero (`ll-model`,
+  `dev/DECISIONS.md`, "the collector finds and the mutator judges, and a
+  recall of the token bounds the mutator's wait instead of the budget"), and
+  two asked for outside the collector, its exit and a collection its embedder
+  fires explicitly, which trace R whole ("In-line collection is the same
+  reader"; [`strategies.md`](strategies.md), "Collection requests and
+  triggers").
 - The trace token serializes tracing of one mutator thread's blocks and live
   candidate queue. Different owners may be traced concurrently.
 
@@ -793,8 +803,12 @@ allocation retry, makes the returns a foreign holder left withheld, under
 its own token. The deferred lane is re-offered at the epoch's turn by a
 splice with no copy: its blocks are linked into R's circle after the tail
 block and `tailBlock` moved to the last of them, so they lie inside the
-reader's region; the re-offer arms the poll's collection only while the
-record names no living collector.
+reader's region; the re-offer arms no collection of the owner's: the merge
+it counts sends the collector's next round to the merged ring however far
+below the threshold it reads, and the owners of a collector that has ended
+are named back to the first collector by the first collector's next round.
+Amended 2026-09-24 from arming the poll's collection while the record names
+no living collector, under the ruling in the first section's summary.
 
 **The collector's batch.** For an owner with work — its unread count, read
 by the collector itself off the front block, at or above the threshold
@@ -839,9 +853,15 @@ owner's recall, the part's own root among them (amended 2026-09-16 from
 "before the root": no color of an abandoned trace is a verdict; amended
 2026-09-24 from every root of a batch traced once, and from a part meeting
 B) — posted so that no
-root blocks the ring behind it, and validated by the owner's in-line
-collection, which traces under no budget; a live root the trace could not
-place reads *live*. The verdicts of the parts before an abandoned one stand:
+root blocks the ring behind it, and written back into R by the owner's
+collection over P, untraced, for the collector's next batch; a collection
+over R whole traces it under no budget (amended 2026-09-24 from validated by
+the owner's in-line collection). So a root the owner's recall or a refusal
+of the collector's pool sent back waits for a later batch, and an owner that
+recalls every grant, or a pool that refuses every arena while the owner's
+own allocations succeed, leaves it and the garbage behind it to a shortage
+of memory or the exit, the owner tracing nothing meanwhile. A live root the
+trace could not place reads *live*. The verdicts of the parts before an abandoned one stand:
 each rests, as every verdict does, on the owner's exact validation and not
 on the trace that gave it ("Speculative tracing and exact validation").
 
@@ -856,7 +876,7 @@ from the colors of an abandoned part above: the owner moves the root to the
 deferred lane as it moves any root read live, and the lane offers it again at
 the epoch's turn. A root of the same closure the rows did not meet opens a
 part of its own. So a closure past B costs the owner nothing, the re-offer
-arming no collection while a collector lives (above), and costs the
+arming no collection (above), and costs the
 collector, in each grant, a part at B for every root of it that no earlier
 attempt of the grant met, one of those parts retried under `B_max`. While a
 collector lives, garbage whose closure passes `B_max` is reclaimed by the
@@ -954,16 +974,20 @@ collection over P that the poll fires; the pressure path and the exit read
 P into their batch first, so a proposal never stands through a collection
 short of memory. A proposed root becomes part of one in-line collection over
 the proposed roots, validated exactly and finalized as any batch is; an
-unwalked root joins that batch; a root read live moves to the deferred lane
+unwalked root is no root of that collection, the collector having read
+nothing of it, and a collection over R whole — a shortage's, the exit's, an
+explicit one — takes it as a root of its own (amended 2026-09-24 from joining
+the batch); a root read live moves to the deferred lane
 until the epoch turns, on the collector's reading (clause 8, amended
 2026-09-15: the owner still makes the move, the mirror it records is the
 counter as the collection that deferred it read it at its open, and a garbage root
 the collector misread waits one
 epoch); a zero-count verdict is a count read and not a completed death, so
 the owner re-reads the entity's completed-free bit and retires the entry
-only on it. Every entry the reading cannot dispose of — a proposed root
-whose in-line trace was refused, a component whose teardown was refused or
-resurrected, a resurrected zero-count entity — is written back into R as a
+only on it. Every entry the reading cannot dispose of — an unwalked root of
+the collection over P, a proposed root whose in-line trace was refused, a
+component whose teardown was refused or resurrected, a resurrected
+zero-count entity — is written back into R as a
 registration is, its candidate bit still set, before P's `front` advances,
 and P's `front` advances at the close by the whole reading, on every ending
 of the collection, so that the close's release to `FREE` always finds P
@@ -972,7 +996,8 @@ disposed of. The owner is the sole writer for all of these transitions.
 **In-line collection is the same reader.** A mutator short of memory, or one
 whose poll fires, sets its collecting word, takes its own token — waiting
 out a collector's batch if one is in progress — and reads P and then R
-itself, as the consumer; its disposition is the one above, made directly.
+itself, as the consumer, or P alone where its poll fires for the
+collector's verdicts; its disposition is the one above, made directly.
 The exit takes the token for good, reads P and R to their ends, and retires
 the queue.
 

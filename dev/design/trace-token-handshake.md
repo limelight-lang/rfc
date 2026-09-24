@@ -942,7 +942,8 @@ his: the collector freeing under an exact trace of its own.
 **Built** in `ll-model` as its stage S51, closed 2026-09-17. Of the
 instruments above: the loom executions pass; Miri ran the lines named
 but two cases too long for it, the refused trace and the budget-met batch
-(`ll-model`, `PLAN.md`, the S51 note), with one harness rule it produced
+(`ll-model`, `dev/WORKFLOW.md`, "Two cases of 2026-09-17 are unverified
+under Miri"), with one harness rule it produced
 (`ll-model`, `dev/WORKFLOW.md`, "A test thread waits, it does not spin");
 the stress readings are
 `cycle/worker/tests/under_stress.rs` and their figures `dev/BENCHMARKS.md`,

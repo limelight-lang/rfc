@@ -850,10 +850,12 @@ and a large entity counted by the blocks they span — and once one holds its
 mark the owner sets the hint and the slot's word as its take would and goes
 on freeing, the returns past the mark asking nothing. A count is what its
 stack holds at every instant, the owner taking each item's weight off as it
-gives the item back. The next consent clears the hint, and so does the owner
-once the stacks go back whole outside a grant, so a mark recalls one grant
-and no later one; a stack still at its mark when the owner consents recalls
-the new grant at that consent. The three marks are the runtime's constants,
+gives the item back. The next consent sets the hint to whether a stack
+holds its mark, ahead of the swap that publishes the grant, so that the
+collector's reading before its batch sees it; the owner clears it once the
+stacks go back whole outside a grant, so a mark recalls one grant and no
+later one, and a stack still at its mark when the owner consents recalls the
+new grant at that consent. The three marks are the runtime's constants,
 unmeasured. The concurrent walk of a class's
 outside cells reports every position it reads and stops when told, as the
 strides over the entity's own body do. The hint is not a claim: the token's

@@ -176,11 +176,15 @@ current collection attempt and eventually raises memory exhaustion from a
 runtime frame that can report it.
 
 Candidate registration may run without a frame from which to report failure. If
-the reserve path is exhausted, the entry goes to the overflow buffer. The next
-consistent-point poll tries collection before reporting memory exhaustion. A
-poll whose collection-entry conditions are closed neither collects nor waits;
-it carries the entries to a later poll because a collection or teardown is
-already active.
+the reserve path is exhausted, the entry goes to the overflow buffer and the
+collector's signal is raised. The next consistent-point poll refills the
+queue's spare cells and drains the buffer into the queue as far as they
+allow, and the next poll whose gate is open sends the signal to the
+collector, which takes the queue on its own count; no poll collects for it
+(amended 2026-09-24 from a poll that tried collection:
+[`../../dev/design/trace-token-handshake.md`](../../dev/design/trace-token-handshake.md),
+"The fourth round: the collector's batch as the mutator's trigger"). What
+the buffer holds past that waits for a later poll.
 
 No branch may drop a candidate entry. Filling the overflow buffer reaches the
 current process-abort edge until A5 is resolved.

@@ -284,24 +284,29 @@ its predecessors too; point 3 is where this strategy differs from them.
    from the mutator, which registers an entity after a decrement that does not
    reach zero, and the descent stops at a member that has reached the traversal
    age threshold and at a child
-   outside the GC heap, and may also be cut by a budget, which is open
-   ([rc-cycle.md](rc-cycle.md), `cycle/questions.md` Y9 and Y13).
+   outside the GC heap, and is cut by the collector's block budget, B for a
+   part of its batch and `B_max` for one retry, whose sizes are unmeasured
+   ([rc-cycle.md](rc-cycle.md), "The collector's batch"; `cycle/questions.md`
+   Y9 and Y13).
    Trial deletion runs on shadow rows off the heap, so an abandoned
    trace writes nothing into any entity.
 
 The collector worker proposes and the owning thread validates. A collection run
 synchronously on the owning thread is exact by construction and needs no
-second phase; a collector worker narrows the owner's validation batch, and
-every *reduction* of state — clearing a candidate bit,
+second phase; the collector finds, the owner validates what it proposes and
+searches itself only on the occasions [rc-cycle.md](rc-cycle.md), "Decision
+summary", names, and every *reduction* of state — clearing a candidate bit,
 dropping a queue entry, returning a slot — is the owner's, on an exact
 reading.
 
 ### Collection requests and triggers
 
 Cycle collection reads refcounts against the physical object graph and
-frees what the two agree is unreachable. It may therefore run **only
-where refcounts and edges agree** — between mutator operations, after
-the current store or teardown has completed. This is a *correctness*
+frees what the two agree is unreachable. The owner's collection, which
+validates and frees, may therefore run **only where refcounts and edges
+agree** — between mutator operations, after the current store or teardown
+has completed. The collector's trace reads under the owner's token while the
+owner runs and frees nothing, which is why what it reads is a proposal. This is a *correctness*
 requirement, not a tuning choice.
 
 The failure it rules out is concrete: a window in which a count and the
@@ -314,62 +319,78 @@ carries the new value before the old count falls, so the skew there is the
 conservative one — the count is high, never low. An earlier draft of this
 section argued from the opposite order, which the composition forbids.
 
-So the trigger splits in two, and only the runtime half is fixed:
+So the trigger splits in two:
 
 - **Request (runtime mechanics).** A decrement that does not reach zero
-  registers the entity in its thread's candidate queue; a signal that a
-  collection is due sets a *pending* flag. Both run from inside
-  `ll_release`, i.e. mid-mutation, so neither **ever runs the
-  collector** — they only record that one is due. The candidate queue itself
-  is always maintained, even when no automatic trigger is configured:
-  the collector needs it to know what to trace, and registration is
-  the design's whole per-operation cost. The runtime keeps one signal of
-  its own and no threshold: registration that cannot grow the queue, or
-  that uses the reserve, sets the flag
-  ([rc-cycle.md](rc-cycle.md), `cycle/questions.md` Y12).
-- **Trigger (compiler policy).** The collector runs only at a **consistent
-  point** the compiler chooses: an explicit `ll_gc_collect_cycles`, or a
-  `ll_gc_maybe_collect` poll injected at a safepoint (§2) — a statement
-  boundary, an allocation slow path, request end. **And one the runtime
-  chooses for itself:** the backedge of a bulk loop over a caller-supplied
+  registers the entity in its thread's candidate queue, and a registration
+  may raise the collector's signal. Both run from inside `ll_release`, i.e.
+  mid-mutation, so neither **ever runs a collection** — the signal is a wake
+  for the collector and decides nothing. The candidate queue itself is always
+  maintained: the collector needs it to know what to trace, and registration is
+  the design's whole per-operation cost. Registration that fills a block of
+  the queue, that cannot grow it, or that uses the reserve sets the flag,
+  and the next poll whose gate is open sends it to the collector as a wake;
+  the collector decides a batch on the count it reads itself
+  ([rc-cycle.md](rc-cycle.md), "Signals";
+  [`../../dev/design/trace-token-handshake.md`](../../dev/design/trace-token-handshake.md),
+  "The fourth round: the collector's batch as the mutator's trigger";
+  `cycle/questions.md` Y12).
+- **Trigger.** The collector thread searches on its own rounds and posts
+  its verdicts for the owner. The owner's collection runs only at a
+  **consistent point**: a `ll_gc_maybe_collect` poll injected at a safepoint
+  (§2) — a statement boundary, an allocation slow path, request end — which
+  fires what the runtime armed, or an explicit `ll_gc_collect_cycles`. **And
+  one the runtime chooses for itself:** the backedge of a bulk loop over a caller-supplied
   count, which the compiler cannot see inside
   ([../memory/bulk-operations.md](../memory/bulk-operations.md), 2026-08-28).
   A reentrancy guard makes any trigger point safe even if reached from within
   teardown (a nested collection is a no-op).
 
-**The policy is the compiler's, outside the runtime model.** *Which*
-signals arm a collection and at what thresholds — candidate count,
-bytes allocated since the last cycle, the memory-pressure mode
-([buffers.md](../memory/buffers.md)), request end — is decided before
-codegen and injected as calls, exactly as the store barrier's
-*whether-to-call* is the compiler's (§1). Each signal is independently
-enabled and tuned per build; **there is no universal trigger.** Request
-end in particular is one optional signal among others, not a default:
-daemons, actors and long CLI runs are not request-shaped, and much
-cyclic garbage already dies for free at arena reset regardless. With no
-signal enabled the runtime never fires on its own — collection is then
-purely explicit — which is a legitimate configuration (its cost is
-retained cycles, the caller's call to make).
+**When to search is the collector's, and the compiler places polls
+only** (amended 2026-09-24 from a policy that was the compiler's alone:
+`ll-model`, `dev/DECISIONS.md`, "the collector finds and the mutator judges,
+and a recall of the token bounds the mutator's wait instead of the budget",
+and [rc-cycle.md](rc-cycle.md), "Signals"). The collector takes a batch on
+the count it reads, on a ring standing below that count for an interval,
+and on a deferred lane its owner merged back at the epoch's turn; the
+embedder tunes it with
+`ll_gc_set_collector_cap`, `ll_gc_set_standing_interval` and
+`ll_gc_set_epoch_interval`. The runtime arms the owner's poll itself — for
+the collector's verdicts when it posted, for the queue whole after a refused
+allocation, for a retirement pass on its count of completed deaths — so a
+poll fires with no compiler signal enabled. The compiler emits the poll
+alone: where the polls stand is its decision before codegen, as the store
+barrier's *whether-to-call* is (§1), and an explicit `ll_gc_collect_cycles`
+is the embedder's fire. The signals this section once gave the compiler —
+request end, bytes allocated since the last cycle, the memory-pressure mode
+([buffers.md](../memory/buffers.md)) — emit no collection, and the fourth,
+the candidate count, is the collector's own threshold (Edmond,
+2026-09-24, [`../../dev/DECISIONS.md`](../../dev/DECISIONS.md), "the compiler
+emits the poll alone, and its collection signals go").
 
-The runtime therefore exposes only mechanism: candidate registration on the
-release path (arm), `ll_gc_collect_cycles` (fire now), `ll_gc_maybe_collect`
-(fire if armed), the entry gate and the reentrancy guard behind it, the
-reading of the collector's verdict ring at a safepoint, and the GC-heap allocation slow path, which
-collects synchronously after allocation failure rather than reporting it
-without first attempting collection. No triggering
-policy lives in the model.
+The runtime exposes candidate registration on the release path,
+`ll_gc_collect_cycles` (fire now), `ll_gc_maybe_collect` (fire what is
+armed), the entry gate and the reentrancy guard behind it, the reading of
+the trace token's byte at the slot free and the poll, the collector thread
+with its three dials, and the GC-heap allocation slow path, which collects
+synchronously after allocation failure rather than reporting it without
+first attempting collection.
 
-**The entry gate and the inbox are `rc-cycle`'s, added 2026-08-27.** A
+**The entry gate and the byte are `rc-cycle`'s**, the gate added 2026-08-27. A
 thread whose allocation fails reads its own gate — the collecting flag,
 `TEARDOWN_DEPTH` and the arena reset in flight, if one is (added 2026-09-11) —
 before waiting on the trace token, and a closed gate
-sends it down the pressure ladder instead; and a thread's safepoint poll
-picks up the per-thread inbox in which a collector thread leaves the
-validation batch it traced. That is how the collector worker delivers now that
-the handshake is gone ([rc-cycle.md](rc-cycle.md), "Concurrency").
+sends it down the pressure ladder instead; and the collector delivers its
+batch through the trace token's byte: its release writes `POSTED`, which the
+owner's next slot free or poll reads and turns into the collection over its
+verdicts ([`../../dev/design/trace-token-handshake.md`](../../dev/design/trace-token-handshake.md),
+"The word"; amended 2026-09-24 from a per-thread inbox, which the verdict
+ring P replaced on 2026-09-15 and whose reading at the poll the handshake of
+2026-09-17 replaced by the byte).
 
-The allocation slow path is the one fire point the runtime owns
-outright, because it is the point at which not collecting is a failure
+The allocation slow path is the one point, the thread's exit aside, at which
+the runtime runs the owner's own search with no request from the compiler or
+the embedder, because it is the point at which not collecting is a failure
 rather than a delay: `runtime/exceptions.md` promises a *catchable*
 memory-exhausted. That promise now has two legs rather than one — a
 collection ran first, or the gate was closed and the reserve carried the

@@ -142,8 +142,8 @@ static inline bool ll_release(RcHeader *h) {
     // Non-zero decrement → the one event that can leave a ring behind.
     // Five conditions in one mask (classes.md, "Flags layout"): GC-heap
     // category, a kind below eight, no acyclic proof, no proven owner,
-    // not already enrolled. Enrolling only arms a collection; it never
-    // runs one inline.
+    // not already enrolled. Enrolling registers a candidate for the
+    // collector; it never runs a collection inline.
     if ((h->flags & 0x723u) == 0) ll_enrol_cycle_root(h);
     return false;
 }

@@ -10,6 +10,22 @@ in one line; **cost** if any.
 
 ---
 
+## 2026-09-24 — the compiler emits the poll alone, and its collection signals go
+
+**Ruled by Edmond:** "убрать старое поведение, оставить только poll()". The
+compiler places `ll_gc_maybe_collect` polls and nothing else; the signals
+`model/gc/strategies.md` once gave it — request end, bytes allocated since the
+last cycle, the memory-pressure mode — no longer emit a collection, and the
+fourth, the candidate count, is the collector's own threshold. The model's
+reading, put to Edmond with the ruling: `ll_gc_collect_cycles` stays in the
+ABI as the embedder's explicit fire.
+**Why it was asked:** an explicit collection those signals emitted traces R
+whole on the owner's thread, a search the ruling that the collector finds and
+the mutator validates (`ll-model`, `dev/DECISIONS.md`, 2026-09-23) does not
+name. **Rejected**, the other two options put to him: the signals as wakes to
+the collector; the signals kept as a fifth occasion of the owner's own
+search.
+
 ## 2026-09-19 (second) — no reference crosses a thread, and the compiler is what keeps it so
 
 **Ruled by Edmond.** No reference names an entity in another thread's blocks,

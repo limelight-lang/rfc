@@ -23,7 +23,8 @@
 - The collector finds cycle garbage and the owning mutator validates what it
   proposes. The mutator traces candidates no collector has read on four
   occasions and no other: two the ruling names, the memory manager refusing it
-  an allocation and the embedder capping the collectors at zero (`ll-model`,
+  an allocation and the embedder capping the collectors at zero (a dial not yet
+  built: `ll-model` clamps the cap to one today; `ll-model`,
   `dev/DECISIONS.md`, "the collector finds and the mutator judges, and a
   recall of the token bounds the mutator's wait instead of the budget"), and
   two asked for outside the collector, its exit and a collection its embedder
@@ -221,7 +222,8 @@ non-zero counts. The covering obligation must therefore be an actual counted
 
 Trace precision affects cost and latency, not safety: a missed cycle remains
 eligible for a later collection. A trace may therefore stop at an age boundary,
-at its work budget, or after scratch allocation fails. This statement assumes a
+at its work budget, at its owner's recall of the token, or after scratch
+allocation fails. This statement assumes a
 memory-safe protocol for concurrent slot reads. The protocol is the ValueBox's
 discriminating word (`../values.md`, "ValueBox Layout"): a worker reads a
 box's `+8` word alone, one relaxed 8-byte load, and follows it only when it is
@@ -253,9 +255,13 @@ decrement would register the now-unreachable cycle.
 
 **Synchronous collection is exact by construction.** The owning mutator can see
 its own stack and is the only thread changing the counts it validates. It does
-not need a result handoff or confirmation step. Synchronous collection is the
-required implementation; collector workers are an optional optimization that
-reduce the owner's validation work.
+not need a result handoff or confirmation step. The owner's own search, a
+trace of candidates no collector has read, is the path of the four occasions
+of the Decision summary; everywhere else its in-line collection runs over the
+collector's proposals alone, so a collector saves the owner the trace of every
+root it read live or found dead, and not the trace of what it proposed
+(amended 2026-09-24 from "the required implementation; collector workers are
+an optional optimization").
 
 ## Where the shadow count lives
 
@@ -456,8 +462,9 @@ Two conditions can delay reuse:
    earlier. The free path arms the pass: the owner counts the completed
    deaths it withholds since R was last compacted, and the D-th arms its
    next poll, which — the collection gate open, no collector's grant on its
-   byte, R below the collector's threshold — takes its own token, retires
-   the completed deaths in R, its overflow and P, and traces nothing. The
+   byte, R below the collector's threshold — takes its own token, or holds
+   the byte as it stands at `POSTED`, retires the completed deaths in R, its
+   overflow and P, and traces nothing. The
    deferred lane's deaths wait for its turnover, so the pass reads R below
    the threshold and the overflow buffer rather than the lane; a pass that
    returned fewer than half of its count doubles the count the next one
@@ -668,8 +675,10 @@ pressure follows immediately, on the memory the first teardown returned
 alone"). This answers `dev/ALGORITHM-AUDIT.md` issue A6 for the in-line
 collection: on the ordinary path the arena is not gone, and on the pressure path
 the membership data is a bounded region of memory the thread already holds.
-Whether a worker's trace may hold its arena the same way is open with the
-accelerator.
+A collector's trace does not hold its arena that way: it runs no teardown,
+and its arena is reset before its token goes
+([`trace-token-handshake.md`](../../dev/design/trace-token-handshake.md),
+"The two sides").
 
 **The ordinary path's teardown runs inside its own trace**, and three things
 follow from that. Every slot the teardown frees waits for the window's close
@@ -711,10 +720,11 @@ The readership rule narrows with it. Mark and scan remain the only **writers**
 of a shadow row. The readers are mark and scan, the sweep that harvests on the
 pressure path, and on the ordinary path the owner's own teardown after the
 release. Nothing else reads them, the in-line form having no second tracer.
-What a worker may do here is open once: whether its trace may hold its
-arena through a teardown the way an owner's does (`ll-model`,
-`dev/DECISIONS.md`, "the member list is the pressure path's alone, and the
-surplus is a second trace", which leaves that to the accelerator). Whether it
+A collector reads none of them: it runs no teardown, and its arena is reset
+before its token goes, as above (amended 2026-09-24 from a question left to the
+accelerator by `ll-model`, `dev/DECISIONS.md`, "the member list is the
+pressure path's alone, and the surplus is a second trace"). Whether a
+collector
 may acquire an owner's token while that owner's teardown is still reading
 rows closed as no on 2026-09-17: the owner holds the token through its close.
 
@@ -733,7 +743,8 @@ acquires the token, and traces. The same three inputs are read by the
 safepoint poll before it spends its arming, so a poll a closed gate refuses
 leaves the arming for the next poll at a clean point.
 A trace runs no user code, takes no user lock, and releases the token before
-destructors, so this wait is intended to be bounded.
+destructors, and the owner's recall bounds this wait ("The recall of the
+token").
 
 A collector that finds an owner's ring empty, or the owner's token held, or
 its last batch's verdicts not yet disposed of (the token word reads `POSTED`),
@@ -780,8 +791,9 @@ size excepted.
 owner holds its token from its take to its close, so a collector's request
 fails on it in one compare-and-swap and skips; the collecting word the owner
 sets before the take and clears at the close is the owner's own gate, read by
-the owner alone (amended 2026-09-17, E10). The owner's collection reads every entry from the
-front block to the tail block's `tail` as its batch, traces, holds the
+the owner alone (amended 2026-09-17, E10). An owner's collection over R whole
+reads every entry from the front block to the tail block's `tail` as its
+batch, and a collection over P reads P alone; either traces, holds the
 token through its close as above, and at its close compacts the ring in
 place: an entry it disposed of is dropped, every other entry — a component
 whose teardown was refused or resurrected, a zero-count entity whose
@@ -860,7 +872,8 @@ the owner's in-line collection). So a root the owner's recall or a refusal
 of the collector's pool sent back waits for a later batch, and an owner that
 recalls every grant, or a pool that refuses every arena while the owner's
 own allocations succeed, leaves it and the garbage behind it to a shortage
-of memory or the exit, the owner tracing nothing meanwhile. A live root the
+of memory, the exit or an explicit collection, the owner tracing nothing
+meanwhile. A live root the
 trace could not place reads *live*. The verdicts of the parts before an abandoned one stand:
 each rests, as every verdict does, on the owner's exact validation and not
 on the trace that gave it ("Speculative tracing and exact validation").
@@ -880,7 +893,8 @@ arming no collection (above), and costs the
 collector, in each grant, a part at B for every root of it that no earlier
 attempt of the grant met, one of those parts retried under `B_max`. While a
 collector lives, garbage whose closure passes `B_max` is reclaimed by the
-collection a shortage of memory runs, or at the thread's exit. Garbage whose
+collection a shortage of memory runs, at the thread's exit, or by an explicit
+collection. Garbage whose
 closure lies between B and `B_max` waits a turnover for each grant whose
 retry another closure spent first, and behind a live closure past `B_max`
 that spends it in every grant it waits for the same two collections
@@ -947,7 +961,7 @@ mutator's wait instead of the budget").
 
 **The ring under the grant decides the batch's form**, rather than the
 request that opened it: the collector reads R again under the token, and a
-ring that still holds the threshold is batched at K and resizes K by the
+ring that still holds the threshold is batched at K and may double K by the
 batch's outcome, while one below it is batched at one entry short of the
 threshold and leaves K where it stands. Neither case is the kind of request
 that was made: a ring the standing take of "The standing ring is taken after
@@ -964,14 +978,16 @@ reading is the backlog that votes a sibling's birth.
 **P does not grow.** One block per thread, the owner's memory, drawn with
 the record; the collector clamps its batch to P's room and never writes a
 link into P, so no block passes from the owner to the collector and no
-unlink races a link. The collector allocates nothing in the owner's name;
-its workspace and its rows are its own, as before.
+unlink races a link. The collector allocates nothing in the owner's name but
+the live list, whose blocks it draws and hands over with its release ("The
+live list of a batch"); its workspace and its rows are its own.
 
-**The mutator's disposition.** P is read by in-line collections alone, and
-no poll reads a verdict: the collector's release to `POSTED` is read by the
-owner's free path and by its poll through one reading, which arms the
-collection over P that the poll fires; the pressure path and the exit read
-P into their batch first, so a proposal never stands through a collection
+**The mutator's disposition.** P's verdicts are disposed of by in-line
+collections alone, and no poll acts on a verdict — a retirement pass reads P
+only for completed deaths, which it retires in place: the collector's release
+to `POSTED` is read by the owner's free path and by its poll through one
+reading, which arms the collection over P that the poll fires; the pressure
+path, the exit and an explicit collection read P into their batch first, so a proposal never stands through a collection
 short of memory. A proposed root becomes part of one in-line collection over
 the proposed roots, validated exactly and finalized as any batch is; an
 unwalked root is no root of that collection, the collector having read
@@ -993,11 +1009,12 @@ and P's `front` advances at the close by the whole reading, on every ending
 of the collection, so that the close's release to `FREE` always finds P
 disposed of. The owner is the sole writer for all of these transitions.
 
-**In-line collection is the same reader.** A mutator short of memory, or one
-whose poll fires, sets its collecting word, takes its own token — waiting
-out a collector's batch if one is in progress — and reads P and then R
-itself, as the consumer, or P alone where its poll fires for the
-collector's verdicts; its disposition is the one above, made directly.
+**In-line collection is the same reader.** A collection over R whole — a
+memory shortage's, the one a poll fires on an arming a refused allocation
+left, and an explicit one — sets its collecting word, takes its own token,
+waiting out a collector's batch if one is in progress, and reads P and then
+R itself, as the consumer; a poll `POSTED` armed reads P alone. The
+disposition is the one above, made directly.
 The exit takes the token for good, reads P and R to their ends, and retires
 the queue.
 
@@ -1175,8 +1192,8 @@ What that last collection could not take — a component whose destructor threw,
 or one a refusal ended — keeps its candidate bit, and once its blocks are
 adopted no thread will register it again. That residue is a bounded leak with
 no collector. An estate a worker could claim, which would make that worker the
-component's owning mutator, is refused until the accelerator exists and is
-revisited then against the measured residue, so the second clause of
+component's owning mutator, is refused; the collector thread now exists, and
+revisiting the refusal against the measured residue is open, so the second clause of
 `dev/ALGORITHM-AUDIT.md` issue A4 stands open where the first is closed
 (`dev/PLAN.md` S8.9).
 
@@ -1207,10 +1224,12 @@ teardown immediately. Only unreachable reference cycles wait for collection.
 Four requirements originated in the earlier collector work: exact owner-side
 validation against current fields, deferred slot reuse while an identifier is
 in flight, prompt zero-count teardown, and a survivor list for retained
-blocks. Only the survivor list exists in code today, and in the form this
-document specifies: a list the block's own header names, no process-wide table
-naming retained blocks (`ll-model`, `memory/retained.rs`). The other three must
-be implemented for this design.
+blocks. All four exist in `ll-model`: the exact validation
+(`cycle::validation`), the deferral of a slot's reuse (`cycle::deferred_slot_reuse`),
+the zero-count teardown through the ordinary death path with the queue's
+retirement of its entry, and the survivor list, in the form this document
+specifies: a list the block's own header names, no process-wide table naming
+retained blocks (`memory/retained.rs`).
 
 The old mutator handshake is not retained. It could deadlock with a mutator
 waiting on its trace token. Collector workers instead read the candidate ring

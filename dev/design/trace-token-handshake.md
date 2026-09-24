@@ -2,9 +2,9 @@
 
 Status: ruled 2026-09-17 — drafted by the model on Edmond's proposal of
 that day, attacked by two Critics, ruled by the Sage, and the silent-owner
-question ruled by a second Sage round the same day; awaiting Edmond's
-reading before it amends `model/gc/rc-cycle.md`, "Concurrency", and before
-`ll-model` builds it. The defect it answers is the Code Reviewer's of
+question ruled by a second Sage round the same day; built in `ll-model` as
+its stage S51 ("Built", at the end) and amended in place since, each
+amendment dated. The defect it answers is the Code Reviewer's of
 2026-09-16 (`ll-model`, `dev/DECISIONS.md`, "the free path's reading of the
 token is fenced against the take"); the fence that repair put on every
 free is what this protocol removes.
@@ -45,11 +45,13 @@ and a recall of the token bounds the mutator's wait instead of the
 budget"). A third byte stands on the line since 2026-09-24, `waiting`: the
 mutator's take sets it before it waits out `COLLECTOR` and clears it when
 the take returns; a stack of returns withheld under `COLLECTOR` sets it at
-its mark with no wait, and the next consent, ahead of its release swap, and
-the returns' going back whole outside a grant clear it, the consent setting it again after
-its swap where a stack still holds its mark; and the collector reads it before it makes a batch, every
-N positions of storage its trace reads and at every block its arena draws,
-and, finding it set, stops and releases as for an abandoned batch
+its mark with no wait; the next consent, ahead of its release swap, stores
+whether a stack still holds its mark, and the returns' going back whole
+outside a grant clear it (amended 2026-09-24 from a consent that cleared it
+and set it again after its swap); and the collector reads it before it makes
+a batch, every N positions of storage its trace reads, at every block its
+arena draws, at every root of the pass before the parts and before every
+part but the first, and, finding it set, stops and releases as for an abandoned batch
 (`rfc/model/gc/rc-cycle.md`, "The recall of the token"). The take also sets
 a word on the collector's slot, which the same readings take, releasing
 every grant the collector holds unserved behind its batch whose owner
@@ -101,7 +103,7 @@ value a failed swap reads back is acted on, never inferred.
 | `FREE` | `REQUESTED\|s` | collector s | `serve`, after the hold-read idle test, the record linked into the standing list first | CAS AcqRel / Acquire — the release publishes the link to the exit's take, and through the registry's lock to its acquire load of the link; a failed swap publishes nothing, so the reading's hold spans the link and the swap and is handed back after the unlink |
 | `REQUESTED\|s` | `COLLECTOR\|s` | mutator | the slot free entry; the poll's reading before the gate | CAS Release / Acquire; then wake s |
 | `REQUESTED\|s` | `FREE` | collector s | the guard's drop inside the wait; the standing list's drop at the thread's end, for a request the deadline left standing | CAS Relaxed / Acquire; failure acted on by value |
-| `COLLECTOR\|s` | `FREE` | collector s | after the last row read and the arena's reset, when the batch posted nothing into P; at a checkpoint, for every grant read after the first, with no batch | store Release; lock; `notify_all` |
+| `COLLECTOR\|s` | `FREE` | collector s | after the last row read and the arena's reset, when the batch posted nothing into P; at a checkpoint, for every grant read after the first, with no batch; at a reading of the recall inside another owner's batch, for a standing grant whose owner recalled it, with no batch | store Release; lock; `notify_all` |
 | `COLLECTOR\|s` | `POSTED` | collector s | the same release, when the batch posted its verdicts into P; on the unwind as on the return, the batch's guard having posted *unwalked* for every root the unwind left without a verdict | store Release; lock; `notify_all` |
 | `POSTED` | `MUTATOR` | mutator | every taker of the `FREE → MUTATOR` row below, the teardown-refusal retirement excepted, which holds `POSTED` unswapped | CAS Acquire / Acquire |
 | `POSTED` | (skip) | collector s | the request CAS fails on it: neither a batch nor work; the owner is served by no round until its own collection has run | CAS failure, Relaxed |
@@ -149,11 +151,14 @@ next poll re-reads. A request that lands between the reading and the take
 is met by the take loop, which refuses; a `COLLECTOR` that lands there is
 waited for, today's wait and bound. A closed-gate poll consents and arms
 all the same, since the reading precedes the gate. The arming word has
-two values above none, `Verdicts` and `AllRoots`, merged by maximum: the
-byte's `POSTED` arms `Verdicts`; the pressure path's endings that hand a
-component to the next poll arm `AllRoots`; nothing else arms. The fire
-spends the word: `Verdicts` fires the collection over P, `AllRoots` the
-collection over R whole with P disposed of whole in it. The explicit fire
+three values above none, `Retire`, `Verdicts` and `AllRoots`, merged by
+maximum: the free path's count of completed candidate deaths arms `Retire`;
+the byte's `POSTED` arms `Verdicts`; the pressure path's endings that hand a
+component to the next poll arm `AllRoots`; nothing else arms (amended
+2026-09-24 from two values: the retirement by a count). The fire spends the
+word: `Retire` runs the retirement pass, which traces nothing, `Verdicts`
+the collection over P, `AllRoots` the collection over R whole with P
+disposed of whole in it. The explicit fire
 waits as today and spends a standing arming.
 
 **Mutator, in-line collection.** `CollectingThread::take` takes `MUTATOR`
@@ -246,8 +251,9 @@ loop waits for what is left or withdraws. A standing request costs no
 wait; the consent wake cannot be lost, since the slot's wake word makes a
 wake sent mid-round end the next wait at once — so a woken owner is served
 at the first checkpoint after its consent, at most one stranger's batch
-away, whatever the number of threads. That batch is bounded by its block
-budget in blocks and not in time, since a stride over scalars draws none;
+away, whatever the number of threads. That batch's arena is bounded by the
+block budget, B for a part and `B_max` for its one retry, and not in time,
+since a stride over scalars draws none;
 an owner that asks for its token behind it is released within N positions
 of it, its posts and its reset, and one pass (amended 2026-09-24; `rfc/model/gc/rc-cycle.md`, "The recall of the
 token"). The "remembered early return" that skips the between-rounds
@@ -273,8 +279,8 @@ fails and reads nothing: P holds one batch at a time, and the next request
 is made against `FREE` after the owner's close; for the timer the skip is
 neither a batch nor work, and the owner's note of a freeing disposition
 is the way back to the minimum interval. The collector exists before the
-first pressure collection: the poll's first wake births the elder, the one
-tracer of R. The guard's drop is the withdrawal above, and a failure
+first pressure collection: the poll's first wake births the elder, as the
+end of a pressure collection does, the one tracer of R. The guard's drop is the withdrawal above, and a failure
 reading its own `COLLECTOR|s` releases; `note_traced_owner(null)` in the
 same drop; the arena is declared after the guard and drops before it.
 `Served` gains `Unanswered`, which is neither a batch nor work: the
@@ -283,8 +289,10 @@ interval doubles. A refusal is work as today.
 **Fallback for an owner that never answers: none.** Its request stands,
 and it is served at the collector's first checkpoint after its consent —
 its first poll or slot free — at most one stranger's batch away; its
-withholding, its pressure path's wait and its exit's wait are bounded by
-that, and neither W nor the round's length enters. Its garbage is held for as long as it is blocked under
+pressure path's wait and its exit's wait are bounded by its recall of the
+token and its withholding by the marks on its withheld stacks (amended
+2026-09-24 from both bounded by that batch; `rfc/model/gc/rc-cycle.md`, "The
+recall of the token"), and neither W nor the round's length enters. Its garbage is held for as long as it is blocked under
 every form this design can carry: the collector frees nothing — its batch
 posts verdicts into P, one block per owner, and every reduction of state
 is the owner's at its poll or its in-line collection — so a forced trace
@@ -343,10 +351,10 @@ prices: every free made while the byte reads `POSTED` stores the arming
 once more, a thread-local write on the slow branch, the window being one
 poll interval; the collector posts one batch per owner-collection, its
 request failing at `POSTED` until the owner's close; a completed death in
-R keeps its slot until the collector's batch reaches it and the owner's
-collection over P retires it, so slot retirement runs at the collector's
-throughput, the pressure path's whole-R compaction being the fallback;
-each not measured. The collector pays per batch one request
+R is retired at the poll once the free path has counted enough of them,
+the pass reading R below the collector's threshold and tracing nothing
+(amended 2026-09-24 from a slot kept until the collector's batch reached
+it); each not measured. The collector pays per batch one request
 CAS, a wait of at most W, one acquire load per wake inside it, the arena
 opened after the grant, the batch as today, the arena's reset, and one
 Release store with a lock and notify; per standing owner one failed
@@ -644,7 +652,8 @@ wasted wake and release, a fourth state for the collector to reason about.
 
 The recall of 2026-09-24 does not reopen E10: `waiting` is written by the
 mutator (set by its take and its marks once it read the byte at
-`COLLECTOR`, cleared by its take, its consent and its drain) and read by the collector
+`COLLECTOR`, stored by its consent, cleared by its take and its drain) and
+read by the collector
 holding that byte, and it moves no state — the collector that reads it
 releases through its ordinary release, and a collector that misses it
 releases at its batch's end as before (`rfc/model/gc/rc-cycle.md`, "The
@@ -934,7 +943,8 @@ never cited as its authority.
 **The form, after two Sage rounds and three Critic rounds** (the rulings
 and the findings are in `ll-model`'s journals under 2026-09-17): the
 fifth state `POSTED`, its invariant, the one reading function, the
-two-valued arming word, the collection over P with its disposition on
+two-valued arming word (three since 2026-09-24, "Mutator, poll"), the
+collection over P with its disposition on
 every ending and `front` advanced last, the retirement pass holding
 `POSTED` unswapped, the request's skip, the release carrying the posted
 fact on the unwind, the collector born at the poll's first wake, the
@@ -951,7 +961,11 @@ invariant on `POSTED` skips being ≥, not =, batches minus collections.
 The zero-refcount pass over R stays an option: if built, it is bounded to
 one block of R per fire by a cursor over the occupied run, the
 front-block-only and capped forms refused, with a bench line before it is
-called free. `Final`.
+called free. `Final`. (Amended 2026-09-24: built in another form, a pass the
+free path's count of completed deaths arms, reading R below the collector's
+threshold with no cursor; `ll-model`, `dev/DECISIONS.md`, "the collector
+finds and the mutator judges, and a recall of the token bounds the
+mutator's wait instead of the budget".)
 
 **Instruments the fourth round adds.** Loom: one more passing execution —
 the collector posts a word into P and releases `POSTED`; the owner reads

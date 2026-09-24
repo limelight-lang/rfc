@@ -827,26 +827,52 @@ the owner to collect, and to `FREE` when it posted nothing (amended
 2026-09-24 from one trace over the whole copy, posted in R's order). The token
 covers the read and the trace, as above: two traces over one thread's
 blocks would put a block on two touched lists. What the owner waits for
-when it needs its token is bounded by its recall of it (below), and B
-bounds the collector's arena rather than that wait (amended 2026-09-24 from
+when it needs its token is bounded by its recall of it (below), and B, with
+the retry's `B_max` below, bounds the collector's arena rather than that
+wait (amended 2026-09-24 from
 "one batch's trace, bounded by B and not by K": B bounds blocks, and a
 stride over a million scalars draws none). The verdicts are four:
 *proposed*, the row having read potentially unreachable; *read live*;
 *zero-count*, the count having read zero; *unwalked*, every root still
-without a verdict when a part meets B, a refused allocation or the owner's
-recall, the part's own root among them (amended 2026-09-16 from "before the
-root": no color of an abandoned trace is a verdict; amended 2026-09-24 from
-every root of a batch traced once) — posted so that no
+without a verdict when a part or its retry meets a refused allocation or the
+owner's recall, the part's own root among them (amended 2026-09-16 from
+"before the root": no color of an abandoned trace is a verdict; amended
+2026-09-24 from every root of a batch traced once, and from a part meeting
+B) — posted so that no
 root blocks the ring behind it, and validated by the owner's in-line
 collection, which traces under no budget; a live root the trace could not
 place reads *live*. The verdicts of the parts before an abandoned one stand:
 each rests, as every verdict does, on the owner's exact validation and not
-on the trace that gave it ("Speculative tracing and exact validation"). A
-batch one of whose parts met B halves K for that owner, one whose every part
-completed over its whole clamp doubles it, up to its bound, one
-that completed short of its clamp leaves it — the ring or P's room held no
-more, which says nothing of what the owner offers per batch — and so does
-a recalled one; none is an empty round for the timer.
+on the trace that gave it ("Speculative tracing and exact validation").
+
+**The retry at the ceiling.** A part that meets B is retried at once for the
+same root under `B_max`, 128 blocks (amended 2026-09-24), once per grant. A
+retry that finishes is an ordinary part. A retry that meets `B_max` too, and
+a part that meets B with the grant's retry spent, post every live root their
+rows met *read live*, and the batch goes on with the next root; a retry the
+pool refuses or the owner recalls ends the batch as a part would. That *read
+live* is a deferral rather than a trace's verdict, which is what separates it
+from the colors of an abandoned part above: the owner moves the root to the
+deferred lane as it moves any root read live, and the lane offers it again at
+the epoch's turn. A root of the same closure the rows did not meet opens a
+part of its own. So a closure past B costs the owner nothing, the re-offer
+arming no collection while a collector lives (above), and costs the
+collector, in each grant, a part at B for every root of it that no earlier
+attempt of the grant met, one of those parts retried under `B_max`. While a
+collector lives, garbage whose closure passes `B_max` is reclaimed by the
+collection a shortage of memory runs, or at the thread's exit. Garbage whose
+closure lies between B and `B_max` waits a turnover for each grant whose
+retry another closure spent first, and behind a live closure past `B_max`
+that spends it in every grant it waits for the same two collections
+(Edmond, 2026-09-24, over *unwalked*, which would trace that closure on the
+owner's thread or retry it at every take).
+A batch whose every part completed over its whole clamp doubles K for that
+owner, up to its bound, and any other leaves it: one that deferred a part's
+roots, one that completed short of its clamp — the ring or P's room held no
+more, which says nothing of what the owner offers per batch — a recalled one
+and one the pool refused. Nothing halves K, since a part past B loses no root
+to *unwalked* (amended 2026-09-24 from halving after a part that met B); none
+is an empty round for the timer.
 
 **The recall of the token.** An owner that needs its token while a
 collector holds it recalls it: its take sets a hint beside the token's byte

@@ -709,11 +709,12 @@ recorded in them: the segment goes to the pool carrying its entries while the
 bits those entries answer for stay set, so a root whose only record was one of
 them is proposed by no later trace, which is Y6's permanent miss. Writing the
 batch's head into the write position loses the segment the severing installed
-there the same way. And a collection that
+there the same way (the derivation is an `ll-model` entry of 2026-09-03 on the
+restore's refusal, deleted on 2026-09-24 with the restore it served and kept
+by git). And a collection that
 cannot carry on with the memory it holds ends itself and returns every block,
 the critical reserve included, which is the answer to a refusal rather than a
-process end (`ll-model`, `dev/DECISIONS.md`, "the restore's refusal is the
-ordinary teardown, and it yields on an unwind" and "under memory starvation a
+process end (`ll-model`, `dev/DECISIONS.md`, "under memory starvation a
 collection ends itself and gives back everything").
 
 The readership rule narrows with it. Mark and scan remain the only **writers**

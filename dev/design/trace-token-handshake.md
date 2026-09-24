@@ -5,8 +5,8 @@ that day, attacked by two Critics, ruled by the Sage, and the silent-owner
 question ruled by a second Sage round the same day; built in `ll-model` as
 its stage S51 ("Built", at the end) and amended in place since, each
 amendment dated. The defect it answers is the Code Reviewer's of
-2026-09-16 (`ll-model`, `dev/DECISIONS.md`, "the free path's reading of the
-token is fenced against the take"); the fence that repair put on every
+2026-09-16 (`ll-model`, `dev/DECISIONS.md`, its entry of that day on the
+free path's fence, deleted on 2026-09-24 and kept by git); the fence that repair put on every
 free is what this protocol removes.
 
 ## The problem it answers

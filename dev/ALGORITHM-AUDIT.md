@@ -246,8 +246,11 @@ entity still has a candidate-queue entry is recorded nowhere, that entry naming
 the slot already; a slot freed
 while the thread's own trace is open waits for that trace's close and returns
 through the ordinary free path once its last row is gone. Block occupancy
-decreases at that return. The withheld fact costs no allocation while the
-region holds it: its first 1,024 records stand in a fixed region of the thread's
+decreases at that return. (Superseded 2026-09-05 for what follows: one
+stack through the dead entities holds every withheld return, and the region
+and the list below went with it; `ll-model`, `dev/DECISIONS.md`, "one stack
+through the dead entity holds every withheld return".) The withheld fact costs
+no allocation while the region holds it: its first 1,024 records stand in a fixed region of the thread's
 collection workspace, and past that a death fits in the dead slot itself, by
 Edmond's ruling of 2026-09-04, under the two conditions the design of record
 states — the block carries this trace's shadow pointer and this thread owns it
@@ -259,8 +262,8 @@ slot is owed with the sweep. A thread runs at most one trace at a
 time, which is what proves no trace of its own can address a returned slot; the
 generation or handoff protocol is still owed for a collector worker.
 `model/gc/rc-cycle.md`, "Zero-count entities pending slot reuse"; `ll-model`,
-`dev/DECISIONS.md`, "the withheld returns' first 1,024 records are the
-workspace's second region" and "under memory starvation a collection ends itself
+`dev/DECISIONS.md`, "one stack through the dead entity holds every
+withheld return" and "under memory starvation a collection ends itself
 and gives back everything".
 
 **A4, first clause (2026-09-04, ruled by Edmond).** A thread does not exit while

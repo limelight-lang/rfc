@@ -52,7 +52,7 @@ the steps below).
   maturation one, so the two documents describe a mechanism with no owner.
 - The purity ladder's four open questions are carried in
   `model/gc/pure-destructors.md` as open items, unresolved in the code
-  repository (`model/dev/design/pure-destructors.md` there).
+  repository (its `PLAN.md`, "Pure destructors, the P0 runtime step").
 - Two sentences are owed an amendment by the crate's ruling of 2026-09-13
   (`model`, `dev/DECISIONS.md`, "a survivor cell the pool cannot supply severs
   the edge, and the reset finishes"): `runtime/exceptions.md`'s gap paragraph,

@@ -26,8 +26,8 @@ under another name.
 > exist and are listed below; the compiler tiers need a compiler; the
 > hand-off drain waits on the residual duties and the tail bound named
 > in the open questions. Moved here 2026-08-20 from the code
-> repository's `dev/design/pure-destructors.md`, which stays as the
-> working note and now points here.
+> repository's `dev/design/pure-destructors.md`, whose remaining pointer
+> was deleted on 2026-09-24.
 
 ## Design criteria
 

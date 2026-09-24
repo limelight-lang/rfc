@@ -783,19 +783,51 @@ when it posted, which tells the owner to collect, and to `FREE` when it
 posted nothing. The token
 covers the read and the trace, as above: two traces over one thread's
 blocks would put a block on two touched lists. What the owner waits for
-when it needs its token is one batch's trace, bounded by B and not by K,
-since one root's closure can be the heap. The verdicts are four:
+when it needs its token is bounded by its recall of it (below), and B
+bounds the collector's arena rather than that wait (amended 2026-09-24 from
+"one batch's trace, bounded by B and not by K": B bounds blocks, and a
+stride over a million scalars draws none). The verdicts are four:
 *proposed*, the row having read potentially unreachable; *read live*;
 *zero-count*, the count having read zero; *unwalked*, every root of a batch
-whose trace met B or a refused allocation (amended 2026-09-16 from "before
-the root": no color of an abandoned trace is a verdict) — posted so that no
+whose trace met B, a refused allocation or the owner's recall (amended
+2026-09-16 from "before the root": no color of an abandoned trace is a
+verdict) — posted so that no
 root blocks the ring behind it, and validated by the owner's in-line
 collection, which traces under no budget; a live root the trace could not
 place reads *live*. A batch that met B halves K for that owner, a
 completed one that took its whole clamp doubles it, up to its bound, one
 that completed short of its clamp leaves it — the ring or P's room held no
-more, which says nothing of what the owner offers per batch — and none is an
-empty round for the timer.
+more, which says nothing of what the owner offers per batch — and so does
+a recalled one; none is an empty round for the timer.
+
+**The recall of the token.** An owner that needs its token while a
+collector holds it recalls it: its take sets a hint beside the token's byte
+before it waits on the token's mutex and clears it when the take returns,
+and the collector reads the hint every N positions of storage its trace
+reads — a vector's element, a hash entry, an object's field, a template's
+value, a cell of a class's outside storage — in the mark and in the scan,
+whether or not the position holds a counted reference, and again at every
+block the collector's arena draws. Positions and not
+edges, because a check per edge reads a vector of a million scalars whole
+between two readings. A trace that reads the hint set stops where it
+stands, and the release after it is an abandoned batch's: *unwalked* for
+every root still without a verdict, R's advance past the batch, one reset
+of the collector's arena, the release to `POSTED`; a grant whose hint
+stands before its batch is made is released with no batch. The owner whose
+batch is being traced waits, then, for at most N positions, those K posts
+and that reset, whatever the closure of its roots or the width of an
+entity. An owner whose grant the collector holds while it traces another
+owner's batch is not bounded so: its hint is read only when that batch
+ends, and it waits that batch out whole — a gap in the recall, open in
+`ll-model`'s plan. The concurrent walk of a class's
+outside cells reports every position it reads and stops when told, as the
+strides over the entity's own body do. The hint is not a claim: the token's
+byte alone says who holds it, a reading that missed the store costs one
+stride more, and the handshake is unchanged
+(`rfc/dev/design/trace-token-handshake.md`, "The word"). N is the
+runtime's constant and unmeasured (`ll-model`, `dev/DECISIONS.md`, "the
+collector finds and the mutator judges, and a recall of the token bounds the
+mutator's wait instead of the budget").
 
 **The ring under the grant decides the batch's form**, rather than the
 request that opened it: the collector reads R again under the token, and a

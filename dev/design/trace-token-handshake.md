@@ -42,7 +42,15 @@ before it): a plain store by the collector at every advance and a plain
 load by the poll, relaxed on both sides, taking no part in the handshake
 (`ll-model` `dev/DECISIONS.md`, "the collector finds and the mutator judges,
 and a recall of the token bounds the mutator's wait instead of the
-budget"). The byte replaces
+budget"). A third byte stands on the line since 2026-09-24, `waiting`: the
+mutator's take sets it before it waits out `COLLECTOR` and clears it when
+the take returns, and the collector reads it before it makes a batch, every
+N positions of storage its trace reads and at every block its arena draws,
+and, finding it set, stops and releases as for an abandoned batch
+(`rfc/model/gc/rc-cycle.md`, "The recall of the token"). It is a hint and
+not a state, relaxed on both sides: nothing in the transitions below reads
+it, a reading that missed the store costs one stride more, and who holds
+the token is the byte's alone (E10, below). The byte replaces
 `TraceToken::held`, the record's `owner_holds` byte, the collector-facing
 reading of the collecting word (E10), and the poll's reading of P (the
 fourth round).
@@ -605,6 +613,13 @@ collecting word and naming the check was refused as the dearer form: a
 consent per ordinary collection that meets a request in its teardown, a
 wasted wake and release, a fourth state for the collector to reason about.
 `Final`.
+
+The recall of 2026-09-24 does not reopen E10: `waiting` is written by the
+mutator's take while the byte reads `COLLECTOR` and read by the collector
+holding that byte, and it moves no state — the collector that reads it
+releases through its ordinary release, and a collector that misses it
+releases at its batch's end as before (`rfc/model/gc/rc-cycle.md`, "The
+recall of the token").
 
 **E11 — out of scope.** A cross-thread free of an A-owned slot by thread B
 is a reference from B into A's blocks, which the disjointness rule the

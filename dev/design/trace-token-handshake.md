@@ -44,13 +44,16 @@ load by the poll, relaxed on both sides, taking no part in the handshake
 and a recall of the token bounds the mutator's wait instead of the
 budget"). A third byte stands on the line since 2026-09-24, `waiting`: the
 mutator's take sets it before it waits out `COLLECTOR` and clears it when
-the take returns, and the collector reads it before it makes a batch, every
+the take returns; a stack of returns withheld under `COLLECTOR` sets it at
+its mark with no wait, and the next consent, ahead of its release swap, and
+the returns' going back whole outside a grant clear it, the consent setting it again after
+its swap where a stack still holds its mark; and the collector reads it before it makes a batch, every
 N positions of storage its trace reads and at every block its arena draws,
 and, finding it set, stops and releases as for an abandoned batch
 (`rfc/model/gc/rc-cycle.md`, "The recall of the token"). The take also sets
 a word on the collector's slot, which the same readings take, releasing
 every grant the collector holds unserved behind its batch whose owner
-waits; that word is set by a read-modify-write with Release and taken by a
+recalls it; that word is set by a read-modify-write with Release and taken by a
 swap with Acquire, so that the reading which takes it sees every setter's
 `waiting`. The byte `waiting` is a hint and
 not a state, relaxed on both sides: nothing in the transitions below reads
@@ -623,7 +626,8 @@ wasted wake and release, a fourth state for the collector to reason about.
 `Final`.
 
 The recall of 2026-09-24 does not reopen E10: `waiting` is written by the
-mutator's take while the byte reads `COLLECTOR` and read by the collector
+mutator (set by its take and its marks once it read the byte at
+`COLLECTOR`, cleared by its take, its consent and its drain) and read by the collector
 holding that byte, and it moves no state — the collector that reads it
 releases through its ordinary release, and a collector that misses it
 releases at its batch's end as before (`rfc/model/gc/rc-cycle.md`, "The

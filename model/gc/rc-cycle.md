@@ -819,11 +819,23 @@ and that reset, whatever the closure of its roots or the width of an
 entity. An owner whose grant the collector holds unserved while it traces
 another owner's batch has no batch to abandon: its take also sets a word on
 the collector's slot, the same readings take the word and release every
-such grant whose owner waits, with no batch, and the batch traced goes on,
+such grant whose owner recalls it, with no batch, and the batch traced goes on,
 so that owner waits at most N positions of the other's batch, that batch's
 posts and reset where its take lands after the last reading, and one pass
 over the collector's standing requests. A reading that finds the traced
-owner's own hint set stops at once and walks nothing. The concurrent walk of a class's
+owner's own hint set stops at once and walks nothing. An owner that frees
+under a grant recalls it the same way without waiting: each of the three
+stacks its returns wait on under a foreign holder ("The deferral's
+contract") counts what it holds — deaths, storage chunks, and blocks, a run
+and a large entity counted by the blocks they span — and once one holds its
+mark the owner sets the hint and the slot's word as its take would and goes
+on freeing, the returns past the mark asking nothing. A count is what its
+stack holds at every instant, the owner taking each item's weight off as it
+gives the item back. The next consent clears the hint, and so does the owner
+once the stacks go back whole outside a grant, so a mark recalls one grant
+and no later one; a stack still at its mark when the owner consents recalls
+the new grant at that consent. The three marks are the runtime's constants,
+unmeasured. The concurrent walk of a class's
 outside cells reports every position it reads and stops when told, as the
 strides over the entity's own body do. The hint is not a claim: the token's
 byte alone says who holds it, a reading that missed the store costs one
@@ -978,6 +990,10 @@ threaded through the memory itself until the owner reads the token free
 The owner withholds every such return under a foreign holder rather than
 the ones a stamp names, because a trace holds an address between reading a
 cell and meeting the row, and in that interval the block carries no stamp.
+What the three stacks withhold is bounded by the grant, and the grant by
+its recall: a stack that holds its mark recalls the token ("The recall of
+the token"). A slot another thread freed waits on its block's remote list
+instead, which no mark counts.
 
 **Publication, for a reader on another thread.** A worker that follows a
 pointer it read from a slot reads the entity's header and its class word, and

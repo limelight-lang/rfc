@@ -47,7 +47,12 @@ mutator's take sets it before it waits out `COLLECTOR` and clears it when
 the take returns, and the collector reads it before it makes a batch, every
 N positions of storage its trace reads and at every block its arena draws,
 and, finding it set, stops and releases as for an abandoned batch
-(`rfc/model/gc/rc-cycle.md`, "The recall of the token"). It is a hint and
+(`rfc/model/gc/rc-cycle.md`, "The recall of the token"). The take also sets
+a word on the collector's slot, which the same readings take, releasing
+every grant the collector holds unserved behind its batch whose owner
+waits; that word is set by a read-modify-write with Release and taken by a
+swap with Acquire, so that the reading which takes it sees every setter's
+`waiting`. The byte `waiting` is a hint and
 not a state, relaxed on both sides: nothing in the transitions below reads
 it, a reading that missed the store costs one stride more, and who holds
 the token is the byte's alone (E10, below). The byte replaces
@@ -228,10 +233,13 @@ most one stranger's batch. The walk or the stranger's deadline loop resumes
 after a checkpoint; the deadline is absolute, computed once, so a resumed
 loop waits for what is left or withdraws. A standing request costs no
 wait; the consent wake cannot be lost, since the slot's wake word makes a
-wake sent mid-round end the next wait at once, and a batch in progress ends
-by its block budget — so a woken owner is served at the first checkpoint
-after its consent, at most one stranger's batch away, whatever the number
-of threads. The "remembered early return" that skips the between-rounds
+wake sent mid-round end the next wait at once — so a woken owner is served
+at the first checkpoint after its consent, at most one stranger's batch
+away, whatever the number of threads. That batch is bounded by its block
+budget in blocks and not in time, since a stride over scalars draws none;
+an owner that asks for its token behind it is released within N positions
+of it, its posts and its reset, and one pass (amended 2026-09-24; `rfc/model/gc/rc-cycle.md`, "The recall of the
+token"). The "remembered early return" that skips the between-rounds
 sleep once is set only when the checkpoint that followed the return served
 nothing. Every outcome that leaves no request standing unlinks the record:
 a refusal, a withdrawal whose read-back is a record moved on, and the
@@ -828,8 +836,10 @@ checkpoint serves one grant and releases every other grant it read to
 one stranger's batch, runs freely until the walk's re-request with no
 wait, and is served at the pass where it is the first grant read, in the
 walk's order, which is fixed across rounds; neither W nor the round's length
-enters; its pressure path and its exit wait the same bound, the release
-being real for both (each a compare-and-swap on `FREE`, and a re-request
+enters; its pressure path and its exit, which ask for the token, are
+released within N positions of the stranger's batch, its posts and reset,
+and one pass (amended 2026-09-24),
+the release being real for both (each a compare-and-swap on `FREE`, and a re-request
 the take meets is a refusal that wins). In the ordinary case — one sleeper
 waking — one stranger's batch plus its own, against an active owner's own
 batch alone; a lockstep burst of n is served in n passes, and what grows

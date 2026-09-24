@@ -816,10 +816,14 @@ of the collector's arena, the release to `POSTED`; a grant whose hint
 stands before its batch is made is released with no batch. The owner whose
 batch is being traced waits, then, for at most N positions, those K posts
 and that reset, whatever the closure of its roots or the width of an
-entity. An owner whose grant the collector holds while it traces another
-owner's batch is not bounded so: its hint is read only when that batch
-ends, and it waits that batch out whole — a gap in the recall, open in
-`ll-model`'s plan. The concurrent walk of a class's
+entity. An owner whose grant the collector holds unserved while it traces
+another owner's batch has no batch to abandon: its take also sets a word on
+the collector's slot, the same readings take the word and release every
+such grant whose owner waits, with no batch, and the batch traced goes on,
+so that owner waits at most N positions of the other's batch, that batch's
+posts and reset where its take lands after the last reading, and one pass
+over the collector's standing requests. A reading that finds the traced
+owner's own hint set stops at once and walks nothing. The concurrent walk of a class's
 outside cells reports every position it reads and stops when told, as the
 strides over the entity's own body do. The hint is not a claim: the token's
 byte alone says who holds it, a reading that missed the store costs one

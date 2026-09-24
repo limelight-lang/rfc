@@ -776,11 +776,22 @@ them but advances only after the batch's verdicts are posted, the up to
 three stores of the advance owned by one guard from the unwind as well,
 which first posts *unwalked* for every root the unwind left without a
 verdict,
-copies them into its workspace, traces the copy
-through its own reader and arena under a block budget B, posts one verdict
-per entry to P in R's order, advances `front` and releases — to `POSTED`
-when it posted, which tells the owner to collect, and to `FREE` when it
-posted nothing. The token
+copies them into its workspace, and traces the copy
+through its own reader and arena in parts. It posts first the roots no part
+can place, a count read zero and a root with no row, and then, in R's order,
+opens a part for each root still without a verdict: the mark and the scan of
+that root's closure alone, under a block budget B of its own, on an arena
+reset between parts to a watermark above the copy. A completed part posts
+its root's verdict and the verdict of every other live root whose row it
+met, and a root a part met opens none: its closure is inside that part's, and
+a root read within a larger closure can read unreachable where its own part
+would read it live and never the reverse, the proposals over a subset of
+roots being a subset of those over all of them over one snapshot; either
+verdict is the owner's exact validation to decide.
+P is posted in the parts' order, `front` is advanced once, after the last
+post, and the collector releases — to `POSTED` when it posted, which tells
+the owner to collect, and to `FREE` when it posted nothing (amended
+2026-09-24 from one trace over the whole copy, posted in R's order). The token
 covers the read and the trace, as above: two traces over one thread's
 blocks would put a block on two touched lists. What the owner waits for
 when it needs its token is bounded by its recall of it (below), and B
@@ -788,14 +799,18 @@ bounds the collector's arena rather than that wait (amended 2026-09-24 from
 "one batch's trace, bounded by B and not by K": B bounds blocks, and a
 stride over a million scalars draws none). The verdicts are four:
 *proposed*, the row having read potentially unreachable; *read live*;
-*zero-count*, the count having read zero; *unwalked*, every root of a batch
-whose trace met B, a refused allocation or the owner's recall (amended
-2026-09-16 from "before the root": no color of an abandoned trace is a
-verdict) — posted so that no
+*zero-count*, the count having read zero; *unwalked*, every root still
+without a verdict when a part meets B, a refused allocation or the owner's
+recall, the part's own root among them (amended 2026-09-16 from "before the
+root": no color of an abandoned trace is a verdict; amended 2026-09-24 from
+every root of a batch traced once) — posted so that no
 root blocks the ring behind it, and validated by the owner's in-line
 collection, which traces under no budget; a live root the trace could not
-place reads *live*. A batch that met B halves K for that owner, a
-completed one that took its whole clamp doubles it, up to its bound, one
+place reads *live*. The verdicts of the parts before an abandoned one stand:
+each rests, as every verdict does, on the owner's exact validation and not
+on the trace that gave it ("Speculative tracing and exact validation"). A
+batch one of whose parts met B halves K for that owner, one whose every part
+completed over its whole clamp doubles it, up to its bound, one
 that completed short of its clamp leaves it — the ring or P's room held no
 more, which says nothing of what the owner offers per batch — and so does
 a recalled one; none is an empty round for the timer.
@@ -807,7 +822,10 @@ and the collector reads the hint every N positions of storage its trace
 reads — a vector's element, a hash entry, an object's field, a template's
 value, a cell of a class's outside storage — in the mark and in the scan,
 whether or not the position holds a counted reference, and again at every
-block the collector's arena draws. Positions and not
+block the collector's arena draws, before every part of a batch but the
+first, and at every root of the pass before the parts, a root there costing
+a header read that no position counts. The lookup of the roots a part met
+counts a position per root or row it visits. Positions and not
 edges, because a check per edge reads a vector of a million scalars whole
 between two readings. A trace that reads the hint set stops where it
 stands, and the release after it is an abandoned batch's: *unwalked* for
@@ -816,7 +834,8 @@ of the collector's arena, the release to `POSTED`; a grant whose hint
 stands before its batch is made is released with no batch. The owner whose
 batch is being traced waits, then, for at most N positions, those K posts
 and that reset, whatever the closure of its roots or the width of an
-entity. An owner whose grant the collector holds unserved while it traces
+entity, and, where it asks before the trace starts, the sort of the batch's
+copy by address, which no reading interrupts. An owner whose grant the collector holds unserved while it traces
 another owner's batch has no batch to abandon: its take also sets a word on
 the collector's slot, the same readings take the word and release every
 such grant whose owner recalls it, with no batch, and the batch traced goes on,

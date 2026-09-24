@@ -76,7 +76,10 @@ The record leaves the registry `MUTATOR`, the initialisation's end stores
 registry writes nothing to the byte across lives. The invariant `POSTED`
 carries: P holds an entry the owner has not disposed of only while the
 byte reads `POSTED` or `MUTATOR`, so a byte that reads `FREE` promises an
-empty P and the poll has no reason to read P.
+empty P and the poll has no reason to read P. The live list a grant leaves
+beside P obeys the same invariant, taken back to null by the owner's first
+act after its acquire reading of `POSTED`, or earlier by the collector once the
+epoch has advanced past it, so `FREE` promises a null list word too (E13).
 
 The slot rather than a life counter: three bits fit beside the state, the
 slot is already the collector's name, and it is exact — a request never
@@ -130,7 +133,8 @@ gate, `returns_are_withheld` for the remote reclaim, the per-pop checks of
 the three drains — read `REQUESTED` and `POSTED` as `FREE` and return:
 before consent, and after the release, the collector holds no cell, so no
 address it holds names the memory. They test `state == COLLECTOR`, never
-`state != FREE`.
+`state != FREE`. The block gate and the run's unmapping read `POSTED` with a
+live list standing as "stamp from the list, then `FREE`" (E13).
 The slot drain needs no arm of its own — its hand-back re-enters the slot
 entry, which consents at the first slot, and the next pop reads `COLLECTOR`
 and splices the rest back. `BlockPool::put` from a thread-local's drop at
@@ -160,7 +164,9 @@ other read-back by a fresh swap. The collection `Verdicts` fires is over
 P alone: it counts P's proposed and unwalked roots without writing, and
 `EmptyLane` is its answer only on a zero count; it traces them with exact
 counts, validates and finalizes; then, on every ending of every path that
-took `POSTED`, one disposition of P whole — a read-live root deferred to
+took `POSTED`, one disposition of P whole, the take having settled the
+live list first — stamped from it off the poll and by the explicit call,
+given back unread by the pressure path and the exit (E13) — a read-live root deferred to
 the deferred lane, or written into R on `NoBlock`; a zero-count verdict
 retired on the entity's re-read completed-free bit; a finalized root
 nulled; a refused, untraced, resurrected or unreached root written back
@@ -256,7 +262,8 @@ success, Acquire failure); on failure the read-back decides —
 refusal; `FREE`, or a value with another slot, is a record moved on — the
 collector holds nothing. On the grant: `TraceScratchArena::open()` (a
 refusal releases at once and answers `Idle`), the batch as today, the
-arena's reset, then release `COLLECTOR|s → POSTED` if the batch posted
+arena's reset, the live list's head left on the record, then release
+`COLLECTOR|s → POSTED` if the batch posted
 verdicts into P and `COLLECTOR|s → FREE` if it posted nothing (Release),
 lock, `notify_all`; the guard that releases on the unwind carries the
 posted fact, set before the first post. A request that meets `POSTED`
@@ -523,6 +530,14 @@ decide one reading and say which entries consent, noting that
 `BlockPool::put` runs from a thread-local's drop at exit and a consent
 there wakes a condition variable from a destructor context.
 
+**E13. A live list beside `POSTED`** (added 2026-09-24 with the list itself,
+`rc-cycle.md`, "The live list of a batch"). A grant that read a live core
+leaves a list of its members on the record for the owner to stamp, and the
+owner returns memory at once under `POSTED`: a block emptied and put, or a
+run unmapped, before the take would leave list addresses naming memory the
+next owner holds, and the take's stamps would write into it. E12's reading
+of `POSTED` as `FREE` at the block gate needs an arm for this case.
+
 **Survived both rounds:** the store-buffering pair itself (the collector's
 first load is ordered after the mutator's *store* of `COLLECTOR`, not after
 its load); a stale `FREE` while a collector holds (`COLLECTOR` is written
@@ -648,6 +663,28 @@ it. The
 consenting slot free withholds its own slot for uniformity: returning it
 would be sound, and one slot until the batch's end is cheaper than a second
 arm. `Final`.
+
+**E13.** Not a Sage ruling: the form the live list was built in, from the
+package the owner took on 2026-09-23 (`ll-model` `dev/DECISIONS.md`, "the
+collector finds and the mutator judges, and a recall of the token bounds the
+mutator's wait instead of the budget"). The block gate and the run's
+unmapping read `POSTED` with a non-null list word as "stamp from the list,
+then `FREE`": the owner stamps every listed address and gives the list back
+before the memory goes, one relaxed load of the word where none stands. Under
+`COLLECTOR` the word may be written before the release and is not the owner's
+to read, and no return reaches either reader then: `BlockPool::put` withholds
+a block under a foreign trace ahead of this one, and a run is freed only by a
+death, which the free entry withholds whole. The relaxed load relies on those
+two acquire readings of the byte, which order the word after the collector's
+release where they read `POSTED`. The list's blocks are the one piece of GC
+memory that passes from a collector to an owner, and back to the collector
+the record is named to where the owner has not taken them by the epoch's next
+advance: the publication is a release store of the word and the collector's
+swap an acquire, since that collector read no `POSTED` and may not be the one
+that drew the blocks. E11's
+closure, when B3/B4 close, covers the list's writes as well as the gate's
+reads: a cross-thread return reads the returning thread's record, and under
+the list that is an owner's stamp into a block another thread returned.
 
 ### The second round: the silent owner and the asymmetric barrier
 

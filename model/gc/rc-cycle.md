@@ -76,6 +76,38 @@ turnover. A collection an allocation failure starts has returned its blocks
 before the commit, so it stamps only what its exact validation read as
 externally referenced.
 
+**The live list of a batch.** A collector's batch writes no header, so the
+live core it reads is stamped by the owner from a list (amended 2026-09-24).
+A part of the batch that read its root live appends the address of every row
+it left live to one chain of GC blocks per grant, at most L blocks, before
+the reset its next part takes; the walk reads the recall every stride of rows
+and stops at a recall, keeping what it wrote, so the list adds no work the
+recall cannot stop before the release. The collector leaves the chain's head
+on the mutator's record before its release to `POSTED`, and the list's blocks
+cross to the owner with it. The owner stamps every listed entity with the
+epoch the batch read and age one, and leaves a stamp that already carries an
+age in that epoch as it stands, at the first of two events: its take of the
+token from `POSTED` off the poll or by the explicit call, before any
+destructor or free the claim runs, and the first return of a block or an
+OS-direct run of its own under `POSTED` while the list stands, since a stamp
+made after that memory left the thread would land in its next owner's data.
+A take under pressure, the teardown's refusal and the exit give the list back
+unread, and so does a take after the epoch advanced, a stamp of the batch's
+epoch reading as no stamp in the next. For that reason a list its owner has
+not taken by the epoch's next advance is given back by the collector the record
+is named to, at its round's visit after the advance, so that an owner asleep
+under `POSTED` holds the list's blocks for X at most and loses no stamp by it;
+the owner and the collector each take the list by one swap, the publication a
+release and the collector's swap an acquire, and the side that reads it
+non-null gives it back or stamps from it. At the traversal threshold of one a
+flat stamp prunes what a stamp per strongly connected component would, so the
+list carries no component. Between `POSTED` and the take the owner runs free:
+a listed slot can be freed and occupied again, and its new occupant is
+stamped live and pruned at until the turnover, which costs recall and never a
+wrong free, exact validation reading no stamp. A block the pool refuses and a
+chain at L keep what is written, a subset of the live core being safe to
+stamp.
+
 **The epoch clock is the collector's.** Each mutator's epoch is a full-width
 count of turnovers in its record, written by the collector the mutator is
 named to and by nobody else: at a visit of its round, before it serves the
@@ -789,7 +821,8 @@ would read it live and never the reverse, the proposals over a subset of
 roots being a subset of those over all of them over one snapshot; either
 verdict is the owner's exact validation to decide.
 P is posted in the parts' order, `front` is advanced once, after the last
-post, and the collector releases — to `POSTED` when it posted, which tells
+post, the live list the parts wrote is left on the record ("The live list of a
+batch"), and the collector releases — to `POSTED` when it posted, which tells
 the owner to collect, and to `FREE` when it posted nothing (amended
 2026-09-24 from one trace over the whole copy, posted in R's order). The token
 covers the read and the trace, as above: two traces over one thread's

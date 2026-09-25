@@ -34,8 +34,11 @@ free.
 One `AtomicU8` per mutator thread, in the token line of its record
 (`ll-model`, `cycle::mutator_record`), six bits used. The low three bits
 are the state; bits 3–5 are the requesting collector's slot
-(`MAX_COLLECTORS` is 8). `FREE`, `MUTATOR` and `POSTED` carry slot zero,
-so a collector's request expects exactly 0. A second `AtomicU8` stands
+(`MAX_COLLECTORS` is 8). `FREE`, `MUTATOR` and a batch's `POSTED` carry
+slot zero, so a collector's request expects exactly 0; `POSTED` with slot one
+is the first collector's ask under a collector cap of zero, which every
+reader of the state reads as `POSTED` and the mutator's reading alone tells
+apart (amended 2026-09-25). A second `AtomicU8` stands
 beside it on the same line, the low eight bits of the mutator's epoch
 counter, which the collector keeps (since 2026-09-23; a turnover request
 before it): a plain store by the collector at every advance and a plain
@@ -72,6 +75,7 @@ fourth round).
 | `REQUESTED\|s` (2) | collector s asks to trace; the mutator has not consented |
 | `COLLECTOR\|s` (3) | collector s traces; the mutator withholds every return |
 | `POSTED` (4) | no collector holds anything; the last batch posted verdicts into P that the owner has not disposed of; the mutator returns memory at once and owes a collection over P |
+| `POSTED\|1` (12), the ask | under a collector cap of zero: no collector holds anything, P is empty, the first collector's round would have taken R, and the mutator returns memory at once and owes a collection over R whole |
 
 The record leaves the registry `MUTATOR`, the initialisation's end stores
 `FREE`, the exit's kept claim leaves `MUTATOR` on the free list; the
@@ -107,23 +111,28 @@ value a failed swap reads back is acted on, never inferred.
 | `COLLECTOR\|s` | `POSTED` | collector s | the same release, when the batch posted its verdicts into P; on the unwind as on the return, the batch's guard having posted *unwalked* for every root the unwind left without a verdict | store Release; lock; `notify_all` |
 | `POSTED` | `MUTATOR` | mutator | every taker of the `FREE → MUTATOR` row below, the teardown-refusal retirement excepted, which holds `POSTED` unswapped | CAS Acquire / Acquire |
 | `POSTED` | (skip) | collector s | the request CAS fails on it: neither a batch nor work; the owner is served by no round until its own collection has run | CAS failure, Relaxed |
+| `FREE` | `POSTED\|1` | the first collector | under a collector cap of zero alone, at a round's visit that read R as a take would have, the swap made under the reading hold: the ask for an in-line collection, P empty and the live list's word null (amended 2026-09-25) | CAS Relaxed / Relaxed: nothing of the owner's is read after it, and a failure is a skip |
+| `POSTED\|1` | `MUTATOR` | mutator | every taker `POSTED` has | CAS Acquire / Acquire |
 | `FREE` | `MUTATOR` | mutator | `CollectingThread::take` on both paths, the teardown-refusal retirement, the exit | CAS Acquire / Acquire |
 | `REQUESTED\|s` | `MUTATOR` | mutator | the same takers: the request is refused | CAS Acquire / Acquire; then wake s |
 | `MUTATOR` | `FREE` | mutator | the close's last store; the initialisation's end | store Release |
 | `COLLECTOR\|s` | (wait) | mutator | the same takers: the condition variable under the token's mutex, re-tested by CAS | — |
 
 No other transition exists. The collector writes over `COLLECTOR|s` alone
-and only its own; the mutator never writes over `COLLECTOR`; `POSTED` is
-written by the collector alone and consumed by the mutator alone, and the
-close that consumed it writes `FREE`, always. Every load that acts on
-`FREE` or on `POSTED` is Acquire.
+and only its own, and over `FREE` its request and, under a cap of zero, the
+ask; the mutator never writes over `COLLECTOR`; `POSTED` and the ask are
+written by a collector alone and consumed by the mutator alone, and the
+close that consumed them writes `FREE`, always. Every load that acts on
+`FREE` or on a batch's `POSTED` is Acquire; the ask publishes nothing and is
+swapped Relaxed.
 
 ## The two sides
 
 **Mutator, free path.** One acquire load of the byte — a plain `mov` on
 x86-64, `ldar` on ARM64 — made by one reading function that the slot
 entry and the poll share and nobody else calls. `FREE`: return the
-memory. `POSTED`: arm this thread for a collection over P (a thread-local
+memory. `POSTED`: arm this thread for a collection over P, or over R whole
+on the ask (a thread-local
 store; the byte is left as it is, so every reading in the window re-arms)
 and return the memory: the collector holds no cell after its release.
 `COLLECTOR|any`: withhold it, as today. `MUTATOR`: the thread's own window
@@ -153,9 +162,11 @@ waited for, today's wait and bound. A closed-gate poll consents and arms
 all the same, since the reading precedes the gate. The arming word has
 three values above none, `Retire`, `Verdicts` and `AllRoots`, merged by
 maximum: the free path's count of completed candidate deaths arms `Retire`;
-the byte's `POSTED` arms `Verdicts`; the pressure path's endings that hand a
-component to the next poll arm `AllRoots`; nothing else arms (amended
-2026-09-24 from two values: the retirement by a count). The fire spends the
+the byte's `POSTED` arms `Verdicts`, and the ask `AllRoots`; the pressure
+path's endings that hand a component to the next poll arm `AllRoots`;
+nothing else arms (amended 2026-09-24 from two values: the retirement by a
+count; amended 2026-09-25 with the ask, a value of the byte so that the
+mutator's side reads no collector cap). The fire spends the
 word: `Retire` runs the retirement pass, which traces nothing, `Verdicts`
 the collection over P, `AllRoots` the collection over R whole with P
 disposed of whole in it. The explicit fire
@@ -235,7 +246,7 @@ Acquire load per entry: `REQUESTED|s` is left standing; the first
 after the grant, the batch, the arena's reset, the release; every further
 `COLLECTOR|s` is unlinked, marked on its record as released unserved, and
 released to `FREE` with no batch, never to `POSTED`, which over an empty P
-would arm a collection over R for nothing; anything else — `MUTATOR`,
+would arm a collection over P with nothing in it; anything else — `MUTATOR`,
 `FREE`, another slot's value — is a record moved on, and is unlinked. One
 grant per checkpoint, so a burst of k consents costs the k-th waker one
 stranger's batch and not a queue of k − 1 batches ahead of it. The walk's

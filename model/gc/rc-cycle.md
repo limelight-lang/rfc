@@ -23,10 +23,13 @@
 - The collector finds cycle garbage and the owning mutator validates what it
   proposes. The mutator traces candidates no collector has read on four
   occasions and no other: two the ruling names, the memory manager refusing it
-  an allocation and the embedder capping the collectors at zero (a dial not yet
-  built: `ll-model` clamps the cap to one today; `ll-model`,
-  `dev/DECISIONS.md`, "the collector finds and the mutator judges, and a
-  recall of the token bounds the mutator's wait instead of the budget"), and
+  an allocation and the embedder capping the collectors at zero, under which
+  the collector thread keeps the epoch clock, takes nothing, and asks the
+  mutator to collect R whole where its round would have taken R (`ll-model`,
+  `dev/DECISIONS.md`, "under a collector cap of zero the elder asks by a
+  value of the byte, and the mutator reads no cap"; "the
+  collector finds and the mutator judges, and a recall of the token bounds
+  the mutator's wait instead of the budget"), and
   two asked for outside the collector, its exit and a collection its embedder
   fires explicitly, which trace R whole ("In-line collection is the same
   reader"; [`strategies.md`](strategies.md), "Collection requests and
@@ -821,7 +824,10 @@ it counts sends the collector's next round to the merged ring however far
 below the threshold it reads, and the owners of a collector that has ended
 are named back to the first collector by the first collector's next round.
 Amended 2026-09-24 from arming the poll's collection while the record names
-no living collector, under the ruling in the first section's summary.
+no living collector, under the ruling in the first section's summary. Under
+a collector cap of zero the same count sends the first collector's next
+round to ask for the owner's collection over R whole instead of a take
+(amended 2026-09-25).
 
 **The collector's batch.** For an owner with work — its unread count, read
 by the collector itself off the front block, at or above the threshold
@@ -987,7 +993,9 @@ live list of a batch"); its workspace and its rows are its own.
 collections alone, and no poll acts on a verdict — a retirement pass reads P
 only for completed deaths, which it retires in place: the collector's release
 to `POSTED` is read by the owner's free path and by its poll through one
-reading, which arms the collection over P that the poll fires; the pressure
+reading, which arms the collection over P that the poll fires — or, on the
+ask the first collector writes under a collector cap of zero over an empty
+P, the collection over R whole (amended 2026-09-25); the pressure
 path, the exit and an explicit collection read P into their batch first, so a proposal never stands through a collection
 short of memory. A proposed root becomes part of one in-line collection over
 the proposed roots, validated exactly and finalized as any batch is; an
@@ -1012,9 +1020,11 @@ disposed of. The owner is the sole writer for all of these transitions.
 
 **In-line collection is the same reader.** A collection over R whole — a
 memory shortage's, the one a poll fires on an arming a refused allocation
-left, and an explicit one — sets its collecting word, takes its own token,
-waiting out a collector's batch if one is in progress, and reads P and then
-R itself, as the consumer; a poll `POSTED` armed reads P alone. The
+left, an explicit one, and under a collector cap of zero the one the
+collector's ask armed — sets its collecting
+word, takes its own token, waiting out a collector's batch if one is in
+progress, and reads P and then R itself, as the consumer; a poll a batch's
+`POSTED` armed reads P alone. The
 disposition is the one above, made directly.
 The exit takes the token for good, reads P and R to their ends, and retires
 the queue.

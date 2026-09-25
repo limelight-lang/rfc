@@ -357,8 +357,11 @@ embedder tunes it with
 `ll_gc_set_collector_cap`, `ll_gc_set_standing_interval` and
 `ll_gc_set_epoch_interval`. The runtime arms the owner's poll itself — for
 the collector's verdicts when it posted, for the queue whole after a refused
-allocation, for a retirement pass on its count of completed deaths — so a
-poll fires with no compiler signal enabled. The compiler emits the poll
+allocation, for a retirement pass on its count of completed deaths, and,
+under a collector cap of zero, for the queue whole where the collector thread's
+round would have taken it — at the count, standing past the interval, or merged
+into — so a poll
+fires with no compiler signal enabled. The compiler emits the poll
 alone: where the polls stand is its decision before codegen, as the store
 barrier's *whether-to-call* is (§1), and an explicit `ll_gc_collect_cycles`
 is the embedder's fire. The signals this section once gave the compiler —

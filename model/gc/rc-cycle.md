@@ -827,7 +827,12 @@ Amended 2026-09-24 from arming the poll's collection while the record names
 no living collector, under the ruling in the first section's summary. Under
 a collector cap of zero the same count sends the first collector's next
 round to ask for the owner's collection over R whole instead of a take
-(amended 2026-09-25).
+(amended 2026-09-25). A cap set to zero while collectors work is met at each
+collector's next checkpoint, which withdraws the requests it left standing
+and releases with no batch a grant the withdrawal reads back; a grant read
+anywhere after the store is released with no batch, so no trace starts after
+it, and a trace already running finishes, its owner collecting over P as
+after any batch.
 
 **The collector's batch.** For an owner with work — its unread count, read
 by the collector itself off the front block, at or above the threshold

@@ -467,7 +467,9 @@ Two conditions can delay reuse:
    next poll, which — the collection gate open, no collector's grant on its
    byte, R below the collector's threshold — takes its own token, or holds
    the byte as it stands at `POSTED`, retires the completed deaths in R, its
-   overflow and P, and traces nothing. The
+   overflow and P, and traces nothing. A collection over P reads no R, so
+   it leaves the count as it stands and arms the pass again at its close
+   while the count stands at D (amended 2026-09-25). The
    deferred lane's deaths wait for its turnover, so the pass reads R below
    the threshold and the overflow buffer rather than the lane; a pass that
    returned fewer than half of its count doubles the count the next one
@@ -797,9 +799,9 @@ fails on it in one compare-and-swap and skips; the collecting word the owner
 sets before the take and clears at the close is the owner's own gate, read by
 the owner alone (amended 2026-09-17, E10). An owner's collection over R whole
 reads every entry from the front block to the tail block's `tail` as its
-batch, and a collection over P reads P alone; either traces, holds the
-token through its close as above, and at its close compacts the ring in
-place: an entry it disposed of is dropped, every other entry — a component
+batch, and a collection over P reads P alone; either traces and holds the
+token through its close as above. The collection over R whole at its close
+compacts the ring in place: an entry it disposed of is dropped, every other entry — a component
 whose teardown was refused or resurrected, a zero-count entity whose
 teardown has not completed, a root read live with nothing proposed, a root
 a refused trace never walked — is kept in order, packed from the front
@@ -808,7 +810,14 @@ what was kept, `tailBlock` on the last block holding a kept entry; the
 compaction rewrites the blocks' local copies of the other side's index as
 well, since the reference's fast paths trust them on the invariant that
 `tail` never moves back. All of these are the owner's words. The compaction
-is the retirement pass in ring form and draws nothing. A retirement inside a
+is the retirement pass in ring form and draws nothing. The close of a
+collection over P reads nothing of R: it disposes of P's prefix and packs
+the overflow buffer, and a completed death standing in R is retired by the
+collector's batch that takes it, which posts it into P as a zero-count
+verdict, by the owner's retirement pass once the count arms it, or by a
+collection over R whole (amended 2026-09-25 from a compaction of R at every
+close: each close over P read R whole while a batch takes at most 1,024
+roots, so the owner's cost of judging a batch grew with R). A retirement inside a
 teardown with no collection running takes the token first and waits out a
 collector's batch, and retires the completed deaths standing anywhere in
 P in place, nulling their entries and advancing nothing (amended

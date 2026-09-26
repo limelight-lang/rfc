@@ -800,7 +800,8 @@ fails on it in one compare-and-swap and skips; the collecting word the owner
 sets before the take and clears at the close is the owner's own gate, read by
 the owner alone (amended 2026-09-17, E10). An owner's collection over R whole
 reads every entry from the front block to the tail block's `tail` as its
-batch, and a collection over P reads P alone; either traces and holds the
+batch, and a collection over P reads P alone, its close reading of R the
+run of completed deaths at the front; either traces and holds the
 token through its close as above. The collection over R whole at its close
 compacts the ring in place: an entry it disposed of is dropped, every other entry — a component
 whose teardown was refused or resurrected, a zero-count entity whose
@@ -1047,7 +1048,8 @@ left, an explicit one, and under a collector cap of zero the one the
 collector's ask armed — sets its collecting
 word, takes its own token, waiting out a collector's batch if one is in
 progress, and reads P and then R itself, as the consumer; a poll a batch's
-`POSTED` armed reads P alone. The
+`POSTED` armed reads P alone, and of R, at its close, the run of completed
+deaths at the front. The
 disposition is the one above, made directly.
 The exit takes the token for good, reads P and R to their ends, and retires
 the queue.

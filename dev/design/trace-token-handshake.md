@@ -161,12 +161,14 @@ is met by the take loop, which refuses; a `COLLECTOR` that lands there is
 waited for, today's wait and bound. A closed-gate poll consents and arms
 all the same, since the reading precedes the gate. The arming word has
 three values above none, `Retire`, `Verdicts` and `AllRoots`, merged by
-maximum: the free path's count of completed candidate deaths arms `Retire`;
-the byte's `POSTED` arms `Verdicts`, and the ask `AllRoots`; the pressure
-path's endings that hand a component to the next poll arm `AllRoots`;
-nothing else arms (amended 2026-09-24 from two values: the retirement by a
-count; amended 2026-09-25 with the ask, a value of the byte so that the
-mutator's side reads no collector cap). The fire spends the
+maximum: the free path's count of completed candidate deaths arms `Retire`,
+and so does the close of a collection over P while the count of the deaths it
+left stands at its figure; the byte's `POSTED` arms `Verdicts`, and the ask
+`AllRoots`; the pressure path's endings that hand a component to the next
+poll arm `AllRoots`; nothing else arms (amended 2026-09-24 from two values:
+the retirement by a count; amended 2026-09-25 with the ask, a value of the
+byte so that the mutator's side reads no collector cap, and with the close's
+re-arming). The fire spends the
 word: `Retire` runs the retirement pass, which traces nothing, `Verdicts`
 the collection over P, `AllRoots` the collection over R whole with P
 disposed of whole in it. The explicit fire

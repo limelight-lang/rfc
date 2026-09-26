@@ -467,9 +467,10 @@ Two conditions can delay reuse:
    next poll, which — the collection gate open, no collector's grant on its
    byte, R below the collector's threshold — takes its own token, or holds
    the byte as it stands at `POSTED`, retires the completed deaths in R, its
-   overflow and P, and traces nothing. A collection over P reads no R, so
-   it leaves the count as it stands and arms the pass again at its close
-   while the count stands at D (amended 2026-09-25). The
+   overflow and P, and traces nothing. Every retirement lowers the count by
+   one, and a collection over P, which reads of R only the run of completed
+   deaths at its front, arms the pass again at its close while the count of
+   the deaths it left stands at D (amended 2026-09-25; 2026-09-26). The
    deferred lane's deaths wait for its turnover, so the pass reads R below
    the threshold and the overflow buffer rather than the lane; a pass that
    returned fewer than half of its count doubles the count the next one
@@ -811,13 +812,21 @@ compaction rewrites the blocks' local copies of the other side's index as
 well, since the reference's fast paths trust them on the invariant that
 `tail` never moves back. All of these are the owner's words. The compaction
 is the retirement pass in ring form and draws nothing. The close of a
-collection over P reads nothing of R: it disposes of P's prefix and packs
-the overflow buffer, and a completed death standing in R is retired by the
-collector's batch that takes it, which posts it into P as a zero-count
-verdict, by the owner's retirement pass once the count arms it, or by a
-collection over R whole (amended 2026-09-25 from a compaction of R at every
-close: each close over P read R whole while a batch takes at most 1,024
-roots, so the owner's cost of judging a batch grew with R). A retirement inside a
+collection over P disposes of P's prefix, packs the overflow buffer, and
+frees the run of completed deaths standing at R's front, one entry at a
+time and each consumed before its slot returns, stopping at the first entry
+that is not one; it reads one entry of R more than the slots it returns. A
+completed death standing behind such an entry is retired by the collector's
+batch that takes it, which posts it into P as a zero-count verdict, by the
+owner's retirement pass once the count arms it, or by a collection over R
+whole (amended 2026-09-25 from a compaction of R at every close: each close
+over P read R whole while a batch takes at most 1,024 roots, so the owner's
+cost of judging a batch grew with R; amended 2026-09-26 with the run, so
+that the members a collection over P tears down behind its batch return at
+its own close). Because the close moves R's front block, and a collector's
+batch in a grant moves it too, the owner's poll unlinks no block of R while
+a collector's reading before its claim holds the record: it asks the hold
+by a read-modify-write between its decision loads and its stores. A retirement inside a
 teardown with no collection running takes the token first and waits out a
 collector's batch, and retires the completed deaths standing anywhere in
 P in place, nulling their entries and advancing nothing (amended

@@ -284,8 +284,8 @@ its predecessors too; point 3 is where this strategy differs from them.
    from the mutator, which registers an entity after a decrement that does not
    reach zero, and the descent stops at a member that has reached the traversal
    age threshold and at a child
-   outside the GC heap, and is cut by the collector's block budget, B for a
-   part of its batch and `B_max` for one retry, whose sizes are unmeasured
+   outside the GC heap, and a collector's trace is cut only by the owner's
+   recall of its token or a refusal of its pool, no budget bounding it
    ([rc-cycle.md](rc-cycle.md), "The collector's batch"; `cycle/questions.md`
    Y9 and Y13).
    Trial deletion runs on shadow rows off the heap, so an abandoned

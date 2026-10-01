@@ -53,9 +53,11 @@ whether a stack still holds its mark, and the returns' going back whole
 outside a grant clear it (amended 2026-09-24 from a consent that cleared it
 and set it again after its swap); and the collector reads it before it makes
 a batch, every N positions of storage its trace reads, at every block its
-arena draws, at every root of the pass before the parts and before every
-part but the first, and, finding it set, stops and releases as for an abandoned batch
-(`rfc/model/gc/rc-cycle.md`, "The recall of the token"). The take also sets
+arena draws, at every held entry a pass of the mark reads and at every root
+of the pass before the trace, and, finding it set, stops, posts the stopped
+trace's snapshot and releases (amended 2026-10-01 from the readings between
+parts and an abandoned batch's posts; `rfc/model/gc/rc-cycle.md`, "The recall
+of the token"). The take also sets
 a word on the collector's slot, which the same readings take, releasing
 every grant the collector holds unserved behind its batch whose owner
 recalls it; that word is set by a read-modify-write with Release and taken by a
@@ -269,8 +271,9 @@ wake sent mid-round end the next wait at once — so a woken owner is served
 at the first checkpoint after its consent, at most one stranger's batch
 away, whatever the number of threads; under a collector cap of zero that
 checkpoint releases its grant with no batch instead. That batch's arena is bounded by the
-block budget, B for a part and `B_max` for its one retry, and not in time,
-since a stride over scalars draws none;
+traced owner's heap and not in time, since a stride over scalars draws none
+(amended 2026-10-01 from a block budget, B for a part and `B_max` for its one
+retry);
 an owner that asks for its token behind it is released within N positions
 of it, its posts and its reset, and one pass (amended 2026-09-24; `rfc/model/gc/rc-cycle.md`, "The recall of the
 token"). The "remembered early return" that skips the between-rounds

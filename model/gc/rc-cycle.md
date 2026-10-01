@@ -92,9 +92,11 @@ externally referenced.
 
 **The live list of a batch.** A collector's batch writes no header, so the
 live core it reads is stamped by the owner from a list (amended 2026-09-24).
-A part of the batch that read its root live appends the address of every row
-it left live to one chain of GC blocks per grant, at most L blocks, before
-the reset its next part takes; the walk reads the recall every stride of rows
+A batch whose trace completed appends the address of every row it left live,
+its roots' included, to one chain of GC blocks per grant, at most L blocks,
+before the arena's reset (amended 2026-10-01 from an append after each part
+whose root read live, its own root left out); a stopped trace appends
+nothing. The walk reads the recall every stride of rows
 and stops at a recall, keeping what it wrote, so the list adds no work the
 recall cannot stop before the release. The collector leaves the chain's head
 on the mutator's record before its release to `POSTED`, and the list's blocks
@@ -855,79 +857,51 @@ them but advances only after the batch's verdicts are posted, the up to
 three stores of the advance owned by one guard from the unwind as well,
 which first posts *unwalked* for every root the unwind left without a
 verdict,
-copies them into its workspace, and traces the copy
-through its own reader and arena in parts. It posts first the roots no part
-can place, a count read zero and a root with no row, and then, in R's order,
-opens a part for each root still without a verdict: the mark and the scan of
-that root's closure alone, under a block budget B of its own, on an arena
-reset between parts to a watermark above the copy. A completed part posts
-its root's verdict and the verdict of every other live root whose row it
-met, and a root a part met opens none: its closure is inside that part's, and
-a root read within a larger closure can read unreachable where its own part
-would read it live and never the reverse, the proposals over a subset of
-roots being a subset of those over all of them over one snapshot; either
-verdict is the owner's exact validation to decide.
-P is posted in the parts' order, `front` is advanced once, after the last
-post, the live list the parts wrote is left on the record ("The live list of a
-batch"), and the collector releases — to `POSTED` when it posted, which tells
-the owner to collect, and to `FREE` when it posted nothing (amended
-2026-09-24 from one trace over the whole copy, posted in R's order). The token
-covers the read and the trace, as above: two traces over one thread's
-blocks would put a block on two touched lists. What the owner waits for
-when it needs its token is bounded by its recall of it (below), and B, with
-the retry's `B_max` below, bounds the collector's arena rather than that
-wait (amended 2026-09-24 from
-"one batch's trace, bounded by B and not by K": B bounds blocks, and a
-stride over a million scalars draws none). The verdicts are four:
-*proposed*, the row having read potentially unreachable; *read live*;
-*zero-count*, the count having read zero; *unwalked*, every root still
-without a verdict when a part or its retry meets a refused allocation or the
-owner's recall, the part's own root among them (amended 2026-09-16 from
-"before the root": no color of an abandoned trace is a verdict; amended
-2026-09-24 from every root of a batch traced once, and from a part meeting
-B) — posted so that no
+copies them into its workspace, and traces the copy through its own reader
+and arena in one trace (amended 2026-10-01 from a trace in parts, one root's
+closure each under a block budget B, with a retry under `B_max`: a state every
+root reaches was walked once a root, and garbage behind a live closure past
+the budget was never freed while the collector lived). It posts first the
+roots no trace can place, a count read zero and a root with no row; it then
+meets every other root before it expands any, so that an edge into a batch
+root is never a first visit, marks what they reach, holding each other
+registered target it meets for passes that expand first the held targets whose
+rows read zero, and scans from each root. Each root is posted off its colour,
+in R's order; `front` is advanced once, after the last post, the live list the
+trace wrote is left on the record ("The live list of a batch"), and the
+collector releases — to `POSTED` when it posted, which tells the owner to
+collect, and to `FREE` when it posted nothing. No budget bounds the trace: it
+is bounded by the traced owner's heap, and the runtime sets no memory limit of
+its own (amended 2026-10-01 from B and `B_max`). The token covers the read and
+the trace, as above: two traces over one thread's blocks would put a block on
+two touched lists. What the owner waits for when it needs its token is bounded
+by its recall of it (below). The verdicts are four: *proposed*, the row having
+read potentially unreachable; *read live*; *zero-count*, the count having read
+zero; *unwalked*, a root a stopped trace gives no verdict — posted so that no
 root blocks the ring behind it, and written back into R by the owner's
-collection over P, untraced, for the collector's next batch; a collection
-over R whole traces it under no budget (amended 2026-09-24 from validated by
-the owner's in-line collection). So a root the owner's recall or a refusal
-of the collector's pool sent back waits for a later batch, and an owner that
-recalls every grant, or a pool that refuses every arena while the owner's
-own allocations succeed, leaves it and the garbage behind it to a shortage
-of memory, the exit or an explicit collection, the owner tracing nothing
-meanwhile. A live root the
-trace could not place reads *live*. The verdicts of the parts before an abandoned one stand:
-each rests, as every verdict does, on the owner's exact validation and not
-on the trace that gave it ("Speculative tracing and exact validation").
+collection over P, untraced, for the collector's next batch; a collection over
+R whole traces it under no budget. A live root the trace could not place reads
+*live*.
 
-**The retry at the ceiling.** A part that meets B is retried at once for the
-same root under `B_max`, 128 blocks (amended 2026-09-24), once per grant. A
-retry that finishes is an ordinary part. A retry that meets `B_max` too, and
-a part that meets B with the grant's retry spent, post every live root their
-rows met *read live*, and the batch goes on with the next root; a retry the
-pool refuses or the owner recalls ends the batch as a part would. That *read
-live* is a deferral rather than a trace's verdict, which is what separates it
-from the colors of an abandoned part above: the owner moves the root to the
-deferred lane as it moves any root read live, and the lane offers it again at
-the epoch's turn. A root of the same closure the rows did not meet opens a
-part of its own. So a closure past B costs the owner nothing, the re-offer
-arming no collection (above), and costs the
-collector, in each grant, a part at B for every root of it that no earlier
-attempt of the grant met, one of those parts retried under `B_max`. While a
-collector lives, garbage whose closure passes `B_max` is reclaimed by the
-collection a shortage of memory runs, at the thread's exit, or by an explicit
-collection. Garbage whose
-closure lies between B and `B_max` waits a turnover for each grant whose
-retry another closure spent first, and behind a live closure past `B_max`
-that spends it in every grant it waits for the same two collections
-(Edmond, 2026-09-24, over *unwalked*, which would trace that closure on the
-owner's thread or retry it at every take).
-A batch whose every part completed over its whole clamp doubles K for that
-owner, up to its bound, and any other leaves it: one that deferred a part's
-roots, one that completed short of its clamp — the ring or P's room held no
-more, which says nothing of what the owner offers per batch — a recalled one
-and one the pool refused. Nothing halves K, since a part past B loses no root
-to *unwalked* (amended 2026-09-24 from halving after a part that met B); none
-is an empty round for the timer.
+**A stopped trace posts its snapshot** (amended 2026-10-01 from every root
+*unwalked*). The owner's recall or a refusal of the collector's pool stops the
+trace where it stands. A batch root the scan already coloured live is posted
+*read live*, a colour no later step of the trace would change. Each other batch
+root whose met row reads zero is posted *proposed*: a candidate for the owner's
+exact validation ("Speculative tracing and exact validation"), not a scan's
+verdict, since a live referrer whose edge the mark crossed leaves a zero the
+scan would have raised; the owner's trace from such a root then walks what that
+referrer reaches, which is the snapshot's cost. A root whose row reads above
+zero is posted *read live* where the stop fell after the mark's first descent,
+every root's own region expanded, and *unwalked* where it fell inside it —
+once: a batch of one root, K having halved as far as it goes, posts its root
+*read live*, so that a root whose own region every grant cuts leaves R for the
+deferred lane rather than coming back cut. A root the trace did not meet is
+*unwalked*. A batch over its whole clamp that completed, or stopped after the
+first descent, doubles K for that owner, up to its bound; one stopped inside
+the first descent halves K, down to one root; one short of its clamp — the
+ring or P's room held no more, which says nothing of what the owner offers per
+batch — leaves it. None is an empty round for the timer.
 
 **The recall of the token.** An owner that needs its token while a
 collector holds it recalls it: its take sets a hint beside the token's byte
@@ -936,20 +910,20 @@ and the collector reads the hint every N positions of storage its trace
 reads — a vector's element, a hash entry, an object's field, a template's
 value, a cell of a class's outside storage — in the mark and in the scan,
 whether or not the position holds a counted reference, and again at every
-block the collector's arena draws, before every part of a batch but the
-first, and at every root of the pass before the parts, a root there costing
-a header read that no position counts. The lookup of the roots a part met
-counts a position per root or row it visits. Positions and not
-edges, because a check per edge reads a vector of a million scalars whole
-between two readings. A trace that reads the hint set stops where it
-stands, and the release after it is an abandoned batch's: *unwalked* for
-every root still without a verdict, R's advance past the batch, one reset
-of the collector's arena, the release to `POSTED`; a grant whose hint
-stands before its batch is made is released with no batch. The owner whose
-batch is being traced waits, then, for at most N positions, those K posts
-and that reset, whatever the closure of its roots or the width of an
-entity, and, where it asks before the trace starts, the sort of the batch's
-copy by address, which no reading interrupts. An owner whose grant the collector holds unserved while it traces
+block the collector's arena draws, at every held entry a pass of the mark
+reads, and at every root of the pass before the trace, a root there costing
+a header read that no position counts. Positions and not edges, because a
+check per edge reads a vector of a million scalars whole between two
+readings. A trace that reads the hint set stops where it stands, and the
+release after it is a stopped batch's: the snapshot's posts (above), R's
+advance past the batch, one reset of the collector's arena, the release to
+`POSTED`; a grant whose hint stands before its batch is made is released
+with no batch. The owner whose batch is being traced waits, then, for at most
+N positions, those K posts and that reset, whatever the width of an entity.
+The reset is bounded by what the trace touched — every heap block it met a
+row in and every block its arena drew — which with no budget reaches the
+traced owner's whole state, rows being about a sixteenth of the heap they
+cover. An owner whose grant the collector holds unserved while it traces
 another owner's batch has no batch to abandon: its take also sets a word on
 the collector's slot, the same readings take the word and release every
 such grant whose owner recalls it, with no batch, and the batch traced goes on,

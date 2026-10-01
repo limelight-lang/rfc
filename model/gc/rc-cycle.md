@@ -813,7 +813,9 @@ potentially unreachable, and the blocks they stand in. The owner's collection
 over P meets every listed entity whose count reads above zero, and every root
 P proposes, as roots; expands them, subtracting each edge into a met row and
 following no edge into anything else; scans; and validates and frees the rows
-the scan leaves potentially unreachable. Trial deletion restricted to any set
+the scan leaves potentially unreachable; a proposed root it reads live goes back
+into R for the collector's next batch, that reading proving no liveness.
+Trial deletion restricted to any set
 of live entities is sound — an edge it does not follow leaves its target's row
 higher, and the rows left potentially unreachable are closed under referrers —
 so a listed slot whose occupant died and was reissued since the post costs that
@@ -914,10 +916,11 @@ exact validation ("Speculative tracing and exact validation"), not a scan's
 verdict, since a live referrer whose edge the mark crossed leaves a zero the
 scan would have raised. The set a stopped batch posts is the zero closure of
 its proposed roots — each root, and every entity reached from the closure whose
-met row reads zero — and not every row read zero: those include a live
-state's interior, every referrer of which the mark had crossed, and the
-closure stops at the state's entry, whose row an outside reference holds above
-zero. A root whose row reads above
+met row reads zero, a scan cut short undone first — and not every row read
+zero: those include a live state's interior, every referrer of which the mark
+had crossed, and the closure stops at the state's entry, whose row an outside
+reference holds above zero. The closure reads the recall as the trace does and
+stops at the next reading that finds it, posting what it reached. A root whose row reads above
 zero is posted *read live* where the stop fell after the mark's first descent,
 every root's own region expanded, and *unwalked* where it fell inside it —
 once: a batch of one root, K having halved as far as it goes, posts its root
@@ -945,7 +948,8 @@ release after it is a stopped batch's: the snapshot's posts (above), R's
 advance past the batch, one reset of the collector's arena, the release to
 `POSTED`; a grant whose hint stands before its batch is made is released
 with no batch. The owner whose batch is being traced waits, then, for at most
-N positions, those K posts and that reset, whatever the width of an entity.
+N positions, those K posts, at most N more of a stopped batch's zero closure
+and that reset, whatever the width of an entity.
 The reset is bounded by what the trace touched — every heap block it met a
 row in and every block its arena drew — which with no budget reaches the
 traced owner's whole state, rows being about a sixteenth of the heap they

@@ -76,7 +76,9 @@ root reached all 381 objects in its test heap, which is why an independent
 trace budget remains necessary.
 
 **What a commit stamps.** A collection that keeps its rows through the teardown
-stamps every entity its scan proved live, with the epoch the collection read
+and traced R whole stamps every entity its scan proved live (a collection over
+P reads the collector's posted set alone, so a row it leaves live proves no
+liveness, and it stamps nothing; amended 2026-10-01), with the epoch the collection read
 once when its trace opened and an age one more than the minimum current-epoch age over that
 entity's strongly connected component in the subgraph the trace walked. The
 unit is that strongly connected component rather than the traced closure: where
@@ -802,7 +804,27 @@ sets before the take and clears at the close is the owner's own gate, read by
 the owner alone (amended 2026-09-17, E10). An owner's collection over R whole
 reads every entry from the front block to the tail block's `tail` as its
 batch, and a collection over P reads P alone; either traces and holds the
-token through its close as above. The collection over R whole at its close
+token through its close as above.
+
+**The collector posts the set it proved unreachable** (amended 2026-10-01).
+Beside its verdicts a batch that proposes posts, on a chain of GC blocks left
+on the owner's record before the release, every entity its scan left
+potentially unreachable, and the blocks they stand in. The owner's collection
+over P meets every listed entity whose count reads above zero, and every root
+P proposes, as roots; expands them, subtracting each edge into a met row and
+following no edge into anything else; scans; and validates and frees the rows
+the scan leaves potentially unreachable. Trial deletion restricted to any set
+of live entities is sound — an edge it does not follow leaves its target's row
+higher, and the rows left potentially unreachable are closed under referrers —
+so a listed slot whose occupant died and was reissued since the post costs that
+member a refusal. The owner's work is the set and one layer of edges out of it,
+never the state a garbage head points into, and a garbage cycle no proposed
+root closes is proved because the collector's trace walked it whole. A return
+of a block a member stands in drops the set first, since the pool hands the
+block to any class; such a block empties only when a member proposed wrongly
+died. Every other return passes the set by. A collection over R whole, under
+pressure or at the exit gives the set back unread, and a take that collects
+nothing gives it back before its release, `FREE` promising a null set word. The collection over R whole at its close
 compacts the ring in place: an entry it disposed of is dropped, every other entry — a component
 whose teardown was refused or resurrected, a zero-count entity whose
 teardown has not completed, a root read live with nothing proposed, a root
@@ -890,8 +912,12 @@ trace where it stands. A batch root the scan already coloured live is posted
 root whose met row reads zero is posted *proposed*: a candidate for the owner's
 exact validation ("Speculative tracing and exact validation"), not a scan's
 verdict, since a live referrer whose edge the mark crossed leaves a zero the
-scan would have raised; the owner's trace from such a root then walks what that
-referrer reaches, which is the snapshot's cost. A root whose row reads above
+scan would have raised. The set a stopped batch posts is the zero closure of
+its proposed roots — each root, and every entity reached from the closure whose
+met row reads zero — and not every row read zero: those include a live
+state's interior, every referrer of which the mark had crossed, and the
+closure stops at the state's entry, whose row an outside reference holds above
+zero. A root whose row reads above
 zero is posted *read live* where the stop fell after the mark's first descent,
 every root's own region expanded, and *unwalked* where it fell inside it —
 once: a batch of one root, K having halved as far as it goes, posts its root

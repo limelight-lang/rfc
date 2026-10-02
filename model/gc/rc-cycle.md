@@ -949,7 +949,16 @@ advance past the batch, one reset of the collector's arena, the release to
 `POSTED`; a grant whose hint stands before its batch is made is released
 with no batch. The owner whose batch is being traced waits, then, for at most
 N positions, those K posts, at most N more of a stopped batch's zero closure
-and that reset, whatever the width of an entity.
+and that reset, whatever the width of an entity. The recall has two levels
+(amended 2026-10-02, S67.9's (10′)): the take's, and a stack of returns
+withheld under the grant at twice its mark, stop the trace as above; a stack
+at its mark asks the collector to wind down while the owner runs on. The
+mark, its passes and the live list's walk end at either level, the scan at
+the stop alone: a mark the wind-down cut ends where it stands, the scan runs
+from every root, and the roots are posted off its colours with the set it
+proved, nothing listed live; a stop inside that scan posts the snapshot. A
+mark cut short leaves rows above what a complete one would, so its colours
+err toward live alone.
 The reset is bounded by what the trace touched — every heap block it met a
 row in and every block its arena drew — which with no budget reaches the
 traced owner's whole state, rows being about a sixteenth of the heap they

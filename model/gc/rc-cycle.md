@@ -943,13 +943,14 @@ block the collector's arena draws, at every held entry a pass of the mark
 reads, and at every root of the pass before the trace, a root there costing
 a header read that no position counts. Positions and not edges, because a
 check per edge reads a vector of a million scalars whole between two
-readings. A trace that reads the hint set stops where it stands, and the
-release after it is a stopped batch's: the snapshot's posts (above), R's
+readings. A trace that reads the hint at the level its phase stops at (below)
+stops where it stands, and the release after it is a stopped batch's: the snapshot's posts (above), R's
 advance past the batch, one reset of the collector's arena, the release to
 `POSTED`; a grant whose hint stands before its batch is made is released
 with no batch. The owner whose batch is being traced waits, then, for at most
-N positions, those K posts, at most N more of a stopped batch's zero closure
-and that reset, whatever the width of an entity. The recall has two levels
+N positions, those K posts, at most N more of a stopped batch's zero closure,
+the walks of the touched rows that undo a cut scan's colours and list the set,
+each about the reset's size, and that reset, whatever the width of an entity. The recall has two levels
 (amended 2026-10-02, S67.9's (10′)): the take's, and a stack of returns
 withheld under the grant at twice its mark, stop the trace as above; a stack
 at its mark asks the collector to wind down while the owner runs on. The
@@ -958,7 +959,9 @@ the stop alone: a mark the wind-down cut ends where it stands, the scan runs
 from every root, and the roots are posted off its colours with the set it
 proved, nothing listed live; a stop inside that scan posts the snapshot. A
 mark cut short leaves rows above what a complete one would, so its colours
-err toward live alone.
+err toward live alone, and a live colour is no verdict there: a root whose
+own row reads above zero is read live as at a stop, one whose row reads zero
+and which the scan coloured live through another root goes back *unwalked*.
 The reset is bounded by what the trace touched — every heap block it met a
 row in and every block its arena drew — which with no budget reaches the
 traced owner's whole state, rows being about a sixteenth of the heap they
@@ -974,11 +977,12 @@ under a grant recalls it the same way without waiting: each of the three
 stacks its returns wait on under a foreign holder ("The deferral's
 contract") counts what it holds — deaths, storage chunks, and blocks, a run
 and a large entity counted by the blocks they span — and once one holds its
-mark the owner sets the hint and the slot's word as its take would and goes
-on freeing, the returns past the mark asking nothing. A count is what its
+mark the owner sets the hint to the wind-down and the slot's word, and at
+twice its mark the hint to the stop as its take would, and goes on freeing,
+the returns between and past the marks asking nothing. A count is what its
 stack holds at every instant, the owner taking each item's weight off as it
-gives the item back. The next consent sets the hint to whether a stack
-holds its mark, ahead of the swap that publishes the grant, so that the
+gives the item back. The next consent sets the hint to the level the stacks
+hold, ahead of the swap that publishes the grant, so that the
 collector's reading before its batch sees it; the owner clears it once the
 stacks go back whole outside a grant, so a mark recalls one grant and no
 later one, and a stack still at its mark when the owner consents recalls the

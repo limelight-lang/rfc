@@ -45,19 +45,22 @@ before it): a plain store by the collector at every advance and a plain
 load by the poll, relaxed on both sides, taking no part in the handshake
 (`ll-model` `dev/DECISIONS.md`, "the collector finds and the mutator judges,
 and a recall of the token bounds the mutator's wait instead of the
-budget"). A third byte stands on the line since 2026-09-24, `waiting`: the
-mutator's take sets it before it waits out `COLLECTOR` and clears it when
-the take returns; a stack of returns withheld under `COLLECTOR` sets it at
-its mark with no wait; the next consent, ahead of its release swap, stores
-whether a stack still holds its mark, and the returns' going back whole
-outside a grant clear it (amended 2026-09-24 from a consent that cleared it
-and set it again after its swap); and the collector reads it before it makes
-a batch, every N positions of storage its trace reads, at every block its
-arena draws, at every held entry a pass of the mark reads and at every root
-of the pass before the trace, and, finding it set, stops, posts the stopped
-trace's snapshot and releases (amended 2026-10-01 from the readings between
-parts and an abandoned batch's posts; `rfc/model/gc/rc-cycle.md`, "The recall
-of the token"). The take also sets
+budget"). A third byte stands on the line since 2026-09-24, `waiting`, a
+level since 2026-10-02 — none, wind down, stop — that the mutator alone
+raises: its take sets the stop before it waits out `COLLECTOR` and clears it
+when the take returns; a stack of returns withheld under `COLLECTOR` raises
+the wind-down at its mark and the stop at twice it, with no wait; the next
+consent, ahead of its release swap, stores the level the stacks hold, and the
+returns' going back whole outside a grant clear it (amended 2026-09-24 from a
+consent that cleared it and set it again after its swap); and the collector
+reads it before it makes a batch, every N positions of storage its trace
+reads, at every block its arena draws, at every held entry a pass of the mark
+reads and at every root of the pass before the trace. At the stop it stops,
+posts the stopped trace's snapshot and releases; at the wind-down it ends its
+mark, scans and posts off the colours, the scan stopping at the stop alone
+(amended 2026-10-01 from the readings between parts and an abandoned batch's
+posts, and 2026-10-02 for the two levels; `rfc/model/gc/rc-cycle.md`, "The
+recall of the token"). The take also sets
 a word on the collector's slot, which the same readings take, releasing
 every grant the collector holds unserved behind its batch whose owner
 recalls it; that word is set by a read-modify-write with Release and taken by a

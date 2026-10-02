@@ -60,14 +60,22 @@ candidate mechanism from Bacon and Rajan:
 - **Age-based pruning.** The entity header stores candidate age. When a
   non-root target has the current epoch stamp and has reached the traversal age
   threshold, the traversal treats it as an opaque external live reference. The
-  rule applies only to edge targets, never to queue roots; otherwise a reference
-  cycle at the threshold could be skipped until the epoch changes. **A target is
-  a queue root when a candidate queue entry names it** — the registration bit,
-  which the owner clears at death and at no other point — rather than only when
-  the batch this trace holds names it: a trace cannot address another thread's
-  batch or another collection's, and the wider set spares entities the rule
-  would allow it to prune, which costs a descent and never a collection. A trace
-  may also stop at an explicit budget. See `cycle/questions.md`, Y9 and Y13.
+  rule applies only to edge targets, never to a root of the running trace, nor
+  to any entity the trace has already met, whose row is owed the edge's
+  subtraction. Which targets it reads depends on the collection (amended
+  2026-10-02, S67.9's (1′)). A collector's batch prunes any such target,
+  registered or not: a web server's state is entered through registered core
+  objects, and a batch that walked it once stamps it for the next. The owner's
+  collections over R whole off the poll, by the explicit call and at a
+  collector cap of zero keep the exemption of queue roots, on which their
+  exhaustive reading rests: **a target is a queue root when a candidate queue
+  entry names it** — the registration bit, which the owner clears at death and
+  at no other point — so a ring whose members are all registered is found by
+  the trace that meets it. The pressure collection and the exit read no stamp
+  at all: they are after memory now rather than after the next trace's saving.
+  A collection over P follows no edge out of the set it validates, so it
+  prunes nothing. Every reading errs toward live alone. See
+  `cycle/questions.md`, Y9 and Y13.
 
 The age rule is a performance policy, not a completeness guarantee. In the
 first collection after an epoch change, every stamp is stale and the rule
@@ -92,39 +100,34 @@ turnover. A collection an allocation failure starts has returned its blocks
 before the commit, so it stamps only what its exact validation read as
 externally referenced.
 
-**The live list of a batch.** A collector's batch writes no header, so the
-live core it reads is stamped by the owner from a list (amended 2026-09-24).
-A batch whose trace completed appends the address of every row it left live,
-its roots' included, to one chain of GC blocks per grant, at most L blocks,
-before the arena's reset (amended 2026-10-01 from an append after each part
-whose root read live, its own root left out); a stopped trace appends
-nothing. The walk reads the recall every stride of rows
-and stops at a recall, keeping what it wrote, so the list adds no work the
-recall cannot stop before the release. The collector leaves the chain's head
-on the mutator's record before its release to `POSTED`, and the list's blocks
-cross to the owner with it. The owner stamps every listed entity with the
-epoch the batch read and age one, and leaves a stamp that already carries an
-age in that epoch as it stands, at the first of two events: its take of the
-token from `POSTED` off the poll or by the explicit call, before any
-destructor or free the claim runs, and the first return of a block or an
-OS-direct run of its own under `POSTED` while the list stands, since a stamp
-made after that memory left the thread would land in its next owner's data.
-A take under pressure, the teardown's refusal and the exit give the list back
-unread, and so does a take after the epoch advanced, a stamp of the batch's
-epoch reading as no stamp in the next. For that reason a list its owner has
-not taken by the epoch's next advance is given back by the collector the record
-is named to, at its round's visit after the advance, so that an owner asleep
-under `POSTED` holds the list's blocks for X at most and loses no stamp by it;
-the owner and the collector each take the list by one swap, the publication a
-release and the collector's swap an acquire, and the side that reads it
-non-null gives it back or stamps from it. At the traversal threshold of one a
-flat stamp prunes what a stamp per strongly connected component would, so the
-list carries no component. Between `POSTED` and the take the owner runs free:
-a listed slot can be freed and occupied again, and its new occupant is
-stamped live and pruned at until the turnover, which costs recall and never a
-wrong free, exact validation reading no stamp. A block the pool refuses and a
-chain at L keep what is written, a subset of the live core being safe to
-stamp.
+**The stamps of a batch.** A collector's batch whose trace completed stamps
+the live core it read itself, under its grant and before its release (amended
+2026-10-02 from a list of the live rows the owner stamped from at its take of
+the token or at its first return of memory under `POSTED`, whose stamps landed
+after the batch, so that a batch's own walk could never prune at them). Byte 6
+is written only by the holder of the mutator's trace token: the owner under its
+own claim, a collector under its grant, every death, block and run of the
+owner's withheld meanwhile, so a stamp lands in the owner's own memory however
+the member fared since the trace met it. The stamp is the epoch the batch read
+and age one, a stamp that already carries an age in that epoch left as it
+stands; at the traversal threshold of one a flat stamp prunes what a stamp per
+strongly connected component would, so no component is computed. Only the
+live rows of the row arrays the mark's final drain touched first are stamped —
+the blocks the walk entered past a held registered target that no pass brought
+to zero, which on a web server is mostly its state — so a live request a batch
+boundary cut, walked in the first regions and the passes, is not stamped, and
+once it dies the next batch walks it rather than pruning at it for the rest of
+the epoch. The rule is by block and not exact: a request entered through a
+registered member no batch root is, its interior in blocks of its own, is
+stamped, and so is garbage a batch boundary read live behind such a member;
+either waits for the turn. The arrays are walked oldest first, so that a
+walk cut short stamps the state's entry points first. The walk reads the
+recall every stride of rows and stops at the stop level alone, as the scan
+does, keeping what it wrote: stamps on live rows of a completed trace are as
+sound as a whole walk's, and a wind-down that dropped them would leave the
+state for the next batch to walk whole again. A stopped trace stamps nothing, and so does a batch whose
+mutator's epoch moved since its trace opened, a stamp of the old epoch reading
+as none.
 
 **The epoch clock is the collector's.** Each mutator's epoch is a full-width
 count of turnovers in its record, written by the collector the mutator is
@@ -891,9 +894,9 @@ meets every other root before it expands any, so that an edge into a batch
 root is never a first visit, marks what they reach, holding each other
 registered target it meets for passes that expand first the held targets whose
 rows read zero, and scans from each root. Each root is posted off its colour,
-in R's order; `front` is advanced once, after the last post, the live list the
-trace wrote is left on the record ("The live list of a batch"), and the
-collector releases — to `POSTED` when it posted, which tells the owner to
+in R's order; `front` is advanced once, after the last post, a completed
+trace stamps the live core its final drain read ("The stamps of a batch"),
+and the collector releases — to `POSTED` when it posted, which tells the owner to
 collect, and to `FREE` when it posted nothing. No budget bounds the trace: it
 is bounded by the traced owner's heap, and the runtime sets no memory limit of
 its own (amended 2026-10-01 from B and `B_max`). The token covers the read and
@@ -954,7 +957,7 @@ each about the reset's size, and that reset, whatever the width of an entity. Th
 (amended 2026-10-02, S67.9's (10′)): the take's, and a stack of returns
 withheld under the grant at twice its mark, stop the trace as above; a stack
 at its mark asks the collector to wind down while the owner runs on. The
-mark, its passes and the live list's walk end at either level, the scan at
+mark and its passes end at either level, the scan and the stamps' walk at
 the stop alone: a mark the wind-down cut ends where it stands, the scan runs
 from every root, and the roots are posted off its colours with the set it
 proved, nothing listed live; a stop inside that scan posts the snapshot. A
@@ -1017,8 +1020,8 @@ reading is the backlog that votes a sibling's birth.
 the record; the collector clamps its batch to P's room and never writes a
 link into P, so no block passes from the owner to the collector and no
 unlink races a link. The collector allocates nothing in the owner's name but
-the live list, whose blocks it draws and hands over with its release ("The
-live list of a batch"); its workspace and its rows are its own.
+the posted set, whose blocks it draws and hands over with its release; its
+workspace and its rows are its own.
 
 **The mutator's disposition.** P's verdicts are disposed of by in-line
 collections alone, and no poll acts on a verdict — a retirement pass reads P

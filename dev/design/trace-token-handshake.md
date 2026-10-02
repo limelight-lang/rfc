@@ -87,10 +87,10 @@ The record leaves the registry `MUTATOR`, the initialisation's end stores
 registry writes nothing to the byte across lives. The invariant `POSTED`
 carries: P holds an entry the owner has not disposed of only while the
 byte reads `POSTED` or `MUTATOR`, so a byte that reads `FREE` promises an
-empty P and the poll has no reason to read P. The live list a grant leaves
-beside P obeys the same invariant, taken back to null by the owner's first
-act after its acquire reading of `POSTED`, or earlier by the collector once the
-epoch has advanced past it, so `FREE` promises a null list word too (E13).
+empty P and the poll has no reason to read P. The posted set a grant leaves
+beside P obeys the same invariant, taken back to null by the owner's
+collection over P or given back by its claim's release, so `FREE` promises a
+null set word too (E13; amended 2026-10-02 from the live list, which went).
 
 The slot rather than a life counter: three bits fit beside the state, the
 slot is already the collector's name, and it is exact — a request never
@@ -116,7 +116,7 @@ value a failed swap reads back is acted on, never inferred.
 | `COLLECTOR\|s` | `POSTED` | collector s | the same release, when the batch posted its verdicts into P; on the unwind as on the return, the batch's guard having posted *unwalked* for every root the unwind left without a verdict | store Release; lock; `notify_all` |
 | `POSTED` | `MUTATOR` | mutator | every taker of the `FREE → MUTATOR` row below, the teardown-refusal retirement excepted, which holds `POSTED` unswapped | CAS Acquire / Acquire |
 | `POSTED` | (skip) | collector s | the request CAS fails on it: neither a batch nor work; the owner is served by no round until its own collection has run | CAS failure, Relaxed |
-| `FREE` | `POSTED\|1` | the first collector | under a collector cap of zero alone, at a round's visit that read R as a take would have, the swap made under the reading hold: the ask for an in-line collection, P empty and the live list's word null (amended 2026-09-25) | CAS Relaxed / Relaxed: nothing of the owner's is read after it, and a failure is a skip |
+| `FREE` | `POSTED\|1` | the first collector | under a collector cap of zero alone, at a round's visit that read R as a take would have, the swap made under the reading hold: the ask for an in-line collection, P empty and the posted set's word null (amended 2026-09-25; the set for the live list 2026-10-02) | CAS Relaxed / Relaxed: nothing of the owner's is read after it, and a failure is a skip |
 | `POSTED\|1` | `MUTATOR` | mutator | every taker `POSTED` has | CAS Acquire / Acquire |
 | `FREE` | `MUTATOR` | mutator | `CollectingThread::take` on both paths, the teardown-refusal retirement, the exit | CAS Acquire / Acquire |
 | `REQUESTED\|s` | `MUTATOR` | mutator | the same takers: the request is refused | CAS Acquire / Acquire; then wake s |
@@ -150,7 +150,8 @@ the three drains — read `REQUESTED` and `POSTED` as `FREE` and return:
 before consent, and after the release, the collector holds no cell, so no
 address it holds names the memory. They test `state == COLLECTOR`, never
 `state != FREE`. The block gate and the run's unmapping read `POSTED` with a
-live list standing as "stamp from the list, then `FREE`" (E13).
+posted set standing as "drop the set if a member stands here, then `FREE`"
+(E13).
 The slot drain needs no arm of its own — its hand-back re-enters the slot
 entry, which consents at the first slot, and the next pop reads `COLLECTOR`
 and splices the rest back. `BlockPool::put` from a thread-local's drop at
@@ -190,8 +191,8 @@ exact counts, validates and finalizes, an unwalked root being no root of it
 (amended 2026-09-24: the collector read nothing of that root, and the
 collector finds); then, on every ending of every path that
 took `POSTED`, one disposition of P whole, the take having settled the
-live list first — stamped from it off the poll and by the explicit call,
-given back unread by the pressure path and the exit (E13) — a read-live root deferred to
+posted set first — kept for the collection over P, given back unread by the
+pressure path and the exit (E13) — a read-live root deferred to
 the deferred lane, or written into R on `NoBlock`; a zero-count verdict
 retired on the entity's re-read completed-free bit; a finalized root
 nulled; a refused, untraced, resurrected or unreached root written back
@@ -296,7 +297,7 @@ cap is stored and one already running finishes; `MUTATOR` is a
 refusal; `FREE`, or a value with another slot, is a record moved on — the
 collector holds nothing. On the grant: `TraceScratchArena::open()` (a
 refusal releases at once and answers `Idle`), the batch as today, the
-arena's reset, the live list's head left on the record, then release
+arena's reset, the posted set's head left on the record, then release
 `COLLECTOR|s → POSTED` if the batch posted
 verdicts into P and `COLLECTOR|s → FREE` if it posted nothing (Release),
 lock, `notify_all`; the guard that releases on the unwind carries the
@@ -567,13 +568,14 @@ decide one reading and say which entries consent, noting that
 `BlockPool::put` runs from a thread-local's drop at exit and a consent
 there wakes a condition variable from a destructor context.
 
-**E13. A live list beside `POSTED`** (added 2026-09-24 with the list itself,
-`rc-cycle.md`, "The live list of a batch"). A grant that read a live core
-leaves a list of its members on the record for the owner to stamp, and the
-owner returns memory at once under `POSTED`: a block emptied and put, or a
-run unmapped, before the take would leave list addresses naming memory the
-next owner holds, and the take's stamps would write into it. E12's reading
-of `POSTED` as `FREE` at the block gate needs an arm for this case.
+**E13. A set beside `POSTED`** (added 2026-09-24 with the live list, which
+went on 2026-10-02; the posted set, `rc-cycle.md`, "Worker-to-owner
+handoff", keeps the case). A grant that proposed leaves the set it proved on
+the record for the owner's collection over P, and the owner returns memory at
+once under `POSTED`: a block emptied and put, or a run unmapped, before that
+collection would leave set addresses naming memory the next owner holds, and
+the owner would read them. E12's reading of `POSTED` as `FREE` at the block
+gate needs an arm for this case.
 
 **Survived both rounds:** the store-buffering pair itself (the collector's
 first load is ordered after the mutator's *store* of `COLLECTOR`, not after
@@ -705,24 +707,22 @@ arm. `Final`.
 **E13.** Not a Sage ruling: the form the live list was built in, from the
 package the owner took on 2026-09-23 (`ll-model` `dev/DECISIONS.md`, "the
 collector finds and the mutator judges, and a recall of the token bounds the
-mutator's wait instead of the budget"). The block gate and the run's
-unmapping read `POSTED` with a non-null list word as "stamp from the list,
-then `FREE`": the owner stamps every listed address and gives the list back
-before the memory goes, one relaxed load of the word where none stands. Under
+mutator's wait instead of the budget"), and since 2026-10-02 the form the
+posted set keeps, the list gone with the collector writing its stamps itself
+(`ll-model` `dev/DECISIONS.md`, "the collector writes the maturation stamps
+itself, and the live list goes"). The block gate and the run's unmapping read
+`POSTED` with a non-null set word as "drop the set if a member stands in this
+block, then `FREE`": one relaxed load of the word where none stands. Under
 `COLLECTOR` the word may be written before the release and is not the owner's
-to read, and no return reaches either reader then: `BlockPool::put` withholds
+to read, and no return reaches the reader then: `BlockPool::put` withholds
 a block under a foreign trace ahead of this one, and a run is freed only by a
 death, which the free entry withholds whole. The relaxed load relies on those
 two acquire readings of the byte, which order the word after the collector's
-release where they read `POSTED`. The list's blocks are the one piece of GC
-memory that passes from a collector to an owner, and back to the collector
-the record is named to where the owner has not taken them by the epoch's next
-advance: the publication is a release store of the word and the collector's
-swap an acquire, since that collector read no `POSTED` and may not be the one
-that drew the blocks. E11's
-closure, when B3/B4 close, covers the list's writes as well as the gate's
-reads: a cross-thread return reads the returning thread's record, and under
-the list that is an owner's stamp into a block another thread returned.
+release where they read `POSTED`. The set's blocks are the one piece of GC
+memory that passes from a collector to an owner: the publication is a release
+store of the word. The collector's own stamps need no arm: it writes byte 6
+under its grant, every return of the owner's withheld meanwhile, and nothing
+it wrote is read after the release but by the owner's own traces.
 
 ### The second round: the silent owner and the asymmetric barrier
 

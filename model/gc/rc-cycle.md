@@ -1171,7 +1171,9 @@ cell and meeting the row, and in that interval the block carries no stamp.
 What the three stacks withhold is bounded by the grant, and the grant by
 its recall: a stack that holds its mark recalls the token ("The recall of
 the token"). A slot another thread freed waits on its block's remote list
-instead, which no mark counts.
+until the owner reclaims it; a reclaim under a foreign holder moves the list
+onto the owner's stack of deaths, where each slot counts toward that stack's
+mark as the owner's own death does.
 
 **Publication, for a reader on another thread.** A worker that follows a
 pointer it read from a slot reads the entity's header and its class word, and

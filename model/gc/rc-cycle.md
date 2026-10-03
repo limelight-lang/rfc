@@ -132,11 +132,20 @@ as none.
 **The epoch clock is the collector's.** Each mutator's epoch is a full-width
 count of turnovers in its record, written by the collector the mutator is
 named to and by nobody else: at a visit of its round, before it serves the
-mutator, it advances the count once `N` of its batches for that mutator or X
-of its own clock have passed since the last advance, whichever comes first,
-so that a batch granted at that visit traces on the turned epoch; it stores the count's low
-eight bits beside the trace token, where the mutator's poll compares them with
-its deferred lane's mirror. The mutator writes nothing into the clock. Every
+mutator, it advances the count once the positions its batches for that
+mutator read since the last advance reach twice what the stamps they wrote
+cost to prove, or once X of its own clock has passed, whichever comes first
+(amended 2026-10-03 from `N` of its batches), so that a batch granted at
+that visit traces on the turned epoch. The epoch is the window in which the
+collector's proofs of liveness stand, and a turn retires them all, so its
+length is set by what re-proving costs: each batch whose trace completed
+prices its stamps at its final drain's positions times the stamps it wrote
+over the rows that drain met, and only the positions of batches made while a
+price stands count toward the turn, the proving batch's own walk not among
+them, so the work the stamps could prune pays for the re-proof. An epoch in
+which the collector proves nothing turns at X alone. The
+collector stores the count's low eight bits beside the trace token, where the
+mutator's poll compares them with its deferred lane's mirror. The mutator writes nothing into the clock. Every
 collection over a mutator's graph — the owner's in line, or a collector's
 batch — reads the count once, when its trace opens, and prunes, stamps and
 records the mirror against that one reading; the stamp's epoch is its low two

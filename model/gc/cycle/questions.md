@@ -653,7 +653,8 @@ epoch's turn") **and re-ruled 2026-09-19 and 2026-09-23**: the counter is per
 mutator, full-width and kept in its mutator record, and since 2026-09-23 it
 is the collector's — the collector the mutator is named to advances it after
 N of its batches for that mutator or X of its own clock, whichever comes
-first, and the mutator writes nothing into it (`ll-model` `dev/DECISIONS.md`,
+first (since 2026-10-03, once its batches' work reaches twice what their
+stamps cost to prove, or X), and the mutator writes nothing into it (`ll-model` `dev/DECISIONS.md`,
 "the collector finds and the mutator judges, and a recall of the token bounds
 the mutator's wait instead of the budget"; [`../rc-cycle.md`](../rc-cycle.md),
 "The epoch clock is the collector's"). The epoch field of the header's

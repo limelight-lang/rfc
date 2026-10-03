@@ -133,9 +133,11 @@ as none.
 count of turnovers in its record, written by the collector the mutator is
 named to and by nobody else: at a visit of its round, before it serves the
 mutator, it advances the count once the positions its batches for that
-mutator read since the last advance reach twice what the stamps they wrote
-cost to prove, or once X of its own clock has passed, whichever comes first
-(amended 2026-10-03 from `N` of its batches), so that a batch granted at
+mutator read since the last advance reach a ratio of what the stamps they
+wrote cost to prove — four unless the embedder sets another through
+`ll_gc_set_epoch_ratio` (Edmond, 2026-10-03, over the break-even two) — or
+once X of its own clock has passed, whichever comes first (amended
+2026-10-03 from `N` of its batches), so that a batch granted at
 that visit traces on the turned epoch. The epoch is the window in which the
 collector's proofs of liveness stand, and a turn retires them all, so its
 length is set by what re-proving costs: each batch whose trace completed

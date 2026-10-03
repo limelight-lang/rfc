@@ -147,7 +147,7 @@ epoch before twice the wall of the batches that proved it, so that a walk
 longer than X proves something before its stamps retire. An epoch in which
 the collector proves nothing turns at X alone. The
 collector stores the count's low eight bits beside the trace token, where the
-mutator's poll compares them with its deferred lane's mirror. The mutator writes nothing into the clock. Every
+mutator's poll compares them with its deferred lanes' mirrors. The mutator writes nothing into the clock. Every
 collection over a mutator's graph — the owner's in line, or a collector's
 batch — reads the count once, when its trace opens, and prunes, stamps and
 records the mirror against that one reading; the stamp's epoch is its low two
@@ -865,10 +865,17 @@ P in place, nulling their entries and advancing nothing (amended
 read and not advanced past under its token or collecting word, which keep
 the collector out). The pressure path compacts after every round and, before its
 allocation retry, makes the returns a foreign holder left withheld, under
-its own token. The deferred lane is re-offered at the epoch's turn by a
-splice with no copy: its blocks are linked into R's circle after the tail
-block and `tailBlock` moved to the last of them, so they lie inside the
-reader's region; the re-offer arms no collection of the owner's: the merge
+its own token.
+
+**Deferred lanes.** A root read live waits before it is read again, the
+longer the more live readings it has survived: the owner counts them in the
+header (`model/classes.md`, bits 22–23) and puts the root in one of three
+lanes, waiting 1, 3 and 7 epoch turns; an epoch turned by X releases every
+lane at once, so a wait counted in turns never holds a dead ring for several
+X (amended 2026-10-03, the proof-epoch collector). A lane whose wait has
+passed is re-offered by a splice with no copy: its blocks are linked into
+R's circle after the tail block and `tailBlock` moved to the last of them,
+so they lie inside the reader's region; the re-offer arms no collection of the owner's: the merge
 it counts sends the collector's next round to the merged ring however far
 below the threshold it reads, and the owners of a collector that has ended
 are named back to the first collector by the first collector's next round.

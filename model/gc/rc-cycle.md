@@ -142,8 +142,10 @@ length is set by what re-proving costs: each batch whose trace completed
 prices its stamps at its final drain's positions times the stamps it wrote
 over the rows that drain met, and only the positions of batches made while a
 price stands count toward the turn, the proving batch's own walk not among
-them, so the work the stamps could prune pays for the re-proof. An epoch in
-which the collector proves nothing turns at X alone. The
+them, so the work the stamps could prune pays for the re-proof. X turns no
+epoch before twice the wall of the batches that proved it, so that a walk
+longer than X proves something before its stamps retire. An epoch in which
+the collector proves nothing turns at X alone. The
 collector stores the count's low eight bits beside the trace token, where the
 mutator's poll compares them with its deferred lane's mirror. The mutator writes nothing into the clock. Every
 collection over a mutator's graph — the owner's in line, or a collector's

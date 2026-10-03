@@ -354,8 +354,10 @@ and [rc-cycle.md](rc-cycle.md), "Signals"). The collector takes a batch on
 the count it reads, on a ring standing below that count for an interval,
 and on a deferred lane its owner merged back at the epoch's turn; the
 embedder tunes it with
-`ll_gc_set_collector_cap`, `ll_gc_set_standing_interval` and
-`ll_gc_set_epoch_interval`. The runtime arms the owner's poll itself — for
+`ll_gc_set_collector_cap`, `ll_gc_set_standing_interval`,
+`ll_gc_set_epoch_interval` and `ll_gc_set_epoch_ratio` (how many times the
+price of its proofs the collector's work in an epoch reaches before the
+epoch turns). The runtime arms the owner's poll itself — for
 the collector's verdicts when it posted, for the queue whole after a refused
 allocation, for a retirement pass on its count of completed deaths, and,
 under a collector cap of zero, for the queue whole where the collector thread's

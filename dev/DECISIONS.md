@@ -817,6 +817,37 @@ because it would hide the `owner` edge.
 
 ---
 
+## 2026-10-04 — byte 7 goes to the window tag, and the reconciliation marks its survivors by a bias on the count
+
+**Decided** in `ll-model` (`dev/DECISIONS.md`, 2026-10-04, "the collector
+judges and frees a garbage set by window tags…"; `PLAN.md` S68.2) and carried
+here, where the flags layout is normative (`model/classes.md`, "Flags
+layout"). Under the feature `recycler-over-counts` every count write and
+every pointer store into an entity stores the open collector window's number
+into header byte 7, one relaxed byte store with no read; a byte shared with
+bit 24 would need a read-modify-write on every count write. So the reset's
+COW count reconciliation now marks the survivors it has in hand by a bias on
+the count word: `0xC000_0000` plus the signed sum, "in hand" being a count in
+`[2^31, u32::MAX)`.
+
+**Why:** the bias needs no allocation and no header bit, and it keeps the
+three reasons the earlier marker's foreign reads were sound: the pool does not
+unmap, a freed slot keeps its final header word (count zero), a re-issued slot
+is published whole. A fourth is added: a heap block the reset empties stays
+with its size class until the reset ends, so the slot grid under the log's
+addresses does not change.
+
+**Rejected:** a side set of captured addresses (an allocation the reset must
+be able to refuse at its last step); keeping bit 24 (a read-modify-write on
+every count write).
+
+**Cost:** the count of an entity a correction names is narrowed below 2^31 —
+the cost the 2026-09-13 entry named against this form. Reaching it needs 2^31
+references to one entity (16 GiB of pointers); `u32::MAX`, the saturated
+count, stays out of the range. Supersedes the 2026-09-13 entry below.
+
+---
+
 ## 2026-09-13 — flags bit 24 is the reset reconciliation's own, and byte 7 takes a byte-wide writer
 
 **Decided** in `ll-model` and carried here, where the flags layout is

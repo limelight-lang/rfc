@@ -40,23 +40,34 @@ predicates are mask tests and the enrolment gate is one.
 | 13 | **`DESTRUCTOR_PENDING`** — this instance owes a `__destruct`: set only when the user constructor has returned successfully, **and** only for a class that has a destructor. What every teardown path dispatches on, not just the arena's ([object-lifecycle.md](../runtime/object-lifecycle.md)) |
 | 14 | **`DESTRUCTOR_RAN`** — `__destruct` has already run (exactly-once guard) |
 | 15 | **`DEAD_IN_PLACE`** — `ll_free` has taken this slot and has not handed it back: a second free that finds the bit up is refused, touching no free list, no pool and no mapping, and whatever returns the slot clears the bit first (`model/gc/rc-cycle.md`, "Zero-count entities pending slot reuse"). The count reads zero under it, and the bit is what separates such a slot from a free one; a withheld return is not recorded here but on the trace's stack through the dead entity. **The mutator's half is full at this bit**: a further mutator flag needs a re-lay rather than a free position |
-| 16–19 | Epoch, the collector's own, sixteen wide so that the deferred lanes' longest wait between two readings of a root does not meet it again (amended 2026-10-03). **Byte 6 has one writer at a time**, the holder of the mutator's trace token — the owner under its own claim, a collector under its grant (amended 2026-10-02): epoch, age and the count of live readings share it, and each is written by a byte-wide read-modify-write, so a concurrent second writer would lose the first's bits with no wider access anywhere to blame. **Byte 7 obeys the same rule** for the same reason: bit 24 is written by a byte-wide read-modify-write, which is what leaves room for a second field there |
+| 16–19 | Epoch, the collector's own, sixteen wide so that the deferred lanes' longest wait between two readings of a root does not meet it again (amended 2026-10-03). **Byte 6 has one writer at a time**, the holder of the mutator's trace token — the owner under its own claim, a collector under its grant (amended 2026-10-02): epoch, age and the count of live readings share it, and each is written by a byte-wide read-modify-write, so a concurrent second writer would lose the first's bits with no wider access anywhere to blame. **Byte 7 is written whole**, by one writer: the window tag below |
 | 20–21 | Candidate age used by the traversal cutoff |
 | 22–23 | Live readings: how many times a collection read this candidate live and deferred its root, saturated at three, written by the owner at the deferral; it picks the deferred lane the root waits in (`model/gc/rc-cycle.md`, "Deferred lanes") |
-| 24 | **Reconciling**: the arena reset's COW count reconciliation has this entity in hand. Set and cleared inside one function of the reset (`ll-model`'s `promote::reconcile_cow_counts`), which runs no user code, opens no nested reset and cannot unwind, so the bit stands on no entity outside it. **No other reader may test it**: while it stands, the entity's `refcount` holds a signed accumulator rather than a count, and a reader that took it for one would free a live entity. The reconciliation's own reader is the one that decides whether a correction belongs to this reset's population |
-| 25–31 | Free |
+| 24–31 | **Window tag** (`ll-model`'s feature `recycler-over-counts`; amended 2026-10-04): the number, 1–255, of the collector's window in which this entity's count or one of its reference slots last changed, written by the owner as one relaxed byte store at every count write and every pointer store into the entity while a collector holds the owner's token, 0 while none does. Read by the collector's Δ-test: a white member carrying the open window's number was touched and the set is not judged (`ll-model/dev/design/recycler-over-counts.md`). Without the feature nothing writes the byte after the publication |
 
-**Bit 24's reader touches headers it did not write, and what makes that
-legal is not the reset's own window.** The reconciliation walks a log of
-records naming COW children, and a child named there may have been freed
-inside the reset and its slot handed out again: the window defers the free of
-a large body and absorbs the free of an occupant of a block whose count is
-not established, and neither covers an ordinary small slot. The read is
-sound for two other reasons, and an implementation that loses either owes
-this bit a different reader. A block pool that does not unmap its regions
-keeps every address the log names mapped for the life of the process. And a
-slot handed out again is published by one eight-byte store that writes byte 7
-as part of it, so a re-issued slot reads the bit clear rather than stale.
+**The reset's COW count reconciliation marks the entities it has in hand
+by a bias on the count word, not by a bit** (amended 2026-10-04, when byte 7
+went to the window tag). From its first pass to its third the survivor's
+`refcount` holds `0xC000_0000` plus a signed sum; a count in the range
+`[2^31, u32::MAX)` is read as "in hand", and no entity outside the
+reconciliation can carry one — it would need 2^31 references, and
+`u32::MAX`, the saturated count, is kept out of the range. The marker's reader
+touches headers it did not write, and what makes that legal is not the
+reset's own window. The reconciliation walks a log of records naming COW
+children, and a child named there may have been freed inside the reset and its
+slot handed out again: the window defers the free of a large body and absorbs
+the free of an occupant of a block whose count is not established, and neither
+covers an ordinary small slot. The read is sound for four other reasons, and
+an implementation that loses any of them owes the marker a different reader. A
+block pool that does not unmap its regions keeps every address the log names
+mapped for the life of the process. A freed slot keeps its final header word —
+the free list links through the next word — so it reads its dying count, zero.
+A slot handed out again is published by one eight-byte store, so a
+re-issued slot reads its fresh count rather than a stale sum. And a heap block
+the reset empties stays with its size class until the reset ends, so the slot
+grid the log's addresses fall on is the one the records were written against:
+a block handed to another class mid-reset would put a foreign header under a
+named address.
 
 **Which code names which kind is still the encoding's own business** —
 normative in `EntityKind` (`ll-model/src/refcount.rs`), and a consumer takes

@@ -125,7 +125,13 @@ $f = function () use ($x) { $x->run(); };   // capture is a store: +1
 
 So an uncounted borrow can only ever live in a frame slot, and both it
 and its owner are decided by one compilation of one function. The
-obligation is a within-frame property, not a whole-program one.
+obligation is decided within one frame, but what ends a borrow's coverage
+need not run in it: a call, a destructor an intermediate release runs, a
+user hook (`__set`, `__unset`, `offsetUnset`, an iterator), a write
+through a by-reference parameter or alias, and a `yield` or fiber
+suspension each run other code that may drop a reference on the path, so
+a call's summary covers heap writes and hooks, not only its parameters
+(the Critic, 2026-10-06, `model/dev/design/the-general-algorithm.md`).
 
 **The acyclic flag does not relax this.** An acyclic holder cannot be a
 cycle member (`../gc/rc-cycle.md`, "acyclic-class filter"), but it can still be garbage *held by* a cycle, and it

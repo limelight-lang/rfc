@@ -447,12 +447,47 @@ generated code has to keep, as the Critic and the Sage stated it:
   reference box: the object's `dispose` is the one reader of the mark, and
   an array's or a reference's death releases a marked child as any other.
 
-Open, put to Edmond on 2026-10-08: a holder that dies inside the cycle
-collector dies at whatever poll runs it, where strategies.md lets a local
-still hold the occupant, so I2 is not the compiler's to keep there. The
-model's cycle teardown releases such a child with the mark standing; two
-cases in the model (`model/src/cycle/collect/tests`, kept outside `main`
-while this is open) stage it with a destructor that keeps `$this`.
+Where the proof would break, the generated code clears the mark; the
+cycle collector stays blind to it (Edmond, 2026-10-08: «отметку надо
+снимать - но это делает компилятор»). Four ways the proof breaks that the
+model's cycle teardown cannot see: a local still holding the occupant when
+the holder dies in a ring at a poll; an outside child whose `__destruct`
+keeps `$this` after the collector releases it; a member's `__destruct`
+that copies another member's occupant out during the destructor pass; and
+the runtime's own generic reads. The Critic's form of the rules that close
+them (2026-10-08):
+
+- **R5a.** A read of a proven slot is an uncounted borrow only while the
+  holder is pinned: by a local or `$this` that cannot be rebound (no `&`,
+  no `use (&)`, no `extract`, `$$` or `get_defined_vars`, not a generator
+  or closure frame) and whose reference outlives every use of the borrow on
+  every path, unwind included; and the borrow is never stored, returned,
+  yielded, captured, or passed where it may escape, as a receiver whose
+  `$this` escapes included. Any other read clears the occupant's mark.
+  `function f($a){ $c = $a->owned; return $c->v; }` called as `f(new A)`
+  releases `$a` before `$c`, and without the clear the dispose frees C
+  under `$c`.
+- **R5b.** The destructor prologue of a class that can occupy a proven
+  slot clears `$this`'s mark, unconditionally: a closure created in the
+  destructor, a `[$this, 'm']` callable or a call that resurrects through a
+  `WeakReference` all keep `$this` without a store the compiler sees.
+- **R5c.** A class with proven slots carries a descriptor bit, and the
+  runtime's generic property paths call a hook the compiler generates for
+  it: `(array)` casts, `get_object_vars`, `foreach` over an object,
+  reflection reads, `$a->{$name}` and `clone` clear the occupant's mark;
+  generic writes go through the owned store.
+- **R5d.** A `&` that may reach the slot (`&$h->c`, `foreach` by reference
+  over an object, `&$o->$n`) makes the slot not proven.
+- **R5e.** Passing an occupant to `WeakReference::create`, a `WeakMap` key
+  or `SplObjectStorage` is an escape: the read clears the mark.
+
+Cost, by the Critic's reading: a getter's return demotes, and so does
+anything cloned, reflected or cast; the mark survives on private helper
+objects reached through known non-escaping methods. What the mark then
+buys over a count read in `dispose` is to be measured before compiler work
+goes into R5a–R5e. Two cases in the model (kept outside its `main`) stage
+the outside-child destructor with the mark set by hand; under R5b the
+generated prologue clears it.
 
 ## The big one
 

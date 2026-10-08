@@ -430,6 +430,30 @@ reference identity and the category barrier.
 - **Dynamic string PHP-level API** — the runtime representation exists;
   the language surface does not.
 
+## Compiler tasks — the ownership mark
+
+Recorded 2026-10-08 at Edmond's ruling that a proven slot's occupant
+outliving its holder with the mark standing is for the compiler to rule
+out ([model/gc/strategies.md](model/gc/strategies.md), "The store barrier,
+as micro-operations"; `dev/DECISIONS.md`, the ownership mark). What the
+generated code has to keep, as the Critic and the Sage stated it:
+
+- **I1.** No other heap slot names a proven slot's occupant while the slot
+  does.
+- **I2.** At the holder's death by count, nothing but the slot holds the
+  occupant: no local read out of the slot is still alive.
+- **I3.** No ring closes through proven slots alone.
+- **I4.** A proven slot is an object property, never an array element or a
+  reference box: the object's `dispose` is the one reader of the mark, and
+  an array's or a reference's death releases a marked child as any other.
+
+Open, put to Edmond on 2026-10-08: a holder that dies inside the cycle
+collector dies at whatever poll runs it, where strategies.md lets a local
+still hold the occupant, so I2 is not the compiler's to keep there. The
+model's cycle teardown releases such a child with the mark standing; two
+cases in the model (`model/src/cycle/collect/tests`, kept outside `main`
+while this is open) stage it with a destructor that keeps `$this`.
+
 ## The big one
 
 - **Execution pipeline RFC** — how PHP source becomes LLVM IR: parser,
